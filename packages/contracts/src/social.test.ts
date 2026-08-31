@@ -21,9 +21,10 @@ const timestamp = '2026-09-01T12:00:00.000Z'
 
 describe('social contracts', () => {
   it('strictly parses only safe public records', () => {
-    const ip = {kind: 'ip' as const, id, username: 'aifans_ip', displayName: 'AIFANS IP', languages: ['en']}
+    const ip = {kind: 'ip' as const, id, username: 'aifans_ip', displayName: 'AIFANS IP', languages: ['en'], visualType: 'hybrid' as const, creator: {id, username: 'human_creator', displayName: 'Human Creator'}}
     expect(PublicIpSchema.parse(ip)).toEqual(ip)
     expect(() => PublicIpSchema.parse({...ip, authSubject: 'never-public'})).toThrow()
+    expect(() => PublicIpSchema.parse({...ip, creator: {...ip.creator, draftId: id}})).toThrow()
     expect(FeedPostSchema.parse({id, body: 'Hello', languageCode: 'en', publishedAt: timestamp, author: ip, likeCount: 0, commentCount: 0})).toMatchObject({id})
     expect(PublicCommentSchema.parse({id, postId: id, parentCommentId: null, author: ip, state: 'deleted', createdAt: timestamp})).toMatchObject({state: 'deleted'})
     expect(NotificationSchema.parse({id, kind: 'follow', actor: ip, postId: null, commentId: null, createdAt: timestamp, readAt: null})).toMatchObject({id})
@@ -38,6 +39,9 @@ describe('social contracts', () => {
     expect(() => decodeCursor(encodeCursor({v: 1, kind: 'chronological', publishedAt: timestamp, id}), 'for_you')).toThrow()
     expect(() => FeedQuerySchema.parse({kind: 'for_you', limit: '51'})).toThrow()
     expect(() => FeedQuerySchema.parse({kind: 'for_you', unexpected: 'value'})).toThrow()
+    expect(FeedQuerySchema.parse({kind: 'for_you'})).toMatchObject({visualType: 'all'})
+    expect(FeedQuerySchema.parse({kind: 'for_you', visualType: 'anime'})).toMatchObject({visualType: 'anime'})
+    expect(() => FeedQuerySchema.parse({kind: 'for_you', visualType: 'portrait'})).toThrow()
     expect(CursorSchema.parse(cursor)).toEqual(cursor)
   })
 

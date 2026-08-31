@@ -1,11 +1,13 @@
 import {z} from 'zod'
 import {LocaleSchema} from './account.js'
+import {CreatorVisualTypeSchema} from './creator.js'
 
 const uuid = z.uuid()
 const dateTime = z.iso.datetime()
 const trimmed = (max: number) => z.string().trim().min(1).max(max)
 
 export const FeedKindSchema = z.enum(['for_you', 'following'])
+export const FeedVisualTypeSchema = z.union([z.literal('all'), CreatorVisualTypeSchema])
 export const PageQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(50).default(25),
   cursor: z.string().min(1).optional(),
@@ -13,6 +15,7 @@ export const PageQuerySchema = z.strictObject({
 export const FeedQuerySchema = z.strictObject({
   kind: FeedKindSchema,
   locale: LocaleSchema.optional(),
+  visualType: FeedVisualTypeSchema.default('all'),
   limit: z.coerce.number().int().min(1).max(50).default(25),
   cursor: z.string().min(1).optional(),
 })
@@ -23,6 +26,7 @@ export const CommentCursorSchema = z.strictObject({v: z.literal(1), kind: z.lite
 export const NotificationCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('notifications'), createdAt: dateTime, id: uuid})
 
 export type FeedKind = z.infer<typeof FeedKindSchema>
+export type FeedVisualType = z.infer<typeof FeedVisualTypeSchema>
 export type PageQuery = z.infer<typeof PageQuerySchema>
 export type FeedQuery = z.infer<typeof FeedQuerySchema>
 export type Cursor = z.infer<typeof CursorSchema>
@@ -67,7 +71,8 @@ export function decodeNotificationCursor(value: string): NotificationCursor {
   return cursor.data
 }
 
-export const PublicIpSchema = z.strictObject({kind: z.literal('ip'), id: uuid, username: z.string().min(3).max(30), displayName: z.string().min(1).max(80), bio: z.string().max(500).nullable().optional(), languages: z.array(LocaleSchema)})
+export const PublicCreatorSchema = z.strictObject({id: uuid, username: z.string().min(3).max(30), displayName: z.string().min(1).max(80)})
+export const PublicIpSchema = z.strictObject({kind: z.literal('ip'), id: uuid, username: z.string().min(3).max(30), displayName: z.string().min(1).max(80), bio: z.string().max(500).nullable().optional(), languages: z.array(LocaleSchema), visualType: CreatorVisualTypeSchema, creator: PublicCreatorSchema.optional()})
 export const PublicHumanSchema = z.strictObject({kind: z.literal('human'), id: uuid, username: z.string().min(3).max(30), displayName: z.string().min(1).max(80)})
 export const PublicCommentAuthorSchema = z.discriminatedUnion('kind',[PublicIpSchema,PublicHumanSchema])
 export const FeedPostSchema = z.strictObject({id: uuid, body: z.string().max(5000), languageCode: z.string().nullable(), publishedAt: dateTime, author: PublicIpSchema, likeCount: z.number().int().nonnegative(), commentCount: z.number().int().nonnegative(), viewerHasLiked: z.boolean().optional(), viewerHasBookmarked: z.boolean().optional(), viewerFollowsAuthor: z.boolean().optional()})

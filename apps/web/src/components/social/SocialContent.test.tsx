@@ -27,19 +27,23 @@ const labels: SocialLabels = {
   removeBookmark: 'Remove bookmark', unlike: 'Unlike', unavailableTitle: 'Unable to load', unavailableDescription: 'Try again later.',
   interactionError: 'Action failed. Try again.',
   loadMore: 'Load more', aifansActor: 'AIFANS',
+  visualTypeFilter: 'IP style', allTypes: 'All', realistic: 'Realistic', anime: 'Anime', hybrid: 'Hybrid', createdBy: 'Created by',
 }
-const ip = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en' as const]}
+const ip = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
 const post: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', author: ip, likeCount: 4, commentCount: 2, viewerHasLiked: true, viewerHasBookmarked: false, viewerFollowsAuthor: false}
 
 describe('real social content', () => {
   it('renders API post fields and preserves the locale in the detail URL', () => {
-    render(<FeedContent labels={labels} locale="zh-CN" moreHref="/zh-CN?cursor=opaque" result={{status: 'ok', data: {items: [post], nextCursor: 'opaque'}}} />)
+    render(<FeedContent feedKind="for_you" labels={labels} locale="zh-CN" moreHref="/zh-CN?visualType=anime&cursor=opaque" result={{status: 'ok', data: {items: [post], nextCursor: 'opaque'}}} visualType="anime" />)
     expect(screen.getByRole('article')).toHaveTextContent('Luma')
     expect(screen.getByRole('article')).toHaveTextContent('A real post')
     expect(screen.getByRole('article')).toHaveTextContent('4')
     expect(screen.getByRole('link', {name: /A real post/})).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
     expect(screen.getByText('AI/IP')).toBeVisible()
-    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN?cursor=opaque')
+    expect(screen.getByText('Created by @luma_creator')).toBeVisible()
+    expect(screen.getByRole('tab', {name: 'Anime'})).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute('href', '/zh-CN?visualType=realistic')
+    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN?visualType=anime&cursor=opaque')
   })
 
   it('captures a post-view intent from the real feed link without its body', () => {
@@ -57,6 +61,14 @@ describe('real social content', () => {
     rerender(<FeedContent labels={labels} locale="en" result={{status: 'unavailable'}} />)
     expect(screen.getByRole('heading', {name: 'Unable to load'})).toBeVisible()
     expect(screen.queryByRole('article')).toBeNull()
+  })
+
+  it('preserves following and locale in visual type links and keeps filters in empty results', () => {
+    render(<FeedContent feedKind="following" labels={labels} locale="zh-CN" result={{status: 'ok', data: {items: [], nextCursor: null}}} visualType="hybrid" />)
+    expect(screen.getByRole('tab', {name: 'All'})).toHaveAttribute('href', '/zh-CN?feed=following')
+    expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute('href', '/zh-CN?feed=following&visualType=realistic')
+    expect(screen.getByRole('tab', {name: 'Hybrid'})).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', {name: 'Nothing here yet'})).toBeVisible()
   })
 
   it('distinguishes human and IP comments and uses a placeholder for deleted bodies', () => {

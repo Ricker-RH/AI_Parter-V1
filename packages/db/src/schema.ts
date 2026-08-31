@@ -152,6 +152,7 @@ export const ipProfiles = pgTable('ip_profiles', {
   creatorProfileId: uuid('creator_profile_id').references(() => profiles.id),
   publicState: ipPublicStateEnum('public_state').notNull().default('draft'),
   operationEnabled: boolean('operation_enabled').notNull().default(false),
+  visualType: creatorVisualTypeEnum('visual_type').notNull().default('hybrid'),
   identityLabel: text('identity_label').notNull().default('AI'),
   currentIdentityRevisionId: uuid('current_identity_revision_id'),
   feedWeight: integer('feed_weight').notNull().default(0),

@@ -193,6 +193,7 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
       const result = await dependencies.social!.listFeed({
         viewer: actor.actor,
         kind: query.data.kind,
+        visualType: query.data.visualType,
         ...(query.data.locale === undefined ? {} : {locale: query.data.locale}),
         limit: query.data.limit,
         after,

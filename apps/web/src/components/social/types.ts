@@ -30,4 +30,10 @@ export interface SocialLabels {
   unlike: string
   unavailableTitle: string
   unavailableDescription: string
+  visualTypeFilter: string
+  allTypes: string
+  realistic: string
+  anime: string
+  hybrid: string
+  createdBy: string
 }

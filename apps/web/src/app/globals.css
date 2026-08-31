@@ -71,6 +71,8 @@ button { color: inherit; }
 .tabs { display: flex; gap: 26px; }
 .tab { background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; min-height: 44px; padding: 0 1px 11px; }
 .tab[aria-selected='true'] { border-color: currentColor; font-weight: 700; }
+.visual-filter { border-bottom: 1px solid var(--shell-border); overflow-x: auto; padding: 0 24px; }
+.visual-filter .tabs { gap: 22px; min-width: max-content; }
 .empty { display: grid; gap: 8px; max-width: 420px; padding: 64px 24px; }
 .empty h2 { font-size: 22px; letter-spacing: -.02em; margin: 0; }
 .empty p { color: var(--shell-muted); margin: 0; }
@@ -81,6 +83,7 @@ button { color: inherit; }
 .post-author time, .comment time, .notification-row time { color: var(--shell-muted); font-size: 13px; }
 .avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; font-weight: 700; height: 42px; justify-content: center; width: 42px; }
 .author-meta { color: var(--shell-muted); display: block; font-size: 14px; }
+.creator-attribution { color: var(--shell-muted); display: block; font-size: 12px; margin-top: 2px; }
 .account-kind { border: 1px solid var(--shell-border); border-radius: 999px; color: var(--shell-muted); display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.6; margin-left: 5px; padding: 0 6px; text-transform: uppercase; }
 .post-link { display: block; }
 .post-body { font-size: 16px; margin: 16px 0; overflow-wrap: anywhere; white-space: pre-wrap; }

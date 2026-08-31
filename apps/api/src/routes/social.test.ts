@@ -23,6 +23,8 @@ const ip = {
   username: 'luna_ip',
   displayName: 'Luna IP',
   languages: ['en' as const],
+  visualType: 'hybrid' as const,
+  creator: {id: randomUUID(), username: 'luna_creator', displayName: 'Luna Creator'},
 }
 const post = {
   id: postId,
@@ -124,11 +126,11 @@ describe('social read routes', () => {
       },
     })
 
-    const response = await createApp({social}).request('/v1/feed?kind=for_you&locale=en&limit=10')
+    const response = await createApp({social}).request('/v1/feed?kind=for_you&locale=en&visualType=anime&limit=10')
 
     expect(response.status).toBe(200)
     expect(FeedPageSchema.parse(await response.json())).toEqual(page)
-    expect(calls).toEqual([{viewer: null, kind: 'for_you', locale: 'en', limit: 10, after: null}])
+    expect(calls).toEqual([{viewer: null, kind: 'for_you', locale: 'en', visualType: 'anime', limit: 10, after: null}])
     await expectError(
       await createApp({social}).request('/v1/feed?kind=for_you&actor=forged'),
       400,
@@ -136,6 +138,11 @@ describe('social read routes', () => {
     )
     await expectError(
       await createApp({social}).request('/v1/feed?kind=for_you&kind=following'),
+      400,
+      'INVALID_REQUEST',
+    )
+    await expectError(
+      await createApp({social}).request('/v1/feed?kind=for_you&visualType=portrait'),
       400,
       'INVALID_REQUEST',
     )
@@ -186,7 +193,7 @@ describe('social read routes', () => {
         displayName: identity.displayName,
       }],
       ['get', {subject: identity.subject}],
-      ['feed', {viewer: {subject: identity.subject}, kind: 'following', limit: 25, after: null}],
+      ['feed', {viewer: {subject: identity.subject}, kind: 'following', visualType: 'all', limit: 25, after: null}],
     ])
   })
 

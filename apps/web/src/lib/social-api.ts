@@ -5,6 +5,7 @@ import {
   PostDetailSchema,
   type FeedPage,
   type NotificationPage,
+  type FeedVisualType,
   type PostDetail,
 } from '@aifans/contracts'
 import type {Locale} from '../i18n/config'
@@ -50,8 +51,9 @@ async function request<T>(path: string, schema: Schema<T>, cookie?: string): Pro
   }
 }
 
-export function fetchFeed({kind, locale, cookie, cursor}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined}) {
+export function fetchFeed({kind, locale, cookie, cursor, visualType = 'all'}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined; visualType?: FeedVisualType}) {
   const query = new URLSearchParams({kind, locale})
+  if (visualType !== 'all') query.set('visualType', visualType)
   if (cursor) query.set('cursor', cursor)
   return request(`/v1/feed?${query}`, FeedPageSchema, cookie)
 }

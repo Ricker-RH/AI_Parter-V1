@@ -12,6 +12,7 @@ const ip = {
   username: 'luma',
   displayName: 'Luma',
   languages: ['en'] as const,
+  visualType: 'hybrid' as const,
 }
 const post = {
   id: '22222222-2222-4222-8222-222222222222',

@@ -14,7 +14,7 @@ const labels: AdminLabels = {
   optional: 'Optional', createdIpSuccess: 'AI/IP created', publishedPostSuccess: 'Post published', publishedCommentSuccess: 'Comment published', publicId: 'Public ID', viewPost: 'View published post', authRequired: 'Sign in with an operator account.', operatorRequired: 'This account does not have operator access.', serviceUnavailable: 'Operator service is unavailable. Try again later.', requestFailed: 'The request could not be completed.', invalidResponse: 'The service returned an invalid response.',
 }
 
-const ip = {kind: 'ip', id: ipId, username: 'luna_ip', displayName: 'Luna', bio: 'Public', languages: ['en', 'zh-CN']}
+const ip = {kind: 'ip', id: ipId, username: 'luna_ip', displayName: 'Luna', bio: 'Public', languages: ['en', 'zh-CN'], visualType: 'hybrid'}
 const post = {id: postId, body: 'Hello world', languageCode: 'en', publishedAt: '2026-09-01T00:00:00.000Z', author: ip, likeCount: 0, commentCount: 0}
 const comment = {id: commentId, postId, parentCommentId: null, author: ip, state: 'published', body: 'A reply', createdAt: '2026-09-01T00:01:00.000Z'}
 

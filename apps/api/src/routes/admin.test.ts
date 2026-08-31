@@ -31,7 +31,7 @@ const account = {
   creatorModeEnabled: false,
 }
 const ip = CreateIpResponseSchema.parse({
-  kind: 'ip', id: ipProfileId, username: 'luna_ip', displayName: 'Luna', bio: 'Public', languages: ['en'],
+  kind: 'ip', id: ipProfileId, username: 'luna_ip', displayName: 'Luna', bio: 'Public', languages: ['en'], visualType: 'hybrid',
 })
 const post = CreatePostResponseSchema.parse({
   id: postId, body: 'Hello', languageCode: 'en', publishedAt: createdAt, author: ip, likeCount: 0, commentCount: 0,
