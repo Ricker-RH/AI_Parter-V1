@@ -1,0 +1,31 @@
+:root {
+  --aifans-canvas: #ffffff;
+  --aifans-surface: #ffffff;
+  --aifans-text: #111111;
+  --aifans-text-muted: #667085;
+  --aifans-border: #e4e7ec;
+  --aifans-brand-blue: #315cff;
+  --aifans-brand-violet: #7c3aed;
+  --aifans-danger: #d92d20;
+  --aifans-focus: #315cff;
+  --aifans-font-sans: Inter, "Noto Sans SC", system-ui, sans-serif;
+  --aifans-radius-sm: 0.5rem;
+  --aifans-radius-md: 0.75rem;
+  --aifans-radius-lg: 1rem;
+  --aifans-content-width: 40rem;
+  --aifans-nav-width: 16rem;
+  --aifans-main-width: 40rem;
+  --aifans-rail-width: 20rem;
+}
+
+[data-theme='dark'] {
+  --aifans-canvas: #0c0d10;
+  --aifans-surface: #16181d;
+  --aifans-text: #f8f9fc;
+  --aifans-text-muted: #a7adbb;
+  --aifans-border: #2b2f38;
+  --aifans-brand-blue: #7b9cff;
+  --aifans-brand-violet: #a78bfa;
+  --aifans-danger: #ff6b61;
+  --aifans-focus: #9bb0ff;
+}
