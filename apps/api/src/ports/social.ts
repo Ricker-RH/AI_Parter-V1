@@ -10,6 +10,7 @@ import type {
   PageQuery,
   PostDetail,
   PublicComment,
+  PublicIpProfile,
 } from '@aifans/contracts'
 import type {Actor, CommandContext} from '@aifans/db'
 
@@ -30,6 +31,7 @@ export type SocialPort = {
     commentLimit: number
     commentAfter: CommentCursor | null
   }): Promise<PostDetail | null>
+  getPublicProfile(input: {viewer: Actor | null; profileId: string; limit: number; after: Cursor | null}): Promise<PublicIpProfile | null>
   follow(actor: Actor, targetProfileId: string, context: MutationContext): Promise<{created: boolean}>
   unfollow(actor: Actor, targetProfileId: string, context: MutationContext): Promise<{deleted: boolean}>
   likePost(actor: Actor, postId: string, context: MutationContext): Promise<{created: boolean}>

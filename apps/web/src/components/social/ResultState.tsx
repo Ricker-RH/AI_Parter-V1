@@ -2,7 +2,7 @@ import {EmptyState} from '@aifans/ui'
 import type {SocialApiResult} from '../../lib/social-api'
 import type {SocialLabels} from './types'
 
-export function ResultState({result, labels, empty}: {result: Exclude<SocialApiResult<unknown>, {status: 'ok'}>; labels: SocialLabels; empty?: 'bookmarks' | 'notifications' | 'home'}) {
+export function ResultState({result, labels, empty, profile=false}: {result: Exclude<SocialApiResult<unknown>, {status: 'ok'}>; labels: SocialLabels; empty?: 'bookmarks' | 'notifications' | 'home';profile?:boolean}) {
   const content = empty === 'bookmarks'
     ? {title: labels.bookmarksEmptyTitle, description: labels.bookmarksEmptyDescription}
     : empty === 'notifications'
@@ -12,7 +12,7 @@ export function ResultState({result, labels, empty}: {result: Exclude<SocialApiR
         : result.status === 'auth-required'
     ? {title: labels.authRequiredTitle, description: labels.authRequiredDescription}
     : result.status === 'not-found'
-      ? {title: labels.postNotFoundTitle, description: labels.postNotFoundDescription}
+      ? profile?{title:labels.profileNotFoundTitle,description:labels.profileNotFoundDescription}:{title: labels.postNotFoundTitle, description: labels.postNotFoundDescription}
       : {title: labels.unavailableTitle, description: labels.unavailableDescription}
   return <div className="empty"><EmptyState description={content.description} title={content.title} /></div>
 }

@@ -79,6 +79,12 @@ export const FeedPostSchema = z.strictObject({id: uuid, body: z.string().max(500
 export const PublicCommentSchema = z.strictObject({id: uuid, postId: uuid, parentCommentId: uuid.nullable(), author: PublicCommentAuthorSchema, state: z.enum(['published', 'deleted']), body: z.string().min(1).max(2000).optional(), createdAt: dateTime}).superRefine((value, context) => { if (value.state === 'published' && !value.body) context.addIssue({code: 'custom', message: 'Published comments require body'}) })
 export const NotificationSchema = z.strictObject({id: uuid, kind: z.enum(['follow', 'post_like', 'comment', 'reply', 'comment_like']), actor: PublicCommentAuthorSchema.nullable(), postId: uuid.nullable(), commentId: uuid.nullable(), createdAt: dateTime, readAt: dateTime.nullable()})
 export const FeedPageSchema = z.strictObject({items: z.array(FeedPostSchema), nextCursor: z.string().nullable()})
+export const PublicIpProfileSchema = z.strictObject({
+  profile: PublicIpSchema,
+  followerCount: z.number().int().nonnegative(),
+  viewerFollows: z.boolean().optional(),
+  posts: FeedPageSchema,
+})
 export const CommentPageSchema = z.strictObject({items: z.array(PublicCommentSchema), nextCursor: z.string().nullable()})
 export const PostDetailSchema = FeedPostSchema.extend({comments: CommentPageSchema}).strict()
 export const NotificationPageSchema = z.strictObject({items: z.array(NotificationSchema), nextCursor: z.string().nullable()})
@@ -107,6 +113,7 @@ export type FeedPost = z.infer<typeof FeedPostSchema>
 export type PublicComment = z.infer<typeof PublicCommentSchema>
 export type Notification = z.infer<typeof NotificationSchema>
 export type FeedPage = z.infer<typeof FeedPageSchema>
+export type PublicIpProfile = z.infer<typeof PublicIpProfileSchema>
 export type PostDetail = z.infer<typeof PostDetailSchema>
 export type NotificationPage = z.infer<typeof NotificationPageSchema>
 export type CreateHumanComment = z.infer<typeof CreateHumanCommentSchema>

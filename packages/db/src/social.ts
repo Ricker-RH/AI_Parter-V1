@@ -3,7 +3,7 @@ import {
   type CommentCursor, type CreateHumanComment, CreateHumanCommentSchema, type Cursor,
   type FeedKind, type FeedPage, FeedPageSchema, type FeedPost, type FeedVisualType, type Locale,
   type NotificationPage, NotificationPageSchema, type PageQuery, type PostDetail,
-  type PublicComment, type PublicIp, decodeCursor, decodeNotificationCursor,
+  type PublicComment, type PublicIp, type PublicIpProfile, PublicIpProfileSchema, decodeCursor, decodeNotificationCursor,
   encodeNotificationCursor, type Cursor as SocialCursor,
   type CreateIpInput, CreateIpSchema, type CreatePostInput, CreatePostSchema,
   type CreateIpCommentInput, CreateIpCommentSchema, PublicIpSchema, FeedPostSchema,
@@ -16,6 +16,7 @@ export type CommandContext = {requestId: string}
 export type SocialRepository = {
   listFeed(input: {viewer: Actor | null; kind: FeedKind; visualType?: FeedVisualType; locale?: Locale; limit: number; after: Cursor | null}): Promise<FeedPage>
   getPost(input: {viewer: Actor | null; postId: string; commentLimit: number; commentAfter: CommentCursor | null}): Promise<PostDetail | null>
+  getPublicProfile(input: {viewer: Actor | null; profileId: string; limit: number; after: Cursor | null}): Promise<PublicIpProfile | null>
   follow(actor: Actor, targetProfileId: string, context: CommandContext): Promise<{created: boolean}>
   unfollow(actor: Actor, targetProfileId: string): Promise<{deleted: boolean}>
   likePost(actor: Actor, postId: string, context: CommandContext): Promise<{created: boolean}>
@@ -36,6 +37,7 @@ export type PlatformSocialRepository = {
 
 type PublicSession = <T>(callback: (client: QueryClient) => Promise<T>) => Promise<T>
 type PublicIpRow = {id: string; username: string; display_name: string; bio: string | null; languages: string[]; visual_type?: 'realistic' | 'anime' | 'hybrid'; creator_id?: string | null; creator_username?: string | null; creator_display_name?: string | null}
+type PublicProfileRow = PublicIpRow & {follower_count: number | string; viewer_follows?: boolean}
 type PostRow = PublicIpRow & {post_id: string; body: string; language_code: string | null; published_at: Date | string; like_count: number | string; comment_count: number | string; viewer_has_liked?: boolean; viewer_has_bookmarked?: boolean; viewer_follows_author?: boolean; score?: number | string}
 const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at,
   p.id, p.username, p.display_name, p.bio, p.languages, p.visual_type,
@@ -76,14 +78,15 @@ function actorId(client: QueryClient): Promise<string> { return client.query<{id
 export function createSocialRepository({withActor: runWithActor = withActor, withPublic}: {withActor?: WithActor; withPublic?: PublicSession} = {}): SocialRepository {
   const runWithPublic: PublicSession = withPublic ?? ((callback) => defaultPublicSession(defaultPool())(callback))
   async function read<T>(viewer: Actor | null, callback: (client: QueryClient) => Promise<T>): Promise<T> { return viewer ? runWithActor(viewer, callback) : runWithPublic(callback) }
-  async function feed(client: QueryClient, input: {kind: FeedKind; visualType?: FeedVisualType; locale?: Locale; limit: number; after: Cursor | null}, bookmarkedOnly = false): Promise<FeedPage> {
+  async function feed(client: QueryClient, input: {kind: FeedKind; visualType?: FeedVisualType; locale?: Locale; limit: number; after: Cursor | null; authorProfileId?: string}, bookmarkedOnly = false): Promise<FeedPage> {
     const after = input.after
     const params: unknown[] = [input.locale ?? null]
     const filters = ['TRUE']
     const visualType = input.visualType ?? 'all'
     if (visualType !== 'all') { params.push(visualType); filters.push(`p.visual_type = $${params.length}::public.creator_visual_type`) }
-    if (input.kind === 'following' && !bookmarkedOnly) filters.push('public.social_viewer_follows(p.author_profile_id)')
+    if (input.kind === 'following' && !bookmarkedOnly && !input.authorProfileId) filters.push('public.social_viewer_follows(p.author_profile_id)')
     if (bookmarkedOnly) filters.push('EXISTS (SELECT 1 FROM public.bookmarks saved WHERE saved.profile_id = public.current_profile_id() AND saved.post_id = p.post_id)')
+    if (input.authorProfileId) { params.push(input.authorProfileId); filters.push(`p.author_profile_id = $${params.length}::uuid`) }
     if (after?.kind === 'chronological') { params.push(after.publishedAt, after.id); filters.push(`(p.published_at, p.post_id) < (public.social_public_post_anchor($${params.length}::uuid, $${params.length - 1}::timestamptz), $${params.length}::uuid)`) }
     // Stable public score: IP weight + locale match + actual likes/comments. Published time and id break ties.
     const score = `metrics.score`
@@ -99,6 +102,7 @@ export function createSocialRepository({withActor: runWithActor = withActor, wit
   return {
     listFeed: (input) => { if (input.kind === 'following' && input.viewer === null) return Promise.reject(new Error('AUTH_REQUIRED')); return read(input.viewer, (client) => feed(client, input)) },
     async getPost(input) { return read(input.viewer, async (client) => { const result = await client.query<PostRow>(`${publicPostSql} WHERE p.post_id = $1`, [input.postId]); const base = result.rows[0]; if (!base) return null; const after=input.commentAfter; const rows=await client.query<{id:string;post_id:string;parent_comment_id:string|null;author_id:string;author_kind:'human'|'ip';username:string;display_name:string;body:string;state:'published'|'deleted';created_at:Date|string;visual_type:'realistic'|'anime'|'hybrid'|null;creator_id:string|null;creator_username:string|null;creator_display_name:string|null}>('SELECT * FROM public.social_public_comments($1,$2,$3,$4)',[input.postId,after?.createdAt??null,after?.id??null,input.commentLimit+1]); const items=rows.rows.slice(0,input.commentLimit).map(r=>({id:r.id,postId:r.post_id,parentCommentId:r.parent_comment_id,author:r.author_kind==='human'?{kind:'human' as const,id:r.author_id,username:r.username,displayName:r.display_name}:publicIp({id:r.author_id,username:r.username,display_name:r.display_name,bio:null,languages:[],visual_type:r.visual_type??'hybrid',creator_id:r.creator_id,creator_username:r.creator_username,creator_display_name:r.creator_display_name}),state:r.state,...(r.state==='published'?{body:r.body}:{}),createdAt:iso(r.created_at)})); const last=items.at(-1); return {...post(base),comments:{items,nextCursor:rows.rows.length>input.commentLimit&&last?Buffer.from(JSON.stringify({v:1,kind:'comments',createdAt:last.createdAt,id:last.id}),'utf8').toString('base64url'):null}} }) },
+    async getPublicProfile(input) { return read(input.viewer, async (client) => { const result = await client.query<PublicProfileRow>(`SELECT profile.*${input.viewer?', public.social_viewer_follows(profile.id) AS viewer_follows':''} FROM public.social_public_ip_profile($1) profile`, [input.profileId]); const row=result.rows[0]; if (!row) return null; const posts=await feed(client,{kind:'following',visualType:'all',limit:input.limit,after:input.after,authorProfileId:input.profileId}); return PublicIpProfileSchema.parse({profile:publicIp(row),followerCount:Number(row.follower_count),...(input.viewer?{viewerFollows:row.viewer_follows===true}:{}),posts}) }) },
     follow: (actor, targetProfileId, context) => runWithActor(actor, async (client) => ({created: (await client.query<{created: boolean}>('SELECT public.follow_profile($1,$2) AS created', [targetProfileId, context.requestId])).rows[0]?.created === true})),
     unfollow: (actor, targetProfileId) => runWithActor(actor, async (client) => ({deleted: (await client.query<{deleted:boolean}>('SELECT public.unfollow_profile($1) AS deleted',[targetProfileId])).rows[0]?.deleted === true})),
     likePost: (actor, postId, context) => runWithActor(actor, async (client) => ({created: (await client.query<{created: boolean}>('SELECT public.like_post($1,$2) AS created', [postId, context.requestId])).rows[0]?.created === true})),

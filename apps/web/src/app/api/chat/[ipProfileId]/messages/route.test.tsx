@@ -29,11 +29,11 @@ describe('same-origin chat proxy', () => {
     expect(response.status).toBe(201)
     expect(response.headers.get('x-request-id')).toBe('upstream-chat')
     expect(await response.json()).toEqual(answer)
-    expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/chat/${ipProfileId}/messages`, {
+    expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/chat/${ipProfileId}/messages`, expect.objectContaining({
       method: 'POST', cache: 'no-store',
       headers: {authorization: 'Bearer signed-jwt', 'content-type': 'application/json', 'x-request-id': 'req-chat'},
       body: JSON.stringify({message: 'hello', locale: 'en'}),
-    })
+    }))
   })
 
   it.each([

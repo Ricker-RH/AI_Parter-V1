@@ -5,6 +5,7 @@ import {
   fetchFeed,
   fetchNotifications,
   fetchPost,
+  fetchPublicProfile,
 } from './social-api.js'
 
 const ip = {
@@ -94,5 +95,15 @@ describe('social API client', () => {
 
     await expect(fetchPost(post.id)).resolves.toMatchObject({status: 'ok', data: {id: post.id}})
     await expect(fetchPost(post.id)).resolves.toEqual({status: 'not-found'})
+  })
+
+  it('parses a bounded public profile and maps a hidden profile to not found', async () => {
+    process.env.AIFANS_API_URL='https://server.example'
+    const profile={profile:ip,followerCount:2,posts:{items:[post],nextCursor:null}}
+    const request=vi.fn().mockResolvedValueOnce(Response.json(profile)).mockResolvedValueOnce(new Response(JSON.stringify({code:'PROFILE_NOT_FOUND',message:'Profile not found',requestId:'req-profile'}),{status:404}))
+    vi.stubGlobal('fetch',request)
+    await expect(fetchPublicProfile(ip.id,{cursor:'next page'})).resolves.toEqual({status:'ok',data:profile})
+    expect(request.mock.calls[0]?.[0]).toBe(`https://server.example/v1/profiles/${ip.id}?cursor=next+page`)
+    await expect(fetchPublicProfile(ip.id)).resolves.toEqual({status:'not-found'})
   })
 })

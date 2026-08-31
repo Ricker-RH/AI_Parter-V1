@@ -14,6 +14,7 @@ import {
   CreateIpSchema,
   CreatePostSchema,
   CreateIpCommentSchema,
+  PublicIpProfileSchema,
 } from './social.js'
 
 const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
@@ -29,6 +30,10 @@ describe('social contracts', () => {
     expect(PublicCommentSchema.parse({id, postId: id, parentCommentId: null, author: ip, state: 'deleted', createdAt: timestamp})).toMatchObject({state: 'deleted'})
     expect(NotificationSchema.parse({id, kind: 'follow', actor: ip, postId: null, commentId: null, createdAt: timestamp, readAt: null})).toMatchObject({id})
     expect(NotificationSchema.parse({id, kind: 'follow', actor: {kind: 'human', id, username: 'human_user', displayName: 'Human'}, postId: null, commentId: null, createdAt: timestamp, readAt: null})).toMatchObject({actor: {kind: 'human'}})
+    const profile = {profile: ip, followerCount: 3, viewerFollows: false, posts: {items: [], nextCursor: null}}
+    expect(PublicIpProfileSchema.parse(profile)).toEqual(profile)
+    expect(() => PublicIpProfileSchema.parse({...profile, operationEnabled: true})).toThrow()
+    expect(() => PublicIpProfileSchema.parse({...profile, creatorDraftId: id})).toThrow()
   })
 
   it('round trips cursors and rejects invalid query inputs', () => {

@@ -5,6 +5,7 @@ import type {FeedPost, Notification, PostDetail} from '@aifans/contracts'
 import {FeedContent} from './FeedContent.js'
 import {NotificationsContent} from './NotificationsContent.js'
 import {PostDetailContent} from './PostDetailContent.js'
+import {PublicProfileContent} from './PublicProfileContent.js'
 import type {SocialLabels} from './types.js'
 
 vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
@@ -28,6 +29,7 @@ const labels: SocialLabels = {
   interactionError: 'Action failed. Try again.',
   loadMore: 'Load more', aifansActor: 'AIFANS',
   visualTypeFilter: 'IP style', allTypes: 'All', realistic: 'Realistic', anime: 'Anime', hybrid: 'Hybrid', createdBy: 'Created by',
+  commentPlaceholder:'Write a comment',commentSubmit:'Comment',commentSending:'Posting',commentSuccess:'Posted',reply:'Reply',signInToComment:'Sign in to comment',markRead:'Mark as read',markingRead:'Marking',profileNotFoundTitle:'Profile not found',profileNotFoundDescription:'Not public',followers:'followers',posts:'Posts',
 }
 const ip = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
 const post: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', author: ip, likeCount: 4, commentCount: 2, viewerHasLiked: true, viewerHasBookmarked: false, viewerFollowsAuthor: false}
@@ -40,7 +42,7 @@ describe('real social content', () => {
     expect(screen.getByRole('article')).toHaveTextContent('4')
     expect(screen.getByRole('link', {name: /A real post/})).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
     expect(screen.getByText('AI/IP')).toBeVisible()
-    expect(screen.getByText('Created by @luma_creator')).toBeVisible()
+    expect(screen.getAllByText('Created by @luma_creator').length).toBeGreaterThan(0)
     expect(screen.getByRole('tab', {name: 'Anime'})).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute('href', '/zh-CN?visualType=realistic')
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN?visualType=anime&cursor=opaque')
@@ -96,5 +98,24 @@ describe('real social content', () => {
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN/notifications?cursor=next')
     rerender(<NotificationsContent labels={labels} locale="zh-CN" result={{status: 'auth-required'}} />)
     expect(screen.getByRole('heading', {name: 'Sign in required'})).toBeVisible()
+  })
+
+  it('submits authenticated human comments through the same-origin proxy', async () => {
+    const request=vi.fn().mockResolvedValue(new Response(JSON.stringify({id:'comment'}),{status:201}))
+    vi.stubGlobal('fetch',request)
+    const detail:PostDetail={...post,comments:{items:[],nextCursor:null}}
+    render(<PostDetailContent authenticated labels={labels} locale="en" result={{status:'ok',data:detail}}/>)
+    fireEvent.change(screen.getByRole('textbox',{name:'Write a comment'}),{target:{value:'Hello IP'}})
+    fireEvent.click(screen.getByRole('button',{name:'Comment'}))
+    await vi.waitFor(()=>expect(request).toHaveBeenCalledWith(`/api/social/posts/${post.id}/comments`,expect.objectContaining({method:'POST',body:JSON.stringify({body:'Hello IP'})})))
+  })
+
+  it('renders a public AI/IP profile without private creator operation fields', () => {
+    const data={profile:ip,followerCount:12,posts:{items:[post],nextCursor:null}}
+    const {container}=render(<PublicProfileContent labels={labels} locale="en" result={{status:'ok',data}}/>)
+    expect(screen.getByRole('heading',{name:'Luma'})).toBeVisible()
+    expect(screen.getAllByText('Created by @luma_creator').length).toBeGreaterThan(0)
+    expect(screen.getByText('12 followers')).toBeVisible()
+    expect(container.textContent).not.toContain('operationEnabled')
   })
 })

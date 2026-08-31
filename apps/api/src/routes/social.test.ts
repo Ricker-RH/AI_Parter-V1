@@ -4,6 +4,7 @@ import {
   FeedPageSchema,
   PostDetailSchema,
   PublicCommentSchema,
+  PublicIpProfileSchema,
 } from '@aifans/contracts'
 import {describe, expect, it} from 'vitest'
 import {createApp} from '../app.js'
@@ -90,6 +91,7 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
   return {
     listFeed: async () => page,
     getPost: async () => detail,
+    getPublicProfile: async () => PublicIpProfileSchema.parse({profile:ip,followerCount:0,posts:page}),
     follow: async () => ({created: true}),
     unfollow: async () => ({deleted: true}),
     likePost: async () => ({created: true}),
@@ -224,6 +226,25 @@ describe('social read routes', () => {
       'INVALID_REQUEST',
     )
   })
+
+  it('returns a bounded published IP profile and hides absent profiles', async () => {
+    const calls: unknown[] = []
+    const profile = PublicIpProfileSchema.parse({profile: ip, followerCount: 3, posts: page})
+    const social = socialPort({
+      getPublicProfile: async (input) => {
+        calls.push(input)
+        return input.profileId === profileId ? profile : null
+      },
+    })
+    const app = createApp({social})
+    const response = await app.request(`/v1/profiles/${profileId}?limit=10`)
+
+    expect(response.status).toBe(200)
+    expect(PublicIpProfileSchema.parse(await response.json())).toEqual(profile)
+    expect(calls).toEqual([{viewer: null, profileId, limit: 10, after: null}])
+    await expectError(await app.request(`/v1/profiles/${randomUUID()}`), 404, 'PROFILE_NOT_FOUND')
+    await expectError(await app.request(`/v1/profiles/${profileId}?limit=1&limit=2`), 400, 'INVALID_REQUEST')
+  })
 })
 
 describe('authenticated social routes', () => {
@@ -241,7 +262,7 @@ describe('authenticated social routes', () => {
     ['GET', '/v1/bookmarks?limit=1&limit=2'],
     ['GET', '/v1/notifications?limit=1&limit=2'],
     ['POST', `/v1/posts/${postId}/comments?source=one&source=two`],
-    ['POST', `/v1/notifications/${notificationId}/read?source=one&source=two`],
+    ['PUT', `/v1/notifications/${notificationId}/read?source=one&source=two`],
   ] as const)('rejects duplicate query keys on %s %s', async (method, path) => {
     await expectError(
       await createApp(dependencies(socialPort())).request(path, {method}),
@@ -404,6 +425,14 @@ describe('authenticated social routes', () => {
     )
   })
 
+  it('rejects duplicate comment body keys before calling the social port', async () => {
+    let called=false
+    const social=socialPort({createHumanComment:async()=>{called=true;return comment}})
+    const response=await createApp(dependencies(social)).request(`/v1/posts/${postId}/comments`,{method:'POST',headers:{'content-type':'application/json'},body:'{"body":"one","body":"two"}'})
+    await expectError(response,422,'COMMENT_INVALID')
+    expect(called).toBe(false)
+  })
+
   it('marks an owned notification read and hides absent or non-owned records', async () => {
     const calls: unknown[] = []
     const social = socialPort({
@@ -414,7 +443,7 @@ describe('authenticated social routes', () => {
     })
     const app = createApp(dependencies(social))
 
-    const response = await app.request(`/v1/notifications/${notificationId}/read`, {method: 'POST'})
+    const response = await app.request(`/v1/notifications/${notificationId}/read`, {method: 'PUT'})
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({readAt})
     expect(calls[0]).toEqual([
@@ -423,17 +452,17 @@ describe('authenticated social routes', () => {
       {requestId: response.headers.get('x-request-id')},
     ])
     await expectError(
-      await app.request(`/v1/notifications/${randomUUID()}/read`, {method: 'POST'}),
+      await app.request(`/v1/notifications/${randomUUID()}/read`, {method: 'PUT'}),
       404,
       'NOTIFICATION_NOT_FOUND',
     )
     await expectError(
-      await app.request(`/v1/notifications/${notificationId}/read?source=admin`, {method: 'POST'}),
+      await app.request(`/v1/notifications/${notificationId}/read?source=admin`, {method: 'PUT'}),
       400,
       'INVALID_REQUEST',
     )
     await expectError(
-      await app.request(`/v1/notifications/${notificationId}/read?actor=a&actor=b`, {method: 'POST'}),
+      await app.request(`/v1/notifications/${notificationId}/read?actor=a&actor=b`, {method: 'PUT'}),
       400,
       'INVALID_REQUEST',
     )
@@ -444,8 +473,8 @@ describe('authenticated social routes', () => {
     const app = createApp(dependencies(social))
 
     const responses = await Promise.all([
-      app.request(`/v1/notifications/${notificationId}/read`, {method: 'POST'}),
-      app.request(`/v1/notifications/${notificationId}/read`, {method: 'POST'}),
+      app.request(`/v1/notifications/${notificationId}/read`, {method: 'PUT'}),
+      app.request(`/v1/notifications/${notificationId}/read`, {method: 'PUT'}),
     ])
 
     expect(responses.map(({status}) => status)).toEqual([200, 200])

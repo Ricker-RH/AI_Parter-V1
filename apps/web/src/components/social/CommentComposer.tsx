@@ -1,0 +1,33 @@
+'use client'
+
+import Link from 'next/link'
+import {useRouter} from 'next/navigation'
+import {useState} from 'react'
+import type {Locale} from '../../i18n/config'
+import type {SocialLabels} from './types'
+
+type Labels=Pick<SocialLabels,'commentPlaceholder'|'commentSubmit'|'commentSending'|'commentSuccess'|'interactionError'|'signInToComment'>
+
+export function CommentComposer({postId,parentCommentId,authenticated,locale,labels}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels}) {
+  const router=useRouter()
+  const [body,setBody]=useState('')
+  const [pending,setPending]=useState(false)
+  const [status,setStatus]=useState<'idle'|'success'|'error'>('idle')
+  if (!authenticated) return <p className="comment-signin"><Link href={`/${locale}/auth/sign-in`}>{labels.signInToComment}</Link></p>
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    const value=body.trim()
+    if (!value || value.length>2000) { setStatus('error'); return }
+    setPending(true);setStatus('idle')
+    try {
+      const response=await fetch(`/api/social/posts/${postId}/comments`,{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({body:value,...(parentCommentId?{parentCommentId}:{})})})
+      if (!response.ok) throw new Error('comment failed')
+      setBody('');setStatus('success');router.refresh()
+    } catch { setStatus('error') } finally { setPending(false) }
+  }
+  return <form className="comment-composer" onSubmit={(event)=>void submit(event)}>
+    <textarea aria-label={labels.commentPlaceholder} disabled={pending} maxLength={2000} onChange={(event)=>setBody(event.target.value)} placeholder={labels.commentPlaceholder} required value={body} />
+    <button aria-busy={pending} disabled={pending||!body.trim()} type="submit">{pending?labels.commentSending:labels.commentSubmit}</button>
+    <span aria-live="polite" className="interaction-error">{status==='success'?labels.commentSuccess:status==='error'?labels.interactionError:''}</span>
+  </form>
+}

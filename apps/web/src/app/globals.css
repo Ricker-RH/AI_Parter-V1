@@ -98,10 +98,24 @@ button { color: inherit; }
 .comment header { align-items: center; display: flex; gap: 6px; }
 .comment p { margin: 9px 0 5px; white-space: pre-wrap; }
 .comment .deleted-comment { color: var(--shell-muted); font-style: italic; }
+.comment-reply { border-left: 2px solid var(--shell-border); margin-left: 28px; }
+.comment-composer { border-bottom: 1px solid var(--shell-border); display: grid; gap: 10px; padding: 16px 24px; }
+.comment-composer textarea { background: transparent; border: 1px solid var(--shell-border); border-radius: 8px; color: inherit; min-height: 84px; padding: 12px; resize: vertical; }
+.comment-composer button, .profile-follow button, .notification-read { background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 999px; color: var(--shell-bg); cursor: pointer; justify-self: start; min-height: 36px; padding: 0 14px; }
+.comment-composer button:disabled, .profile-follow button:disabled, .notification-read:disabled { cursor: wait; opacity: .6; }
+.comment-signin { border-bottom: 1px solid var(--shell-border); margin: 0; padding: 18px 24px; }
+.reply-composer { margin-top: 10px; }
+.reply-composer summary { color: var(--shell-muted); cursor: pointer; font-size: 13px; }
+.reply-composer .comment-composer { border: 0; padding: 10px 0 0; }
 .notification-list { display: grid; }
 .notification-row { border-bottom: 1px solid var(--shell-border); display: block; padding: 18px 24px; }
 .notification-row:hover { background: var(--shell-hover); }
 .notification-row p { margin: 0 0 4px; }
+.notification-link { display: block; }
+.notification-read { margin-top: 10px; }
+.public-profile { border-bottom: 1px solid var(--shell-border); display: grid; gap: 12px; padding: 28px 24px; }
+.public-profile h1, .public-profile p { margin: 0; }
+.section-title { border-bottom: 1px solid var(--shell-border); font-size: 18px; margin: 0; padding: 18px 24px; }
 .load-more { border-bottom: 1px solid var(--shell-border); color: var(--shell-muted); display: block; font-weight: 650; padding: 16px 24px; text-align: center; }
 .load-more:hover { background: var(--shell-hover); color: var(--shell-text); }
 .right-rail { padding: 24px 20px; }

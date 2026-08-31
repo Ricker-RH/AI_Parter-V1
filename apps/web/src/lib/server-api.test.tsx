@@ -35,4 +35,10 @@ describe('authenticated server API transport', () => {
     await expect(fetchAifansApi('https://attacker.example/v1/me', {fetcher, getToken: async () => null})).rejects.toThrow('Invalid API path')
     expect(fetcher).not.toHaveBeenCalled()
   })
+
+  it('aborts an upstream request at the bounded transport timeout', async () => {
+    process.env.AIFANS_API_URL='https://api.example'
+    const fetcher=vi.fn((_url:string|URL|Request,init?:RequestInit)=>new Promise<Response>((_resolve,reject)=>init?.signal?.addEventListener('abort',()=>reject(init.signal?.reason),{once:true})))
+    await expect(fetchAifansApi('/v1/feed',{fetcher,getToken:async()=>null,timeoutMs:1})).rejects.toThrow('timeout')
+  })
 })

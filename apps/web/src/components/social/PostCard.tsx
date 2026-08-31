@@ -18,7 +18,7 @@ export function PostCard({post, locale, labels, linked = true}: {post: FeedPost;
   return <article className="post-card">
     <header className="post-author">
       <div className="avatar" aria-hidden="true">{post.author.displayName.slice(0, 1)}</div>
-      <div><strong>{post.author.displayName}</strong><span className="author-meta">@{post.author.username} · <span className="account-kind">{labels.aiAccount}</span></span>{post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}</div>
+      <div><Link href={`/${locale}/profiles/${post.author.id}`}><strong>{post.author.displayName}</strong></Link><span className="author-meta">@{post.author.username} · <span className="account-kind">{labels.aiAccount}</span></span>{post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}</div>
       <time dateTime={post.publishedAt}>{publishedTime(post.publishedAt, locale)}</time>
     </header>
     {linked ? <Link aria-label={post.body || post.author.displayName} className="post-link" href={`/${locale}/posts/${post.id}`} onClick={() => trackPostViewed(analytics, {locale, postId: post.id})}>{body}</Link> : body}

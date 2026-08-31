@@ -7,6 +7,7 @@ import {
   PageQuerySchema,
   PostDetailSchema,
   PublicCommentSchema,
+  PublicIpProfileSchema,
   decodeCursor,
   decodeNotificationCursor,
 } from '@aifans/contracts'
@@ -68,6 +69,12 @@ async function parseEmptyBody(c: ApiContext): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+function hasDuplicateTopLevelJsonKey(text: string): boolean {
+  const keys=new Set<string>();let depth=0
+  for(let index=0;index<text.length;index++){const char=text[index];if(char==='"'){const start=index;for(index++;index<text.length;index++){if(text[index]==='\\')index++;else if(text[index]==='"')break}if(depth===1){let after=index+1;while(/\s/.test(text[after]??''))after++;if(text[after]===':'){let key:unknown;try{key=JSON.parse(text.slice(start,index+1))}catch{return true}if(typeof key==='string'){if(keys.has(key))return true;keys.add(key)}}}continue}if(char==='{')depth++;else if(char==='}')depth--}
+  return false
 }
 
 function decodeCommentCursor(value: string): z.infer<typeof CommentCursorSchema> {
@@ -239,6 +246,27 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     }
   })
 
+  app.get('/v1/profiles/:profileId', async (c) => {
+    const unavailable = socialUnavailable(c, dependencies.social)
+    if (unavailable) return unavailable
+    const profileId = parseId(c.req.param('profileId'))
+    const rawQuery = safeQuery(c)
+    if (!profileId || rawQuery === null) return invalidRequest(c)
+    const query = PageQuerySchema.safeParse(rawQuery)
+    if (!query.success) return invalidRequest(c)
+    let after = null
+    if (query.data.cursor) {
+      try { after = decodeCursor(query.data.cursor, 'following') } catch { return invalidCursor(c) }
+    }
+    const actor = await resolveActor(c, dependencies, false)
+    if (!actor.ok) return actor.response
+    try {
+      const result = await dependencies.social!.getPublicProfile({viewer:actor.actor,profileId,limit:query.data.limit,after})
+      if (!result) return notFound(c,'PROFILE_NOT_FOUND')
+      return c.json(PublicIpProfileSchema.parse(result),200)
+    } catch (error) { return knownSocialError(c,error,{notFound:'PROFILE_NOT_FOUND'}) }
+  })
+
   const relationship = (
     method: 'put' | 'delete',
     path: string,
@@ -312,7 +340,9 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     if (!postId) return invalidRequest(c)
     let raw: unknown
     try {
-      raw = await c.req.json()
+      const text=await c.req.text()
+      if(hasDuplicateTopLevelJsonKey(text)) throw new Error('duplicate key')
+      raw = JSON.parse(text)
     } catch {
       return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
     }
@@ -327,7 +357,7 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     }
   })
 
-  app.post('/v1/notifications/:notificationId/read', async (c) => {
+  app.put('/v1/notifications/:notificationId/read', async (c) => {
     const unavailable = socialUnavailable(c, dependencies.social)
     if (unavailable) return unavailable
     const query = safeQuery(c)

@@ -39,15 +39,22 @@ export async function fetchAifansApi(
     fetcher = fetch,
     getToken = defaultToken,
     requestInit = {},
-  }: {fetcher?: Fetcher; getToken?: () => Promise<string | null>; requestInit?: RequestInit} = {},
+    timeoutMs = 8000,
+  }: {fetcher?: Fetcher; getToken?: () => Promise<string | null>; requestInit?: RequestInit; timeoutMs?: number} = {},
 ): Promise<Response> {
   if (!safePath(path)) throw new Error('Invalid API path')
   const baseUrl = readApiBaseUrl()
   if (!baseUrl) throw new Error('AIFANS API is not configured')
   const token = await getToken()
-  return fetcher(`${baseUrl}${path}`, {
-    ...requestInit,
-    cache: 'no-store',
-    headers: Object.fromEntries(outboundHeaders(requestInit.headers, token)),
-  })
+  const controller=new AbortController()
+  if(requestInit.signal?.aborted) controller.abort(requestInit.signal.reason)
+  const onAbort=()=>controller.abort(requestInit.signal?.reason)
+  requestInit.signal?.addEventListener('abort',onAbort,{once:true})
+  const timer=setTimeout(()=>controller.abort(new Error('AIFANS API timeout')),timeoutMs)
+  try {
+    return await fetcher(`${baseUrl}${path}`, {...requestInit,cache:'no-store',headers:Object.fromEntries(outboundHeaders(requestInit.headers,token)),signal:controller.signal})
+  } finally {
+    clearTimeout(timer)
+    requestInit.signal?.removeEventListener('abort',onAbort)
+  }
 }

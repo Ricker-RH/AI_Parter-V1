@@ -36,4 +36,16 @@ export interface SocialLabels {
   anime: string
   hybrid: string
   createdBy: string
+  commentPlaceholder: string
+  commentSubmit: string
+  commentSending: string
+  commentSuccess: string
+  reply: string
+  signInToComment: string
+  markRead: string
+  markingRead: string
+  profileNotFoundTitle: string
+  profileNotFoundDescription: string
+  followers: string
+  posts: string
 }

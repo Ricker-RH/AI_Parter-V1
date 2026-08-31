@@ -3,10 +3,12 @@ import {
   FeedPageSchema,
   NotificationPageSchema,
   PostDetailSchema,
+  PublicIpProfileSchema,
   type FeedPage,
   type FeedVisualType,
   type NotificationPage,
   type PostDetail,
+  type PublicIpProfile,
 } from '@aifans/contracts'
 import type {Locale} from '../i18n/config'
 import {fetchAifansApi, readApiBaseUrl} from './server-api'
@@ -37,7 +39,7 @@ async function request<T>(path: string, schema: Schema<T>, cookie?: string): Pro
     if (response.status === 401 && (error.data.code === 'AUTH_REQUIRED' || error.data.code === 'AUTH_INVALID')) {
       return {status: 'auth-required'}
     }
-    if (response.status === 404 && error.data.code === 'POST_NOT_FOUND') return {status: 'not-found'}
+    if (response.status === 404 && (error.data.code === 'POST_NOT_FOUND' || error.data.code === 'PROFILE_NOT_FOUND')) return {status: 'not-found'}
     return {status: 'unavailable'}
   } catch {
     return {status: 'unavailable'}
@@ -56,6 +58,12 @@ export function fetchPost(postId: string, {cookie, commentCursor}: {cookie?: str
   if (commentCursor) query.set('commentCursor', commentCursor)
   const suffix = query.size ? `?${query}` : ''
   return request<PostDetail>(`/v1/posts/${encodeURIComponent(postId)}${suffix}`, PostDetailSchema, cookie)
+}
+
+export function fetchPublicProfile(profileId: string, {cookie, cursor}: {cookie?: string | undefined; cursor?: string | undefined} = {}): Promise<SocialApiResult<PublicIpProfile>> {
+  const query=new URLSearchParams()
+  if (cursor) query.set('cursor',cursor)
+  return request(`/v1/profiles/${encodeURIComponent(profileId)}${query.size?`?${query}`:''}`,PublicIpProfileSchema,cookie)
 }
 
 export function fetchBookmarks({cookie, cursor}: {cookie?: string | undefined; cursor?: string | undefined} = {}): Promise<SocialApiResult<FeedPage>> {
