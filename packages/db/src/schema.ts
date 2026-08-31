@@ -11,6 +11,7 @@ import {
   uuid,
   unique,
   primaryKey,
+  foreignKey,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
@@ -116,6 +117,23 @@ export const analyticsOutbox = pgTable('analytics_outbox', {
   id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull().unique().references(() => businessEvents.id), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
 }, (table) => [check('analytics_outbox_payload_version_check', sql`${table.payloadVersion} > 0`), check('analytics_outbox_destination_check', sql`${table.destination} ~ '[^[:space:]]'`), check('analytics_outbox_attempt_count_check', sql`${table.attemptCount} >= 0`), check('analytics_outbox_delivery_state_check', sql`(${table.state} = 'delivered') = (${table.deliveredAt} IS NOT NULL)` )])
 
+export const ipIdentityRevisions = pgTable('ip_identity_revisions', {
+  id: uuid().primaryKey(),
+  ipProfileId: uuid('ip_profile_id').notNull(),
+  version: integer().notNull(),
+  displayName: text('display_name').notNull(),
+  bio: text(),
+  avatarObjectKey: text('avatar_object_key'),
+  coverObjectKey: text('cover_object_key'),
+  languages: text().array().notNull().default(sql`'{}'::text[]`),
+  createdByProfileId: uuid('created_by_profile_id').references(() => profiles.id),
+  previousRevisionId: uuid('previous_revision_id').references((): AnyPgColumn => ipIdentityRevisions.id),
+  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [
+  unique('ip_identity_revisions_ip_profile_id_version_key').on(table.ipProfileId, table.version),
+  unique('ip_identity_revisions_id_ip_profile_id_key').on(table.id, table.ipProfileId),
+])
+
 export const ipProfiles = pgTable('ip_profiles', {
   profileId: uuid('profile_id').primaryKey().references(() => profiles.id),
   source: ipSourceEnum('source').notNull(),
@@ -130,23 +148,11 @@ export const ipProfiles = pgTable('ip_profiles', {
 }, (table) => [
   check('ip_profiles_creator_source_check', sql`${table.creatorProfileId} IS NULL OR ${table.source} = 'creator'`),
   check('ip_profiles_feed_weight_check', sql`${table.feedWeight} BETWEEN -1000 AND 1000`),
-])
-
-export const ipIdentityRevisions = pgTable('ip_identity_revisions', {
-  id: uuid().primaryKey(),
-  ipProfileId: uuid('ip_profile_id').notNull().references(() => ipProfiles.profileId),
-  version: integer().notNull(),
-  displayName: text('display_name').notNull(),
-  bio: text(),
-  avatarObjectKey: text('avatar_object_key'),
-  coverObjectKey: text('cover_object_key'),
-  languages: text().array().notNull().default(sql`'{}'::text[]`),
-  createdByProfileId: uuid('created_by_profile_id').references(() => profiles.id),
-  previousRevisionId: uuid('previous_revision_id').references((): AnyPgColumn => ipIdentityRevisions.id),
-  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
-}, (table) => [
-  unique('ip_identity_revisions_ip_profile_id_version_key').on(table.ipProfileId, table.version),
-  unique('ip_identity_revisions_id_ip_profile_id_key').on(table.id, table.ipProfileId),
+  foreignKey({
+    name: 'ip_profiles_current_identity_revision_fk',
+    columns: [table.currentIdentityRevisionId, table.profileId],
+    foreignColumns: [ipIdentityRevisions.id, ipIdentityRevisions.ipProfileId],
+  }).onUpdate('no action').onDelete('no action'),
 ])
 
 export const posts = pgTable('posts', {

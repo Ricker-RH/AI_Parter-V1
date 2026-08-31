@@ -26,3 +26,8 @@
 - Published IPs require a current immutable revision belonging to that IP through a deferred composite foreign key and lifecycle trigger.
 - Admin post/comment attribution requires an active human operator; worker attribution is explicitly system-only (`acting_operator_profile_id IS NULL`).
 - Added focused checks for hidden comment fields, lifecycle transitions, revision immutability, soft deletion, notification ownership/read state, and published-post delete denial.
+
+## Final invariant gate
+
+- Added real PostgreSQL coverage for null/cross-IP identity revisions, existing cross-user relationship mutation attempts, notification read ownership, media-only/text-plus-media publication, media position bounds and media-retention validation, comment topology, whitespace, and impersonation constraints.
+- Drizzle now publishes the composite current-revision foreign key in the `ip_profiles` table configuration; the database test asserts the named key is present. PostgreSQL remains authoritative for its deferred enforcement.

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, describe, expect, it } from 'vitest'
+import { getTableConfig } from 'drizzle-orm/pg-core'
+import { ipProfiles } from '../src/schema.js'
 
 const connectionString = process.env.DATABASE_URL ?? ''
 const describeIntegration = connectionString ? describe : describe.skip
@@ -198,5 +200,75 @@ describeIntegration('social core authorization', () => {
       await expect(client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])).resolves.toMatchObject({rowCount: 1})
       await expect(client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])).resolves.toMatchObject({rowCount: 0})
     })
+  })
+
+  it('enforces IP identity ownership, media publish content, and comment topology', async () => {
+    await transaction(async (client) => {
+      const firstIp = await ip(client)
+      const secondIp = await ip(client)
+      const secondRevision = (await client.query('SELECT current_identity_revision_id FROM public.ip_profiles WHERE profile_id = $1', [secondIp.id])).rows[0]?.current_identity_revision_id as string
+      await expect(savepoint(client, async () => { await client.query('UPDATE public.ip_profiles SET current_identity_revision_id = $1 WHERE profile_id = $2', [secondRevision, firstIp.id]); await client.query('SET CONSTRAINTS ALL IMMEDIATE') })).rejects.toThrow(/foreign key/)
+      const missingIdentity = randomUUID()
+      await client.query(`INSERT INTO public.profiles (id, account_kind, username, display_name) VALUES ($1, 'ip', $2, 'No identity')`, [missingIdentity, `ip_${missingIdentity.replaceAll('-', '').slice(0, 20)}`])
+      await expect(savepoint(client, async () => {
+        await client.query(`INSERT INTO public.ip_profiles (profile_id, source, public_state) VALUES ($1, 'platform', 'published')`, [missingIdentity])
+        await client.query('SET CONSTRAINTS ALL IMMEDIATE')
+      })).rejects.toThrow(/current identity revision/)
+      const mediaOnly = randomUUID()
+      await client.query(`INSERT INTO public.posts (id, author_profile_id, source) VALUES ($1, $2, 'worker')`, [mediaOnly, firstIp.id])
+      await client.query(`INSERT INTO public.post_media (id, post_id, position, object_key, content_type) VALUES ($1, $2, 1, 'posts/one.png', 'image/png')`, [randomUUID(), mediaOnly])
+      await client.query(`UPDATE public.posts SET state = 'published', published_at = clock_timestamp() WHERE id = $1`, [mediaOnly])
+      await expect(savepoint(client, async () => {
+        await client.query('DELETE FROM public.post_media WHERE post_id = $1', [mediaOnly])
+        await client.query('SET CONSTRAINTS ALL IMMEDIATE')
+      })).rejects.toThrow(/nonblank text or verified media/)
+      const both = randomUUID()
+      await client.query(`INSERT INTO public.posts (id, author_profile_id, source, body) VALUES ($1, $2, 'worker', 'Text and image')`, [both, firstIp.id])
+      for (let position = 1; position <= 4; position += 1) await client.query(`INSERT INTO public.post_media (id, post_id, position, object_key, content_type) VALUES ($1, $2, $3, $4, 'image/png')`, [randomUUID(), both, position, `posts/${position}.png`])
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.post_media (id, post_id, position, object_key, content_type) VALUES ($1, $2, 5, 'posts/five.png', 'image/png')`, [randomUUID(), both]))).rejects.toThrow(/check/)
+      await client.query(`UPDATE public.posts SET state = 'published', published_at = clock_timestamp() WHERE id = $1`, [both])
+      const otherPost = await publishedPost(client, firstIp.id)
+      const parent = randomUUID()
+      const humanAuthor = await human(client)
+      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Parent')`, [parent, mediaOnly, humanAuthor.id])
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Wrong post')`, [randomUUID(), otherPost, parent, humanAuthor.id]))).rejects.toThrow(/same post/)
+      const reply = randomUUID()
+      await client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Reply')`, [reply, mediaOnly, parent, humanAuthor.id])
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Too deep')`, [randomUUID(), mediaOnly, reply, humanAuthor.id]))).rejects.toThrow(/one reply level/)
+      await become(client, humanAuthor.subject)
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', '   ')`, [randomUUID(), mediaOnly, humanAuthor.id]))).rejects.toThrow(/check/)
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, acting_operator_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'No impersonation')`, [randomUUID(), mediaOnly, firstIp.id, humanAuthor.id]))).rejects.toThrow(/permission denied|row-level security|human comments require/)
+    })
+  })
+
+  it('prevents cross-user mutation of existing relationships and notification reads', async () => {
+    await transaction(async (client) => {
+      const first = await human(client); const second = await human(client); const author = await ip(client); const postId = await publishedPost(client, author.id)
+      const commentId = randomUUID()
+      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Likeable')`, [commentId, postId, first.id])
+      await become(client, first.subject)
+      await client.query('INSERT INTO public.follows (follower_profile_id, followed_profile_id) VALUES ($1, $2)', [first.id, author.id])
+      await client.query('INSERT INTO public.post_likes (post_id, profile_id) VALUES ($1, $2)', [postId, first.id])
+      await client.query('INSERT INTO public.bookmarks (post_id, profile_id) VALUES ($1, $2)', [postId, first.id])
+      await client.query('INSERT INTO public.comment_likes (comment_id, profile_id) VALUES ($1, $2)', [commentId, first.id])
+      const notificationId = randomUUID(); await client.query('SET LOCAL ROLE NONE'); await client.query(`INSERT INTO public.notifications (id, recipient_profile_id, kind) VALUES ($1, $2, 'follow')`, [notificationId, first.id])
+      await become(client, second.subject)
+      await expect(savepoint(client, () => client.query('DELETE FROM public.follows WHERE follower_profile_id = $1', [first.id]))).rejects.toThrow(/permission denied/)
+      await client.query('DELETE FROM public.post_likes WHERE profile_id = $1', [first.id])
+      await client.query('DELETE FROM public.bookmarks WHERE profile_id = $1', [first.id])
+      await expect(savepoint(client, () => client.query('DELETE FROM public.comment_likes WHERE profile_id = $1', [first.id]))).rejects.toThrow(/permission denied/)
+      await client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])
+      await client.query('SET LOCAL ROLE NONE')
+      expect((await client.query('SELECT count(*)::int AS count FROM public.follows WHERE follower_profile_id = $1', [first.id])).rows[0]?.count).toBe(1)
+      expect((await client.query('SELECT count(*)::int AS count FROM public.post_likes WHERE profile_id = $1', [first.id])).rows[0]?.count).toBe(1)
+      expect((await client.query('SELECT count(*)::int AS count FROM public.bookmarks WHERE profile_id = $1', [first.id])).rows[0]?.count).toBe(1)
+      expect((await client.query('SELECT count(*)::int AS count FROM public.comment_likes WHERE profile_id = $1', [first.id])).rows[0]?.count).toBe(1)
+      expect((await client.query('SELECT read_at FROM public.notifications WHERE id = $1', [notificationId])).rows[0]?.read_at).toBeNull()
+    })
+  })
+
+  it('exports the composite current-revision foreign key through Drizzle', () => {
+    const foreignKeys = getTableConfig(ipProfiles).foreignKeys
+    expect(foreignKeys.some((key) => key.getName() === 'ip_profiles_current_identity_revision_fk')).toBe(true)
   })
 })
