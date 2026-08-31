@@ -16,9 +16,17 @@ const correlation = {
 const accountRegisteredProperties = z.object({event_id: uuid, ...correlation}).strict()
 const posthogAccountRegisteredPayload = z.object({event_id: uuid, event_name: z.literal('account_registered'), event_version: z.literal(1), ...correlation}).strict()
 const auditInput = z.object({actorProfileId: uuid.optional(), action: z.literal('operator_granted'), entityType: z.literal('profile'), entityId: uuid, sourceApp: z.enum(['api', 'admin', 'worker']), result: z.enum(['succeeded', 'rejected', 'failed']).optional(), actorType: z.enum(['human', 'operator', 'system']).optional(), requestId: uuid.optional(), changeSummary: auditSummary}).strict()
-const businessInput = z.object({eventName: z.literal('account_registered'), actorProfileId: uuid.optional(), subjectEntityType: z.literal('profile'), subjectEntityId: uuid, environment: nonBlank, properties: accountRegisteredProperties, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict()
+const socialEventProperties = z.object({event_id: uuid, request_id: uuid.optional()}).strict()
+const followProperties = z.object({event_id: uuid, profile_id: uuid, request_id: uuid.optional()}).strict()
+const businessInput = z.union([
+  z.object({eventName: z.literal('account_registered'), actorProfileId: uuid.optional(), subjectEntityType: z.literal('profile'), subjectEntityId: uuid, environment: nonBlank, properties: accountRegisteredProperties, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict(),
+  z.object({eventName: z.literal('follow_created'), actorProfileId: uuid, subjectEntityType: z.literal('profile'), subjectEntityId: uuid, environment: nonBlank, properties: followProperties, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict(),
+  z.object({eventName: z.literal('post_liked'), actorProfileId: uuid, subjectEntityType: z.literal('post'), subjectEntityId: uuid, environment: nonBlank, properties: socialEventProperties, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict(),
+  z.object({eventName: z.literal('comment_created'), actorProfileId: uuid, subjectEntityType: z.literal('comment'), subjectEntityId: uuid, environment: nonBlank, properties: socialEventProperties, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict(),
+])
 const transitionInput = z.object({entityType: z.string().regex(/[^\s]/), entityId: uuid, nextState: z.string().regex(/[^\s]/), previousState: z.string().optional(), actorProfileId: uuid.optional(), reasonCode: z.string().optional(), operatorNote: z.string().optional(), requestId: uuid.optional()}).strict()
-const outboxInput = z.object({destination: z.literal('posthog'), payloadVersion: z.literal(1), payload: posthogAccountRegisteredPayload}).strict()
+const socialOutboxPayload = z.object({event_id: uuid, event_name: z.enum(['follow_created', 'post_liked', 'comment_created']), event_version: z.literal(1), request_id: uuid.optional(), profile_id: uuid.optional()}).strict()
+const outboxInput = z.object({destination: z.literal('posthog'), payloadVersion: z.literal(1), payload: z.union([posthogAccountRegisteredPayload, socialOutboxPayload])}).strict()
 
 type AuditInput = z.infer<typeof auditInput>
 type BusinessInput = z.infer<typeof businessInput>
