@@ -6,7 +6,7 @@ import {Pool, type PoolClient} from 'pg'
 import {readDatabaseEnv} from './env.js'
 
 const advisoryLockId = 947361204
-const migrationName = /^\d{3,12}_[a-z0-9_]+\.sql$/
+const migrationName = /^\d{12}_[a-z0-9_]+\.sql$/
 
 export type Migration = {
   name: string

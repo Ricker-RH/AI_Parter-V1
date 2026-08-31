@@ -24,11 +24,21 @@ describe('database environment', () => {
 describe('migration discovery', () => {
   it('sorts SQL files and includes a stable SHA-256 checksum', () => {
     const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
-    writeFileSync(join(directory, '002_second.sql'), 'select 2;\n')
-    writeFileSync(join(directory, '001_first.sql'), 'select 1;\n')
+    writeFileSync(join(directory, '202608310002_second.sql'), 'select 2;\n')
+    writeFileSync(join(directory, '202608310001_first.sql'), 'select 1;\n')
 
     const migrations = discoverMigrations(directory)
-    expect(migrations.map(({name}) => name)).toEqual(['001_first.sql', '002_second.sql'])
+    expect(migrations.map(({name}) => name)).toEqual([
+      '202608310001_first.sql',
+      '202608310002_second.sql',
+    ])
     expect(migrations[0]?.checksum).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('ignores filenames without a twelve-digit prefix', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
+    writeFileSync(join(directory, '001_legacy.sql'), 'select 1;\n')
+
+    expect(discoverMigrations(directory)).toEqual([])
   })
 })
