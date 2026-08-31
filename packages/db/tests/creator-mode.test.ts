@@ -3,6 +3,7 @@ import type {
   CreatorDraftInput,
   CreatorReferenceRole,
 } from "@aifans/contracts";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -10,6 +11,12 @@ import {
   createPlatformCreatorRepository,
 } from "../src/creator.js";
 import { createActorSession, createPlatformSession } from "../src/session.js";
+import {
+  creatorDrafts,
+  creatorIpRequests,
+  creatorSubmissions,
+  ipProfiles,
+} from "../src/schema.js";
 
 const connectionString =
   process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL ?? "";
@@ -161,9 +168,122 @@ async function createApprovedIp(client: PoolClient, requireApproval = false) {
   };
 }
 
+async function seedMixedCreatorHistory(
+  client: PoolClient,
+  creatorProfileId: string,
+  count = 120,
+) {
+  const draftIds = Array.from({ length: count }, () => randomUUID());
+  const revisionIds = Array.from({ length: count }, () => randomUUID());
+  const submissionIds = Array.from({ length: count }, () => randomUUID());
+  const ipProfileIds = Array.from({ length: count }, () => randomUUID());
+  const requestIds = Array.from({ length: count }, () => randomUUID());
+  await client.query(
+    `INSERT INTO public.creator_drafts(
+      id,creator_profile_id,state,username,display_name,short_description,language_codes,content_themes,
+      personality,background,world,values_text,tone,interests,boundaries,relationship_style,visual_type,appearance,created_at
+    ) SELECT id,$1,'submitted','history_ip','History IP','history',ARRAY['en'],ARRAY['history'],
+      'personality','background','world','values','tone',ARRAY[]::text[],'boundaries','relationship','hybrid','appearance',
+      clock_timestamp()-(ordinality||' minutes')::interval
+    FROM unnest($2::uuid[]) WITH ORDINALITY seeded(id,ordinality)`,
+    [creatorProfileId, draftIds],
+  );
+  await client.query(
+    `INSERT INTO public.creator_revisions(
+      id,draft_id,creator_profile_id,version,username,display_name,short_description,language_codes,content_themes,
+      personality,background,world,values_text,tone,interests,boundaries,relationship_style,visual_type,appearance,created_at
+    ) SELECT revision_id,draft_id,$1,1,'history_ip','History IP','history',ARRAY['en'],ARRAY['history'],
+      'personality','background','world','values','tone',ARRAY[]::text[],'boundaries','relationship','hybrid','appearance',
+      clock_timestamp()-(ordinality||' minutes')::interval
+    FROM unnest($2::uuid[],$3::uuid[]) WITH ORDINALITY seeded(draft_id,revision_id,ordinality)`,
+    [creatorProfileId, draftIds, revisionIds],
+  );
+  await client.query(
+    `INSERT INTO public.creator_reference_assets(
+      id,draft_id,creator_profile_id,object_key,content_type,width,height,draft_role
+    ) SELECT gen_random_uuid(),draft_id,$1,
+      'private/creator/history/'||draft_id::text||'/'||role::text||'.png','image/png',1024,1024,role
+    FROM unnest($2::uuid[]) seeded(draft_id)
+    CROSS JOIN unnest(ARRAY['avatar','cover','portrait','full_body','supporting_1']::public.creator_reference_role[]) roles(role)`,
+    [creatorProfileId, draftIds],
+  );
+  await client.query(
+    `INSERT INTO public.creator_revision_references(revision_id,asset_id,draft_id,role)
+     SELECT r.id,a.id,a.draft_id,a.draft_role
+     FROM public.creator_revisions r JOIN public.creator_reference_assets a ON a.draft_id=r.draft_id
+     WHERE r.id=ANY($1::uuid[])`,
+    [revisionIds],
+  );
+  await client.query(
+    `INSERT INTO public.creator_submissions(
+      id,draft_id,revision_id,creator_profile_id,state,submitted_at,decided_at,decision_reason
+    ) SELECT submission_id,draft_id,revision_id,$1,
+      CASE WHEN ordinality<=60 THEN 'rejected'::public.creator_submission_state ELSE 'pending_review'::public.creator_submission_state END,
+      clock_timestamp()-(ordinality||' minutes')::interval,
+      CASE WHEN ordinality<=60 THEN clock_timestamp() ELSE NULL END,
+      CASE WHEN ordinality<=60 THEN 'historical rejection' ELSE NULL END
+    FROM unnest($2::uuid[],$3::uuid[],$4::uuid[]) WITH ORDINALITY seeded(submission_id,draft_id,revision_id,ordinality)`,
+    [creatorProfileId, submissionIds, draftIds, revisionIds],
+  );
+  await client.query(
+    `INSERT INTO public.profiles(id,account_kind,username,display_name)
+     SELECT id,'ip','history_'||left(replace(id::text,'-',''),18),'History IP' FROM unnest($1::uuid[]) seeded(id)`,
+    [ipProfileIds],
+  );
+  await client.query(
+    `INSERT INTO public.ip_profiles(profile_id,source,creator_profile_id,public_state,operation_enabled,created_at)
+     SELECT id,'creator',$1,'approved',false,clock_timestamp()-(ordinality||' minutes')::interval
+     FROM unnest($2::uuid[]) WITH ORDINALITY seeded(id,ordinality)`,
+    [creatorProfileId, ipProfileIds],
+  );
+  await client.query(
+    `INSERT INTO public.creator_ip_requests(
+      id,ip_profile_id,creator_profile_id,kind,reason,state,created_at,decided_at,decision_reason
+    ) SELECT request_id,ip_profile_id,$1,'unpublish','Mixed platform history request.',
+      CASE WHEN ordinality<=60 THEN 'approved'::public.creator_request_state ELSE 'pending'::public.creator_request_state END,
+      clock_timestamp()-(ordinality||' minutes')::interval,
+      CASE WHEN ordinality<=60 THEN clock_timestamp() ELSE NULL END,NULL
+    FROM unnest($2::uuid[],$3::uuid[]) WITH ORDINALITY seeded(request_id,ip_profile_id,ordinality)`,
+    [creatorProfileId, requestIds, ipProfileIds],
+  );
+}
+
 afterAll(async () => pool.end());
 
 integration("creator mode database lifecycle", () => {
+  it("keeps Drizzle parity for active revision constraints and cursor queue indexes", () => {
+    expect(
+      getTableConfig(ipProfiles).foreignKeys.map((key) => key.getName()),
+    ).toContain("ip_profiles_active_creator_revision_fk");
+    expect(
+      getTableConfig(ipProfiles).indexes.map((index) => index.config.name),
+    ).toContain("creator_ips_owner_cursor_idx");
+    expect(
+      getTableConfig(creatorDrafts).indexes.map((index) => index.config.name),
+    ).toContain("creator_drafts_owner_cursor_idx");
+    expect(
+      getTableConfig(creatorSubmissions).indexes.map(
+        (index) => index.config.name,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "creator_submissions_owner_cursor_idx",
+        "creator_submissions_pending_cursor_idx",
+      ]),
+    );
+    expect(
+      getTableConfig(creatorIpRequests).indexes.map(
+        (index) => index.config.name,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "creator_ip_requests_owner_cursor_idx",
+        "creator_ip_requests_pending_cursor_idx",
+        "creator_ip_requests_one_pending_idx",
+      ]),
+    );
+  });
+
   it("keeps raw creator tables revoked with RLS and exposes only bounded role-specific functions", async () =>
     transaction(async (client) => {
       const tables = [
@@ -257,6 +377,89 @@ integration("creator mode database lifecycle", () => {
       });
       expect(secondPage.items).toHaveLength(1);
       expect(secondPage.items[0]!.id).not.toBe(firstPage.items[0]!.id);
+    }));
+
+  it("bounds nullable SQL page limits and filters platform queues before pagination", async () =>
+    transaction(async (client) => {
+      const creatorActor = await human(client, "mixedhistory");
+      const platformActor = await operator(client);
+      await seedMixedCreatorHistory(client, creatorActor.id);
+
+      await client.query("SET LOCAL ROLE aifans_authenticated");
+      await client.query("SELECT set_config('request.jwt.claims',$1,true)", [
+        JSON.stringify({ sub: creatorActor.subject }),
+      ]);
+      for (const functionName of [
+        "creator_list_drafts",
+        "creator_list_submissions",
+        "creator_list_requests",
+        "creator_list_ips",
+      ]) {
+        const result = await client.query<{ count: number }>(
+          `SELECT count(*)::integer count FROM public.${functionName}(NULL,NULL,NULL)`,
+        );
+        expect(result.rows[0]?.count).toBe(51);
+      }
+      await client.query("RESET ROLE");
+
+      await client.query("SET LOCAL ROLE aifans_platform");
+      await client.query("SELECT set_config('request.jwt.claims',$1,true)", [
+        JSON.stringify({ sub: platformActor.subject }),
+      ]);
+      const submissions = await client.query<{
+        count: number;
+        all_pending: boolean;
+      }>(
+        `SELECT count(*)::integer count,bool_and(value->>'state'='pending_review') all_pending
+         FROM public.platform_list_creator_submissions(NULL,NULL,NULL)`,
+      );
+      expect(submissions.rows[0]).toEqual({ count: 51, all_pending: true });
+      const requests = await client.query<{
+        count: number;
+        all_pending: boolean;
+      }>(
+        `SELECT count(*)::integer count,bool_and(value->>'state'='pending') all_pending
+         FROM public.platform_list_creator_requests(NULL,NULL,NULL)`,
+      );
+      expect(requests.rows[0]).toEqual({ count: 51, all_pending: true });
+      await client.query("RESET ROLE");
+
+      const { platform } = repositories(client);
+      const firstSubmissionPage = await platform.listSubmissions(
+        platformActor,
+        { limit: 5 },
+      );
+      expect(firstSubmissionPage.items).toHaveLength(5);
+      expect(
+        firstSubmissionPage.items.every(
+          (item) => item.state === "pending_review",
+        ),
+      ).toBe(true);
+      const secondSubmissionPage = await platform.listSubmissions(
+        platformActor,
+        { limit: 5, cursor: firstSubmissionPage.nextCursor! },
+      );
+      expect(secondSubmissionPage.items).toHaveLength(5);
+      expect(
+        secondSubmissionPage.items.every(
+          (item) => item.state === "pending_review",
+        ),
+      ).toBe(true);
+      const firstRequestPage = await platform.listRequests(platformActor, {
+        limit: 5,
+      });
+      expect(firstRequestPage.items).toHaveLength(5);
+      expect(
+        firstRequestPage.items.every((item) => item.state === "pending"),
+      ).toBe(true);
+      const secondRequestPage = await platform.listRequests(platformActor, {
+        limit: 5,
+        cursor: firstRequestPage.nextCursor!,
+      });
+      expect(secondRequestPage.items).toHaveLength(5);
+      expect(
+        secondRequestPage.items.every((item) => item.state === "pending"),
+      ).toBe(true);
     }));
 
   it("enforces the global default quota and a per-user override under lock", async () =>
@@ -583,6 +786,24 @@ integration("creator mode database lifecycle", () => {
         state: "pending",
         proposedRevision: { displayName: "Creator replacement" },
       });
+      await expect(
+        changeFixture.repos.platform.getRequest(
+          changeFixture.platformActor,
+          change.id,
+        ),
+      ).resolves.toEqual(change);
+      await expect(
+        changeFixture.repos.platform.getRequest(
+          changeFixture.creatorActor,
+          change.id,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        changeFixture.repos.platform.getRequest(
+          changeFixture.platformActor,
+          randomUUID(),
+        ),
+      ).resolves.toBeNull();
       const decidedChange = await changeFixture.repos.platform.decideRequest({
         actor: changeFixture.platformActor,
         requestId: change.id,

@@ -127,3 +127,39 @@ Focused Creator tests then passed 10/10 on that fresh database.
   re-review found one additional request/decision lock-order risk, which was
   corrected with IP-first locking and a real multi-connection regression.
 - Final post-commit narrow security review verdict is appended below.
+
+## Final review follow-up
+
+The final review requested four additional hardening changes. TDD RED was
+captured in the focused Creator suite:
+
+- Drizzle table metadata lacked `ip_profiles_active_creator_revision_fk`.
+- Direct role calls with a `NULL` page limit returned only one row instead of a
+  bounded full page, and platform queues included terminal history.
+- `PlatformCreatorRepository.getRequest` did not exist.
+
+Migration 022 now applies a database-boundary default and hard maximum of 51 to
+all six list functions. Platform submission/request lists filter to
+`pending_review`/`pending` before keyset comparison and limit. Tests seed 120
+mixed terminal/pending histories and verify two queue pages contain only pending
+items.
+
+The platform repository now exposes a bounded operator-only request detail
+lookup backed by `platform_get_creator_request(uuid)`. It returns the strict
+request DTO including its proposed immutable revision, returns `null` when
+absent, and rejects non-operators.
+
+Drizzle metadata now mirrors the active creator revision composite FK plus the
+creator IP/draft/submission/request cursor and pending indexes. A creator IP
+owner cursor index was added to migration 022.
+
+Final follow-up verification:
+
+- Fresh empty PostgreSQL replay: 22 migrations through
+  `202609010022_creator_mode.sql`.
+- Focused Creator suite: 12/12 passed.
+- Full DB suite: 79 passed, 5 explicit skips.
+- Root suite: 44 passed files plus 1 explicitly skipped file; 322 passed
+  tests, 5 explicit skips.
+- Root typecheck and build: 5/5 Turbo tasks succeeded; license scan and
+  `git diff --check` passed.

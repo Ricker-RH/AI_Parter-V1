@@ -113,6 +113,7 @@ export type PlatformCreatorRepository = {
     actor: Actor,
     submissionId: string,
   ): Promise<CreatorSubmissionRecord | null>;
+  getRequest(actor: Actor, requestId: string): Promise<CreatorRequest | null>;
   listSubmissions(
     actor: Actor,
     page: CreatorPageQuery,
@@ -453,6 +454,18 @@ export function createPlatformCreatorRepository({
         return value == null
           ? null
           : CreatorSubmissionRecordSchema.parse(value);
+      });
+    },
+    async getRequest(actor, requestId) {
+      const id = uuid.parse(requestId);
+      return runWithPlatformActor(actor, async (client) => {
+        const value = (
+          await client.query<JsonRow>(
+            "SELECT public.platform_get_creator_request($1) AS value",
+            [id],
+          )
+        ).rows[0]?.value;
+        return value == null ? null : CreatorRequestSchema.parse(value);
       });
     },
     async listSubmissions(actor, input) {

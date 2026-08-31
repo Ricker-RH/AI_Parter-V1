@@ -10,12 +10,16 @@ import {
   timestamp,
   uuid,
   unique,
+  index,
   uniqueIndex,
   primaryKey,
   foreignKey,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+
+let creatorIpRevisionIpColumn: AnyPgColumn
+let creatorIpRevisionIdColumn: AnyPgColumn
 
 export const accountKindEnum = pgEnum('account_kind', ['human', 'ip'])
 export const appLocaleEnum = pgEnum('app_locale', ['en', 'zh-CN'])
@@ -163,7 +167,16 @@ export const ipProfiles = pgTable('ip_profiles', {
     columns: [table.currentIdentityRevisionId, table.profileId],
     foreignColumns: [ipIdentityRevisions.id, ipIdentityRevisions.ipProfileId],
   }).onUpdate('no action').onDelete('no action'),
+  foreignKey({
+    name: 'ip_profiles_active_creator_revision_fk',
+    columns: [table.profileId, table.activeCreatorRevisionId],
+    foreignColumns: [
+      creatorIpRevisionIpColumn,
+      creatorIpRevisionIdColumn,
+    ],
+  }).onUpdate('no action').onDelete('no action'),
   unique('ip_profiles_profile_creator_key').on(table.profileId, table.creatorProfileId),
+  index('creator_ips_owner_cursor_idx').on(table.creatorProfileId, table.createdAt.desc(), table.profileId.desc()).where(sql`${table.source} = 'creator'`),
 ])
 
 export const creatorQuotas = pgTable('creator_quotas', {
@@ -211,6 +224,7 @@ export const creatorDrafts = pgTable('creator_drafts', {
   check('creator_drafts_relationship_style_check', sql`char_length(${table.relationshipStyle}) BETWEEN 1 AND 1000 AND ${table.relationshipStyle} ~ '[^[:space:]]'`),
   check('creator_drafts_appearance_check', sql`char_length(${table.appearance}) BETWEEN 1 AND 2000 AND ${table.appearance} ~ '[^[:space:]]'`),
   unique('creator_drafts_id_creator_profile_id_key').on(table.id, table.creatorProfileId),
+  index('creator_drafts_owner_cursor_idx').on(table.creatorProfileId, table.createdAt.desc(), table.id.desc()),
 ])
 
 export const creatorReferenceAssets = pgTable('creator_reference_assets', {
@@ -291,6 +305,9 @@ export const creatorIpRevisions = pgTable('creator_ip_revisions', {
   foreignKey({name: 'creator_ip_revisions_revision_owner_fkey', columns: [table.revisionId, table.creatorProfileId], foreignColumns: [creatorRevisions.id, creatorRevisions.creatorProfileId]}),
 ])
 
+creatorIpRevisionIpColumn = creatorIpRevisions.ipProfileId
+creatorIpRevisionIdColumn = creatorIpRevisions.revisionId
+
 export const operatingAuthorizationAcceptances = pgTable('operating_authorization_acceptances', {
   id: uuid().primaryKey(),
   draftId: uuid('draft_id').notNull().unique().references(() => creatorDrafts.id),
@@ -319,6 +336,8 @@ export const creatorSubmissions = pgTable('creator_submissions', {
   foreignKey({name: 'creator_submissions_revision_provenance_fkey', columns: [table.revisionId, table.draftId, table.creatorProfileId], foreignColumns: [creatorRevisions.id, creatorRevisions.draftId, creatorRevisions.creatorProfileId]}),
   check('creator_submissions_decision_reason_check', sql`${table.decisionReason} IS NULL OR char_length(${table.decisionReason}) <= 2000`),
   check('creator_submissions_state_check', sql`(${table.state} = 'pending_review' AND ${table.decidedAt} IS NULL AND ${table.decisionReason} IS NULL AND ${table.ipProfileId} IS NULL) OR (${table.state} = 'approved' AND ${table.decidedAt} IS NOT NULL AND ${table.ipProfileId} IS NOT NULL) OR (${table.state} = 'rejected' AND ${table.decidedAt} IS NOT NULL AND ${table.decisionReason} IS NOT NULL AND ${table.ipProfileId} IS NULL)`),
+  index('creator_submissions_owner_cursor_idx').on(table.creatorProfileId, table.submittedAt.desc(), table.id.desc()),
+  index('creator_submissions_pending_cursor_idx').on(table.submittedAt.desc(), table.id.desc()).where(sql`${table.state} = 'pending_review'`),
 ])
 
 export const creatorSubmissionDecisions = pgTable('creator_submission_decisions', {
@@ -347,6 +366,8 @@ export const creatorIpRequests = pgTable('creator_ip_requests', {
   decisionReason: text('decision_reason'),
 }, (table) => [
   uniqueIndex('creator_ip_requests_one_pending_idx').on(table.ipProfileId).where(sql`${table.state} = 'pending'`),
+  index('creator_ip_requests_owner_cursor_idx').on(table.creatorProfileId, table.createdAt.desc(), table.id.desc()),
+  index('creator_ip_requests_pending_cursor_idx').on(table.createdAt.desc(), table.id.desc()).where(sql`${table.state} = 'pending'`),
   check('creator_ip_requests_reason_check', sql`char_length(${table.reason}) BETWEEN 10 AND 2000 AND ${table.reason} ~ '[^[:space:]]'`),
   check('creator_ip_requests_kind_revision_check', sql`(${table.kind} = 'change') = (${table.proposedRevisionId} IS NOT NULL)`),
   check('creator_ip_requests_state_check', sql`(${table.state} = 'pending' AND ${table.decidedAt} IS NULL AND ${table.decisionReason} IS NULL) OR (${table.state} = 'approved' AND ${table.decidedAt} IS NOT NULL) OR (${table.state} = 'rejected' AND ${table.decidedAt} IS NOT NULL AND ${table.decisionReason} IS NOT NULL)`),

@@ -200,6 +200,7 @@ CREATE INDEX creator_submissions_pending_cursor_idx ON public.creator_submission
 CREATE INDEX creator_ip_requests_owner_cursor_idx ON public.creator_ip_requests (creator_profile_id, created_at DESC, id DESC);
 CREATE INDEX creator_ip_requests_pending_cursor_idx ON public.creator_ip_requests (created_at DESC, id DESC) WHERE state = 'pending';
 CREATE UNIQUE INDEX creator_ip_requests_one_pending_idx ON public.creator_ip_requests (ip_profile_id) WHERE state = 'pending';
+CREATE INDEX creator_ips_owner_cursor_idx ON public.ip_profiles (creator_profile_id, created_at DESC, profile_id DESC) WHERE source = 'creator';
 CREATE INDEX creator_revision_references_asset_idx ON public.creator_revision_references (asset_id);
 
 CREATE FUNCTION app.creator_iso(value timestamptz)
@@ -528,7 +529,7 @@ RETURNS TABLE(value jsonb,cursor_created_at text,cursor_id uuid) LANGUAGE sql ST
   SELECT app.creator_draft_json(d.id),app.creator_cursor_iso(d.created_at),d.id FROM public.creator_drafts d
   WHERE d.creator_profile_id=app.creator_current_human_id()
     AND (after_created_at IS NULL OR (d.created_at,d.id)<(after_created_at,after_id))
-  ORDER BY d.created_at DESC,d.id DESC LIMIT LEAST(GREATEST(page_limit,1),51)
+  ORDER BY d.created_at DESC,d.id DESC LIMIT LEAST(GREATEST(COALESCE(page_limit,51),1),51)
 $$;
 
 CREATE FUNCTION public.creator_register_reference(target_draft_id uuid, asset_id uuid, asset_content_type text, asset_width integer, asset_height integer)
@@ -589,7 +590,7 @@ RETURNS TABLE(value jsonb,cursor_created_at text,cursor_id uuid) LANGUAGE sql ST
   SELECT app.creator_submission_json(s.id),app.creator_cursor_iso(s.submitted_at),s.id FROM public.creator_submissions s
   WHERE s.creator_profile_id=app.creator_current_human_id()
     AND (after_created_at IS NULL OR (s.submitted_at,s.id)<(after_created_at,after_id))
-  ORDER BY s.submitted_at DESC,s.id DESC LIMIT LEAST(GREATEST(page_limit,1),51)
+  ORDER BY s.submitted_at DESC,s.id DESC LIMIT LEAST(GREATEST(COALESCE(page_limit,51),1),51)
 $$;
 
 CREATE FUNCTION public.creator_create_request(requested_ip_profile_id uuid, request_kind public.creator_request_kind, request_reason text, proposed_draft_id uuid, command_request_id uuid)
@@ -621,7 +622,7 @@ RETURNS TABLE(value jsonb,cursor_created_at text,cursor_id uuid) LANGUAGE sql ST
   SELECT app.creator_request_json(r.id),app.creator_cursor_iso(r.created_at),r.id FROM public.creator_ip_requests r
   WHERE r.creator_profile_id=app.creator_current_human_id()
     AND (after_created_at IS NULL OR (r.created_at,r.id)<(after_created_at,after_id))
-  ORDER BY r.created_at DESC,r.id DESC LIMIT LEAST(GREATEST(page_limit,1),51)
+  ORDER BY r.created_at DESC,r.id DESC LIMIT LEAST(GREATEST(COALESCE(page_limit,51),1),51)
 $$;
 
 CREATE FUNCTION public.creator_get_ip(target_ip_profile_id uuid)
@@ -637,7 +638,7 @@ RETURNS TABLE(value jsonb,cursor_created_at text,cursor_id uuid) LANGUAGE sql ST
   FROM public.ip_profiles ip
   WHERE ip.source='creator' AND ip.creator_profile_id=app.creator_current_human_id()
     AND (after_created_at IS NULL OR (ip.created_at,ip.profile_id)<(after_created_at,after_id))
-  ORDER BY ip.created_at DESC,ip.profile_id DESC LIMIT LEAST(GREATEST(page_limit,1),51)
+  ORDER BY ip.created_at DESC,ip.profile_id DESC LIMIT LEAST(GREATEST(COALESCE(page_limit,51),1),51)
 $$;
 
 CREATE FUNCTION public.creator_ip_analytics(target_ip_profile_id uuid)
@@ -693,13 +694,21 @@ BEGIN
 END
 $$;
 
+CREATE FUNCTION public.platform_get_creator_request(target_request_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  PERFORM app.creator_lock_operator();
+  RETURN app.creator_request_json(target_request_id);
+END
+$$;
+
 CREATE FUNCTION public.platform_list_creator_submissions(after_created_at timestamptz, after_id uuid, page_limit integer)
 RETURNS TABLE(value jsonb,cursor_created_at text,cursor_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
   PERFORM app.creator_lock_operator();
   RETURN QUERY SELECT app.creator_submission_json(s.id),app.creator_cursor_iso(s.submitted_at),s.id FROM public.creator_submissions s
-  WHERE after_created_at IS NULL OR (s.submitted_at,s.id)<(after_created_at,after_id)
-  ORDER BY s.submitted_at DESC,s.id DESC LIMIT LEAST(GREATEST(page_limit,1),51);
+  WHERE s.state='pending_review' AND (after_created_at IS NULL OR (s.submitted_at,s.id)<(after_created_at,after_id))
+  ORDER BY s.submitted_at DESC,s.id DESC LIMIT LEAST(GREATEST(COALESCE(page_limit,51),1),51);
 END
 $$;
 
@@ -733,8 +742,8 @@ RETURNS TABLE(value jsonb,cursor_created_at text,cursor_id uuid) LANGUAGE plpgsq
 BEGIN
   PERFORM app.creator_lock_operator();
   RETURN QUERY SELECT app.creator_request_json(r.id),app.creator_cursor_iso(r.created_at),r.id FROM public.creator_ip_requests r
-  WHERE after_created_at IS NULL OR (r.created_at,r.id)<(after_created_at,after_id)
-  ORDER BY r.created_at DESC,r.id DESC LIMIT LEAST(GREATEST(page_limit,1),51);
+  WHERE r.state='pending' AND (after_created_at IS NULL OR (r.created_at,r.id)<(after_created_at,after_id))
+  ORDER BY r.created_at DESC,r.id DESC LIMIT LEAST(GREATEST(COALESCE(page_limit,51),1),51);
 END
 $$;
 
@@ -844,6 +853,6 @@ CREATE POLICY creator_requests_owner_read ON public.creator_ip_requests FOR SELE
 REVOKE ALL ON TABLE public.creator_quotas,public.creator_drafts,public.creator_reference_assets,public.creator_revisions,public.creator_revision_references,public.creator_ip_revisions,public.operating_authorization_acceptances,public.creator_submissions,public.creator_submission_decisions,public.creator_ip_requests,public.creator_request_decisions FROM PUBLIC,aifans_anon,aifans_authenticated,aifans_platform;
 REVOKE ALL ON TYPE public.creator_visual_type,public.creator_draft_state,public.creator_submission_state,public.creator_reference_role,public.creator_request_kind,public.creator_request_state,public.creator_decision_value FROM PUBLIC;
 REVOKE ALL ON FUNCTION app.creator_iso(timestamptz),app.creator_cursor_iso(timestamptz),app.creator_current_human_id(),app.creator_draft_json(uuid),app.creator_revision_json(uuid),app.creator_submission_json(uuid),app.creator_request_json(uuid),app.creator_ip_json(uuid),app.creator_validate_identity(text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),app.creator_record_event(public.audit_actor_type,uuid,text,text,uuid,text,text,text,uuid,public.audit_source,text,jsonb),app.creator_snapshot_draft(uuid,uuid,uuid[],public.creator_reference_role[]),app.creator_create_live_ip(uuid,uuid,uuid),app.creator_lock_operator() FROM PUBLIC,aifans_anon,aifans_authenticated,aifans_platform;
-REVOKE ALL ON FUNCTION public.creator_create_draft(uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),public.creator_update_draft(uuid,uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),public.creator_delete_draft(uuid),public.creator_get_draft(uuid),public.creator_list_drafts(timestamptz,uuid,integer),public.creator_register_reference(uuid,uuid,text,integer,integer),public.creator_submit_draft(uuid,text,uuid[],public.creator_reference_role[],uuid),public.creator_get_submission(uuid),public.creator_list_submissions(timestamptz,uuid,integer),public.creator_create_request(uuid,public.creator_request_kind,text,uuid,uuid),public.creator_list_requests(timestamptz,uuid,integer),public.creator_get_ip(uuid),public.creator_list_ips(timestamptz,uuid,integer),public.creator_ip_analytics(uuid),public.platform_set_creator_quota(uuid,integer),public.platform_get_creator_submission(uuid),public.platform_list_creator_submissions(timestamptz,uuid,integer),public.platform_decide_creator_submission(uuid,public.creator_decision_value,text,uuid),public.platform_list_creator_requests(timestamptz,uuid,integer),public.platform_decide_creator_request(uuid,public.creator_decision_value,text,uuid),public.guard_creator_draft_mutation(),public.guard_creator_reference_mutation() FROM PUBLIC,aifans_anon,aifans_authenticated,aifans_platform;
+REVOKE ALL ON FUNCTION public.creator_create_draft(uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),public.creator_update_draft(uuid,uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),public.creator_delete_draft(uuid),public.creator_get_draft(uuid),public.creator_list_drafts(timestamptz,uuid,integer),public.creator_register_reference(uuid,uuid,text,integer,integer),public.creator_submit_draft(uuid,text,uuid[],public.creator_reference_role[],uuid),public.creator_get_submission(uuid),public.creator_list_submissions(timestamptz,uuid,integer),public.creator_create_request(uuid,public.creator_request_kind,text,uuid,uuid),public.creator_list_requests(timestamptz,uuid,integer),public.creator_get_ip(uuid),public.creator_list_ips(timestamptz,uuid,integer),public.creator_ip_analytics(uuid),public.platform_set_creator_quota(uuid,integer),public.platform_get_creator_submission(uuid),public.platform_get_creator_request(uuid),public.platform_list_creator_submissions(timestamptz,uuid,integer),public.platform_decide_creator_submission(uuid,public.creator_decision_value,text,uuid),public.platform_list_creator_requests(timestamptz,uuid,integer),public.platform_decide_creator_request(uuid,public.creator_decision_value,text,uuid),public.guard_creator_draft_mutation(),public.guard_creator_reference_mutation() FROM PUBLIC,aifans_anon,aifans_authenticated,aifans_platform;
 GRANT EXECUTE ON FUNCTION public.creator_create_draft(uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),public.creator_update_draft(uuid,uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,public.creator_visual_type,text),public.creator_delete_draft(uuid),public.creator_get_draft(uuid),public.creator_list_drafts(timestamptz,uuid,integer),public.creator_register_reference(uuid,uuid,text,integer,integer),public.creator_submit_draft(uuid,text,uuid[],public.creator_reference_role[],uuid),public.creator_get_submission(uuid),public.creator_list_submissions(timestamptz,uuid,integer),public.creator_create_request(uuid,public.creator_request_kind,text,uuid,uuid),public.creator_list_requests(timestamptz,uuid,integer),public.creator_get_ip(uuid),public.creator_list_ips(timestamptz,uuid,integer),public.creator_ip_analytics(uuid) TO aifans_authenticated;
-GRANT EXECUTE ON FUNCTION public.platform_set_creator_quota(uuid,integer),public.platform_get_creator_submission(uuid),public.platform_list_creator_submissions(timestamptz,uuid,integer),public.platform_decide_creator_submission(uuid,public.creator_decision_value,text,uuid),public.platform_list_creator_requests(timestamptz,uuid,integer),public.platform_decide_creator_request(uuid,public.creator_decision_value,text,uuid) TO aifans_platform;
+GRANT EXECUTE ON FUNCTION public.platform_set_creator_quota(uuid,integer),public.platform_get_creator_submission(uuid),public.platform_get_creator_request(uuid),public.platform_list_creator_submissions(timestamptz,uuid,integer),public.platform_decide_creator_submission(uuid,public.creator_decision_value,text,uuid),public.platform_list_creator_requests(timestamptz,uuid,integer),public.platform_decide_creator_request(uuid,public.creator_decision_value,text,uuid) TO aifans_platform;
