@@ -5,11 +5,13 @@ import {registerHealthRoutes} from './routes/health.js'
 import {registerAdminRoutes} from './routes/admin.js'
 import {registerMeRoutes} from './routes/me.js'
 import {registerSocialRoutes} from './routes/social.js'
+import {registerChatRoutes} from './routes/chat.js'
 import type {AuthVerifier} from './ports/auth.js'
 import type {AuthorityPort} from './ports/authority.js'
 import type {PlatformSocialPort} from './ports/platform-social.js'
 import type {ProfilePort} from './ports/profiles.js'
 import type {SocialPort} from './ports/social.js'
+import type {ChatPort} from './ports/chat.js'
 
 export type AppDependencies = {
   auth?: AuthVerifier
@@ -17,6 +19,7 @@ export type AppDependencies = {
   platformSocial?: PlatformSocialPort
   profiles?: ProfilePort
   social?: SocialPort
+  chat?: ChatPort
 }
 
 export const createApp = (dependencies: AppDependencies = {}) => {
@@ -27,6 +30,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerAdminRoutes(app, dependencies)
   registerMeRoutes(app, dependencies)
   registerSocialRoutes(app, dependencies)
+  registerChatRoutes(app, dependencies)
   app.notFound((c) => apiError(c, 404, 'NOT_FOUND', 'Route not found'))
   app.onError((_error, c) => apiError(c, 500, 'INTERNAL_ERROR', 'Internal server error'))
 
