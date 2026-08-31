@@ -130,8 +130,23 @@ integration('platform social repository', () => {
     if (outcome === 'failure') await expect(call).rejects.toThrow('nested failure')
     else await expect(call).resolves.toBeUndefined()
 
-    await expect(client.query("SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims")).resolves.toMatchObject({
-      rows: [{role: 'aifans_anon', claims}],
+    await expect(client.query("SELECT current_user AS role, current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims")).resolves.toMatchObject({
+      rows: [{role: 'aifans_anon', role_setting: 'aifans_anon', claims}],
+    })
+  }))
+
+  it('restores ROLE NONE and no effective claims after nested success', async () => tx(async (client) => {
+    await client.query('SET LOCAL ROLE NONE')
+    await client.query('SET LOCAL request.jwt.claims TO DEFAULT')
+    const session = createPlatformSession(
+      {connect: async () => ({query: client.query.bind(client), release() {}})},
+      {transactionMode: 'nested'},
+    )
+
+    await session.withPlatformActor({subject: 'operator'}, (scoped) => scoped.query('SELECT 1'))
+
+    await expect(client.query("SELECT current_user AS role, current_setting('role', true) AS role_setting, NULLIF(current_setting('request.jwt.claims', true), '') AS claims")).resolves.toMatchObject({
+      rows: [{role: 'aifans_owner', role_setting: 'none', claims: null}],
     })
   }))
 

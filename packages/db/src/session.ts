@@ -57,8 +57,8 @@ function createRoleSession(
     try {
       const callerState = ownsTransaction
         ? undefined
-        : (await client.query<{role: string; claims: string | null}>(
-            "SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims",
+        : (await client.query<{role_setting: string; claims: string | null}>(
+            "SELECT current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims",
           )).rows[0]
       if (!ownsTransaction && !callerState) throw new Error('Unable to read nested role session state')
       await client.query(ownsTransaction ? 'BEGIN' : `SAVEPOINT ${savepoint}`)
@@ -69,8 +69,8 @@ function createRoleSession(
         if (ownsTransaction) {
           await client.query('COMMIT')
         } else {
-          await client.query("SELECT set_config('role', $1, true)", [callerState!.role])
-          await client.query("SELECT set_config('request.jwt.claims', $1, true)", [callerState!.claims ?? ''])
+          await client.query("SELECT set_config('role', $1, true)", [callerState!.role_setting])
+          await client.query("SELECT set_config('request.jwt.claims', $1, true)", [callerState!.claims])
           await client.query(`RELEASE SAVEPOINT ${savepoint}`)
         }
         return result

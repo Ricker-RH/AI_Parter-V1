@@ -1,15 +1,18 @@
 import {describe, expect, it} from 'vitest'
 import {createActorSession, createPlatformSession, type QueryClient} from '../src/session.js'
 
-function recordingPool() {
+function recordingPool(callerState: {roleSetting: string; claims: string | null} = {
+  roleSetting: 'aifans_anon',
+  claims: '{"sub":"outer"}',
+}) {
   const calls: Array<{text: string; values?: unknown[]}> = []
   let released = 0
   const client: QueryClient = {
     async query(text, values) {
       calls.push({text, values})
       if (text === 'SELECT 1') return {rows: [{value: 1}], rowCount: 1} as never
-      if (text === "SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims") {
-        return {rows: [{role: 'aifans_anon', claims: '{"sub":"outer"}'}], rowCount: 1} as never
+      if (text === "SELECT current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims") {
+        return {rows: [{role_setting: callerState.roleSetting, claims: callerState.claims}], rowCount: 1} as never
       }
       return {rows: [], rowCount: null} as never
     },
@@ -42,7 +45,7 @@ describe('role sessions', () => {
     await expect(session.withPlatformActor({subject: 'operator-1'}, (client) => client.query('SELECT 1'))).resolves.toMatchObject({rows: [{value: 1}]})
 
     expect(recording.calls.map(({text}) => text)).toEqual([
-      "SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims",
+      "SELECT current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims",
       'SAVEPOINT platform_session',
       'SET LOCAL ROLE aifans_platform',
       "SELECT set_config('request.jwt.claims', $1, true)",
@@ -54,6 +57,16 @@ describe('role sessions', () => {
     expect(recording.calls.at(-3)?.values).toEqual(['aifans_anon'])
     expect(recording.calls.at(-2)?.values).toEqual(['{"sub":"outer"}'])
     expect(recording.released()).toBe(1)
+  })
+
+  it('restores ROLE NONE and preserves an absent claims marker after a successful nested session', async () => {
+    const recording = recordingPool({roleSetting: 'none', claims: null})
+    const session = createPlatformSession(recording.pool, {transactionMode: 'nested'})
+
+    await session.withPlatformActor({subject: 'operator-1'}, (client) => client.query('SELECT 1'))
+
+    expect(recording.calls.at(-3)?.values).toEqual(['none'])
+    expect(recording.calls.at(-2)?.values).toEqual([null])
   })
 
   it('rolls back an owned transaction and releases its connection when the callback fails', async () => {
@@ -71,7 +84,7 @@ describe('role sessions', () => {
 
     await expect(session.withPlatformActor({subject: 'operator-1'}, async () => { throw new Error('stop') })).rejects.toThrow('stop')
     expect(recording.calls.map(({text}) => text)).toEqual([
-      "SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims",
+      "SELECT current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims",
       'SAVEPOINT platform_session',
       'SET LOCAL ROLE aifans_platform',
       "SELECT set_config('request.jwt.claims', $1, true)",
