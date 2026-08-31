@@ -3,6 +3,12 @@ import {createAuthorityRepository, type AuthorityRepository} from './authority.j
 import {createChatTargetRepository, type ChatTargetRepository} from './chat-target.js'
 import {createProfileRepository, type ProfileRepository} from './profiles.js'
 import {
+  createCreatorRepository,
+  createPlatformCreatorRepository,
+  type CreatorRepository,
+  type PlatformCreatorRepository,
+} from './creator.js'
+import {
   createPlatformSocialRepository,
   createSocialRepository,
   type PlatformSocialRepository,
@@ -22,6 +28,8 @@ export type DatabaseRuntimeRepositories = {
   profiles: ProfileRepository
   social: SocialRepository
   chatTargets: ChatTargetRepository
+  creator: CreatorRepository
+  platformCreator: PlatformCreatorRepository
 }
 
 function postgresUrl(value: string): string {
@@ -57,5 +65,7 @@ export function createDatabaseRuntimeRepositories(urls: DatabaseRuntimeUrls): Da
     profiles: createProfileRepository({adminPool: provisioningPool, withActor}),
     social: createSocialRepository({withActor, withPublic}),
     chatTargets: createChatTargetRepository(withActor),
+    creator: createCreatorRepository({withActor}),
+    platformCreator: createPlatformCreatorRepository({withPlatformActor}),
   }
 }

@@ -19,8 +19,11 @@ describe('production API composition', () => {
       profiles: expect.any(Object),
       social: expect.any(Object),
       chatTargets: expect.any(Object),
+      creator: expect.any(Object),
+      platformCreator: expect.any(Object),
     })
     expect(createProductionDependencies(environment).chat).toBeUndefined()
+    expect(createProductionDependencies(environment).assets).toBeUndefined()
   })
 
   it('fails startup before serving when required configuration is absent', () => {
@@ -37,7 +40,7 @@ describe('production API composition', () => {
 
   it('binds database repositories to the explicitly parsed environment instead of process.env', () => {
     const database = {
-      authority: {}, platformSocial: {}, profiles: {}, social: {}, chatTargets: {},
+      authority: {}, platformSocial: {}, profiles: {}, social: {}, chatTargets: {}, creator: {}, platformCreator: {},
     }
     const createDatabaseRuntime = vi.fn(() => database)
     const previous = process.env.DATABASE_USER_URL
@@ -54,5 +57,17 @@ describe('production API composition', () => {
       if (previous === undefined) delete process.env.DATABASE_USER_URL
       else process.env.DATABASE_USER_URL = previous
     }
+  })
+
+  it('configures private R2 assets only from a complete server environment', () => {
+    const r2Environment = {
+      ...environment,
+      R2_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
+      R2_ACCESS_KEY_ID: 'access-key',
+      R2_SECRET_ACCESS_KEY: 'secret-key',
+      R2_PRIVATE_BUCKET: 'aifans-private',
+    }
+    expect(createProductionDependencies(r2Environment).assets).toBeDefined()
+    expect(() => createProductionDependencies({...environment, R2_ACCOUNT_ID: r2Environment.R2_ACCOUNT_ID})).toThrow('Invalid R2 asset environment')
   })
 })

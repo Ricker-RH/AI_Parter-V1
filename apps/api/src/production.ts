@@ -8,6 +8,7 @@ import {createApp, type AppDependencies} from './app.js'
 import {createDifyChatPort} from './adapters/dify-chat.js'
 import {createNeonJwtAuthVerifier} from './adapters/neon-auth-jwt.js'
 import {createPostHogAnalyticsCapture} from './adapters/posthog-analytics.js'
+import {r2AssetPortFromEnv} from './adapters/r2-assets.js'
 import {readApiEnv} from './env.js'
 import {createAnalyticsDeliveryWorker} from './ports/analytics.js'
 
@@ -35,6 +36,7 @@ export function createProductionDependencies(
         capture: createPostHogAnalyticsCapture({projectKey: env.analytics.projectKey, host: env.analytics.host}),
       })
     : undefined
+  const assets = r2AssetPortFromEnv(environment)
   return {
     auth: createNeonJwtAuthVerifier(env.auth),
     authority: database.authority,
@@ -42,6 +44,9 @@ export function createProductionDependencies(
     profiles: database.profiles,
     social: database.social,
     chatTargets: database.chatTargets,
+    creator: database.creator,
+    platformCreator: database.platformCreator,
+    ...(assets ? {assets} : {}),
     ...(env.dify ? {chat: createDifyChatPort(env.dify)} : {}),
     ...(analyticsWorker && env.analytics
       ? {analyticsWorker, analyticsCronSecret: env.analytics.cronSecret}
