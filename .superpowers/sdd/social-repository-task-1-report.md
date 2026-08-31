@@ -17,3 +17,10 @@
 - Ranking: the exact stable score is `round(epoch_hours, 6) + feed_weight + followed*100 + locale_match*10 + likes*2 + published_comments*3`; tests cover exact components, personalized ordering, and microsecond cursor continuation.
 - History: business-event and PostHog outbox inputs are strict discriminated unions with event-specific subject/property/payload combinations.
 - Verification on local PostgreSQL (`127.0.0.1:55432`): focused social repository `14/14`; full DB `44 passed` with five environment-gated skips; contracts `5/5`; contracts and DB typecheck/build all exited `0`; `git diff --check` exited `0`.
+
+### Bounded relationship toggle follow-up
+
+- RED evidence: hidden bookmarks returned RLS `42501` instead of the required not-found semantic, direct deletes could silently return false for missing/hidden targets, and authenticated still held direct `INSERT`/`DELETE` grants on `follows`, `post_likes`, and `bookmarks`. A visible direct unfollow also demonstrated the brittle table-privilege boundary by failing on `DELETE ... RETURNING`.
+- Forward migration: `202609010016_bounded_relationship_toggles.sql` adds `unfollow_profile`, `unlike_post`, `bookmark_post`, and `unbookmark_post` as bounded `SECURITY DEFINER` commands. Each derives the current human actor, validates the same public/current target projection, returns an idempotent boolean, and maps hidden/missing targets to PostgreSQL `P0002`.
+- Direct authenticated `INSERT`/`DELETE` privileges are revoked from all three relationship tables; required owner `SELECT` on likes/bookmarks remains available.
+- Verification: real PostgreSQL focused social repository `15/15`, including hidden/missing `P0002`, visible double-call idempotency, and privilege assertions.
