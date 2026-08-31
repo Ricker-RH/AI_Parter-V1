@@ -29,6 +29,10 @@ export type WithPlatformActor = <T>(
   callback: (client: QueryClient) => Promise<T>,
 ) => Promise<T>
 
+export type RoleSessionOptions = {
+  transactionMode: 'owned' | 'nested'
+}
+
 function requirePostgresUrl(name: 'DATABASE_USER_URL' | 'DATABASE_ADMIN_URL' | 'DATABASE_PLATFORM_URL'): string {
   const value = process.env[name]
   try {
@@ -40,12 +44,15 @@ function requirePostgresUrl(name: 'DATABASE_USER_URL' | 'DATABASE_ADMIN_URL' | '
   throw new Error(`${name} must be a valid postgres URL`)
 }
 
-function createRoleSession(pool: QueryPool, role: 'aifans_authenticated' | 'aifans_platform') {
+function createRoleSession(
+  pool: QueryPool,
+  role: 'aifans_authenticated' | 'aifans_platform',
+  {transactionMode}: RoleSessionOptions,
+) {
   return async <T>(actor: Actor, callback: (client: QueryClient) => Promise<T>): Promise<T> => {
     if (!actor.subject.trim()) throw new Error('Actor subject must not be blank')
     const client = await pool.connect()
-    const transaction = await client.query<{txid: string | null}>('SELECT txid_current_if_assigned() AS txid')
-    const ownsTransaction = transaction.rows[0]?.txid === null
+    const ownsTransaction = transactionMode === 'owned'
     const savepoint = role === 'aifans_platform' ? 'platform_session' : 'actor_session'
     try {
       await client.query(ownsTransaction ? 'BEGIN' : `SAVEPOINT ${savepoint}`)
@@ -53,8 +60,13 @@ function createRoleSession(pool: QueryPool, role: 'aifans_authenticated' | 'aifa
         await client.query(`SET LOCAL ROLE ${role}`)
         await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({sub: actor.subject})])
         const result = await callback(client)
-        await client.query(ownsTransaction ? 'COMMIT' : `RELEASE SAVEPOINT ${savepoint}`)
-        if (!ownsTransaction) await client.query('SET LOCAL ROLE NONE')
+        if (ownsTransaction) {
+          await client.query('COMMIT')
+        } else {
+          await client.query('SET LOCAL ROLE NONE')
+          await client.query("SELECT set_config('request.jwt.claims', '', true)")
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`)
+        }
         return result
       } catch (error) {
         await client.query(ownsTransaction ? 'ROLLBACK' : `ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => undefined)
@@ -67,12 +79,18 @@ function createRoleSession(pool: QueryPool, role: 'aifans_authenticated' | 'aifa
   }
 }
 
-export function createActorSession(pool: QueryPool): {withActor: WithActor} {
-  return {withActor: createRoleSession(pool, 'aifans_authenticated')}
+export function createActorSession(
+  pool: QueryPool,
+  options: RoleSessionOptions = {transactionMode: 'owned'},
+): {withActor: WithActor} {
+  return {withActor: createRoleSession(pool, 'aifans_authenticated', options)}
 }
 
-export function createPlatformSession(pool: QueryPool): {withPlatformActor: WithPlatformActor} {
-  return {withPlatformActor: createRoleSession(pool, 'aifans_platform')}
+export function createPlatformSession(
+  pool: QueryPool,
+  options: RoleSessionOptions = {transactionMode: 'owned'},
+): {withPlatformActor: WithPlatformActor} {
+  return {withPlatformActor: createRoleSession(pool, 'aifans_platform', options)}
 }
 
 let userPool: Pool | undefined

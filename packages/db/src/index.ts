@@ -41,7 +41,7 @@ export {
   notifications,
 } from './schema.js'
 export {withActor, withPlatformActor, createActorSession, createPlatformSession} from './session.js'
-export type {Actor, QueryClient, QueryPool, WithActor, WithPlatformActor} from './session.js'
+export type {Actor, QueryClient, QueryPool, RoleSessionOptions, WithActor, WithPlatformActor} from './session.js'
 export {createSocialRepository, createPlatformSocialRepository} from './social.js'
 export type {CommandContext, SocialRepository, PlatformSocialRepository} from './social.js'
 export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'

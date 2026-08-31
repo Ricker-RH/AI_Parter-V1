@@ -17,7 +17,15 @@ async function humanProfileId(client: Awaited<ReturnType<QueryPool['connect']>>,
   return result.rows[0].id
 }
 
-export function createAuthorityRepository({adminPool, withActor: runWithActor = withActor}: {adminPool: QueryPool; withActor?: WithActor}): AuthorityRepository {
+export function createAuthorityRepository({
+  adminPool,
+  adminTransactionMode = 'owned',
+  withActor: runWithActor = withActor,
+}: {
+  adminPool?: QueryPool
+  adminTransactionMode?: 'owned' | 'nested'
+  withActor?: WithActor
+} = {}): AuthorityRepository {
   return {
     async isCurrentActorOperator(actor: Actor): Promise<boolean> {
       return runWithActor(actor, async (client) => {
@@ -28,9 +36,9 @@ export function createAuthorityRepository({adminPool, withActor: runWithActor = 
     async grantOperator(input: GrantOperatorInput): Promise<void> {
       const subject = nonBlank(input.authSubject, 'Auth subject')
       const grantedBySubject = nonBlank(input.grantedByAuthSubject, 'Granting auth subject')
+      if (!adminPool) throw new Error('Admin database pool is required to grant operator authority')
       const client = await adminPool.connect()
-      const transaction = await client.query<{txid: string | null}>('SELECT txid_current_if_assigned() AS txid')
-      const ownsTransaction = transaction.rows[0]?.txid === null
+      const ownsTransaction = adminTransactionMode === 'owned'
       try {
         await client.query(ownsTransaction ? 'BEGIN' : 'SAVEPOINT operator_grant')
         const profileId = await humanProfileId(client, subject)
@@ -51,7 +59,14 @@ export function createAuthorityRepository({adminPool, withActor: runWithActor = 
 
 let adminPool: Pool | undefined
 function getAdminPool(): Pool {
-  adminPool ??= new Pool({connectionString: process.env.DATABASE_ADMIN_URL})
+  const connectionString = process.env.DATABASE_ADMIN_URL
+  try {
+    const {protocol} = new URL(connectionString ?? '')
+    if (protocol !== 'postgres:' && protocol !== 'postgresql:') throw new Error()
+  } catch {
+    throw new Error('DATABASE_ADMIN_URL must be a valid postgres URL')
+  }
+  adminPool ??= new Pool({connectionString})
   return adminPool
 }
 
@@ -60,5 +75,5 @@ export async function grantOperator(input: GrantOperatorInput): Promise<void> {
 }
 
 export async function isCurrentActorOperator(actor: Actor): Promise<boolean> {
-  return createAuthorityRepository({adminPool: getAdminPool()}).isCurrentActorOperator(actor)
+  return createAuthorityRepository().isCurrentActorOperator(actor)
 }

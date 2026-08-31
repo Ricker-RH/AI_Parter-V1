@@ -70,7 +70,7 @@ describeIntegration('operator authority and append-only history', () => {
       const transactionPool = {connect: async () => ({query: client.query.bind(client), release: () => undefined})}
       const ordinary = await insertHuman(client)
       const operator = await insertHuman(client)
-      const authority = createAuthorityRepository({ adminPool: transactionPool, withActor: createActorSession(transactionPool).withActor })
+      const authority = createAuthorityRepository({ adminPool: transactionPool, adminTransactionMode: 'nested', withActor: createActorSession(transactionPool, {transactionMode: 'nested'}).withActor })
       expect(await authority.isCurrentActorOperator({ subject: ordinary.subject })).toBe(false)
       await authority.grantOperator({
         authSubject: operator.subject,

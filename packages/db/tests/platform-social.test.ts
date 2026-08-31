@@ -52,7 +52,10 @@ async function human(client: PoolClient, operator = false) {
 
 function repositories(client: PoolClient) {
   const queryClient = {query: client.query.bind(client), release() {}}
-  const platformSession = createPlatformSession({connect: async () => queryClient})
+  const platformSession = createPlatformSession(
+    {connect: async () => queryClient},
+    {transactionMode: 'nested'},
+  )
   return {
     platform: createPlatformSocialRepository({withPlatformActor: platformSession.withPlatformActor}),
     public: createSocialRepository({
@@ -88,6 +91,41 @@ integration('platform social repository', () => {
 
     await client.query("UPDATE public.profile_roles SET revoked_at=clock_timestamp() WHERE profile_id=$1 AND role='operator'", [operator.id])
     await expect(platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Revoked'}})).rejects.toMatchObject({code: '42501'})
+  }))
+
+  it('enforces SQL language nullability and the 20-language bound', async () => tx(async (client) => {
+    const operator = await human(client, true)
+    const session = createPlatformSession(
+      {connect: async () => ({query: client.query.bind(client), release() {}})},
+      {transactionMode: 'nested'},
+    )
+    const invoke = (languages: string[] | null) => session.withPlatformActor(operator, (scoped) =>
+      scoped.query('SELECT * FROM public.platform_create_ip($1,$2,$3,$4,$5)', [
+        `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`,
+        'Language bounds',
+        null,
+        languages,
+        randomUUID(),
+      ]),
+    )
+
+    await expect(invoke(null)).rejects.toMatchObject({code: '23514'})
+    await expect(invoke(Array.from({length: 21}, () => 'en'))).rejects.toMatchObject({code: '23514'})
+  }))
+
+  it('locks authorization and publishability rows inside platform commands', async () => tx(async (client) => {
+    const definitions = await client.query<{name: string; definition: string}>(`
+      SELECT p.proname AS name, pg_get_functiondef(p.oid) AS definition
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname IN ('platform_create_ip','platform_publish_post','platform_publish_ip_comment')
+    `)
+    const byName = new Map(definitions.rows.map((row) => [row.name, row.definition]))
+    expect(byName.get('platform_create_ip')).toMatch(/FOR UPDATE OF p, pr/)
+    expect(byName.get('platform_publish_post')).toMatch(/FOR UPDATE OF ip, r/)
+    expect(byName.get('platform_publish_ip_comment')).toMatch(/FOR UPDATE OF target/)
+    expect(byName.get('platform_publish_ip_comment')).toMatch(/FOR UPDATE OF parent/)
   }))
 
   it('publishes attributed text-only posts and IP comments into public projections', async () => tx(async (client) => {
@@ -153,6 +191,35 @@ integration('platform social repository', () => {
     await expect(client.query('SELECT 1 FROM public.profiles WHERE username=$1', [username])).resolves.toMatchObject({rowCount: 0})
   }))
 
+  it('fully rolls back a comment and every history row when outbox insertion fails', async () => tx(async (client) => {
+    const operator = await human(client, true)
+    const {platform} = repositories(client)
+    const ip = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Comment rollback'}})
+    const post = await platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: ip.id, body: 'Comment rollback target'}})
+    const before = await client.query<{table_name: string; row_count: number}>(`
+      SELECT 'comments' table_name,count(*)::int row_count FROM public.comments
+      UNION ALL SELECT 'audit_events',count(*)::int FROM public.audit_events
+      UNION ALL SELECT 'workflow_transitions',count(*)::int FROM public.workflow_transitions
+      UNION ALL SELECT 'business_events',count(*)::int FROM public.business_events
+      UNION ALL SELECT 'analytics_outbox',count(*)::int FROM public.analytics_outbox
+      ORDER BY table_name
+    `)
+    await client.query(`CREATE FUNCTION pg_temp.reject_comment_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced comment outbox failure'; END $$`)
+    await client.query(`CREATE TRIGGER reject_comment_outbox BEFORE INSERT ON public.analytics_outbox FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_comment_outbox()`)
+
+    await expect(platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: post.id, comment: {ipProfileId: ip.id, body: 'Must fully roll back'}})).rejects.toThrow('forced comment outbox failure')
+
+    const after = await client.query<{table_name: string; row_count: number}>(`
+      SELECT 'comments' table_name,count(*)::int row_count FROM public.comments
+      UNION ALL SELECT 'audit_events',count(*)::int FROM public.audit_events
+      UNION ALL SELECT 'workflow_transitions',count(*)::int FROM public.workflow_transitions
+      UNION ALL SELECT 'business_events',count(*)::int FROM public.business_events
+      UNION ALL SELECT 'analytics_outbox',count(*)::int FROM public.analytics_outbox
+      ORDER BY table_name
+    `)
+    expect(after.rows).toEqual(before.rows)
+  }))
+
   it('grants only bounded function execution and forbids platform-role table writes', async () => tx(async (client) => {
     await client.query('SET LOCAL ROLE aifans_platform')
     const role = await client.query<{rolcanlogin:boolean;rolbypassrls:boolean}>("SELECT rolcanlogin,rolbypassrls FROM pg_roles WHERE rolname='aifans_platform'")
@@ -161,4 +228,47 @@ integration('platform social repository', () => {
     expect(privileges.rows[0]).toEqual({profiles_insert: false, posts_insert: false, comments_insert: false, create_ip: true, publish_post: true, publish_comment: true})
     await expect(client.query(`INSERT INTO public.posts(id,author_profile_id,source) VALUES($1,$1,'admin')`, [randomUUID()])).rejects.toMatchObject({code: '42501'})
   }))
+
+  it('runs platform commands through a real non-owner login', async () => {
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 16)
+    const login = `aifans_platform_test_${suffix}`
+    const password = `platform_${suffix}`
+    const profileId = randomUUID()
+    const subject = `platform-login-${suffix}`
+    const platformUrl = new URL(connectionString)
+    platformUrl.username = login
+    platformUrl.password = password
+    const loginPool = new Pool({connectionString: platformUrl.toString(), max: 1})
+
+    try {
+      await pool.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`)
+      await pool.query(`GRANT aifans_platform TO ${login}`)
+      await pool.query(
+        `INSERT INTO public.profiles(id,auth_subject,account_kind,username,display_name)
+         VALUES($1,$2,'human',$3,'Non-owner platform login')`,
+        [profileId, subject, `h_${suffix}`],
+      )
+      const identity = await loginPool.query<{session_user: string; is_superuser: boolean; bypasses_rls: boolean; owns_public: boolean}>(`
+        SELECT session_user,
+          r.rolsuper AS is_superuser,
+          r.rolbypassrls AS bypasses_rls,
+          pg_get_userbyid(n.nspowner) = session_user AS owns_public
+        FROM pg_roles r CROSS JOIN pg_namespace n
+        WHERE r.rolname = session_user AND n.nspname = 'public'
+      `)
+      expect(identity.rows[0]).toEqual({session_user: login, is_superuser: false, bypasses_rls: false, owns_public: false})
+      const platform = createPlatformSocialRepository({
+        withPlatformActor: createPlatformSession(loginPool, {transactionMode: 'owned'}).withPlatformActor,
+      })
+      await expect(platform.createIp({
+        actor: {subject},
+        requestId: randomUUID(),
+        ip: {username: `ip_${suffix}`, displayName: 'Must be rejected'},
+      })).rejects.toMatchObject({code: '42501'})
+    } finally {
+      await loginPool.end().catch(() => undefined)
+      await pool.query('DELETE FROM public.profiles WHERE id=$1', [profileId]).catch(() => undefined)
+      await pool.query(`DROP ROLE IF EXISTS ${login}`).catch(() => undefined)
+    }
+  })
 })
