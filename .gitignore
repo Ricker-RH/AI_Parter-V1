@@ -1,1 +1,12 @@
 .worktrees/
+.superpowers/
+.env*
+!.env.example
+node_modules/
+.next/
+dist/
+coverage/
+playwright-report/
+test-results/
+supabase/.temp/
+supabase/.branches/
