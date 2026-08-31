@@ -57,4 +57,11 @@ describe('same-origin creator proxy', () => {
     const large=request('drafts','POST',{}); large.headers.set('content-length','70000'); expect((await route.POST(large,{params:Promise.resolve({path:['drafts']})})).status).toBe(413)
     expect(upstream).not.toHaveBeenCalled()
   })
+
+  it('accepts the browser origin matching the forwarded Host even when the runtime request URL is internal',async()=>{
+    process.env.AIFANS_API_URL='https://api.internal';const upstream=vi.fn().mockResolvedValue(Response.json({ok:true}));vi.stubGlobal('fetch',upstream)
+    const forwarded=new Request('http://localhost:3000/api/creator/drafts',{method:'POST',headers:{host:'web.example',origin:'http://web.example','content-type':'application/json'},body:'{}'})
+    expect((await route.POST(forwarded,{params:Promise.resolve({path:['drafts']})})).status).toBe(200)
+    expect(upstream).toHaveBeenCalledOnce()
+  })
 })
