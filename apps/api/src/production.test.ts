@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {createProductionApp, createProductionDependencies} from './production.js'
 
 const environment = {
@@ -33,5 +33,26 @@ describe('production API composition', () => {
     const response = await app.request('/v1/me', {headers: {authorization: 'Bearer malformed'}})
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({code: 'AUTH_INVALID'})
+  })
+
+  it('binds database repositories to the explicitly parsed environment instead of process.env', () => {
+    const database = {
+      authority: {}, platformSocial: {}, profiles: {}, social: {}, chatTargets: {},
+    }
+    const createDatabaseRuntime = vi.fn(() => database)
+    const previous = process.env.DATABASE_USER_URL
+    process.env.DATABASE_USER_URL = 'postgresql://wrong:wrong@process.example/wrong'
+    try {
+      const dependencies = createProductionDependencies(environment, {createDatabaseRuntime} as never)
+      expect(createDatabaseRuntime).toHaveBeenCalledWith({
+        userUrl: environment.DATABASE_USER_URL,
+        platformUrl: environment.DATABASE_PLATFORM_URL,
+        provisioningUrl: environment.DATABASE_PROVISIONING_URL,
+      })
+      expect(dependencies).toMatchObject(database)
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_USER_URL
+      else process.env.DATABASE_USER_URL = previous
+    }
   })
 })

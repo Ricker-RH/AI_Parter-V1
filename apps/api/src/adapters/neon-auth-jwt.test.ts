@@ -54,4 +54,27 @@ describe('Neon Auth JWT verifier', () => {
       .sign(privateKey)
     await expect(verifier.verify(new Request('https://api.example', {headers: {authorization: `Bearer ${token}`}}))).resolves.toEqual({status: 'invalid'})
   })
+
+  it('rejects a correctly signed token without an expiration claim', async () => {
+    const {audience, issuer, privateKey, verifier} = await fixture()
+    const token = await new SignJWT({})
+      .setProtectedHeader({alg: 'ES256', kid: 'test-key'})
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject('neon-user-1')
+      .sign(privateKey)
+    await expect(verifier.verify(new Request('https://api.example', {headers: {authorization: `Bearer ${token}`}}))).resolves.toEqual({status: 'invalid'})
+  })
+
+  it('rejects an expired token', async () => {
+    const {audience, issuer, privateKey, verifier} = await fixture()
+    const token = await new SignJWT({})
+      .setProtectedHeader({alg: 'ES256', kid: 'test-key'})
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject('neon-user-1')
+      .setExpirationTime('10 seconds ago')
+      .sign(privateKey)
+    await expect(verifier.verify(new Request('https://api.example', {headers: {authorization: `Bearer ${token}`}}))).resolves.toEqual({status: 'invalid'})
+  })
 })

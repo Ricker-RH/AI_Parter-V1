@@ -8,6 +8,8 @@ const actions = (): AuthActions => ({
   signUpEmail: vi.fn().mockResolvedValue(null),
   signInGoogle: vi.fn().mockResolvedValue(null),
   signOut: vi.fn().mockResolvedValue(null),
+  requestPasswordReset: vi.fn().mockResolvedValue(null),
+  resetPassword: vi.fn().mockResolvedValue(null),
 })
 
 describe('AIFANS auth panel', () => {
@@ -48,5 +50,37 @@ describe('AIFANS auth panel', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Sign in'}))
     expect(await screen.findByText('Authentication could not be completed. Please try again.')).toBeVisible()
     expect(screen.getByRole('button', {name: 'Sign in'})).toBeEnabled()
+  })
+
+  it('requests password recovery with a fixed same-origin callback and never reveals account existence', async () => {
+    const client = actions()
+    vi.mocked(client.requestPasswordReset).mockResolvedValue('provider rejected unknown email')
+    render(<AuthPanel actions={client} configured locale="en" mode="forgot-password" />)
+    fireEvent.change(screen.getByLabelText('Email'), {target: {value: 'unknown@example.com'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Send reset link'}))
+    await waitFor(() => expect(client.requestPasswordReset).toHaveBeenCalledWith(
+      'unknown@example.com',
+      `${window.location.origin}/en/auth/reset-password`,
+    ))
+    expect(screen.getByText('If an account exists for that email, a reset link has been sent.')).toBeVisible()
+    expect(screen.queryByText(/unknown email/i)).not.toBeInTheDocument()
+  })
+
+  it('resets the password with only the callback token and shows a completed state', async () => {
+    const client = actions()
+    render(<AuthPanel actions={client} configured locale="zh-CN" mode="reset-password" resetToken="reset-token" />)
+    fireEvent.change(screen.getByLabelText('新密码'), {target: {value: 'replacement-password'}})
+    fireEvent.click(screen.getByRole('button', {name: '更新密码'}))
+    await waitFor(() => expect(client.resetPassword).toHaveBeenCalledWith('replacement-password', 'reset-token'))
+    expect(screen.getByText('密码已更新，请重新登录。')).toBeVisible()
+    expect(screen.getByRole('link', {name: '返回登录'})).toHaveAttribute('href', '/zh-CN/auth/sign-in')
+  })
+
+  it('does not submit a reset when the callback token is absent', () => {
+    const client = actions()
+    render(<AuthPanel actions={client} configured locale="en" mode="reset-password" />)
+    expect(screen.getByText('This password reset link is invalid or has expired.')).toBeVisible()
+    expect(screen.queryByRole('button', {name: 'Update password'})).not.toBeInTheDocument()
+    expect(client.resetPassword).not.toHaveBeenCalled()
   })
 })

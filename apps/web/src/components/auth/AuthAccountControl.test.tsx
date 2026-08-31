@@ -8,6 +8,7 @@ function actions(session: {user: {email: string}} | null): AuthActions {
     getSession: vi.fn().mockResolvedValue(session),
     signInEmail: vi.fn(), signUpEmail: vi.fn(), signInGoogle: vi.fn(),
     signOut: vi.fn().mockResolvedValue(null),
+    requestPasswordReset: vi.fn(), resetPassword: vi.fn(),
   }
 }
 

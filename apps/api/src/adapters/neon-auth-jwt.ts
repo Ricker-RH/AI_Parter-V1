@@ -39,6 +39,7 @@ export function createNeonJwtAuthVerifier(options: NeonJwtAuthOptions): AuthVeri
           algorithms: ['ES256', 'RS256', 'EdDSA'],
           issuer: options.issuer,
           audience: options.audience,
+          requiredClaims: ['exp'],
           clockTolerance: 5,
         })
         if (typeof payload.sub !== 'string' || !payload.sub.trim()) return {status: 'invalid'}

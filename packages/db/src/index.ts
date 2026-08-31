@@ -1,10 +1,11 @@
 export {readDatabaseEnv} from './env.js'
 export {migrate} from './migrate.js'
-export {getCurrentAccount, ensureHumanProfile} from './profiles.js'
+export {getCurrentAccount, ensureHumanProfile, createProfileRepository} from './profiles.js'
 export type {
   CurrentAccount,
   EnsureHumanProfileInput,
   HumanProfile,
+  ProfileRepository,
 } from './profiles.js'
 export {
   accountKindEnum,
@@ -69,6 +70,8 @@ export type {ChatTargetRepository} from './chat-target.js'
 export {createCreatorRepository, createPlatformCreatorRepository} from './creator.js'
 export {createAnalyticsOutboxRepository, createPooledAnalyticsOutboxRepository, createAnalyticsOutboxRepositoryFromUrl} from './analytics-outbox.js'
 export type {AnalyticsOutboxEvent, AnalyticsOutboxRepository} from './analytics-outbox.js'
+export {createDatabaseRuntimeRepositories} from './runtime.js'
+export type {DatabaseRuntimeRepositories, DatabaseRuntimeUrls} from './runtime.js'
 export type {
   CreatorCommandContext,
   CreatorPageQuery,
