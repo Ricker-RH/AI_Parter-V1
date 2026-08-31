@@ -3,11 +3,11 @@ import {join, relative, resolve} from 'node:path'
 
 const root = resolve(process.argv[2] ?? '.')
 const forbidden = [
-  /^assets\/illustrations\//,
-  /^assets\/icons\/(?!flags\/)/,
-  /^assets\/images\//,
-  /^assets\/(app-icons|splash)\//,
-  /^assets\/(favicon|logo|default-avatar)/,
+  /(?:^|\/)assets\/illustrations\//,
+  /(?:^|\/)assets\/icons\/(?!flags\/)/,
+  /(?:^|\/)assets\/images\//,
+  /(?:^|\/)assets\/(app-icons|splash)\//,
+  /(?:^|\/)assets\/(favicon|logo|default-avatar)/,
 ]
 const hits = []
 
