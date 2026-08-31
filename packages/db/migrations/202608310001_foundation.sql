@@ -32,7 +32,7 @@ CREATE TABLE public.profiles (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT profiles_account_kind_auth_subject_check CHECK (
-    (account_kind = 'human' AND auth_subject IS NOT NULL AND btrim(auth_subject) <> '')
+    (account_kind = 'human' AND auth_subject IS NOT NULL AND auth_subject ~ '[^[:space:]]')
     OR (account_kind = 'ip' AND auth_subject IS NULL)
   ),
   CONSTRAINT profiles_auth_subject_unique UNIQUE (auth_subject),
@@ -69,7 +69,7 @@ DECLARE
   subject jsonb;
 BEGIN
   claims_text := current_setting('request.jwt.claims', true);
-  IF claims_text IS NULL OR btrim(claims_text) = '' THEN
+  IF claims_text IS NULL OR claims_text !~ '[^[:space:]]' THEN
     RETURN NULL;
   END IF;
 
@@ -84,7 +84,7 @@ BEGIN
   END IF;
 
   subject := claims -> 'sub';
-  IF jsonb_typeof(subject) <> 'string' OR btrim(subject #>> '{}') = '' THEN
+  IF jsonb_typeof(subject) <> 'string' OR (subject #>> '{}') !~ '[^[:space:]]' THEN
     RETURN NULL;
   END IF;
 

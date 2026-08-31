@@ -39,6 +39,23 @@ async function rejectedQuery<T>(
   throw new Error('Expected query to fail')
 }
 
+async function queryErrorCode<T>(
+  client: PoolClient,
+  query: () => Promise<T>,
+): Promise<string | undefined> {
+  await client.query('SAVEPOINT expected_failure')
+  try {
+    await query()
+  } catch (error) {
+    await client.query('ROLLBACK TO SAVEPOINT expected_failure')
+    await client.query('RELEASE SAVEPOINT expected_failure')
+    return (error as { code?: string }).code
+  }
+  await client.query('ROLLBACK TO SAVEPOINT expected_failure')
+  await client.query('RELEASE SAVEPOINT expected_failure')
+  return undefined
+}
+
 async function insertHuman(
   client: PoolClient,
   suffix = randomUUID().replaceAll('-', ''),
@@ -259,11 +276,17 @@ describeIntegration('profiles and settings authorization foundation', () => {
         'true',
         '{}',
         '{"sub":"   "}',
+        '{"sub":"\\t"}',
+        '{"sub":"\\n"}',
       ]) {
         await become(owner, 'aifans_authenticated', claims)
-        const result = await owner.query<{ current_account: unknown }>(
-          'SELECT public.current_account()',
+        const result = await owner.query<{
+          current_account: unknown
+          subject: string | null
+        }>(
+          'SELECT app.current_auth_subject() AS subject, public.current_account()',
         )
+        expect(result.rows[0]?.subject ?? null).toBeNull()
         expect(result.rows[0]?.current_account ?? null).toBeNull()
       }
     })
@@ -312,6 +335,19 @@ describeIntegration('profiles and settings authorization foundation', () => {
           ),
         ),
       ).rejects.toThrow()
+      for (const [authSubject, username] of [
+        ['\t', 'human_tab_subject'],
+        ['\n', 'human_newline_subject'],
+      ]) {
+        await expect(
+          queryErrorCode(owner, () =>
+            owner.query(
+              "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, $2, 'human', $3, 'Name')",
+              [randomUUID(), authSubject, username],
+            ),
+          ),
+        ).resolves.toBe('23514')
+      }
       await expect(
         rejectedQuery(owner, () =>
           owner.query(

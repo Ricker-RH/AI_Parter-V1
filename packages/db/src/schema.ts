@@ -40,7 +40,7 @@ export const profiles = pgTable(
     unique('profiles_username_unique').on(table.username),
     check(
       'profiles_account_kind_auth_subject_check',
-      sql`(${table.accountKind} = 'human' AND ${table.authSubject} IS NOT NULL AND btrim(${table.authSubject}) <> '') OR (${table.accountKind} = 'ip' AND ${table.authSubject} IS NULL)`,
+      sql`(${table.accountKind} = 'human' AND ${table.authSubject} IS NOT NULL AND ${table.authSubject} ~ '[^[:space:]]') OR (${table.accountKind} = 'ip' AND ${table.authSubject} IS NULL)`,
     ),
     check(
       'profiles_username_check',
