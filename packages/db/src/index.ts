@@ -22,6 +22,13 @@ export {
   commentSourceEnum,
   commentStateEnum,
   notificationKindEnum,
+  creatorVisualTypeEnum,
+  creatorDraftStateEnum,
+  creatorSubmissionStateEnum,
+  creatorReferenceRoleEnum,
+  creatorRequestKindEnum,
+  creatorRequestStateEnum,
+  creatorDecisionValueEnum,
   profileRoles,
   auditEvents,
   businessEvents,
@@ -39,6 +46,17 @@ export {
   comments,
   commentLikes,
   notifications,
+  creatorQuotas,
+  creatorDrafts,
+  creatorReferenceAssets,
+  creatorRevisions,
+  creatorRevisionReferences,
+  creatorIpRevisions,
+  operatingAuthorizationAcceptances,
+  creatorSubmissions,
+  creatorSubmissionDecisions,
+  creatorIpRequests,
+  creatorRequestDecisions,
 } from './schema.js'
 export {withActor, withPlatformActor, createActorSession, createPlatformSession} from './session.js'
 export type {Actor, QueryClient, QueryPool, RoleSessionOptions, WithActor, WithPlatformActor} from './session.js'
@@ -48,3 +66,13 @@ export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from '
 export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
 export {createChatTargetRepository, isPublicChatIp} from './chat-target.js'
 export type {ChatTargetRepository} from './chat-target.js'
+export {createCreatorRepository, createPlatformCreatorRepository} from './creator.js'
+export type {
+  CreatorCommandContext,
+  CreatorPageQuery,
+  CreatorReferenceRegistration,
+  CreatorRepository,
+  PlatformSubmissionDecision,
+  PlatformRequestDecision,
+  PlatformCreatorRepository,
+} from './creator.js'
