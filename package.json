@@ -7,7 +7,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
-    "lint": "turbo run lint",
+    "lint": "pnpm license:check && turbo run lint",
+    "license:check": "node scripts/check-forbidden-assets.mjs .",
     "typecheck": "turbo run typecheck",
     "test": "vitest run",
     "test:e2e": "playwright test"
