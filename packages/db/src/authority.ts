@@ -37,7 +37,7 @@ export function createAuthorityRepository({adminPool, withActor: runWithActor = 
         const grantedByProfileId = await humanProfileId(client, grantedBySubject)
         const membership = await client.query<{profile_id: string}>(`INSERT INTO public.profile_roles (profile_id, role, granted_by_profile_id) VALUES ($1, 'operator', $2) ON CONFLICT (profile_id, role) DO UPDATE SET revoked_at = NULL WHERE public.profile_roles.revoked_at IS NOT NULL RETURNING profile_id`, [profileId, grantedByProfileId])
         if (membership.rows[0]) {
-          await createHistoryRepository().recordAudit(client, {actorProfileId: grantedByProfileId, actorType: 'operator', action: 'operator_granted', entityType: 'profile', entityId: profileId, sourceApp: 'admin'})
+          await createHistoryRepository().recordAudit(client, {actorProfileId: grantedByProfileId, actorType: 'operator', action: 'operator_granted', entityType: 'profile', entityId: profileId, sourceApp: 'admin', changeSummary: {role: 'operator'}})
         }
         await client.query(ownsTransaction ? 'COMMIT' : 'RELEASE SAVEPOINT operator_grant')
       } catch (error) {
