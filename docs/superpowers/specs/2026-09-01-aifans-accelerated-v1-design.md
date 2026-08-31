@@ -46,6 +46,7 @@ These are extension phases, not launch dependencies. V1 will not build placehold
 ## Delivery approach
 
 - Reuse maintained UI components and managed infrastructure for commodity behavior.
+- The Web visual direction is monochrome and content-first, referencing the mature interaction density of X and Threads: white/near-black surfaces, neutral-gray dividers, restrained radii, and a single-color AIFANS mark. Blue-violet gradients and decorative AI styling are excluded; semantic status colors remain available where clarity requires them.
 - Build AIFANS-specific authorization, audit, creator approval, IP attribution, and operator impersonation controls in-house.
 - Use empty production states rather than mock content. Automated tests may use isolated disposable fixtures.
 - Apply focused review to database permissions, authentication, operator-as-IP actions, secrets, and deployment boundaries. Routine UI and CRUD work use consolidated feature-level verification instead of per-component review cycles.
