@@ -335,7 +335,7 @@ Export `./account.js` and `./settings.js` from `src/index.ts`. Configure the pac
 
 - [ ] **Step 4: Verify contracts**
 
-Run: `pnpm install && pnpm --dir packages/contracts test && pnpm --dir packages/contracts typecheck`  
+Run: `pnpm install && pnpm --dir packages/contracts test && pnpm --dir packages/contracts typecheck`
 Expected: all tests PASS and TypeScript exits 0.
 
 - [ ] **Step 5: Commit**
