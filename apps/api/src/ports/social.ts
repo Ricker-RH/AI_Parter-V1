@@ -10,7 +10,9 @@ import type {
   PostDetail,
   PublicComment,
 } from '@aifans/contracts'
-import type {Actor} from '@aifans/db'
+import type {Actor, CommandContext} from '@aifans/db'
+
+export type MutationContext = CommandContext
 
 export type SocialPort = {
   listFeed(input: {
@@ -26,14 +28,14 @@ export type SocialPort = {
     commentLimit: number
     commentAfter: CommentCursor | null
   }): Promise<PostDetail | null>
-  follow(actor: Actor, targetProfileId: string): Promise<{created: boolean}>
-  unfollow(actor: Actor, targetProfileId: string): Promise<{deleted: boolean}>
-  likePost(actor: Actor, postId: string): Promise<{created: boolean}>
-  unlikePost(actor: Actor, postId: string): Promise<{deleted: boolean}>
-  bookmarkPost(actor: Actor, postId: string): Promise<{created: boolean}>
-  unbookmarkPost(actor: Actor, postId: string): Promise<{deleted: boolean}>
+  follow(actor: Actor, targetProfileId: string, context: MutationContext): Promise<{created: boolean}>
+  unfollow(actor: Actor, targetProfileId: string, context: MutationContext): Promise<{deleted: boolean}>
+  likePost(actor: Actor, postId: string, context: MutationContext): Promise<{created: boolean}>
+  unlikePost(actor: Actor, postId: string, context: MutationContext): Promise<{deleted: boolean}>
+  bookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{created: boolean}>
+  unbookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{deleted: boolean}>
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>
-  createHumanComment(actor: Actor, postId: string, input: CreateHumanComment): Promise<PublicComment>
+  createHumanComment(actor: Actor, postId: string, input: CreateHumanComment, context: MutationContext): Promise<PublicComment>
   listNotifications(actor: Actor, page: PageQuery): Promise<NotificationPage>
-  markNotificationRead(actor: Actor, notificationId: string): Promise<{readAt: string} | null>
+  markNotificationRead(actor: Actor, notificationId: string, context: MutationContext): Promise<{readAt: string} | null>
 }

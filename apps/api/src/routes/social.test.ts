@@ -134,6 +134,11 @@ describe('social read routes', () => {
       400,
       'INVALID_REQUEST',
     )
+    await expectError(
+      await createApp({social}).request('/v1/feed?kind=for_you&kind=following'),
+      400,
+      'INVALID_REQUEST',
+    )
   })
 
   it('rejects malformed and kind-mismatched feed cursors', async () => {
@@ -206,11 +211,37 @@ describe('social read routes', () => {
     }])
     await expectError(await app.request(`/v1/posts/${randomUUID()}`), 404, 'POST_NOT_FOUND')
     await expectError(await app.request('/v1/posts/not-a-uuid'), 400, 'INVALID_REQUEST')
+    await expectError(
+      await app.request(`/v1/posts/${postId}?commentLimit=2&commentLimit=3`),
+      400,
+      'INVALID_REQUEST',
+    )
   })
 })
 
 describe('authenticated social routes', () => {
   const dependencies = (social: SocialPort) => ({auth: validAuth, profiles: profilePort(), social})
+
+  it.each([
+    ['GET', '/v1/feed?kind=for_you&kind=following'],
+    ['GET', `/v1/posts/${postId}?commentLimit=1&commentLimit=2`],
+    ['PUT', `/v1/profiles/${profileId}/follow?actor=one&actor=two`],
+    ['DELETE', `/v1/profiles/${profileId}/follow?actor=one&actor=two`],
+    ['PUT', `/v1/posts/${postId}/like?actor=one&actor=two`],
+    ['DELETE', `/v1/posts/${postId}/like?actor=one&actor=two`],
+    ['PUT', `/v1/posts/${postId}/bookmark?actor=one&actor=two`],
+    ['DELETE', `/v1/posts/${postId}/bookmark?actor=one&actor=two`],
+    ['GET', '/v1/bookmarks?limit=1&limit=2'],
+    ['GET', '/v1/notifications?limit=1&limit=2'],
+    ['POST', `/v1/posts/${postId}/comments?source=one&source=two`],
+    ['POST', `/v1/notifications/${notificationId}/read?source=one&source=two`],
+  ] as const)('rejects duplicate query keys on %s %s', async (method, path) => {
+    await expectError(
+      await createApp(dependencies(socialPort())).request(path, {method}),
+      400,
+      'INVALID_REQUEST',
+    )
+  })
 
   it.each([
     ['PUT', `/v1/profiles/${profileId}/follow`, 'follow', {created: true}],
@@ -222,8 +253,8 @@ describe('authenticated social routes', () => {
   ] as const)('%s %s derives the actor and returns the idempotent result', async (method, path, operation, result) => {
     const calls: unknown[] = []
     const social = socialPort({
-      [operation]: async (actor: unknown, targetId: string) => {
-        calls.push([actor, targetId])
+      [operation]: async (actor: unknown, targetId: string, context: unknown) => {
+        calls.push([actor, targetId, context])
         return result
       },
     })
@@ -232,7 +263,11 @@ describe('authenticated social routes', () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual(result)
-    expect(calls).toEqual([[{subject: identity.subject}, path.includes('/profiles/') ? profileId : postId]])
+    expect(calls).toEqual([[
+      {subject: identity.subject},
+      path.includes('/profiles/') ? profileId : postId,
+      {requestId: response.headers.get('x-request-id')},
+    ]])
   })
 
   it('rejects forged fields on bodyless mutations before calling the port', async () => {
@@ -251,6 +286,17 @@ describe('authenticated social routes', () => {
 
     await expectError(response, 400, 'INVALID_REQUEST')
     expect(called).toBe(false)
+
+    await expectError(
+      await createApp(dependencies(social)).request(`/v1/posts/${postId}/like?actor=forged`, {method: 'PUT'}),
+      400,
+      'INVALID_REQUEST',
+    )
+    await expectError(
+      await createApp(dependencies(social)).request(`/v1/posts/${postId}/like?source=one&source=two`, {method: 'PUT'}),
+      400,
+      'INVALID_REQUEST',
+    )
   })
 
   it('lists only the verified actor bookmarks and notifications', async () => {
@@ -273,13 +319,37 @@ describe('authenticated social routes', () => {
       ['bookmarks', {subject: identity.subject}, {limit: 2}],
       ['notifications', {subject: identity.subject}, {limit: 3}],
     ])
+    await expectError(await app.request('/v1/bookmarks?limit=2&limit=3'), 400, 'INVALID_REQUEST')
+    await expectError(await app.request('/v1/notifications?limit=2&limit=3'), 400, 'INVALID_REQUEST')
+  })
+
+  it.each([
+    'not-a-cursor',
+    Buffer.from(JSON.stringify({v: 1, kind: 'comments', createdAt: publishedAt, id: notificationId})).toString('base64url'),
+    Buffer.from(JSON.stringify({v: 1, kind: 'notifications', createdAt: 'not-a-date', id: notificationId})).toString('base64url'),
+    Buffer.from(JSON.stringify({v: 1, kind: 'notifications', createdAt: publishedAt, id: notificationId, actor: 'forged'})).toString('base64url'),
+  ])('rejects an invalid notification cursor before calling the port', async (cursor) => {
+    let called = false
+    const social = socialPort({
+      listNotifications: async () => {
+        called = true
+        return {items: [], nextCursor: null}
+      },
+    })
+
+    await expectError(
+      await createApp(dependencies(social)).request(`/v1/notifications?cursor=${cursor}`),
+      400,
+      'INVALID_CURSOR',
+    )
+    expect(called).toBe(false)
   })
 
   it('creates only a strict human comment body as the verified actor', async () => {
     const calls: unknown[] = []
     const social = socialPort({
-      createHumanComment: async (actor, targetPostId, input) => {
-        calls.push([actor, targetPostId, input])
+      createHumanComment: async (actor, targetPostId, input, context) => {
+        calls.push([actor, targetPostId, input, context])
         return comment
       },
     })
@@ -292,7 +362,12 @@ describe('authenticated social routes', () => {
 
     expect(response.status).toBe(201)
     expect(PublicCommentSchema.parse(await response.json())).toEqual(comment)
-    expect(calls).toEqual([[{subject: identity.subject}, postId, {body: 'A comment'}]])
+    expect(calls).toEqual([[
+      {subject: identity.subject},
+      postId,
+      {body: 'A comment'},
+      {requestId: response.headers.get('x-request-id')},
+    ]])
     await expectError(
       await app.request(`/v1/posts/${postId}/comments`, {
         method: 'POST',
@@ -302,22 +377,72 @@ describe('authenticated social routes', () => {
       422,
       'COMMENT_INVALID',
     )
+    await expectError(
+      await app.request(`/v1/posts/${postId}/comments?source=admin`, {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({body: 'valid'}),
+      }),
+      400,
+      'INVALID_REQUEST',
+    )
+    await expectError(
+      await app.request(`/v1/posts/${postId}/comments?actor=a&actor=b`, {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({body: 'valid'}),
+      }),
+      400,
+      'INVALID_REQUEST',
+    )
   })
 
   it('marks an owned notification read and hides absent or non-owned records', async () => {
+    const calls: unknown[] = []
     const social = socialPort({
-      markNotificationRead: async (_actor, targetId) => targetId === notificationId ? {readAt} : null,
+      markNotificationRead: async (actor, targetId, context) => {
+        calls.push([actor, targetId, context])
+        return targetId === notificationId ? {readAt} : null
+      },
     })
     const app = createApp(dependencies(social))
 
     const response = await app.request(`/v1/notifications/${notificationId}/read`, {method: 'POST'})
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({readAt})
+    expect(calls[0]).toEqual([
+      {subject: identity.subject},
+      notificationId,
+      {requestId: response.headers.get('x-request-id')},
+    ])
     await expectError(
       await app.request(`/v1/notifications/${randomUUID()}/read`, {method: 'POST'}),
       404,
       'NOTIFICATION_NOT_FOUND',
     )
+    await expectError(
+      await app.request(`/v1/notifications/${notificationId}/read?source=admin`, {method: 'POST'}),
+      400,
+      'INVALID_REQUEST',
+    )
+    await expectError(
+      await app.request(`/v1/notifications/${notificationId}/read?actor=a&actor=b`, {method: 'POST'}),
+      400,
+      'INVALID_REQUEST',
+    )
+  })
+
+  it('returns the port idempotency result to concurrent notification read requests', async () => {
+    const social = socialPort({markNotificationRead: async () => ({readAt})})
+    const app = createApp(dependencies(social))
+
+    const responses = await Promise.all([
+      app.request(`/v1/notifications/${notificationId}/read`, {method: 'POST'}),
+      app.request(`/v1/notifications/${notificationId}/read`, {method: 'POST'}),
+    ])
+
+    expect(responses.map(({status}) => status)).toEqual([200, 200])
+    await expect(Promise.all(responses.map((response) => response.json()))).resolves.toEqual([{readAt}, {readAt}])
   })
 
   it('requires auth and profiles for mutations', async () => {
@@ -353,5 +478,52 @@ describe('authenticated social routes', () => {
     const text = await response.clone().text()
     await expectError(response, 500, 'INTERNAL_ERROR')
     expect(text).not.toContain('database password leaked')
+  })
+
+  it.each([
+    ['follow', `/v1/profiles/${profileId}/follow`, 'PUT', 'PROFILE_NOT_FOUND'],
+    ['likePost', `/v1/posts/${postId}/like`, 'PUT', 'POST_NOT_FOUND'],
+    ['createHumanComment', `/v1/posts/${postId}/comments`, 'POST', 'POST_NOT_FOUND'],
+  ] as const)('maps PostgreSQL P0002 from %s to its endpoint-specific not-found response', async (operation, path, method, code) => {
+    const social = socialPort({
+      [operation]: async () => { throw {code: 'P0002', message: 'sensitive SQL detail'} },
+    })
+    const response = await createApp(dependencies(social)).request(path, {
+      method,
+      ...(operation === 'createHumanComment'
+        ? {headers: {'content-type': 'application/json'}, body: JSON.stringify({body: 'valid'})}
+        : {}),
+    })
+    const text = await response.clone().text()
+
+    await expectError(response, 404, code)
+    expect(text).not.toContain('sensitive SQL detail')
+  })
+
+  it('maps PostgreSQL authorization errors without requiring Error instances', async () => {
+    const social = socialPort({likePost: async () => { throw {code: '42501', message: 'policy details'} }})
+    const response = await createApp(dependencies(social)).request(`/v1/posts/${postId}/like`, {method: 'PUT'})
+    const text = await response.clone().text()
+
+    await expectError(response, 403, 'FORBIDDEN')
+    expect(text).not.toContain('policy details')
+  })
+
+  it.each([
+    {code: '23503', message: 'violates foreign key constraint comments_parent_comment_id_fkey'},
+    {code: '23514', message: 'violates comment constraint'},
+    {code: 'P0001', message: 'comments permit one reply level'},
+    {code: 'P0001', message: 'comment parent must belong to the same post'},
+  ])('maps PostgreSQL comment constraint error $code to COMMENT_INVALID', async (databaseError) => {
+    const social = socialPort({createHumanComment: async () => { throw databaseError }})
+    const response = await createApp(dependencies(social)).request(`/v1/posts/${postId}/comments`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({body: 'valid'}),
+    })
+    const text = await response.clone().text()
+
+    await expectError(response, 422, 'COMMENT_INVALID')
+    expect(text).not.toContain(databaseError.message)
   })
 })

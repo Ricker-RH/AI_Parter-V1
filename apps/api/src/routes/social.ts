@@ -8,6 +8,7 @@ import {
   PostDetailSchema,
   PublicCommentSchema,
   decodeCursor,
+  decodeNotificationCursor,
 } from '@aifans/contracts'
 import type {Actor} from '@aifans/db'
 import type {Context, Hono} from 'hono'
@@ -16,7 +17,7 @@ import {apiError} from '../errors.js'
 import type {ApiVariables} from '../middleware/request-id.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {ProfilePort} from '../ports/profiles.js'
-import type {SocialPort} from '../ports/social.js'
+import type {MutationContext, SocialPort} from '../ports/social.js'
 
 type SocialDependencies = {
   auth?: AuthVerifier
@@ -29,6 +30,7 @@ type ActorResolution = {ok: true; actor: Actor | null} | {ok: false; response: R
 
 const IdParameterSchema = z.uuid()
 const EmptyBodySchema = z.strictObject({})
+const EmptyQuerySchema = z.strictObject({})
 const PostQuerySchema = z.strictObject({
   commentLimit: z.coerce.number().int().min(1).max(50).default(25),
   commentCursor: z.string().min(1).optional(),
@@ -40,8 +42,16 @@ const NotificationReadSchema = z.strictObject({readAt: z.iso.datetime()})
 const invalidRequest = (c: ApiContext) => apiError(c, 400, 'INVALID_REQUEST', 'Request is invalid')
 const invalidCursor = (c: ApiContext) => apiError(c, 400, 'INVALID_CURSOR', 'Cursor is invalid')
 
-function safeQuery(c: ApiContext): Record<string, string> {
-  return c.req.query()
+function safeQuery(c: ApiContext): Record<string, string> | null {
+  const entries = new URL(c.req.url).searchParams.entries()
+  const query: Array<[string, string]> = []
+  const keys = new Set<string>()
+  for (const entry of entries) {
+    if (keys.has(entry[0])) return null
+    keys.add(entry[0])
+    query.push(entry)
+  }
+  return Object.fromEntries(query)
 }
 
 function parseId(value: string | undefined): string | null {
@@ -109,24 +119,50 @@ async function resolveActor(
   return {ok: true, actor: {subject: result.identity.subject}}
 }
 
-function knownSocialError(c: ApiContext, error: unknown): Response {
-  if (!(error instanceof Error)) throw error
-  switch (error.message) {
+type NotFoundCode = 'POST_NOT_FOUND' | 'PROFILE_NOT_FOUND' | 'NOTIFICATION_NOT_FOUND'
+type SocialErrorContext = {notFound?: NotFoundCode; comment?: boolean}
+
+function errorProperty(error: unknown, property: 'code' | 'message'): string | undefined {
+  if (typeof error !== 'object' || error === null || !(property in error)) return undefined
+  const value = error[property as keyof typeof error]
+  return typeof value === 'string' ? value : undefined
+}
+
+function notFound(c: ApiContext, code: NotFoundCode): Response {
+  switch (code) {
+    case 'POST_NOT_FOUND':
+      return apiError(c, 404, code, 'Post not found')
+    case 'PROFILE_NOT_FOUND':
+      return apiError(c, 404, code, 'Profile not found')
+    case 'NOTIFICATION_NOT_FOUND':
+      return apiError(c, 404, code, 'Notification not found')
+  }
+}
+
+function knownSocialError(c: ApiContext, error: unknown, context: SocialErrorContext = {}): Response {
+  const code = errorProperty(error, 'code')
+  const message = errorProperty(error, 'message')
+  switch (message) {
     case 'INVALID_CURSOR':
       return invalidCursor(c)
     case 'POST_NOT_FOUND':
-      return apiError(c, 404, 'POST_NOT_FOUND', 'Post not found')
+      return notFound(c, 'POST_NOT_FOUND')
     case 'PROFILE_NOT_FOUND':
-      return apiError(c, 404, 'PROFILE_NOT_FOUND', 'Profile not found')
+      return notFound(c, 'PROFILE_NOT_FOUND')
     case 'NOTIFICATION_NOT_FOUND':
-      return apiError(c, 404, 'NOTIFICATION_NOT_FOUND', 'Notification not found')
+      return notFound(c, 'NOTIFICATION_NOT_FOUND')
     case 'COMMENT_INVALID':
       return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
     case 'FORBIDDEN':
       return apiError(c, 403, 'FORBIDDEN', 'Action is not allowed')
-    default:
-      throw error
   }
+  if (code === 'INVALID_CURSOR') return invalidCursor(c)
+  if (code === 'P0002' && context.notFound) return notFound(c, context.notFound)
+  if (code === '42501') return apiError(c, 403, 'FORBIDDEN', 'Action is not allowed')
+  if (context.comment && (code === '23503' || code === '23514' || code === 'P0001')) {
+    return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
+  }
+  throw error
 }
 
 function socialUnavailable(c: ApiContext, social?: SocialPort): Response | null {
@@ -137,7 +173,9 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
   app.get('/v1/feed', async (c) => {
     const unavailable = socialUnavailable(c, dependencies.social)
     if (unavailable) return unavailable
-    const query = FeedQuerySchema.safeParse(safeQuery(c))
+    const rawQuery = safeQuery(c)
+    if (rawQuery === null) return invalidRequest(c)
+    const query = FeedQuerySchema.safeParse(rawQuery)
     if (!query.success) return invalidRequest(c)
 
     let after = null
@@ -170,7 +208,9 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     if (unavailable) return unavailable
     const postId = parseId(c.req.param('postId'))
     if (!postId) return invalidRequest(c)
-    const query = PostQuerySchema.safeParse(safeQuery(c))
+    const rawQuery = safeQuery(c)
+    if (rawQuery === null) return invalidRequest(c)
+    const query = PostQuerySchema.safeParse(rawQuery)
     if (!query.success) return invalidRequest(c)
 
     let commentAfter = null
@@ -202,30 +242,33 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     method: 'put' | 'delete',
     path: string,
     parameter: string,
-    operation: (social: SocialPort, actor: Actor, id: string) => Promise<unknown>,
+    operation: (social: SocialPort, actor: Actor, id: string, context: MutationContext) => Promise<unknown>,
     responseSchema: typeof CreatedSchema | typeof DeletedSchema,
+    missing: 'PROFILE_NOT_FOUND' | 'POST_NOT_FOUND',
   ) => {
     app[method](path, async (c) => {
       const unavailable = socialUnavailable(c, dependencies.social)
       if (unavailable) return unavailable
+      const query = safeQuery(c)
+      if (query === null || !EmptyQuerySchema.safeParse(query).success) return invalidRequest(c)
       const id = parseId(c.req.param(parameter))
       if (!id || !(await parseEmptyBody(c))) return invalidRequest(c)
       const actor = await resolveActor(c, dependencies, true)
       if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
       try {
-        return c.json(responseSchema.parse(await operation(dependencies.social!, actor.actor, id)), 200)
+        return c.json(responseSchema.parse(await operation(dependencies.social!, actor.actor, id, {requestId: c.get('requestId')})), 200)
       } catch (error) {
-        return knownSocialError(c, error)
+        return knownSocialError(c, error, {notFound: missing})
       }
     })
   }
 
-  relationship('put', '/v1/profiles/:profileId/follow', 'profileId', (social, actor, id) => social.follow(actor, id), CreatedSchema)
-  relationship('delete', '/v1/profiles/:profileId/follow', 'profileId', (social, actor, id) => social.unfollow(actor, id), DeletedSchema)
-  relationship('put', '/v1/posts/:postId/like', 'postId', (social, actor, id) => social.likePost(actor, id), CreatedSchema)
-  relationship('delete', '/v1/posts/:postId/like', 'postId', (social, actor, id) => social.unlikePost(actor, id), DeletedSchema)
-  relationship('put', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id) => social.bookmarkPost(actor, id), CreatedSchema)
-  relationship('delete', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id) => social.unbookmarkPost(actor, id), DeletedSchema)
+  relationship('put', '/v1/profiles/:profileId/follow', 'profileId', (social, actor, id, context) => social.follow(actor, id, context), CreatedSchema, 'PROFILE_NOT_FOUND')
+  relationship('delete', '/v1/profiles/:profileId/follow', 'profileId', (social, actor, id, context) => social.unfollow(actor, id, context), DeletedSchema, 'PROFILE_NOT_FOUND')
+  relationship('put', '/v1/posts/:postId/like', 'postId', (social, actor, id, context) => social.likePost(actor, id, context), CreatedSchema, 'POST_NOT_FOUND')
+  relationship('delete', '/v1/posts/:postId/like', 'postId', (social, actor, id, context) => social.unlikePost(actor, id, context), DeletedSchema, 'POST_NOT_FOUND')
+  relationship('put', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id, context) => social.bookmarkPost(actor, id, context), CreatedSchema, 'POST_NOT_FOUND')
+  relationship('delete', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id, context) => social.unbookmarkPost(actor, id, context), DeletedSchema, 'POST_NOT_FOUND')
 
   const actorPage = (
     path: '/v1/bookmarks' | '/v1/notifications',
@@ -235,8 +278,17 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     app.get(path, async (c) => {
       const unavailable = socialUnavailable(c, dependencies.social)
       if (unavailable) return unavailable
-      const query = PageQuerySchema.safeParse(safeQuery(c))
+      const rawQuery = safeQuery(c)
+      if (rawQuery === null) return invalidRequest(c)
+      const query = PageQuerySchema.safeParse(rawQuery)
       if (!query.success) return invalidRequest(c)
+      if (path === '/v1/notifications' && query.data.cursor) {
+        try {
+          decodeNotificationCursor(query.data.cursor)
+        } catch {
+          return invalidCursor(c)
+        }
+      }
       const actor = await resolveActor(c, dependencies, true)
       if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
       try {
@@ -253,6 +305,8 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
   app.post('/v1/posts/:postId/comments', async (c) => {
     const unavailable = socialUnavailable(c, dependencies.social)
     if (unavailable) return unavailable
+    const query = safeQuery(c)
+    if (query === null || !EmptyQuerySchema.safeParse(query).success) return invalidRequest(c)
     const postId = parseId(c.req.param('postId'))
     if (!postId) return invalidRequest(c)
     let raw: unknown
@@ -266,25 +320,27 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     const actor = await resolveActor(c, dependencies, true)
     if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
     try {
-      return c.json(PublicCommentSchema.parse(await dependencies.social!.createHumanComment(actor.actor, postId, input.data)), 201)
+      return c.json(PublicCommentSchema.parse(await dependencies.social!.createHumanComment(actor.actor, postId, input.data, {requestId: c.get('requestId')})), 201)
     } catch (error) {
-      return knownSocialError(c, error)
+      return knownSocialError(c, error, {notFound: 'POST_NOT_FOUND', comment: true})
     }
   })
 
   app.post('/v1/notifications/:notificationId/read', async (c) => {
     const unavailable = socialUnavailable(c, dependencies.social)
     if (unavailable) return unavailable
+    const query = safeQuery(c)
+    if (query === null || !EmptyQuerySchema.safeParse(query).success) return invalidRequest(c)
     const notificationId = parseId(c.req.param('notificationId'))
     if (!notificationId || !(await parseEmptyBody(c))) return invalidRequest(c)
     const actor = await resolveActor(c, dependencies, true)
     if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
     try {
-      const result = await dependencies.social!.markNotificationRead(actor.actor, notificationId)
+      const result = await dependencies.social!.markNotificationRead(actor.actor, notificationId, {requestId: c.get('requestId')})
       if (result === null) return apiError(c, 404, 'NOTIFICATION_NOT_FOUND', 'Notification not found')
       return c.json(NotificationReadSchema.parse(result), 200)
     } catch (error) {
-      return knownSocialError(c, error)
+      return knownSocialError(c, error, {notFound: 'NOTIFICATION_NOT_FOUND'})
     }
   })
 }
