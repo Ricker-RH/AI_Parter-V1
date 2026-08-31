@@ -1,8 +1,14 @@
+import {createProductionApp} from './production.js'
+
+export default createProductionApp()
 export {createApp} from './app.js'
 export type {AppDependencies} from './app.js'
 export {apiError} from './errors.js'
 export {requestIdMiddleware} from './middleware/request-id.js'
 export {createDifyChatPort, difyChatPortFromEnv} from './adapters/dify-chat.js'
+export {createNeonJwtAuthVerifier} from './adapters/neon-auth-jwt.js'
+export {createProductionApp, createProductionDependencies} from './production.js'
+export {readApiEnv} from './env.js'
 export {createPostHogAnalyticsCapture, postHogAnalyticsCaptureFromEnv} from './adapters/posthog-analytics.js'
 export {AnalyticsDeliveryError, createAnalyticsDeliveryWorker} from './ports/analytics.js'
 export type {AnalyticsCapturePort, AnalyticsOutboxPort, AnalyticsDeliverySummary, AnalyticsDeliveryWorker} from './ports/analytics.js'

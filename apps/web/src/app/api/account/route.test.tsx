@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+vi.mock('../../../lib/auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
 import {GET} from './route.js'
 
 const account = {id: '11111111-1111-4111-8111-111111111111', kind: 'human', username: 'aifans_user', displayName: 'AIFANS User', preferredLocale: 'en', creatorModeEnabled: false}
@@ -9,14 +10,14 @@ afterEach(() => {
 })
 
 describe('analytics account endpoint', () => {
-  it('forwards the request cookie but exposes only the parsed AIFANS profile UUID', async () => {
+  it('uses bearer auth but exposes only the parsed AIFANS profile UUID', async () => {
     process.env.AIFANS_API_URL = 'https://server.example'
     const upstream = vi.fn().mockResolvedValue(Response.json(account))
     vi.stubGlobal('fetch', upstream)
     const response = await GET(new Request('https://web.example/api/account', {headers: {cookie: 'session=real'}}))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({profileId: account.id})
-    expect(upstream).toHaveBeenCalledWith('https://server.example/v1/me', expect.objectContaining({headers: {cookie: 'session=real'}, signal: expect.any(AbortSignal)}))
+    expect(upstream).toHaveBeenCalledWith('https://server.example/v1/me', expect.objectContaining({headers: {authorization: 'Bearer signed-jwt'}, signal: expect.any(AbortSignal)}))
   })
 
   it('returns an empty signed-out response only for authoritative upstream authentication failures', async () => {

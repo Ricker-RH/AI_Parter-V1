@@ -40,15 +40,15 @@ export type ProfileRepository = {
   getCurrentAccount(actor: Actor | null): Promise<CurrentAccount | null>
 }
 
-function requireAdminUrl(): string {
-  const value = process.env.DATABASE_ADMIN_URL
+function requireProvisioningUrl(): string {
+  const value = process.env.DATABASE_PROVISIONING_URL
   try {
     const {protocol} = new URL(value ?? '')
     if (protocol === 'postgres:' || protocol === 'postgresql:') return value!
   } catch {
     // Fall through to the single redacted error below.
   }
-  throw new Error('DATABASE_ADMIN_URL must be a valid postgres URL')
+  throw new Error('DATABASE_PROVISIONING_URL must be a valid postgres URL')
 }
 
 function candidateUsername(): string {
@@ -170,15 +170,15 @@ export function createProfileRepository({
   }
 }
 
-let adminPool: Pool | undefined
+let provisioningPool: Pool | undefined
 
-function getAdminPool(): Pool {
-  adminPool ??= new Pool({connectionString: requireAdminUrl()})
-  return adminPool
+function getProvisioningPool(): Pool {
+  provisioningPool ??= new Pool({connectionString: requireProvisioningUrl()})
+  return provisioningPool
 }
 
 function getRepository(): ProfileRepository {
-  return createProfileRepository({adminPool: getAdminPool(), withActor})
+  return createProfileRepository({adminPool: getProvisioningPool(), withActor})
 }
 
 export async function ensureHumanProfile(input: EnsureHumanProfileInput): Promise<HumanProfile> {

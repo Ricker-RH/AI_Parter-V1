@@ -1,13 +1,9 @@
 import {ChatMessageInputSchema, ChatMessageResponseSchema} from '@aifans/contracts'
+import {fetchAifansApi} from '../../../../../lib/server-api'
 
 type RouteContext = {params: Promise<{ipProfileId: string}>}
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-function apiBaseUrl(): string | null {
-  const configured = process.env.AIFANS_API_URL
-  return configured?.trim() ? configured.trim().replace(/\/+$/, '') : null
-}
 
 function responseHeaders(upstream: Response): Record<string, string> {
   const headers: Record<string, string> = {'content-type': upstream.headers.get('content-type') ?? 'application/json'}
@@ -29,24 +25,13 @@ export async function POST(request: Request, context: RouteContext) {
   const body = ChatMessageInputSchema.safeParse(json)
   if (!body.success) return Response.json({code: 'INVALID_REQUEST'}, {status: 422})
 
-  const baseUrl = apiBaseUrl()
-  if (!baseUrl) return Response.json({code: 'CHAT_UNAVAILABLE'}, {status: 503})
-
-  const headers: Record<string, string> = {'content-type': 'application/json'}
-  const cookie = request.headers.get('cookie')
-  const requestId = request.headers.get('x-request-id')
-  if (cookie) headers.cookie = cookie
-  if (requestId) headers['x-request-id'] = requestId
-
   let upstream: Response
   try {
-    upstream = await fetch(`${baseUrl}/v1/chat/${ipProfileId}/messages`, {
+    upstream = await fetchAifansApi(`/v1/chat/${ipProfileId}/messages`, {requestInit: {
       method: 'POST',
-      cache: 'no-store',
-      credentials: 'include',
-      headers,
+      headers: request.headers,
       body: JSON.stringify(body.data),
-    })
+    }})
   } catch {
     return Response.json({code: 'CHAT_UNAVAILABLE'}, {status: 503})
   }

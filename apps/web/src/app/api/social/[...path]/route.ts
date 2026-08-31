@@ -1,4 +1,4 @@
-import {socialApiBaseUrl} from '../../../../lib/social-api'
+import {fetchAifansApi} from '../../../../lib/server-api'
 
 type RouteContext = {params: Promise<{path: string[]}>}
 
@@ -14,17 +14,8 @@ function allowedPath(parts: string[]): string | null {
 async function proxy(request: Request, context: RouteContext, method: 'PUT' | 'DELETE') {
   const path = allowedPath((await context.params).path)
   if (!path) return new Response(null, {status: 404})
-  const baseUrl = socialApiBaseUrl()
-  if (!baseUrl) return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})
-
   try {
-    const cookie = request.headers.get('cookie')
-    const upstream = await fetch(`${baseUrl}/v1/${path}`, {
-      cache: 'no-store',
-      credentials: 'include',
-      ...(cookie ? {headers: {cookie}} : {}),
-      method,
-    })
+    const upstream = await fetchAifansApi(`/v1/${path}`, {requestInit: {method, headers: request.headers}})
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'},

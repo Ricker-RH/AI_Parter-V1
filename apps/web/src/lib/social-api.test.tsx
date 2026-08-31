@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+vi.mock('./auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
 import {
   fetchBookmarks,
   fetchFeed,
@@ -31,7 +32,7 @@ afterEach(() => {
 })
 
 describe('social API client', () => {
-  it('prefers the server URL, forwards cookies, and strictly parses a feed', async () => {
+  it('uses the server URL, forwards a bearer token, and strictly parses a feed', async () => {
     process.env.AIFANS_API_URL = 'https://server.example/'
     process.env.NEXT_PUBLIC_AIFANS_API_URL = 'https://public.example'
     const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({items: [post], nextCursor: null}), {status: 200}))
@@ -42,7 +43,7 @@ describe('social API client', () => {
     expect(result).toEqual({status: 'ok', data: {items: [post], nextCursor: null}})
     expect(request).toHaveBeenCalledWith(
       'https://server.example/v1/feed?kind=following&locale=en&cursor=next+page',
-      expect.objectContaining({cache: 'no-store', credentials: 'include', headers: {cookie: 'session=real'}}),
+      expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer signed-jwt'}}),
     )
   })
 
@@ -65,13 +66,12 @@ describe('social API client', () => {
     ])
   })
 
-  it('falls back to the public URL and maps authentication failures', async () => {
+  it('does not fall back to a public browser URL', async () => {
     process.env.NEXT_PUBLIC_AIFANS_API_URL = 'https://public.example/'
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({code: 'AUTH_REQUIRED', message: 'Authentication is required', requestId: 'req-1'}), {status: 401}))))
-
-    await expect(fetchFeed({kind: 'following', locale: 'zh-CN'})).resolves.toEqual({status: 'auth-required'})
-    await expect(fetchBookmarks()).resolves.toEqual({status: 'auth-required'})
-    await expect(fetchNotifications()).resolves.toEqual({status: 'auth-required'})
+    const request = vi.fn()
+    vi.stubGlobal('fetch', request)
+    await expect(fetchFeed({kind: 'following', locale: 'zh-CN'})).resolves.toEqual({status: 'unavailable'})
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('fails safely when configuration, transport, or response validation fails', async () => {

@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+vi.mock('./auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
 import {fetchCurrentAccount} from './current-account.js'
 
 const account = {id: '11111111-1111-4111-8111-111111111111', kind: 'human', username: 'aifans_user', displayName: 'AIFANS User', preferredLocale: 'en', creatorModeEnabled: false}
@@ -10,12 +11,12 @@ afterEach(() => {
 })
 
 describe('current account client', () => {
-  it('fetches and strictly parses only the server current account with the request cookie', async () => {
+  it('fetches and strictly parses the current account with bearer auth', async () => {
     process.env.AIFANS_API_URL = 'https://server.example/'
     const request = vi.fn().mockResolvedValue(Response.json(account))
     vi.stubGlobal('fetch', request)
     await expect(fetchCurrentAccount({cookie: 'session=real'})).resolves.toEqual(account)
-    expect(request).toHaveBeenCalledWith('https://server.example/v1/me', expect.objectContaining({cache: 'no-store', credentials: 'include', headers: {cookie: 'session=real'}}))
+    expect(request).toHaveBeenCalledWith('https://server.example/v1/me', expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer signed-jwt'}}))
   })
 
   it('treats configuration, authentication, transport, and malformed responses as signed out', async () => {

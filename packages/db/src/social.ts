@@ -60,11 +60,22 @@ function defaultPublicSession(pool: QueryPool): PublicSession {
 }
 
 let pool: Pool | undefined
-function defaultPool(): Pool { pool ??= new Pool({connectionString: process.env.DATABASE_USER_URL}); return pool }
+function requireUserDatabaseUrl(): string {
+  const value = process.env.DATABASE_USER_URL
+  try {
+    const protocol = new URL(value ?? '').protocol
+    if (protocol === 'postgres:' || protocol === 'postgresql:') return value!
+  } catch {
+    // Use the single redacted configuration error below.
+  }
+  throw new Error('DATABASE_USER_URL must be a valid postgres URL')
+}
+function defaultPool(): Pool { pool ??= new Pool({connectionString: requireUserDatabaseUrl()}); return pool }
 function actorId(client: QueryClient): Promise<string> { return client.query<{id: string}>('SELECT public.current_profile_id() AS id').then((result) => { if (!result.rows[0]?.id) throw new Error('FORBIDDEN'); return result.rows[0].id }) }
 
-export function createSocialRepository({withActor: runWithActor = withActor, withPublic = defaultPublicSession(defaultPool())}: {withActor?: WithActor; withPublic?: PublicSession} = {}): SocialRepository {
-  async function read<T>(viewer: Actor | null, callback: (client: QueryClient) => Promise<T>): Promise<T> { return viewer ? runWithActor(viewer, callback) : withPublic(callback) }
+export function createSocialRepository({withActor: runWithActor = withActor, withPublic}: {withActor?: WithActor; withPublic?: PublicSession} = {}): SocialRepository {
+  const runWithPublic: PublicSession = withPublic ?? ((callback) => defaultPublicSession(defaultPool())(callback))
+  async function read<T>(viewer: Actor | null, callback: (client: QueryClient) => Promise<T>): Promise<T> { return viewer ? runWithActor(viewer, callback) : runWithPublic(callback) }
   async function feed(client: QueryClient, input: {kind: FeedKind; visualType?: FeedVisualType; locale?: Locale; limit: number; after: Cursor | null}, bookmarkedOnly = false): Promise<FeedPage> {
     const after = input.after
     const params: unknown[] = [input.locale ?? null]

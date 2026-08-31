@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+vi.mock('../../../../lib/auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
 import {DELETE, PUT} from './route.js'
 
 afterEach(() => {
@@ -8,7 +9,7 @@ afterEach(() => {
 })
 
 describe('same-origin social mutation proxy', () => {
-  it('forwards only an allowed mutation and its request cookie to the server API URL', async () => {
+  it('forwards only an allowed mutation with a short-lived bearer token', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example/'
     const upstream = vi.fn().mockResolvedValue(new Response(JSON.stringify({created: true}), {status: 200, headers: {'content-type': 'application/json'}}))
     vi.stubGlobal('fetch', upstream)
@@ -18,7 +19,7 @@ describe('same-origin social mutation proxy', () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({created: true})
-    expect(upstream).toHaveBeenCalledWith('https://internal-api.example/v1/posts/22222222-2222-4222-8222-222222222222/like', expect.objectContaining({cache: 'no-store', credentials: 'include', headers: {cookie: 'session=real'}, method: 'PUT'}))
+    expect(upstream).toHaveBeenCalledWith('https://internal-api.example/v1/posts/22222222-2222-4222-8222-222222222222/like', expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer signed-jwt'}, method: 'PUT'}))
   })
 
   it('rejects paths outside like, bookmark, and follow without contacting the API', async () => {

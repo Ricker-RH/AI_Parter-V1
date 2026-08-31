@@ -118,6 +118,24 @@ button { color: inherit; }
 .choice:hover, .choice[aria-pressed='true'] { background: var(--shell-hover); border-color: var(--shell-text); }
 .mobile-nav { display: none; }
 
+.auth-page { align-items: center; display: grid; min-height: 100vh; padding: 48px 24px; }
+.auth-card { margin: 0 auto; max-width: 430px; width: 100%; }
+.auth-eyebrow { color: var(--shell-muted); font-size: 11px; font-weight: 750; letter-spacing: .14em; margin: 0 0 16px; }
+.auth-card h1 { font-size: clamp(30px, 6vw, 46px); font-weight: 580; letter-spacing: -.045em; line-height: 1.04; margin: 0 0 32px; }
+.auth-card form { display: grid; gap: 16px; }
+.auth-card label { display: grid; font-size: 13px; font-weight: 700; gap: 7px; }
+.auth-card input { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; color: inherit; min-height: 48px; padding: 10px 12px; }
+.auth-card input:focus { border-color: var(--shell-text); outline: 1px solid var(--shell-text); outline-offset: 0; }
+.auth-card form button, .auth-google { background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 7px; color: var(--shell-surface); cursor: pointer; font-weight: 720; min-height: 48px; padding: 0 16px; }
+.auth-google { background: var(--shell-surface); color: var(--shell-text); width: 100%; }
+.auth-card button:disabled { cursor: wait; opacity: .55; }
+.auth-divider { align-items: center; color: var(--shell-muted); display: grid; font-size: 10px; gap: 12px; grid-template-columns: 1fr auto 1fr; margin: 22px 0; }
+.auth-divider::before, .auth-divider::after { background: var(--shell-border); content: ''; height: 1px; }
+.auth-notice, .auth-status { border-left: 2px solid var(--shell-text); color: var(--shell-muted); padding: 9px 0 9px 12px; }
+.auth-switch { color: var(--shell-muted); margin-top: 24px; }
+.auth-switch a { color: var(--shell-text); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.account-row { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+
 .admin-page { min-height: 100%; }
 .admin-header { border-bottom: 1px solid var(--shell-border); padding: 34px 28px 28px; }
 .admin-eyebrow { color: var(--shell-muted); font-size: 11px; font-weight: 750; letter-spacing: .14em; margin: 0 0 12px; text-transform: uppercase; }

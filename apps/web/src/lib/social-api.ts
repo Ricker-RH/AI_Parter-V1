@@ -4,11 +4,12 @@ import {
   NotificationPageSchema,
   PostDetailSchema,
   type FeedPage,
-  type NotificationPage,
   type FeedVisualType,
+  type NotificationPage,
   type PostDetail,
 } from '@aifans/contracts'
 import type {Locale} from '../i18n/config'
+import {fetchAifansApi, readApiBaseUrl} from './server-api'
 
 export type SocialApiResult<T> =
   | {status: 'ok'; data: T}
@@ -19,20 +20,12 @@ export type SocialApiResult<T> =
 type Schema<T> = {safeParse(value: unknown): {success: true; data: T} | {success: false}}
 
 export function socialApiBaseUrl(): string | null {
-  const configured = process.env.AIFANS_API_URL || process.env.NEXT_PUBLIC_AIFANS_API_URL
-  return configured?.trim() ? configured.trim().replace(/\/+$/, '') : null
+  return readApiBaseUrl()
 }
 
 async function request<T>(path: string, schema: Schema<T>, cookie?: string): Promise<SocialApiResult<T>> {
-  const baseUrl = socialApiBaseUrl()
-  if (!baseUrl) return {status: 'unavailable'}
-
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      cache: 'no-store',
-      credentials: 'include',
-      ...(cookie ? {headers: {cookie}} : {}),
-    })
+    const response = await fetchAifansApi(path)
     const body: unknown = await response.json()
     if (response.ok) {
       const parsed = schema.safeParse(body)

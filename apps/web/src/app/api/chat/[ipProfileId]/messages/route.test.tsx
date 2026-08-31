@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+vi.mock('../../../../../lib/auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
 import * as route from './route.js'
 
 const ipProfileId = '11111111-1111-4111-8111-111111111111'
@@ -20,7 +21,7 @@ function request(body: unknown, suffix = '') {
 }
 
 describe('same-origin chat proxy', () => {
-  it('forwards one strict message with cookie and request correlation', async () => {
+  it('forwards one strict message with bearer auth and request correlation', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example/'
     const upstream = vi.fn().mockResolvedValue(Response.json(answer, {status: 201, headers: {'x-request-id': 'upstream-chat'}}))
     vi.stubGlobal('fetch', upstream)
@@ -29,8 +30,8 @@ describe('same-origin chat proxy', () => {
     expect(response.headers.get('x-request-id')).toBe('upstream-chat')
     expect(await response.json()).toEqual(answer)
     expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/chat/${ipProfileId}/messages`, {
-      method: 'POST', cache: 'no-store', credentials: 'include',
-      headers: {'content-type': 'application/json', cookie: 'session=real', 'x-request-id': 'req-chat'},
+      method: 'POST', cache: 'no-store',
+      headers: {authorization: 'Bearer signed-jwt', 'content-type': 'application/json', 'x-request-id': 'req-chat'},
       body: JSON.stringify({message: 'hello', locale: 'en'}),
     })
   })

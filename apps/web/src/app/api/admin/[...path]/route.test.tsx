@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+vi.mock('../../../../lib/auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
 import * as route from './route.js'
 
 const postId = '22222222-2222-4222-8222-222222222222'
@@ -37,9 +38,8 @@ describe('same-origin operator proxy', () => {
     expect(url).toBe(`https://internal-api.example/v1/admin/${path}`)
     expect(options).toEqual(expect.objectContaining({
       cache: 'no-store',
-      credentials: 'include',
       method: 'POST',
-      headers: {'content-type': 'application/json', cookie: 'session=real', 'x-request-id': 'req-123'},
+      headers: {authorization: 'Bearer signed-jwt', 'content-type': 'application/json', 'x-request-id': 'req-123'},
       body: JSON.stringify({body: 'Hello'}),
     }))
   })
