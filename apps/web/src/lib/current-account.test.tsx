@@ -26,4 +26,14 @@ describe('current account client', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({...account, username: 'not a valid username'})))
     await expect(fetchCurrentAccount()).resolves.toBeNull()
   })
+
+  it('aborts a hanging upstream account request and treats it as signed out', async () => {
+    process.env.AIFANS_API_URL = 'https://server.example'
+    const request = vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {once: true})
+    }))
+    vi.stubGlobal('fetch', request)
+    await expect(fetchCurrentAccount({timeoutMs: 5} as never)).resolves.toBeNull()
+    expect((request.mock.calls[0]?.[1].signal as AbortSignal | undefined)?.aborted).toBe(true)
+  })
 })

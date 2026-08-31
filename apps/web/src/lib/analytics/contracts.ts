@@ -13,7 +13,7 @@ export type AnalyticsEventName = typeof ANALYTICS_EVENT_NAMES[number]
 export type AnalyticsRouteName = typeof ANALYTICS_ROUTE_NAMES[number]
 export type AnalyticsActionSource = 'landing' | 'navigation' | 'social_link'
 export type AnalyticsCreationStep = 'identity' | 'persona' | 'appearance' | 'review'
-export type AnalyticsVisualType = 'avatar' | 'portrait' | 'full_body' | 'reference'
+export type AnalyticsVisualType = 'realistic' | 'anime' | 'hybrid'
 
 type EventProperties = {
   landing_viewed: {locale: Locale; route_name: AnalyticsRouteName}
@@ -51,7 +51,7 @@ const requiredPropertyNames: {[K in AnalyticsEventName]: readonly (keyof EventPr
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const actionSources: readonly AnalyticsActionSource[] = ['landing', 'navigation', 'social_link']
 const creationSteps: readonly AnalyticsCreationStep[] = ['identity', 'persona', 'appearance', 'review']
-const visualTypes: readonly AnalyticsVisualType[] = ['avatar', 'portrait', 'full_body', 'reference']
+const visualTypes: readonly AnalyticsVisualType[] = ['realistic', 'anime', 'hybrid']
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function includes<T extends string>(values: readonly T[], value: unknown): value is T { return typeof value === 'string' && values.includes(value as T) }

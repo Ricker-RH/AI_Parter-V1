@@ -1,5 +1,5 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
-import {describe, expect, it, vi} from 'vitest'
+import {afterEach, describe, expect, it, vi} from 'vitest'
 import {
   ANALYTICS_EVENT_NAMES,
   MAX_SEARCH_QUERY_LENGTH,
@@ -18,6 +18,8 @@ const postId = '22222222-2222-4222-8222-222222222222'
 function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('analytics event contract', () => {
   it('has exactly the approved initial custom-event allow-list and event version', () => {
@@ -64,6 +66,13 @@ describe('analytics event contract', () => {
     expect(() => createAnalyticsPage({locale: 'en', route_name: '/en/posts/11111111-1111-4111-8111-111111111111'} as never)).toThrow('invalid')
   })
 
+  it('uses only the approved creator visual categories', () => {
+    for (const visual_type of ['realistic', 'anime', 'hybrid'] as const) {
+      expect(createAnalyticsEvent('generation_requested', {locale: 'en', visual_type}).properties.visual_type).toBe(visual_type)
+    }
+    expect(() => createAnalyticsEvent('generation_requested', {locale: 'en', visual_type: 'avatar'} as never)).toThrow('invalid')
+  })
+
   it('emits only allow-listed chat and feed intent data', () => {
     const capture = vi.fn()
     const analytics: AnalyticsClient = {capture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
@@ -87,18 +96,57 @@ describe('PostHog browser adapter', () => {
   })
 
   it('initializes lazily with broad autocapture and automatic page views disabled', async () => {
-    const sdk: PostHogSdk = {capture: vi.fn(), identify: vi.fn(), init: vi.fn(), reset: vi.fn()}
+    const init = vi.fn()
+    const sdk: PostHogSdk = {capture: vi.fn(), identify: vi.fn(), init, reset: vi.fn()}
     const load = vi.fn(async () => sdk)
     const analytics = createPostHogAnalytics({key: 'phc_public_key', host: 'https://eu.i.posthog.com', load})
     await analytics.capture(createAnalyticsEvent('post_viewed', {locale: 'en', post_id: postId}))
     expect(load).toHaveBeenCalledTimes(1)
-    expect(sdk.init).toHaveBeenCalledWith('phc_public_key', {
+    expect(sdk.init).toHaveBeenCalledWith('phc_public_key', expect.objectContaining({
       api_host: 'https://eu.i.posthog.com',
       autocapture: false,
+      before_send: expect.any(Function),
+      capture_exceptions: false,
       capture_pageleave: false,
       capture_pageview: false,
-    })
+      capture_performance: false,
+      disable_session_recording: true,
+      mask_all_element_attributes: true,
+      mask_all_text: true,
+      property_denylist: expect.arrayContaining(['$current_url', '$referrer', 'utm_campaign', 'email', 'cookie', 'access_token']),
+      save_campaign_params: false,
+      save_referrer: false,
+    }))
     expect(sdk.capture).toHaveBeenCalledWith('post_viewed', {event_version: 1, locale: 'en', post_id: postId})
+    const beforeSend = (init.mock.calls[0]?.[1] as {before_send?: (event: unknown) => unknown}).before_send
+    const enriched = {
+      uuid: '33333333-3333-4333-8333-333333333333', event: 'post_viewed',
+      properties: {
+        token: 'phc_public_key', distinct_id: profileId, $session_id: '44444444-4444-4444-8444-444444444444', $device_type: 'Desktop',
+        event_version: 1, locale: 'en', post_id: postId,
+        $current_url: 'https://aifans.example/en/posts/id?access_token=private', $referrer: 'https://mail.example/private', $pathname: '/private/path',
+        utm_campaign: 'private-email-campaign', email: 'private@example.com', cookie: 'session=private', access_token: 'private', attachment: 'blob:https://aifans.example/private-object',
+      },
+      $set: {email: 'private@example.com'}, $set_once: {$initial_current_url: 'https://aifans.example/?token=private'},
+    }
+    expect(beforeSend?.(enriched)).toEqual({
+      uuid: enriched.uuid, event: 'post_viewed',
+      properties: {token: 'phc_public_key', distinct_id: profileId, $session_id: '44444444-4444-4444-8444-444444444444', $device_type: 'Desktop', event_version: 1, locale: 'en', post_id: postId},
+    })
+    expect(beforeSend?.({
+      uuid: enriched.uuid,
+      event: '$pageview',
+      properties: {
+        token: 'phc_public_key', distinct_id: profileId, $session_id: '44444444-4444-4444-8444-444444444444',
+        event_version: 1, locale: 'en', route_name: '/[locale]/posts/[postId]',
+        $current_url: 'https://aifans.example/en/posts/id?token=private', $referrer: 'https://mail.example/private',
+        utm_source: 'private-campaign', email: 'private@example.com', attachment: 'blob:https://aifans.example/private-object',
+      },
+    })).toEqual({
+      uuid: enriched.uuid, event: '$pageview',
+      properties: {token: 'phc_public_key', distinct_id: profileId, $session_id: '44444444-4444-4444-8444-444444444444', event_version: 1, locale: 'en', route_name: '/[locale]/posts/[postId]'},
+    })
+    expect(beforeSend?.({...enriched, event: 'sdk_unapproved_event'})).toBeNull()
     await analytics.page(createAnalyticsPage({locale: 'en', route_name: '/[locale]/posts/[postId]'}))
     expect(sdk.capture).toHaveBeenLastCalledWith('$pageview', {event_version: 1, locale: 'en', route_name: '/[locale]/posts/[postId]'})
   })
@@ -140,14 +188,32 @@ describe('PostHog browser adapter', () => {
     expect(routeNameForPath('/en?email=private@example.com')).toBeNull()
   })
 
-  it('identifies the passed profile UUID and resets the browser identity when signed out', async () => {
+  it('loads a profile UUID asynchronously from the narrow same-origin endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({profileId})))
     const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
-    const {rerender} = render(<AnalyticsProvider analytics={analytics} locale="en" profileId={profileId}><div>Signed in</div></AnalyticsProvider>)
+    render(<AnalyticsProvider analytics={analytics} locale="en"><div>Signed in</div></AnalyticsProvider>)
     await waitFor(() => expect(analytics.identify).toHaveBeenCalledWith(profileId))
     expect(analytics.reset).not.toHaveBeenCalled()
     expect(analytics.page).toHaveBeenCalledWith({event_version: 1, locale: 'en', route_name: '/[locale]'})
     expect(analytics.capture).toHaveBeenCalledWith({name: 'landing_viewed', properties: {event_version: 1, locale: 'en', route_name: '/[locale]'}})
-    rerender(<AnalyticsProvider analytics={analytics} locale="en"><div>Signed out</div></AnalyticsProvider>)
+  })
+
+  it('renders immediately and leaves identity unchanged while the account request hangs', () => {
+    const request = vi.fn(() => new Promise<Response>(() => undefined))
+    vi.stubGlobal('fetch', request)
+    const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
+    render(<AnalyticsProvider analytics={analytics} locale="en"><div>Visible immediately</div></AnalyticsProvider>)
+    expect(screen.getByText('Visible immediately')).toBeVisible()
+    expect(request).toHaveBeenCalledWith('/api/account', expect.objectContaining({cache: 'no-store', credentials: 'include'}))
+    expect(analytics.identify).not.toHaveBeenCalled()
+    expect(analytics.reset).not.toHaveBeenCalled()
+  })
+
+  it('treats account endpoint failures as signed out without surfacing the failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 204})))
+    const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
+    render(<AnalyticsProvider analytics={analytics} locale="en"><div>Signed out</div></AnalyticsProvider>)
     await waitFor(() => expect(analytics.reset).toHaveBeenCalledTimes(1))
+    expect(analytics.identify).not.toHaveBeenCalled()
   })
 })
