@@ -11,6 +11,7 @@ import {
   uuid,
   unique,
   primaryKey,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -21,6 +22,14 @@ export const auditActorTypeEnum = pgEnum('audit_actor_type', ['human', 'operator
 export const auditSourceEnum = pgEnum('audit_source', ['api', 'admin', 'worker'])
 export const auditResultEnum = pgEnum('audit_result', ['succeeded', 'rejected', 'failed'])
 export const outboxStateEnum = pgEnum('outbox_state', ['pending', 'delivered', 'failed'])
+export const ipSourceEnum = pgEnum('ip_source', ['platform', 'creator'])
+export const ipPublicStateEnum = pgEnum('ip_public_state', ['draft', 'approved', 'published', 'paused', 'unpublished'])
+export const postStateEnum = pgEnum('post_state', ['draft', 'published', 'withdrawn'])
+export const postSourceEnum = pgEnum('post_source', ['admin', 'worker'])
+export const mediaKindEnum = pgEnum('media_kind', ['image'])
+export const commentSourceEnum = pgEnum('comment_source', ['human', 'admin', 'worker'])
+export const commentStateEnum = pgEnum('comment_state', ['published', 'deleted'])
+export const notificationKindEnum = pgEnum('notification_kind', ['follow', 'post_like', 'comment', 'reply', 'comment_like'])
 
 export const profiles = pgTable(
   'profiles',
@@ -106,3 +115,70 @@ export const workflowTransitions = pgTable('workflow_transitions', {
 export const analyticsOutbox = pgTable('analytics_outbox', {
   id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull().unique().references(() => businessEvents.id), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
 }, (table) => [check('analytics_outbox_payload_version_check', sql`${table.payloadVersion} > 0`), check('analytics_outbox_destination_check', sql`${table.destination} ~ '[^[:space:]]'`), check('analytics_outbox_attempt_count_check', sql`${table.attemptCount} >= 0`), check('analytics_outbox_delivery_state_check', sql`(${table.state} = 'delivered') = (${table.deliveredAt} IS NOT NULL)` )])
+
+export const ipProfiles = pgTable('ip_profiles', {
+  profileId: uuid('profile_id').primaryKey().references(() => profiles.id),
+  source: ipSourceEnum('source').notNull(),
+  creatorProfileId: uuid('creator_profile_id').references(() => profiles.id),
+  publicState: ipPublicStateEnum('public_state').notNull().default('draft'),
+  operationEnabled: boolean('operation_enabled').notNull().default(false),
+  identityLabel: text('identity_label').notNull().default('AI'),
+  currentIdentityRevisionId: uuid('current_identity_revision_id'),
+  feedWeight: integer('feed_weight').notNull().default(0),
+  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [
+  check('ip_profiles_creator_source_check', sql`${table.creatorProfileId} IS NULL OR ${table.source} = 'creator'`),
+  check('ip_profiles_feed_weight_check', sql`${table.feedWeight} BETWEEN -1000 AND 1000`),
+])
+
+export const ipIdentityRevisions = pgTable('ip_identity_revisions', {
+  id: uuid().primaryKey(),
+  ipProfileId: uuid('ip_profile_id').notNull().references(() => ipProfiles.profileId),
+  version: integer().notNull(),
+  displayName: text('display_name').notNull(),
+  bio: text(),
+  avatarObjectKey: text('avatar_object_key'),
+  coverObjectKey: text('cover_object_key'),
+  languages: text().array().notNull().default(sql`'{}'::text[]`),
+  createdByProfileId: uuid('created_by_profile_id').references(() => profiles.id),
+  previousRevisionId: uuid('previous_revision_id').references((): AnyPgColumn => ipIdentityRevisions.id),
+  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [unique('ip_identity_revisions_ip_profile_id_version_key').on(table.ipProfileId, table.version)])
+
+export const posts = pgTable('posts', {
+  id: uuid().primaryKey(),
+  authorProfileId: uuid('author_profile_id').notNull().references(() => profiles.id),
+  actingOperatorProfileId: uuid('acting_operator_profile_id').references(() => profiles.id),
+  state: postStateEnum('state').notNull().default('draft'),
+  source: postSourceEnum('source').notNull(),
+  body: text().notNull().default(''),
+  languageCode: text('language_code'),
+  publishedAt: timestamp('published_at', {withTimezone: true}),
+  withdrawnAt: timestamp('withdrawn_at', {withTimezone: true}),
+  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [check('posts_body_length_check', sql`char_length(${table.body}) <= 5000`)])
+
+export const postMedia = pgTable('post_media', {
+  id: uuid().primaryKey(), postId: uuid('post_id').notNull().references(() => posts.id), position: smallint().notNull(), objectKey: text('object_key').notNull(), altText: text('alt_text'), contentType: text('content_type').notNull(), width: integer(), height: integer(), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [unique('post_media_post_id_position_key').on(table.postId, table.position), check('post_media_position_check', sql`${table.position} BETWEEN 1 AND 4`), check('post_media_content_type_check', sql`${table.contentType} LIKE 'image/%'`)])
+
+export const follows = pgTable('follows', {
+  followerProfileId: uuid('follower_profile_id').notNull().references(() => profiles.id), followedProfileId: uuid('followed_profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [primaryKey({columns: [table.followerProfileId, table.followedProfileId]}), check('follows_no_self_check', sql`${table.followerProfileId} <> ${table.followedProfileId}`)])
+export const postLikes = pgTable('post_likes', {
+  postId: uuid('post_id').notNull().references(() => posts.id), profileId: uuid('profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [primaryKey({columns: [table.postId, table.profileId]})])
+export const bookmarks = pgTable('bookmarks', {
+  postId: uuid('post_id').notNull().references(() => posts.id), profileId: uuid('profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [primaryKey({columns: [table.postId, table.profileId]})])
+export const comments = pgTable('comments', {
+  id: uuid().primaryKey(), postId: uuid('post_id').notNull().references(() => posts.id), parentCommentId: uuid('parent_comment_id').references((): AnyPgColumn => comments.id), authorProfileId: uuid('author_profile_id').notNull().references(() => profiles.id), actingOperatorProfileId: uuid('acting_operator_profile_id').references(() => profiles.id), source: commentSourceEnum('source').notNull(), body: text().notNull(), state: commentStateEnum('state').notNull().default('published'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(), deletedAt: timestamp('deleted_at', {withTimezone: true}),
+}, (table) => [check('comments_body_length_check', sql`char_length(${table.body}) BETWEEN 1 AND 2000 AND ${table.body} ~ '[^[:space:]]'`)])
+export const commentLikes = pgTable('comment_likes', {
+  commentId: uuid('comment_id').notNull().references(() => comments.id), profileId: uuid('profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [primaryKey({columns: [table.commentId, table.profileId]})])
+export const notifications = pgTable('notifications', {
+  id: uuid().primaryKey(), recipientProfileId: uuid('recipient_profile_id').notNull().references(() => profiles.id), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), kind: notificationKindEnum('kind').notNull(), postId: uuid('post_id').references(() => posts.id), commentId: uuid('comment_id').references(() => comments.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(), readAt: timestamp('read_at', {withTimezone: true}),
+})
