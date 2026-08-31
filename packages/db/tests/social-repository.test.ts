@@ -16,6 +16,43 @@ function notificationCursor(createdAt:string,id:string) { return encodeNotificat
 function context() { return {requestId: randomUUID()} }
 function repo(c:PoolClient) { const session=createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})}, {transactionMode:'nested'}); return createSocialRepository({withActor:session.withActor,withPublic:async(fn)=>{await c.query('SAVEPOINT anon'); try {await c.query('SET LOCAL ROLE aifans_anon'); await c.query("SELECT set_config('request.jwt.claims','{}',true)"); const value=await fn({query:c.query.bind(c),release(){}}); await c.query('ROLLBACK TO SAVEPOINT anon'); return value} finally {await c.query('RELEASE SAVEPOINT anon').catch(()=>undefined)}}}) }
 
+async function committedCommentFixture() {
+ const client=await pool.connect()
+ try {
+  await client.query('BEGIN')
+  const author=await ip(client),actor=await human(client),postId=await post(client,author)
+  await client.query('COMMIT')
+  return {actor,author,postId}
+ } catch(error) { await client.query('ROLLBACK').catch(()=>undefined); throw error } finally { client.release() }
+}
+
+async function expectVisibilityChangeToWin(change:(client:PoolClient,fixture:Awaited<ReturnType<typeof committedCommentFixture>>)=>Promise<void>) {
+ const fixture=await committedCommentFixture(),stateClient=await pool.connect(),commentClient=await pool.connect()
+ try {
+  await stateClient.query('BEGIN')
+  await change(stateClient,fixture)
+  await commentClient.query('BEGIN')
+  const commentPid=(await commentClient.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+  const attempt=repo(commentClient).createHumanComment(fixture.actor,fixture.postId,{body:'racing comment'},context()).then(()=>({ok:true as const})).catch((error:unknown)=>({ok:false as const,error}))
+  let blocked=false
+  for(let poll=0;poll<50;poll+=1) {
+   const activity=await stateClient.query<{wait_event_type:string|null}>('SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1',[commentPid])
+   if(activity.rows[0]?.wait_event_type==='Lock') { blocked=true;break }
+   const settled=await Promise.race([attempt.then(()=>true),new Promise<false>((resolve)=>setTimeout(()=>resolve(false),10))])
+   if(settled) break
+  }
+  await stateClient.query('COMMIT')
+  const outcome=await attempt
+  expect(blocked).toBe(true)
+  expect(outcome.ok).toBe(false)
+  if(!outcome.ok) expect(outcome.error).toMatchObject({code:'P0002'})
+  await expect(stateClient.query("SELECT 1 FROM public.comments WHERE post_id=$1 AND body='racing comment'",[fixture.postId])).resolves.toMatchObject({rowCount:0})
+ } finally {
+  await Promise.all([stateClient.query('ROLLBACK').catch(()=>undefined),commentClient.query('ROLLBACK').catch(()=>undefined)])
+  stateClient.release();commentClient.release()
+ }
+}
+
 integration('social repository local postgres',()=>{
  afterAll(async()=>pool.end())
  it('returns only published public posts and keeps viewer flags actor-scoped',async()=>tx(async c=>{
@@ -38,6 +75,8 @@ integration('social repository local postgres',()=>{
 
  it('returns newly created human comments with a human author',async()=>tx(async c=>{ const actor=await human(c),author=await ip(c),postId=await post(c,author),social=repo(c); const created=await social.createHumanComment(actor,postId,{body:'human words'},context()); expect(created).toMatchObject({postId,body:'human words',author:{kind:'human',id:actor.id}}) }))
  it('notifies the published top-level parent author and rejects every invalid reply parent',async()=>tx(async c=>{ const postAuthor=await ip(c),parentAuthor=await human(c),replier=await human(c),otherPostAuthor=await ip(c),postId=await post(c,postAuthor),otherPost=await post(c,otherPostAuthor),social=repo(c); const parent=await social.createHumanComment(parentAuthor,postId,{body:'parent'},context()); const reply=await social.createHumanComment(replier,postId,{body:'reply',parentCommentId:parent.id},context()); await expect(c.query("SELECT recipient_profile_id,kind FROM public.notifications WHERE comment_id=$1",[reply.id])).resolves.toMatchObject({rows:[{recipient_profile_id:parentAuthor.id,kind:'reply'}]}); const nested=await social.createHumanComment(parentAuthor,postId,{body:'self reply',parentCommentId:parent.id},context()); await expect(c.query('SELECT 1 FROM public.notifications WHERE comment_id=$1',[nested.id])).resolves.toMatchObject({rowCount:0}); await c.query("UPDATE public.comments SET state='deleted',deleted_at=clock_timestamp() WHERE id=$1",[parent.id]); await expect(social.createHumanComment(replier,postId,{body:'deleted',parentCommentId:parent.id},context())).rejects.toThrow('invalid reply parent'); const wrong=await social.createHumanComment(parentAuthor,otherPost,{body:'wrong post parent'},context()); await expect(social.createHumanComment(replier,postId,{body:'wrong',parentCommentId:wrong.id},context())).rejects.toThrow('invalid reply parent'); await expect(social.createHumanComment(replier,postId,{body:'nested',parentCommentId:reply.id},context())).rejects.toThrow('invalid reply parent'); await expect(social.createHumanComment(replier,postId,{body:'missing',parentCommentId:randomUUID()},context())).rejects.toThrow('invalid reply parent') }))
+ it('rejects a comment when a concurrent post withdrawal wins the visibility lock',async()=>expectVisibilityChangeToWin(async(client,{postId})=>{await client.query("UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1",[postId])}))
+ it('rejects a comment when a concurrent IP unpublish wins the visibility lock',async()=>expectVisibilityChangeToWin(async(client,{author})=>{await client.query("UPDATE public.ip_profiles SET public_state='unpublished',operation_enabled=false,updated_at=clock_timestamp() WHERE profile_id=$1",[author])}))
  it('keeps bookmarks private and bookmark toggles idempotent',async()=>tx(async c=>{ const author=await ip(c); const postId=await post(c,author); const first=await human(c),second=await human(c); const social=repo(c); await expect(social.bookmarkPost(first,postId)).resolves.toEqual({created:true}); await expect(social.bookmarkPost(first,postId)).resolves.toEqual({created:false}); await expect(social.listBookmarks(first,{limit:10})).resolves.toMatchObject({items:[{id:postId}]}); await expect(social.listBookmarks(second,{limit:10})).resolves.toEqual({items:[],nextCursor:null}); await expect(social.unbookmarkPost(first,postId)).resolves.toEqual({deleted:true}); await expect(social.unbookmarkPost(first,postId)).resolves.toEqual({deleted:false}) }))
  it('rejects wrong-kind cursors for bookmark pages',async()=>tx(async c=>{ const actor=await human(c); const social=repo(c); const wrong=encodeCursor({v:1,kind:'for_you',score:0,publishedAt:'2026-09-01T00:00:00.000Z',id:randomUUID()}); await expect(social.listBookmarks(actor,{limit:10,cursor:wrong})).rejects.toThrow('INVALID_CURSOR') }))
  it('paginates all owned notifications without duplicates at database microsecond precision',async()=>tx(async c=>{ const recipient=await human(c),other=await human(c),humanActor=await human(c),ipActor=await ip(c); const ids=[randomUUID(),randomUUID(),randomUUID()]; await c.query(`INSERT INTO public.notifications(id,recipient_profile_id,actor_profile_id,kind,created_at) VALUES($1,$2,$3,'follow','2026-09-01T00:00:00.000100Z'),($4,$2,$3,'follow','2026-09-01T00:00:00.000900Z'),($5,$2,$6,'follow','2026-09-01T00:00:00.001100Z')`,[ids[0],recipient.id,humanActor.id,ids[1],ids[2],ipActor]); const social=repo(c); const found:string[]=[]; let cursor:string|undefined; do { const page=await social.listNotifications(recipient,{limit:1,...(cursor?{cursor}:{})}); found.push(...page.items.map(item=>item.id)); if (page.items[0]?.id===ids[2]) expect(page.items[0].actor).toMatchObject({kind:'ip',id:ipActor}); if (page.items[0]?.id===ids[1]) expect(page.items[0].actor).toMatchObject({kind:'human',id:humanActor.id}); cursor=page.nextCursor??undefined } while(cursor); expect(found).toEqual([ids[2],ids[1],ids[0]]); expect(new Set(found).size).toBe(ids.length); await expect(social.listNotifications(other,{limit:10})).resolves.toEqual({items:[],nextCursor:null}); await expect(social.listNotifications(recipient,{limit:1,cursor:notificationCursor('2026-09-01T00:00:00.000Z',randomUUID())})).resolves.toEqual({items:[],nextCursor:null}) }))
