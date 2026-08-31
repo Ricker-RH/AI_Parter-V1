@@ -1,314 +1,805 @@
-import {randomUUID} from 'node:crypto'
-import {Pool, type PoolClient} from 'pg'
-import {afterAll, describe, expect, it} from 'vitest'
-import {createPlatformSession, withPlatformActor} from '../src/session.js'
-import {createPlatformSocialRepository, createSocialRepository} from '../src/social.js'
+import { randomUUID } from "node:crypto";
+import { Pool, type PoolClient } from "pg";
+import { afterAll, describe, expect, it } from "vitest";
+import { createPlatformSession, withPlatformActor } from "../src/session.js";
+import {
+  createPlatformSocialRepository,
+  createSocialRepository,
+} from "../src/social.js";
 
-const connectionString = process.env.DATABASE_URL ?? ''
-const integration = connectionString ? describe : describe.skip
-const pool = new Pool({connectionString})
+const connectionString = process.env.DATABASE_URL ?? "";
+const integration = connectionString ? describe : describe.skip;
+const pool = new Pool({ connectionString });
 
-describe('platform database configuration', () => {
-  it('requires DATABASE_PLATFORM_URL and never falls back to an owner URL', async () => {
-    const previous = process.env.DATABASE_PLATFORM_URL
-    delete process.env.DATABASE_PLATFORM_URL
+describe("platform database configuration", () => {
+  it("requires DATABASE_PLATFORM_URL and never falls back to an owner URL", async () => {
+    const previous = process.env.DATABASE_PLATFORM_URL;
+    delete process.env.DATABASE_PLATFORM_URL;
     try {
-      await expect(withPlatformActor({subject: 'operator'}, async () => undefined)).rejects.toThrow('DATABASE_PLATFORM_URL must be a valid postgres URL')
+      await expect(
+        withPlatformActor({ subject: "operator" }, async () => undefined),
+      ).rejects.toThrow("DATABASE_PLATFORM_URL must be a valid postgres URL");
     } finally {
-      if (previous === undefined) delete process.env.DATABASE_PLATFORM_URL
-      else process.env.DATABASE_PLATFORM_URL = previous
+      if (previous === undefined) delete process.env.DATABASE_PLATFORM_URL;
+      else process.env.DATABASE_PLATFORM_URL = previous;
     }
-  })
-})
+  });
+});
 
 async function tx<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect()
+  const client = await pool.connect();
   try {
-    await client.query('BEGIN')
-    return await callback(client)
+    await client.query("BEGIN");
+    return await callback(client);
   } finally {
-    await client.query('ROLLBACK').catch(() => undefined)
-    client.release()
+    await client.query("ROLLBACK").catch(() => undefined);
+    client.release();
   }
 }
 
 async function human(client: PoolClient, operator = false) {
-  const id = randomUUID()
-  const subject = `platform-${randomUUID()}`
+  const id = randomUUID();
+  const subject = `platform-${randomUUID()}`;
   await client.query(
     `INSERT INTO public.profiles(id,auth_subject,account_kind,username,display_name)
      VALUES($1,$2,'human',$3,'Platform human')`,
-    [id, subject, `h_${id.replaceAll('-', '').slice(0, 20)}`],
-  )
+    [id, subject, `h_${id.replaceAll("-", "").slice(0, 20)}`],
+  );
   if (operator) {
     await client.query(
       `INSERT INTO public.profile_roles(profile_id,role,granted_by_profile_id)
        VALUES($1,'operator',$1)`,
       [id],
-    )
+    );
   }
-  return {id, subject}
+  return { id, subject };
 }
 
 function repositories(client: PoolClient) {
-  const queryClient = {query: client.query.bind(client), release() {}}
+  const queryClient = { query: client.query.bind(client), release() {} };
   const platformSession = createPlatformSession(
-    {connect: async () => queryClient},
-    {transactionMode: 'nested'},
-  )
+    { connect: async () => queryClient },
+    { transactionMode: "nested" },
+  );
   return {
-    platform: createPlatformSocialRepository({withPlatformActor: platformSession.withPlatformActor}),
+    platform: createPlatformSocialRepository({
+      withPlatformActor: platformSession.withPlatformActor,
+      publicMediaBaseUrl: "https://media.example/assets",
+    }),
     public: createSocialRepository({
+      publicMediaBaseUrl: "https://media.example/assets",
       withPublic: async (callback) => {
-        await client.query('SAVEPOINT public_read')
+        await client.query("SAVEPOINT public_read");
         try {
-          await client.query('SET LOCAL ROLE aifans_anon')
-          return await callback(queryClient)
+          await client.query("SET LOCAL ROLE aifans_anon");
+          return await callback(queryClient);
         } finally {
-          await client.query('ROLLBACK TO SAVEPOINT public_read').catch(() => undefined)
-          await client.query('RELEASE SAVEPOINT public_read').catch(() => undefined)
+          await client
+            .query("ROLLBACK TO SAVEPOINT public_read")
+            .catch(() => undefined);
+          await client
+            .query("RELEASE SAVEPOINT public_read")
+            .catch(() => undefined);
         }
       },
     }),
-  }
+  };
 }
 
-integration('platform social repository', () => {
-  afterAll(async () => pool.end())
+integration("platform social repository", () => {
+  afterAll(async () => pool.end());
 
-  it('rejects a non-operator and permits an active human operator', async () => tx(async (client) => {
-    const ordinary = await human(client)
-    const operator = await human(client, true)
-    const {platform} = repositories(client)
+  it("rejects a non-operator and permits an active human operator", async () =>
+    tx(async (client) => {
+      const ordinary = await human(client);
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
 
-    await expect(platform.createIp({actor: ordinary, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'No'}})).rejects.toMatchObject({code: '42501'})
-    const created = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Public IP', bio: 'Public bio', languageCodes: ['en']}})
-    expect(created).toMatchObject({kind: 'ip', displayName: 'Public IP', bio: 'Public bio', languages: ['en']})
-    expect(created).not.toHaveProperty('operatorProfileId')
-    expect(created).not.toHaveProperty('authSubject')
-    const identity = await client.query(`SELECT ip.current_identity_revision_id,r.id revision_id,r.version,r.created_by_profile_id,ip.public_state,ip.operation_enabled FROM public.ip_profiles ip JOIN public.ip_identity_revisions r ON r.ip_profile_id=ip.profile_id WHERE ip.profile_id=$1`, [created.id])
-    expect(identity.rows).toEqual([{current_identity_revision_id: identity.rows[0]?.revision_id, revision_id: identity.rows[0]?.revision_id, version: 1, created_by_profile_id: operator.id, public_state: 'published', operation_enabled: true}])
+      await expect(
+        platform.createIp({
+          actor: ordinary,
+          requestId: randomUUID(),
+          ip: {
+            username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+            displayName: "No",
+          },
+        }),
+      ).rejects.toMatchObject({ code: "42501" });
+      const created = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Public IP",
+          bio: "Public bio",
+          languageCodes: ["en"],
+        },
+      });
+      expect(created).toMatchObject({
+        kind: "ip",
+        displayName: "Public IP",
+        bio: "Public bio",
+        languages: ["en"],
+      });
+      expect(created).not.toHaveProperty("operatorProfileId");
+      expect(created).not.toHaveProperty("authSubject");
+      const identity = await client.query(
+        `SELECT ip.current_identity_revision_id,r.id revision_id,r.version,r.created_by_profile_id,ip.public_state,ip.operation_enabled FROM public.ip_profiles ip JOIN public.ip_identity_revisions r ON r.ip_profile_id=ip.profile_id WHERE ip.profile_id=$1`,
+        [created.id],
+      );
+      expect(identity.rows).toEqual([
+        {
+          current_identity_revision_id: identity.rows[0]?.revision_id,
+          revision_id: identity.rows[0]?.revision_id,
+          version: 1,
+          created_by_profile_id: operator.id,
+          public_state: "published",
+          operation_enabled: true,
+        },
+      ]);
 
-    await client.query("UPDATE public.profile_roles SET revoked_at=clock_timestamp() WHERE profile_id=$1 AND role='operator'", [operator.id])
-    await expect(platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Revoked'}})).rejects.toMatchObject({code: '42501'})
-  }))
+      await client.query(
+        "UPDATE public.profile_roles SET revoked_at=clock_timestamp() WHERE profile_id=$1 AND role='operator'",
+        [operator.id],
+      );
+      await expect(
+        platform.createIp({
+          actor: operator,
+          requestId: randomUUID(),
+          ip: {
+            username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+            displayName: "Revoked",
+          },
+        }),
+      ).rejects.toMatchObject({ code: "42501" });
+    }));
 
-  it('enforces SQL language nullability, non-null elements, and the 20-language bound', async () => tx(async (client) => {
-    const operator = await human(client, true)
-    const session = createPlatformSession(
-      {connect: async () => ({query: client.query.bind(client), release() {}})},
-      {transactionMode: 'nested'},
-    )
-    const invoke = (languages: string[] | null) => session.withPlatformActor(operator, (scoped) =>
-      scoped.query('SELECT * FROM public.platform_create_ip($1,$2,$3,$4,$5)', [
-        `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`,
-        'Language bounds',
-        null,
-        languages,
-        randomUUID(),
-      ]),
-    )
+  it("enforces SQL language nullability, non-null elements, and the 20-language bound", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const session = createPlatformSession(
+        {
+          connect: async () => ({
+            query: client.query.bind(client),
+            release() {},
+          }),
+        },
+        { transactionMode: "nested" },
+      );
+      const invoke = (languages: string[] | null) =>
+        session.withPlatformActor(operator, (scoped) =>
+          scoped.query(
+            "SELECT * FROM public.platform_create_ip($1,$2,$3,$4,$5)",
+            [
+              `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+              "Language bounds",
+              null,
+              languages,
+              randomUUID(),
+            ],
+          ),
+        );
 
-    await expect(invoke(null)).rejects.toMatchObject({code: '23514'})
-    await expect(invoke(['en', null] as unknown as string[])).rejects.toMatchObject({code: '23514'})
-    await expect(invoke(Array.from({length: 21}, () => 'en'))).rejects.toMatchObject({code: '23514'})
-  }))
+      await expect(invoke(null)).rejects.toMatchObject({ code: "23514" });
+      await expect(
+        invoke(["en", null] as unknown as string[]),
+      ).rejects.toMatchObject({ code: "23514" });
+      await expect(
+        invoke(Array.from({ length: 21 }, () => "en")),
+      ).rejects.toMatchObject({ code: "23514" });
+    }));
 
-  it.each(['success', 'failure'] as const)('restores a nested caller role and claims after %s', async (outcome) => tx(async (client) => {
-    const claims = JSON.stringify({sub: 'outer-reader', scope: 'public'})
-    await client.query('SET LOCAL ROLE aifans_anon')
-    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [claims])
-    const session = createPlatformSession(
-      {connect: async () => ({query: client.query.bind(client), release() {}})},
-      {transactionMode: 'nested'},
-    )
+  it.each(["success", "failure"] as const)(
+    "restores a nested caller role and claims after %s",
+    async (outcome) =>
+      tx(async (client) => {
+        const claims = JSON.stringify({ sub: "outer-reader", scope: "public" });
+        await client.query("SET LOCAL ROLE aifans_anon");
+        await client.query(
+          "SELECT set_config('request.jwt.claims', $1, true)",
+          [claims],
+        );
+        const session = createPlatformSession(
+          {
+            connect: async () => ({
+              query: client.query.bind(client),
+              release() {},
+            }),
+          },
+          { transactionMode: "nested" },
+        );
 
-    const call = session.withPlatformActor({subject: 'operator'}, async (scoped) => {
-      if (outcome === 'failure') throw new Error('nested failure')
-      await scoped.query('SELECT 1')
-    })
-    if (outcome === 'failure') await expect(call).rejects.toThrow('nested failure')
-    else await expect(call).resolves.toBeUndefined()
+        const call = session.withPlatformActor(
+          { subject: "operator" },
+          async (scoped) => {
+            if (outcome === "failure") throw new Error("nested failure");
+            await scoped.query("SELECT 1");
+          },
+        );
+        if (outcome === "failure")
+          await expect(call).rejects.toThrow("nested failure");
+        else await expect(call).resolves.toBeUndefined();
 
-    await expect(client.query("SELECT current_user AS role, current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims")).resolves.toMatchObject({
-      rows: [{role: 'aifans_anon', role_setting: 'aifans_anon', claims}],
-    })
-  }))
+        await expect(
+          client.query(
+            "SELECT current_user AS role, current_setting('role', true) AS role_setting, current_setting('request.jwt.claims', true) AS claims",
+          ),
+        ).resolves.toMatchObject({
+          rows: [{ role: "aifans_anon", role_setting: "aifans_anon", claims }],
+        });
+      }),
+  );
 
-  it('restores ROLE NONE and no effective claims after nested success', async () => tx(async (client) => {
-    await client.query('SET LOCAL ROLE NONE')
-    await client.query('SET LOCAL request.jwt.claims TO DEFAULT')
-    const session = createPlatformSession(
-      {connect: async () => ({query: client.query.bind(client), release() {}})},
-      {transactionMode: 'nested'},
-    )
+  it("restores ROLE NONE and no effective claims after nested success", async () =>
+    tx(async (client) => {
+      await client.query("SET LOCAL ROLE NONE");
+      await client.query("SET LOCAL request.jwt.claims TO DEFAULT");
+      const session = createPlatformSession(
+        {
+          connect: async () => ({
+            query: client.query.bind(client),
+            release() {},
+          }),
+        },
+        { transactionMode: "nested" },
+      );
 
-    await session.withPlatformActor({subject: 'operator'}, (scoped) => scoped.query('SELECT 1'))
+      await session.withPlatformActor({ subject: "operator" }, (scoped) =>
+        scoped.query("SELECT 1"),
+      );
 
-    await expect(client.query("SELECT current_user AS role, current_setting('role', true) AS role_setting, NULLIF(current_setting('request.jwt.claims', true), '') AS claims")).resolves.toMatchObject({
-      rows: [{role: 'aifans_owner', role_setting: 'none', claims: null}],
-    })
-  }))
+      await expect(
+        client.query(
+          "SELECT current_user AS role, current_setting('role', true) AS role_setting, NULLIF(current_setting('request.jwt.claims', true), '') AS claims",
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ role: "aifans_owner", role_setting: "none", claims: null }],
+      });
+    }));
 
-  it('locks authorization and publishability rows inside platform commands', async () => tx(async (client) => {
-    const definitions = await client.query<{name: string; definition: string}>(`
+  it("locks authorization and publishability rows inside platform commands", async () =>
+    tx(async (client) => {
+      const definitions = await client.query<{
+        name: string;
+        definition: string;
+      }>(`
       SELECT p.proname AS name, pg_get_functiondef(p.oid) AS definition
       FROM pg_proc p
       JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public'
         AND p.proname IN ('platform_create_ip','platform_publish_post','platform_publish_ip_comment')
-    `)
-    const byName = new Map(definitions.rows.map((row) => [row.name, row.definition]))
-    expect(byName.get('platform_create_ip')).toMatch(/FOR UPDATE OF p, pr/)
-    expect(byName.get('platform_publish_post')).toMatch(/FOR UPDATE OF ip, r/)
-    expect(byName.get('platform_publish_ip_comment')).toMatch(/FOR UPDATE OF target/)
-    expect(byName.get('platform_publish_ip_comment')).toMatch(/FOR UPDATE OF parent/)
-    expect(byName.get('platform_publish_ip_comment')).toMatch(/ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
-    const commentDefinition = byName.get('platform_publish_ip_comment') ?? ''
-    expect(commentDefinition.indexOf('ORDER BY ip.profile_id')).toBeLessThan(commentDefinition.indexOf('FOR UPDATE OF target'))
-  }))
+    `);
+      const byName = new Map(
+        definitions.rows.map((row) => [row.name, row.definition]),
+      );
+      expect(byName.get("platform_create_ip")).toMatch(/FOR UPDATE OF p, pr/);
+      expect(byName.get("platform_publish_post")).toMatch(
+        /FOR UPDATE OF ip, r/,
+      );
+      expect(byName.get("platform_publish_ip_comment")).toMatch(
+        /FOR UPDATE OF target/,
+      );
+      expect(byName.get("platform_publish_ip_comment")).toMatch(
+        /FOR UPDATE OF parent/,
+      );
+      expect(byName.get("platform_publish_ip_comment")).toMatch(
+        /ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/,
+      );
+      const commentDefinition = byName.get("platform_publish_ip_comment") ?? "";
+      expect(commentDefinition.indexOf("ORDER BY ip.profile_id")).toBeLessThan(
+        commentDefinition.indexOf("FOR UPDATE OF target"),
+      );
+    }));
 
-  it('publishes attributed text-only posts and IP comments into public projections', async () => tx(async (client) => {
-    const operator = await human(client, true)
-    const {platform, public: social} = repositories(client)
-    const ip = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Author', languageCodes: ['zh-CN']}})
-    const published = await platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: ip.id, body: 'Text only', languageCode: 'zh-CN'}})
-    expect(published).toMatchObject({body: 'Text only', author: {id: ip.id}, likeCount: 0, commentCount: 0})
-    expect(published).not.toHaveProperty('actingOperatorProfileId')
-    const feed = await social.listFeed({viewer: null, kind: 'for_you', limit: 25, after: null})
-    expect(feed.items.map((item) => item.id)).toContain(published.id)
-    await expect(client.query('SELECT 1 FROM public.post_media WHERE post_id=$1', [published.id])).resolves.toMatchObject({rowCount: 0})
+  it("publishes attributed text-only posts and IP comments into public projections", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform, public: social } = repositories(client);
+      const ip = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Author",
+          languageCodes: ["zh-CN"],
+        },
+      });
+      const published = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: { ipProfileId: ip.id, body: "Text only", languageCode: "zh-CN" },
+      });
+      expect(published).toMatchObject({
+        body: "Text only",
+        author: { id: ip.id },
+        likeCount: 0,
+        commentCount: 0,
+      });
+      expect(published).not.toHaveProperty("actingOperatorProfileId");
+      const feed = await social.listFeed({
+        viewer: null,
+        kind: "for_you",
+        limit: 25,
+        after: null,
+      });
+      expect(feed.items.map((item) => item.id)).toContain(published.id);
+      await expect(
+        client.query("SELECT 1 FROM public.post_media WHERE post_id=$1", [
+          published.id,
+        ]),
+      ).resolves.toMatchObject({ rowCount: 0 });
 
-    const comment = await platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: published.id, comment: {ipProfileId: ip.id, body: 'IP comment'}})
-    const reply = await platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: published.id, comment: {ipProfileId: ip.id, body: 'IP reply', parentCommentId: comment.id}})
-    expect(comment).toMatchObject({postId: published.id, author: {kind: 'ip', id: ip.id}, body: 'IP comment'})
-    expect(reply).toMatchObject({parentCommentId: comment.id, author: {id: ip.id}})
+      const comment = await platform.publishIpComment({
+        actor: operator,
+        requestId: randomUUID(),
+        postId: published.id,
+        comment: { ipProfileId: ip.id, body: "IP comment" },
+      });
+      const reply = await platform.publishIpComment({
+        actor: operator,
+        requestId: randomUUID(),
+        postId: published.id,
+        comment: {
+          ipProfileId: ip.id,
+          body: "IP reply",
+          parentCommentId: comment.id,
+        },
+      });
+      expect(comment).toMatchObject({
+        postId: published.id,
+        author: { kind: "ip", id: ip.id },
+        body: "IP comment",
+      });
+      expect(reply).toMatchObject({
+        parentCommentId: comment.id,
+        author: { id: ip.id },
+      });
 
-    const raw = await client.query(`SELECT p.source post_source,p.acting_operator_profile_id post_operator,c.source comment_source,c.acting_operator_profile_id comment_operator FROM public.posts p JOIN public.comments c ON c.post_id=p.id WHERE p.id=$1`, [published.id])
-    expect(raw.rows[0]).toMatchObject({post_source: 'admin', post_operator: operator.id, comment_source: 'admin', comment_operator: operator.id})
-    const history = await client.query(`SELECT a.actor_profile_id,a.source_app,a.change_summary,e.environment,e.properties,o.payload,w.previous_state,w.next_state FROM public.audit_events a JOIN public.business_events e ON e.subject_entity_id=a.entity_id JOIN public.analytics_outbox o ON o.business_event_id=e.id JOIN public.workflow_transitions w ON w.entity_id=a.entity_id WHERE a.action='post_published' AND a.entity_id=$1`, [published.id])
-    expect(history.rows[0]).toMatchObject({actor_profile_id: operator.id, source_app: 'admin', change_summary: {source: 'admin', represented_ip_profile_id: ip.id}, environment: 'admin', properties: {request_id: expect.any(String), ip_profile_id: ip.id, action_source: 'admin'}, payload: {event_name: 'post_published', event_version: 1, request_id: expect.any(String), ip_profile_id: ip.id, action_source: 'admin'}, previous_state: 'draft', next_state: 'published'})
-    expect(JSON.stringify(history.rows[0])).not.toContain('Text only')
-    expect(JSON.stringify(history.rows[0])).not.toContain('IP comment')
-  }))
+      const raw = await client.query(
+        `SELECT p.source post_source,p.acting_operator_profile_id post_operator,c.source comment_source,c.acting_operator_profile_id comment_operator FROM public.posts p JOIN public.comments c ON c.post_id=p.id WHERE p.id=$1`,
+        [published.id],
+      );
+      expect(raw.rows[0]).toMatchObject({
+        post_source: "admin",
+        post_operator: operator.id,
+        comment_source: "admin",
+        comment_operator: operator.id,
+      });
+      const history = await client.query(
+        `SELECT a.actor_profile_id,a.source_app,a.change_summary,e.environment,e.properties,o.payload,w.previous_state,w.next_state FROM public.audit_events a JOIN public.business_events e ON e.subject_entity_id=a.entity_id JOIN public.analytics_outbox o ON o.business_event_id=e.id JOIN public.workflow_transitions w ON w.entity_id=a.entity_id WHERE a.action='post_published' AND a.entity_id=$1`,
+        [published.id],
+      );
+      expect(history.rows[0]).toMatchObject({
+        actor_profile_id: operator.id,
+        source_app: "admin",
+        change_summary: { source: "admin", represented_ip_profile_id: ip.id },
+        environment: "admin",
+        properties: {
+          request_id: expect.any(String),
+          ip_profile_id: ip.id,
+          action_source: "admin",
+        },
+        payload: {
+          event_name: "post_published",
+          event_version: 1,
+          request_id: expect.any(String),
+          ip_profile_id: ip.id,
+          action_source: "admin",
+        },
+        previous_state: "draft",
+        next_state: "published",
+      });
+      expect(JSON.stringify(history.rows[0])).not.toContain("Text only");
+      expect(JSON.stringify(history.rows[0])).not.toContain("IP comment");
+    }));
 
-  it('rejects invalid IP state, post state, cross-post parents, and replies deeper than one level', async () => tx(async (client) => {
-    const operator = await human(client, true)
-    const {platform} = repositories(client)
-    const first = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'First'}})
-    const second = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Second'}})
-    const firstPost = await platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: first.id, body: 'First post'}})
-    const secondPost = await platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: second.id, body: 'Second post'}})
-    const root = await platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: firstPost.id, comment: {ipProfileId: second.id, body: 'Root'}})
-    const reply = await platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: firstPost.id, comment: {ipProfileId: second.id, body: 'Reply', parentCommentId: root.id}})
+  it("reserves, verifies, atomically publishes, and safely projects ordered public images", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true),
+        other = await human(client, true),
+        { platform, public: social } = repositories(client);
+      const ip = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Media author",
+        },
+      });
+      const first = randomUUID(),
+        second = randomUUID(),
+        expiresAt = new Date(Date.now() + 300_000).toISOString();
+      for (const [id, type, size, width, height] of [
+        [first, "image/webp", 1200, 1200, 800],
+        [second, "image/png", 2400, 800, 800],
+      ] as const) {
+        const reserved = await platform.reservePostMedia({
+          actor: operator,
+          requestId: randomUUID(),
+          reservationId: id,
+          contentType: type,
+          sizeBytes: size,
+          expiresAt,
+        });
+        expect(reserved.objectKey).toMatch(/^public\/posts\//);
+        await expect(
+          platform.getPostMediaReservation(other, id),
+        ).resolves.toBeNull();
+        await expect(
+          platform.verifyPostMedia({
+            actor: operator,
+            reservationId: id,
+            contentType: type,
+            sizeBytes: size,
+            width,
+            height,
+          }),
+        ).resolves.toBe(true);
+      }
+      const published = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: {
+          ipProfileId: ip.id,
+          body: "",
+          media: [
+            { reservationId: first, altText: "月下 portrait" },
+            { reservationId: second, altText: null },
+          ],
+        },
+      });
+      expect(published).toMatchObject({
+        body: "",
+        media: [
+          {
+            id: first,
+            url: `https://media.example/assets/public/posts/${first}.webp`,
+            altText: "月下 portrait",
+            aspectRatio: 1.5,
+          },
+          {
+            id: second,
+            url: `https://media.example/assets/public/posts/${second}.png`,
+            altText: null,
+            aspectRatio: 1,
+          },
+        ],
+      });
+      const feed = await social.listFeed({
+        viewer: null,
+        kind: "for_you",
+        limit: 25,
+        after: null,
+      });
+      expect(
+        feed.items.find((item) => item.id === published.id)?.media,
+      ).toEqual(published.media);
+      await expect(
+        client.query(
+          "SELECT consumed_at FROM public.post_media_upload_reservations WHERE id=ANY($1)",
+          [[first, second]],
+        ),
+      ).resolves.toMatchObject({
+        rows: [
+          { consumed_at: expect.any(Date) },
+          { consumed_at: expect.any(Date) },
+        ],
+      });
+    }));
 
-    await client.query("UPDATE public.ip_profiles SET public_state='paused' WHERE profile_id=$1", [second.id])
-    await expect(platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: second.id, body: 'No'}})).rejects.toMatchObject({code: 'P0001'})
-    await client.query("UPDATE public.ip_profiles SET public_state='published' WHERE profile_id=$1", [second.id])
-    await expect(platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: secondPost.id, comment: {ipProfileId: second.id, body: 'Wrong post', parentCommentId: root.id}})).rejects.toMatchObject({code: '23514'})
-    await expect(platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: firstPost.id, comment: {ipProfileId: second.id, body: 'Too deep', parentCommentId: reply.id}})).rejects.toMatchObject({code: '23514'})
-    await client.query("UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp() WHERE id=$1", [firstPost.id])
-    await expect(platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: firstPost.id, comment: {ipProfileId: first.id, body: 'Hidden'}})).rejects.toMatchObject({code: 'P0002'})
-  }))
+  it("rejects invalid IP state, post state, cross-post parents, and replies deeper than one level", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
+      const first = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "First",
+        },
+      });
+      const second = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Second",
+        },
+      });
+      const firstPost = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: { ipProfileId: first.id, body: "First post" },
+      });
+      const secondPost = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: { ipProfileId: second.id, body: "Second post" },
+      });
+      const root = await platform.publishIpComment({
+        actor: operator,
+        requestId: randomUUID(),
+        postId: firstPost.id,
+        comment: { ipProfileId: second.id, body: "Root" },
+      });
+      const reply = await platform.publishIpComment({
+        actor: operator,
+        requestId: randomUUID(),
+        postId: firstPost.id,
+        comment: {
+          ipProfileId: second.id,
+          body: "Reply",
+          parentCommentId: root.id,
+        },
+      });
 
-  it('atomically rolls back visible rows when history or outbox insertion fails', async () => tx(async (client) => {
-    const operator = await human(client, true)
-    const {platform} = repositories(client)
-    const ip = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Rollback'}})
-    await client.query(`CREATE FUNCTION pg_temp.reject_platform_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced platform outbox failure'; END $$`)
-    await client.query(`CREATE TRIGGER reject_platform_outbox BEFORE INSERT ON public.analytics_outbox FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_platform_outbox()`)
-    await expect(platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: ip.id, body: 'Must roll back'}})).rejects.toThrow('forced platform outbox failure')
-    await expect(client.query("SELECT 1 FROM public.posts WHERE author_profile_id=$1 AND body='Must roll back'", [ip.id])).resolves.toMatchObject({rowCount: 0})
-  }))
+      await client.query(
+        "UPDATE public.ip_profiles SET public_state='paused' WHERE profile_id=$1",
+        [second.id],
+      );
+      await expect(
+        platform.publishPost({
+          actor: operator,
+          requestId: randomUUID(),
+          post: { ipProfileId: second.id, body: "No" },
+        }),
+      ).rejects.toMatchObject({ code: "P0001" });
+      await client.query(
+        "UPDATE public.ip_profiles SET public_state='published' WHERE profile_id=$1",
+        [second.id],
+      );
+      await expect(
+        platform.publishIpComment({
+          actor: operator,
+          requestId: randomUUID(),
+          postId: secondPost.id,
+          comment: {
+            ipProfileId: second.id,
+            body: "Wrong post",
+            parentCommentId: root.id,
+          },
+        }),
+      ).rejects.toMatchObject({ code: "23514" });
+      await expect(
+        platform.publishIpComment({
+          actor: operator,
+          requestId: randomUUID(),
+          postId: firstPost.id,
+          comment: {
+            ipProfileId: second.id,
+            body: "Too deep",
+            parentCommentId: reply.id,
+          },
+        }),
+      ).rejects.toMatchObject({ code: "23514" });
+      await client.query(
+        "UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp() WHERE id=$1",
+        [firstPost.id],
+      );
+      await expect(
+        platform.publishIpComment({
+          actor: operator,
+          requestId: randomUUID(),
+          postId: firstPost.id,
+          comment: { ipProfileId: first.id, body: "Hidden" },
+        }),
+      ).rejects.toMatchObject({ code: "P0002" });
+    }));
 
-  it('rolls back an IP when audit history insertion fails', async () => tx(async (client) => {
-    const operator = await human(client, true)
-    const {platform} = repositories(client)
-    const username = `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`
-    await client.query(`CREATE FUNCTION pg_temp.reject_platform_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced platform audit failure'; END $$`)
-    await client.query(`CREATE TRIGGER reject_platform_audit BEFORE INSERT ON public.audit_events FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_platform_audit()`)
-    await expect(platform.createIp({actor: operator, requestId: randomUUID(), ip: {username, displayName: 'Must roll back'}})).rejects.toThrow('forced platform audit failure')
-    await expect(client.query('SELECT 1 FROM public.profiles WHERE username=$1', [username])).resolves.toMatchObject({rowCount: 0})
-  }))
+  it("atomically rolls back visible rows when history or outbox insertion fails", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
+      const ip = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Rollback",
+        },
+      });
+      await client.query(
+        `CREATE FUNCTION pg_temp.reject_platform_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced platform outbox failure'; END $$`,
+      );
+      await client.query(
+        `CREATE TRIGGER reject_platform_outbox BEFORE INSERT ON public.analytics_outbox FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_platform_outbox()`,
+      );
+      await expect(
+        platform.publishPost({
+          actor: operator,
+          requestId: randomUUID(),
+          post: { ipProfileId: ip.id, body: "Must roll back" },
+        }),
+      ).rejects.toThrow("forced platform outbox failure");
+      await expect(
+        client.query(
+          "SELECT 1 FROM public.posts WHERE author_profile_id=$1 AND body='Must roll back'",
+          [ip.id],
+        ),
+      ).resolves.toMatchObject({ rowCount: 0 });
+    }));
 
-  it('fully rolls back a comment and every history row when outbox insertion fails', async () => tx(async (client) => {
-    const operator = await human(client, true)
-    const {platform} = repositories(client)
-    const ip = await platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Comment rollback'}})
-    const post = await platform.publishPost({actor: operator, requestId: randomUUID(), post: {ipProfileId: ip.id, body: 'Comment rollback target'}})
-    const before = await client.query<{table_name: string; row_count: number}>(`
+  it("rolls back an IP when audit history insertion fails", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
+      const username = `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      await client.query(
+        `CREATE FUNCTION pg_temp.reject_platform_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced platform audit failure'; END $$`,
+      );
+      await client.query(
+        `CREATE TRIGGER reject_platform_audit BEFORE INSERT ON public.audit_events FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_platform_audit()`,
+      );
+      await expect(
+        platform.createIp({
+          actor: operator,
+          requestId: randomUUID(),
+          ip: { username, displayName: "Must roll back" },
+        }),
+      ).rejects.toThrow("forced platform audit failure");
+      await expect(
+        client.query("SELECT 1 FROM public.profiles WHERE username=$1", [
+          username,
+        ]),
+      ).resolves.toMatchObject({ rowCount: 0 });
+    }));
+
+  it("fully rolls back a comment and every history row when outbox insertion fails", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
+      const ip = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Comment rollback",
+        },
+      });
+      const post = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: { ipProfileId: ip.id, body: "Comment rollback target" },
+      });
+      const before = await client.query<{
+        table_name: string;
+        row_count: number;
+      }>(`
       SELECT 'comments' table_name,count(*)::int row_count FROM public.comments
       UNION ALL SELECT 'audit_events',count(*)::int FROM public.audit_events
       UNION ALL SELECT 'workflow_transitions',count(*)::int FROM public.workflow_transitions
       UNION ALL SELECT 'business_events',count(*)::int FROM public.business_events
       UNION ALL SELECT 'analytics_outbox',count(*)::int FROM public.analytics_outbox
       ORDER BY table_name
-    `)
-    await client.query(`CREATE FUNCTION pg_temp.reject_comment_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced comment outbox failure'; END $$`)
-    await client.query(`CREATE TRIGGER reject_comment_outbox BEFORE INSERT ON public.analytics_outbox FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_comment_outbox()`)
+    `);
+      await client.query(
+        `CREATE FUNCTION pg_temp.reject_comment_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced comment outbox failure'; END $$`,
+      );
+      await client.query(
+        `CREATE TRIGGER reject_comment_outbox BEFORE INSERT ON public.analytics_outbox FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_comment_outbox()`,
+      );
 
-    await expect(platform.publishIpComment({actor: operator, requestId: randomUUID(), postId: post.id, comment: {ipProfileId: ip.id, body: 'Must fully roll back'}})).rejects.toThrow('forced comment outbox failure')
+      await expect(
+        platform.publishIpComment({
+          actor: operator,
+          requestId: randomUUID(),
+          postId: post.id,
+          comment: { ipProfileId: ip.id, body: "Must fully roll back" },
+        }),
+      ).rejects.toThrow("forced comment outbox failure");
 
-    const after = await client.query<{table_name: string; row_count: number}>(`
+      const after = await client.query<{
+        table_name: string;
+        row_count: number;
+      }>(`
       SELECT 'comments' table_name,count(*)::int row_count FROM public.comments
       UNION ALL SELECT 'audit_events',count(*)::int FROM public.audit_events
       UNION ALL SELECT 'workflow_transitions',count(*)::int FROM public.workflow_transitions
       UNION ALL SELECT 'business_events',count(*)::int FROM public.business_events
       UNION ALL SELECT 'analytics_outbox',count(*)::int FROM public.analytics_outbox
       ORDER BY table_name
-    `)
-    expect(after.rows).toEqual(before.rows)
-  }))
+    `);
+      expect(after.rows).toEqual(before.rows);
+    }));
 
-  it('grants only bounded function execution and forbids platform-role table writes', async () => tx(async (client) => {
-    await client.query('SET LOCAL ROLE aifans_platform')
-    const role = await client.query<{rolcanlogin:boolean;rolbypassrls:boolean}>("SELECT rolcanlogin,rolbypassrls FROM pg_roles WHERE rolname='aifans_platform'")
-    expect(role.rows[0]).toEqual({rolcanlogin: false, rolbypassrls: false})
-    const privileges = await client.query<{profiles_insert:boolean;posts_insert:boolean;comments_insert:boolean;create_ip:boolean;publish_post:boolean;publish_comment:boolean}>(`SELECT has_table_privilege(current_user,'public.profiles','INSERT') profiles_insert,has_table_privilege(current_user,'public.posts','INSERT') posts_insert,has_table_privilege(current_user,'public.comments','INSERT') comments_insert,has_function_privilege(current_user,'public.platform_create_ip(text,text,text,text[],uuid)','EXECUTE') create_ip,has_function_privilege(current_user,'public.platform_publish_post(uuid,text,text,uuid)','EXECUTE') publish_post,has_function_privilege(current_user,'public.platform_publish_ip_comment(uuid,uuid,text,uuid,uuid)','EXECUTE') publish_comment`)
-    expect(privileges.rows[0]).toEqual({profiles_insert: false, posts_insert: false, comments_insert: false, create_ip: true, publish_post: true, publish_comment: true})
-    await expect(client.query(`INSERT INTO public.posts(id,author_profile_id,source) VALUES($1,$1,'admin')`, [randomUUID()])).rejects.toMatchObject({code: '42501'})
-  }))
+  it("grants only bounded function execution and forbids platform-role table writes", async () =>
+    tx(async (client) => {
+      await client.query("SET LOCAL ROLE aifans_platform");
+      const role = await client.query<{
+        rolcanlogin: boolean;
+        rolbypassrls: boolean;
+      }>(
+        "SELECT rolcanlogin,rolbypassrls FROM pg_roles WHERE rolname='aifans_platform'",
+      );
+      expect(role.rows[0]).toEqual({ rolcanlogin: false, rolbypassrls: false });
+      const privileges = await client.query<{
+        profiles_insert: boolean;
+        posts_insert: boolean;
+        comments_insert: boolean;
+        create_ip: boolean;
+        publish_post: boolean;
+        publish_comment: boolean;
+      }>(
+        `SELECT has_table_privilege(current_user,'public.profiles','INSERT') profiles_insert,has_table_privilege(current_user,'public.posts','INSERT') posts_insert,has_table_privilege(current_user,'public.comments','INSERT') comments_insert,has_function_privilege(current_user,'public.platform_create_ip(text,text,text,text[],uuid)','EXECUTE') create_ip,has_function_privilege(current_user,'public.platform_publish_post(uuid,text,text,uuid)','EXECUTE') publish_post,has_function_privilege(current_user,'public.platform_publish_ip_comment(uuid,uuid,text,uuid,uuid)','EXECUTE') publish_comment`,
+      );
+      expect(privileges.rows[0]).toEqual({
+        profiles_insert: false,
+        posts_insert: false,
+        comments_insert: false,
+        create_ip: true,
+        publish_post: true,
+        publish_comment: true,
+      });
+      await expect(
+        client.query(
+          `INSERT INTO public.posts(id,author_profile_id,source) VALUES($1,$1,'admin')`,
+          [randomUUID()],
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    }));
 
-  it('runs platform commands through a real non-owner login', async () => {
-    const suffix = randomUUID().replaceAll('-', '').slice(0, 16)
-    const login = `aifans_platform_test_${suffix}`
-    const password = `platform_${suffix}`
-    const profileId = randomUUID()
-    const subject = `platform-login-${suffix}`
-    const platformUrl = new URL(connectionString)
-    platformUrl.username = login
-    platformUrl.password = password
-    const loginPool = new Pool({connectionString: platformUrl.toString(), max: 1})
+  it("runs platform commands through a real non-owner login", async () => {
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 16);
+    const login = `aifans_platform_test_${suffix}`;
+    const password = `platform_${suffix}`;
+    const profileId = randomUUID();
+    const subject = `platform-login-${suffix}`;
+    const platformUrl = new URL(connectionString);
+    platformUrl.username = login;
+    platformUrl.password = password;
+    const loginPool = new Pool({
+      connectionString: platformUrl.toString(),
+      max: 1,
+    });
 
     try {
-      await pool.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`)
-      await pool.query(`GRANT aifans_platform TO ${login}`)
+      await pool.query(
+        `CREATE ROLE ${login} LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`,
+      );
+      await pool.query(`GRANT aifans_platform TO ${login}`);
       await pool.query(
         `INSERT INTO public.profiles(id,auth_subject,account_kind,username,display_name)
          VALUES($1,$2,'human',$3,'Non-owner platform login')`,
         [profileId, subject, `h_${suffix}`],
-      )
-      const identity = await loginPool.query<{session_user: string; is_superuser: boolean; bypasses_rls: boolean; owns_public: boolean}>(`
+      );
+      const identity = await loginPool.query<{
+        session_user: string;
+        is_superuser: boolean;
+        bypasses_rls: boolean;
+        owns_public: boolean;
+      }>(`
         SELECT session_user,
           r.rolsuper AS is_superuser,
           r.rolbypassrls AS bypasses_rls,
           pg_get_userbyid(n.nspowner) = session_user AS owns_public
         FROM pg_roles r CROSS JOIN pg_namespace n
         WHERE r.rolname = session_user AND n.nspname = 'public'
-      `)
-      expect(identity.rows[0]).toEqual({session_user: login, is_superuser: false, bypasses_rls: false, owns_public: false})
+      `);
+      expect(identity.rows[0]).toEqual({
+        session_user: login,
+        is_superuser: false,
+        bypasses_rls: false,
+        owns_public: false,
+      });
       const platform = createPlatformSocialRepository({
-        withPlatformActor: createPlatformSession(loginPool, {transactionMode: 'owned'}).withPlatformActor,
-      })
-      await expect(platform.createIp({
-        actor: {subject},
-        requestId: randomUUID(),
-        ip: {username: `ip_${suffix}`, displayName: 'Must be rejected'},
-      })).rejects.toMatchObject({code: '42501'})
+        withPlatformActor: createPlatformSession(loginPool, {
+          transactionMode: "owned",
+        }).withPlatformActor,
+      });
+      await expect(
+        platform.createIp({
+          actor: { subject },
+          requestId: randomUUID(),
+          ip: { username: `ip_${suffix}`, displayName: "Must be rejected" },
+        }),
+      ).rejects.toMatchObject({ code: "42501" });
     } finally {
-      await loginPool.end().catch(() => undefined)
-      await pool.query('DELETE FROM public.profiles WHERE id=$1', [profileId]).catch(() => undefined)
-      await pool.query(`DROP ROLE IF EXISTS ${login}`).catch(() => undefined)
+      await loginPool.end().catch(() => undefined);
+      await pool
+        .query("DELETE FROM public.profiles WHERE id=$1", [profileId])
+        .catch(() => undefined);
+      await pool.query(`DROP ROLE IF EXISTS ${login}`).catch(() => undefined);
     }
-  })
-})
+  });
+});
