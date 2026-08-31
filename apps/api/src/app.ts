@@ -6,6 +6,7 @@ import {registerAdminRoutes} from './routes/admin.js'
 import {registerMeRoutes} from './routes/me.js'
 import {registerSocialRoutes} from './routes/social.js'
 import {registerChatRoutes} from './routes/chat.js'
+import {registerInternalAnalyticsRoutes} from './routes/internal-analytics.js'
 import type {AuthVerifier} from './ports/auth.js'
 import type {AuthorityPort} from './ports/authority.js'
 import type {PlatformSocialPort} from './ports/platform-social.js'
@@ -13,6 +14,7 @@ import type {ProfilePort} from './ports/profiles.js'
 import type {SocialPort} from './ports/social.js'
 import type {ChatPort} from './ports/chat.js'
 import type {ChatTargetPort} from './ports/chat-target.js'
+import type {AnalyticsDeliveryWorker} from './ports/analytics.js'
 
 export type AppDependencies = {
   auth?: AuthVerifier
@@ -22,6 +24,8 @@ export type AppDependencies = {
   social?: SocialPort
   chat?: ChatPort
   chatTargets?: ChatTargetPort
+  analyticsWorker?: AnalyticsDeliveryWorker
+  analyticsCronSecret?: string
 }
 
 export const createApp = (dependencies: AppDependencies = {}) => {
@@ -33,6 +37,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerMeRoutes(app, dependencies)
   registerSocialRoutes(app, dependencies)
   registerChatRoutes(app, dependencies)
+  registerInternalAnalyticsRoutes(app, dependencies)
   app.notFound((c) => apiError(c, 404, 'NOT_FOUND', 'Route not found'))
   app.onError((_error, c) => apiError(c, 500, 'INTERNAL_ERROR', 'Internal server error'))
 

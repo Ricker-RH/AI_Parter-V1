@@ -67,6 +67,8 @@ export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
 export {createChatTargetRepository, isPublicChatIp} from './chat-target.js'
 export type {ChatTargetRepository} from './chat-target.js'
 export {createCreatorRepository, createPlatformCreatorRepository} from './creator.js'
+export {createAnalyticsOutboxRepository, createPooledAnalyticsOutboxRepository, createAnalyticsOutboxRepositoryFromUrl} from './analytics-outbox.js'
+export type {AnalyticsOutboxEvent, AnalyticsOutboxRepository} from './analytics-outbox.js'
 export type {
   CreatorCommandContext,
   CreatorPageQuery,

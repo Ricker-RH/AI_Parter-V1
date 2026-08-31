@@ -49,6 +49,12 @@ type AuditInput = z.infer<typeof auditInput>
 type BusinessInput = z.infer<typeof businessInput>
 type TransitionInput = z.infer<typeof transitionInput>
 type OutboxInput = z.infer<typeof outboxInput>
+export type HistoryOutboxPayload = z.infer<typeof outboxPayload>
+
+export function parseHistoryOutboxPayload(value: unknown): HistoryOutboxPayload {
+  rejectSensitiveKeys(value)
+  return outboxPayload.parse(value)
+}
 
 function json(value: unknown): string { return JSON.stringify(value) }
 

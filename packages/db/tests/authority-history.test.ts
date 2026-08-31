@@ -202,7 +202,10 @@ describeIntegration('operator authority and append-only history', () => {
       }
       await expect(client.query('SELECT * FROM public.audit_events WHERE actor_profile_id = $1', [actor.id])).resolves.toMatchObject({rowCount: 0})
       await expect(client.query('SELECT * FROM public.business_events WHERE actor_profile_id = $1', [actor.id])).resolves.toMatchObject({rowCount: 0})
-      await expect(client.query('SELECT * FROM public.analytics_outbox')).resolves.toMatchObject({rowCount: 0})
+      await expect(client.query(
+        'SELECT o.id FROM public.analytics_outbox o JOIN public.business_events e ON e.id=o.business_event_id WHERE e.actor_profile_id=$1',
+        [actor.id],
+      )).resolves.toMatchObject({rowCount: 0})
     })
   })
 
