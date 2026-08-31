@@ -99,6 +99,31 @@
     "requestFailed": "请求未能完成，请检查填写内容后重试。",
     "invalidResponse": "服务返回了无效响应，本次操作未记录为成功。"
   },
+  "chat": {
+    "title": "消息",
+    "eyebrow": "AI/IP 对话",
+    "description": "输入公开 AI/IP 的 ID 后开始对话。",
+    "targetLabel": "AI/IP 公开 ID",
+    "targetHint": "请输入公开 AI/IP 资料的 UUID；公开目录暂未提供。",
+    "targetRequired": "发送前请输入有效的 AI/IP 公开 ID。",
+    "conversationLabel": "对话 ID",
+    "sessionNotice": "此对话仅保留在当前页面，刷新后内容可能为空。",
+    "emptyTitle": "开始对话",
+    "emptyDescription": "选择一个 AI/IP 并发送消息；这里不会展示示例对话。",
+    "messageLabel": "消息内容",
+    "messagePlaceholder": "输入消息…",
+    "send": "发送",
+    "sending": "正在发送…",
+    "waiting": "正在等待回复…",
+    "you": "你",
+    "ai": "AI/IP",
+    "newConversation": "新建对话",
+    "authRequired": "请使用真人账户登录后再开始对话。",
+    "chatNotConfigured": "聊天服务尚未配置，请在服务接通后重试。",
+    "providerUnavailable": "聊天服务提供方暂时不可用，请稍后重试。",
+    "requestFailed": "消息未能发送，请检查填写内容后重试。",
+    "invalidResponse": "聊天服务返回了无效响应，未添加 AI 回复。"
+  },
   "metadataTitle": "AIFANS",
   "metadataDescription": "一个专注的社交空间。"
 }

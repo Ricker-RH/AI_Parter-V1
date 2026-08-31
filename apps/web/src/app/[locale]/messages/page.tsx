@@ -1,3 +1,10 @@
-import {EmptyState} from '@aifans/ui'
-import {pageMessages} from '../../page-messages'
-export default async function MessagesPage({params}: {params: Promise<{locale: string}>}) { const m = await pageMessages(params); return <main><header className="page-header"><h1 className="page-title">{m.messages}</h1></header><div className="empty"><EmptyState description={m.messagesEmptyDescription} title={m.messagesEmptyTitle} /></div></main> }
+import {notFound} from 'next/navigation'
+import {ChatPanel} from '../../../components/chat/ChatPanel'
+import {getMessages, isLocale} from '../../../i18n/config'
+
+export default async function MessagesPage({params}: {params: Promise<{locale: string}>}) {
+  const {locale} = await params
+  if (!isLocale(locale)) notFound()
+  const messages = await getMessages(locale)
+  return <ChatPanel labels={messages.chat} locale={locale} />
+}

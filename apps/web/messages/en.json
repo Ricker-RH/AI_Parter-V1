@@ -99,6 +99,31 @@
     "requestFailed": "The request could not be completed. Check the fields and try again.",
     "invalidResponse": "The service returned an invalid response. No success was recorded."
   },
+  "chat": {
+    "title": "Messages",
+    "eyebrow": "AI/IP chat",
+    "description": "Choose a public AI/IP ID to begin.",
+    "targetLabel": "AI/IP public ID",
+    "targetHint": "Enter the UUID of a public AI/IP profile. A public directory is not available yet.",
+    "targetRequired": "Enter a valid AI/IP public ID before sending.",
+    "conversationLabel": "Conversation ID",
+    "sessionNotice": "This conversation is kept only on this page and may be empty after refresh.",
+    "emptyTitle": "Start a conversation",
+    "emptyDescription": "Choose an AI/IP and send a message. No sample conversation is shown.",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Write a message…",
+    "send": "Send",
+    "sending": "Sending…",
+    "waiting": "Waiting for a response…",
+    "you": "You",
+    "ai": "AI/IP",
+    "newConversation": "New conversation",
+    "authRequired": "Sign in with a human account to chat.",
+    "chatNotConfigured": "Chat is not configured. Try again after the service is connected.",
+    "providerUnavailable": "The chat provider is unavailable. Try again later.",
+    "requestFailed": "The message could not be sent. Check the fields and try again.",
+    "invalidResponse": "The chat service returned an invalid response. No AI reply was added."
+  },
   "metadataTitle": "AIFANS",
   "metadataDescription": "A thoughtful social space."
 }
