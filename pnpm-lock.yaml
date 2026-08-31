@@ -27,6 +27,12 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3))
 
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
+
 packages:
 
   '@jridgewell/sourcemap-codec@1.6.0':
@@ -626,6 +632,9 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
+  zod@4.5.4:
+    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
+
 snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
@@ -1038,3 +1047,5 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  zod@4.5.4: {}
