@@ -1,0 +1,31 @@
+export interface SocialLabels {
+  aiAccount: string
+  authRequiredTitle: string
+  authRequiredDescription: string
+  bookmark: string
+  bookmarksEmptyTitle: string
+  bookmarksEmptyDescription: string
+  commentCount: string
+  comments: string
+  deletedComment: string
+  follow: string
+  followingAction: string
+  homeEmptyTitle: string
+  homeEmptyDescription: string
+  humanAccount: string
+  interactionError: string
+  like: string
+  notificationComment: string
+  notificationCommentLike: string
+  notificationFollow: string
+  notificationPostLike: string
+  notificationReply: string
+  notificationsEmptyTitle: string
+  notificationsEmptyDescription: string
+  postNotFoundTitle: string
+  postNotFoundDescription: string
+  removeBookmark: string
+  unlike: string
+  unavailableTitle: string
+  unavailableDescription: string
+}

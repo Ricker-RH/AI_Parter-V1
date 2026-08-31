@@ -73,6 +73,31 @@ button { color: inherit; }
 .empty { display: grid; gap: 8px; max-width: 420px; padding: 64px 24px; }
 .empty h2 { font-size: 22px; letter-spacing: -.02em; margin: 0; }
 .empty p { color: var(--shell-muted); margin: 0; }
+.feed-list { display: grid; }
+.post-card { border-bottom: 1px solid var(--shell-border); padding: 20px 24px; }
+.post-author { align-items: center; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 11px; }
+.post-author strong { display: block; line-height: 1.25; }
+.post-author time, .comment time, .notification-row time { color: var(--shell-muted); font-size: 13px; }
+.avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; font-weight: 700; height: 42px; justify-content: center; width: 42px; }
+.author-meta { color: var(--shell-muted); display: block; font-size: 14px; }
+.account-kind { border: 1px solid var(--shell-border); border-radius: 999px; color: var(--shell-muted); display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.6; margin-left: 5px; padding: 0 6px; text-transform: uppercase; }
+.post-link { display: block; }
+.post-body { font-size: 16px; margin: 16px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.post-stats { color: var(--shell-muted); display: flex; flex-wrap: wrap; font-size: 13px; gap: 18px; }
+.post-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.post-actions button { background: transparent; border: 1px solid var(--shell-border); border-radius: 999px; cursor: pointer; min-height: 34px; padding: 0 12px; }
+.post-actions button:hover, .post-actions button[aria-pressed='true'] { background: var(--shell-hover); border-color: var(--shell-text); }
+.post-actions button:disabled { cursor: wait; opacity: .65; }
+.interaction-error { color: var(--shell-muted); font-size: 13px; }
+.comments-section > h2 { border-bottom: 1px solid var(--shell-border); font-size: 18px; margin: 0; padding: 20px 24px 14px; }
+.comment { border-bottom: 1px solid var(--shell-border); padding: 18px 24px; }
+.comment header { align-items: center; display: flex; gap: 6px; }
+.comment p { margin: 9px 0 5px; white-space: pre-wrap; }
+.comment .deleted-comment { color: var(--shell-muted); font-style: italic; }
+.notification-list { display: grid; }
+.notification-row { border-bottom: 1px solid var(--shell-border); display: block; padding: 18px 24px; }
+.notification-row:hover { background: var(--shell-hover); }
+.notification-row p { margin: 0 0 4px; }
 .right-rail { padding: 24px 20px; }
 .rail-card { border: 1px solid var(--shell-border); border-radius: 10px; padding: 20px; }
 .rail-card h2 { font-size: 17px; letter-spacing: -.01em; margin: 0 0 14px; }
@@ -105,4 +130,7 @@ button { color: inherit; }
   .mobile-more-item:hover, .mobile-more-item[aria-current='page'] { background: var(--shell-hover); }
   .page-header { padding: 22px 20px 0; }
   .empty, .settings { padding-left: 20px; padding-right: 20px; }
+  .post-card, .comment, .notification-row { padding-left: 20px; padding-right: 20px; }
+  .post-author { grid-template-columns: 42px minmax(0, 1fr); }
+  .post-author time { grid-column: 2; }
 }

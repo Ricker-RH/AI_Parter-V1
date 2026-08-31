@@ -54,6 +54,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@aifans/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@aifans/ui':
         specifier: workspace:*
         version: link:../../packages/ui
