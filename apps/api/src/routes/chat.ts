@@ -5,17 +5,19 @@ import {apiError} from '../errors.js'
 import type {ApiVariables} from '../middleware/request-id.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import {ChatProviderError, type ChatPort} from '../ports/chat.js'
+import type {ChatTargetPort} from '../ports/chat-target.js'
 import type {ProfilePort} from '../ports/profiles.js'
 
 export type ChatDependencies = {
   auth?: AuthVerifier
   profiles?: ProfilePort
   chat?: ChatPort
+  chatTargets?: ChatTargetPort
 }
 
 type ApiContext = Context<{Variables: ApiVariables}>
 type HumanResolution =
-  | {ok: true; humanProfileId: string; preferredLocale: 'en' | 'zh-CN'}
+  | {ok: true; actor: {subject: string}; humanProfileId: string; preferredLocale: 'en' | 'zh-CN'}
   | {ok: false; response: Response}
 
 const EmptyQuerySchema = z.strictObject({})
@@ -122,7 +124,12 @@ async function requireHuman(c: ApiContext, dependencies: ChatDependencies): Prom
   if (account.kind !== 'human') {
     return {ok: false, response: apiError(c, 403, 'HUMAN_REQUIRED', 'A human account is required')}
   }
-  return {ok: true, humanProfileId: account.id, preferredLocale: account.preferredLocale}
+  return {
+    ok: true,
+    actor: {subject: result.identity.subject},
+    humanProfileId: account.id,
+    preferredLocale: account.preferredLocale,
+  }
 }
 
 export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, dependencies: ChatDependencies) {
@@ -138,10 +145,16 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
     if (!dependencies.chat) {
       return apiError(c, 503, 'CHAT_NOT_CONFIGURED', 'Chat is not configured')
     }
+    if (!dependencies.chatTargets) {
+      return apiError(c, 503, 'CHAT_TARGET_NOT_CONFIGURED', 'Chat targets are not configured')
+    }
 
     try {
       const human = await requireHuman(c, dependencies)
       if (!human.ok) return human.response
+      if (!await dependencies.chatTargets.isPublicChatIp(human.actor, ipProfileId.data)) {
+        return apiError(c, 404, 'CHAT_TARGET_NOT_FOUND', 'Chat target was not found')
+      }
       const response = await dependencies.chat.sendMessage({
         humanProfileId: human.humanProfileId,
         ipProfileId: ipProfileId.data,

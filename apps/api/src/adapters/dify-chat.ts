@@ -15,11 +15,16 @@ type DifyEnvironment = {
   DIFY_API_KEY?: string
 }
 
-const DifyBlockingResponseSchema = z.object({
+const DifyBlockingResponseSchema = z.strictObject({
+  event: z.literal('message'),
+  task_id: z.uuid(),
+  id: z.uuid(),
+  mode: z.enum(['chat', 'agent-chat', 'advanced-chat']),
   answer: z.string(),
   conversation_id: z.uuid(),
   message_id: z.uuid(),
-  created_at: z.number().int().nonnegative().optional(),
+  metadata: z.object({}).passthrough(),
+  created_at: z.number().int().min(0).max(8_640_000_000_000),
 })
 
 function providerError(cause?: unknown): ChatProviderError {
@@ -27,7 +32,7 @@ function providerError(cause?: unknown): ChatProviderError {
 }
 
 export function createDifyChatPort({baseUrl, apiKey, fetcher = fetch}: DifyChatOptions): ChatPort {
-  const endpoint = new URL(`${baseUrl.replace(/\/+$/, '')}/v1/chat-messages`).toString()
+  const endpoint = new URL(`${baseUrl.replace(/\/+$/, '')}/chat-messages`).toString()
 
   return {
     async sendMessage(input) {
@@ -62,18 +67,17 @@ export function createDifyChatPort({baseUrl, apiKey, fetcher = fetch}: DifyChatO
       } catch (error) {
         throw providerError(error)
       }
-      const parsed = DifyBlockingResponseSchema.safeParse(value)
-      if (!parsed.success) throw providerError(parsed.error)
-
-      const result = {
-        answer: parsed.data.answer,
-        conversationId: parsed.data.conversation_id,
-        messageId: parsed.data.message_id,
-        ...(parsed.data.created_at === undefined
-          ? {}
-          : {createdAt: new Date(parsed.data.created_at * 1000).toISOString()}),
+      try {
+        const parsed = DifyBlockingResponseSchema.parse(value)
+        return ChatMessageResponseSchema.parse({
+          answer: parsed.answer,
+          conversationId: parsed.conversation_id,
+          messageId: parsed.message_id,
+          createdAt: new Date(parsed.created_at * 1000).toISOString(),
+        })
+      } catch (error) {
+        throw providerError(error)
       }
-      return ChatMessageResponseSchema.parse(result)
     },
   }
 }

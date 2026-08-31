@@ -12,6 +12,7 @@ import type {PlatformSocialPort} from './ports/platform-social.js'
 import type {ProfilePort} from './ports/profiles.js'
 import type {SocialPort} from './ports/social.js'
 import type {ChatPort} from './ports/chat.js'
+import type {ChatTargetPort} from './ports/chat-target.js'
 
 export type AppDependencies = {
   auth?: AuthVerifier
@@ -20,6 +21,7 @@ export type AppDependencies = {
   profiles?: ProfilePort
   social?: SocialPort
   chat?: ChatPort
+  chatTargets?: ChatTargetPort
 }
 
 export const createApp = (dependencies: AppDependencies = {}) => {

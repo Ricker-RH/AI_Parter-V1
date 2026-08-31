@@ -4,6 +4,7 @@ import {describe, expect, it} from 'vitest'
 import {createApp} from '../app.js'
 import {ChatProviderError, type ChatPort} from '../ports/chat.js'
 import type {AuthVerifier} from '../ports/auth.js'
+import type {ChatTargetPort} from '../ports/chat-target.js'
 import type {ProfilePort} from '../ports/profiles.js'
 
 const humanProfileId = randomUUID()
@@ -26,6 +27,15 @@ const profiles = {
 } satisfies ProfilePort
 const result = {answer: 'Hello', conversationId, messageId, createdAt: '2026-09-01T12:00:00.000Z'}
 
+function chatTargets(available = true, calls: unknown[] = []): ChatTargetPort {
+  return {
+    isPublicChatIp: async (actor, targetId) => {
+      calls.push({actor, targetId})
+      return available
+    },
+  }
+}
+
 function chat(calls: unknown[] = []): ChatPort {
   return {sendMessage: async (input) => { calls.push(input); return result }}
 }
@@ -39,23 +49,24 @@ async function expectError(response: Response, status: number, code: string) {
 
 describe('POST /v1/chat/:ipProfileId/messages', () => {
   it('returns 503 when chat is not configured', async () => {
-    await expectError(await createApp({auth, profiles}).request(`/v1/chat/${ipProfileId}/messages`, {
+    await expectError(await createApp({auth, profiles, chatTargets: chatTargets()}).request(`/v1/chat/${ipProfileId}/messages`, {
       method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'}),
     }), 503, 'CHAT_NOT_CONFIGURED')
   })
 
   it('requires a verified human', async () => {
-    await expectError(await createApp({auth: missingAuth, profiles, chat: chat()}).request(`/v1/chat/${ipProfileId}/messages`, {
+    await expectError(await createApp({auth: missingAuth, profiles, chatTargets: chatTargets(), chat: chat()}).request(`/v1/chat/${ipProfileId}/messages`, {
       method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'}),
     }), 401, 'AUTH_REQUIRED')
-    await expectError(await createApp({profiles, chat: chat()}).request(`/v1/chat/${ipProfileId}/messages`, {
+    await expectError(await createApp({profiles, chatTargets: chatTargets(), chat: chat()}).request(`/v1/chat/${ipProfileId}/messages`, {
       method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'}),
     }), 503, 'AUTH_NOT_CONFIGURED')
   })
 
   it('derives human, IP, locale, and request ID instead of accepting forged values', async () => {
     const calls: unknown[] = []
-    const app = createApp({auth, profiles, chat: chat(calls)})
+    const targetCalls: unknown[] = []
+    const app = createApp({auth, profiles, chatTargets: chatTargets(true, targetCalls), chat: chat(calls)})
     const response = await app.request(`/v1/chat/${ipProfileId}/messages`, {
       method: 'POST',
       headers: {'content-type': 'application/json', 'x-request-id': 'forged-request-id'},
@@ -71,6 +82,7 @@ describe('POST /v1/chat/:ipProfileId/messages', () => {
       locale: 'en',
       requestId: response.headers.get('x-request-id'),
     }])
+    expect(targetCalls).toEqual([{actor: {subject: identity.subject}, targetId: ipProfileId}])
     expect(response.headers.get('x-request-id')).not.toBe('forged-request-id')
 
     await expectError(await app.request(`/v1/chat/${ipProfileId}/messages`, {
@@ -81,7 +93,7 @@ describe('POST /v1/chat/:ipProfileId/messages', () => {
 
   it('returns 200 for an existing conversation and honors a supported locale', async () => {
     const calls: unknown[] = []
-    const response = await createApp({auth, profiles, chat: chat(calls)}).request(`/v1/chat/${ipProfileId}/messages`, {
+    const response = await createApp({auth, profiles, chatTargets: chatTargets(), chat: chat(calls)}).request(`/v1/chat/${ipProfileId}/messages`, {
       method: 'POST', headers: {'content-type': 'application/json'},
       body: JSON.stringify({message: 'hello', conversationId, locale: 'zh-CN'}),
     })
@@ -97,7 +109,7 @@ describe('POST /v1/chat/:ipProfileId/messages', () => {
     [`/v1/chat/${ipProfileId}/messages`, '{"message":"one","message":"two"}'],
     [`/v1/chat/${ipProfileId}/messages`, JSON.stringify({message: 'hi', locale: 'fr'})],
   ])('strictly rejects invalid path, query, or JSON body', async (path, body) => {
-    const response = await createApp({auth, profiles, chat: chat()}).request(path, {
+    const response = await createApp({auth, profiles, chatTargets: chatTargets(), chat: chat()}).request(path, {
       method: 'POST', headers: {'content-type': 'application/json'}, body,
     })
     await expectError(response, path.includes('not-a-uuid') || path.includes('?') ? 400 : 422, 'INVALID_REQUEST')
@@ -105,7 +117,7 @@ describe('POST /v1/chat/:ipProfileId/messages', () => {
 
   it('maps every provider failure to a safe correlated 502', async () => {
     const providerBody = 'secret provider response'
-    const response = await createApp({auth, profiles, chat: {
+    const response = await createApp({auth, profiles, chatTargets: chatTargets(), chat: {
       sendMessage: async () => { throw new ChatProviderError(providerBody) },
     }}).request(`/v1/chat/${ipProfileId}/messages`, {
       method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'}),
@@ -114,5 +126,24 @@ describe('POST /v1/chat/:ipProfileId/messages', () => {
     const raw = await response.clone().text()
     await expectError(response, 502, 'CHAT_PROVIDER_ERROR')
     expect(raw).not.toContain(providerBody)
+  })
+
+  it('rejects an untrusted or unavailable target before calling Dify', async () => {
+    let providerCalls = 0
+    await expectError(await createApp({
+      auth,
+      profiles,
+      chatTargets: chatTargets(false),
+      chat: {sendMessage: async () => { providerCalls += 1; return result }},
+    }).request(`/v1/chat/${ipProfileId}/messages`, {
+      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'}),
+    }), 404, 'CHAT_TARGET_NOT_FOUND')
+    expect(providerCalls).toBe(0)
+  })
+
+  it('requires a configured trusted target projection', async () => {
+    await expectError(await createApp({auth, profiles, chat: chat()}).request(`/v1/chat/${ipProfileId}/messages`, {
+      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'}),
+    }), 503, 'CHAT_TARGET_NOT_CONFIGURED')
   })
 })

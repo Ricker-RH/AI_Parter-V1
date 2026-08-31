@@ -46,3 +46,5 @@ export {createSocialRepository, createPlatformSocialRepository} from './social.j
 export type {CommandContext, SocialRepository, PlatformSocialRepository} from './social.js'
 export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'
 export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
+export {createChatTargetRepository, isPublicChatIp} from './chat-target.js'
+export type {ChatTargetRepository} from './chat-target.js'
