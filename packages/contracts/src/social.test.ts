@@ -8,6 +8,9 @@ import {
   PublicIpSchema,
   FeedPostSchema,
   NotificationSchema,
+  NotificationCursorSchema,
+  decodeNotificationCursor,
+  encodeNotificationCursor,
 } from './social.js'
 
 const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
@@ -33,5 +36,19 @@ describe('social contracts', () => {
     expect(() => FeedQuerySchema.parse({kind: 'for_you', limit: '51'})).toThrow()
     expect(() => FeedQuerySchema.parse({kind: 'for_you', unexpected: 'value'})).toThrow()
     expect(CursorSchema.parse(cursor)).toEqual(cursor)
+  })
+
+  it('strictly round trips notification cursors and normalizes every failure', () => {
+    const cursor = {v: 1 as const, kind: 'notifications' as const, createdAt: timestamp, id}
+    expect(NotificationCursorSchema.parse(cursor)).toEqual(cursor)
+    expect(decodeNotificationCursor(encodeNotificationCursor(cursor))).toEqual(cursor)
+
+    for (const invalid of [
+      'not+base64url=',
+      Buffer.from(JSON.stringify({...cursor, extra: true}), 'utf8').toString('base64url'),
+      Buffer.from(JSON.stringify({...cursor, createdAt: 'yesterday'}), 'utf8').toString('base64url'),
+      Buffer.from(JSON.stringify({...cursor, id: 'not-a-uuid'}), 'utf8').toString('base64url'),
+      Buffer.from(JSON.stringify({...cursor, kind: 'comments'}), 'utf8').toString('base64url'),
+    ]) expect(() => decodeNotificationCursor(invalid)).toThrow('INVALID_CURSOR')
   })
 })

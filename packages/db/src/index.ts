@@ -43,6 +43,6 @@ export {
 export {withActor} from './session.js'
 export type {Actor} from './session.js'
 export {createSocialRepository} from './social.js'
-export type {SocialRepository} from './social.js'
+export type {CommandContext, SocialRepository} from './social.js'
 export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'
 export type {AuthorityRepository, GrantOperatorInput} from './authority.js'

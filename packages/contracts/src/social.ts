@@ -20,12 +20,14 @@ export const ChronologicalCursorSchema = z.strictObject({v: z.literal(1), kind: 
 export const ForYouCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('for_you'), score: z.number().finite(), publishedAt: dateTime, id: uuid})
 export const CursorSchema = z.discriminatedUnion('kind', [ChronologicalCursorSchema, ForYouCursorSchema])
 export const CommentCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('comments'), createdAt: dateTime, id: uuid})
+export const NotificationCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('notifications'), createdAt: dateTime, id: uuid})
 
 export type FeedKind = z.infer<typeof FeedKindSchema>
 export type PageQuery = z.infer<typeof PageQuerySchema>
 export type FeedQuery = z.infer<typeof FeedQuerySchema>
 export type Cursor = z.infer<typeof CursorSchema>
 export type CommentCursor = z.infer<typeof CommentCursorSchema>
+export type NotificationCursor = z.infer<typeof NotificationCursorSchema>
 export type Locale = z.infer<typeof LocaleSchema>
 
 const base64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -49,6 +51,19 @@ export function decodeCursor(value: string, expectedKind?: FeedKind): Cursor {
   } catch { throw new Error('INVALID_CURSOR') }
   const cursor = CursorSchema.safeParse(decoded)
   if (!cursor.success || (expectedKind && cursor.data.kind !== (expectedKind === 'following' ? 'chronological' : 'for_you'))) throw new Error('INVALID_CURSOR')
+  return cursor.data
+}
+export function encodeNotificationCursor(cursor: NotificationCursor): string { return base64urlEncode(JSON.stringify(NotificationCursorSchema.parse(cursor))) }
+export function decodeNotificationCursor(value: string): NotificationCursor {
+  let decoded: unknown
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) throw new Error('invalid base64url')
+    const json = base64urlDecode(value)
+    if (base64urlEncode(json) !== value) throw new Error('non-canonical base64url')
+    decoded = JSON.parse(json)
+  } catch { throw new Error('INVALID_CURSOR') }
+  const cursor = NotificationCursorSchema.safeParse(decoded)
+  if (!cursor.success) throw new Error('INVALID_CURSOR')
   return cursor.data
 }
 

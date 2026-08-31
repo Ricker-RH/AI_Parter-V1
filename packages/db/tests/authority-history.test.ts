@@ -205,4 +205,28 @@ describeIntegration('operator authority and append-only history', () => {
       await expect(client.query('SELECT * FROM public.analytics_outbox')).resolves.toMatchObject({rowCount: 0})
     })
   })
+
+  it('rejects cross-event business and outbox field combinations', async () => {
+    await transaction(async (client) => {
+      const actor = await insertHuman(client)
+      const history = createHistoryRepository()
+      const requestId = randomUUID()
+      const eventId = randomUUID()
+
+      await expect(history.recordBusinessEvent(client, {
+        eventName: 'post_liked', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'api', requestId, properties: {event_id: eventId, request_id: requestId},
+      } as never)).rejects.toThrow()
+      await expect(history.recordBusinessEvent(client, {
+        eventName: 'follow_created', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'api', requestId, properties: {event_id: eventId, request_id: requestId},
+      } as never)).rejects.toThrow()
+      const firstBusinessId = await history.recordBusinessEvent(client, {eventName:'account_registered',actorProfileId:actor.id,subjectEntityType:'profile',subjectEntityId:actor.id,environment:'test',properties:{event_id:randomUUID()}})
+      const secondBusinessId = await history.recordBusinessEvent(client, {eventName:'account_registered',actorProfileId:actor.id,subjectEntityType:'profile',subjectEntityId:actor.id,environment:'test',properties:{event_id:randomUUID()}})
+      await expect(history.recordOutbox(client, firstBusinessId, {
+        destination: 'posthog', payloadVersion: 1, payload: {event_id: eventId, event_name: 'follow_created', event_version: 1, request_id: requestId},
+      } as never)).rejects.toThrow()
+      await expect(history.recordOutbox(client, secondBusinessId, {
+        destination: 'posthog', payloadVersion: 1, payload: {event_id: eventId, event_name: 'post_liked', event_version: 1, request_id: requestId, profile_id: actor.id},
+      } as never)).rejects.toThrow()
+    })
+  })
 })
