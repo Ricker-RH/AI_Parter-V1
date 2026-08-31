@@ -1,6 +1,7 @@
 'use client'
 
 import {useState} from 'react'
+import {useRouter} from 'next/navigation'
 import type {SocialLabels} from './types'
 
 type ActionLabels = Pick<SocialLabels, 'bookmark' | 'follow' | 'followingAction' | 'interactionError' | 'like' | 'removeBookmark' | 'unlike'>
@@ -13,23 +14,24 @@ function validMutationResponse(value: unknown, method: 'PUT' | 'DELETE'): boolea
   return entries.length === 1 && entries[0]?.[0] === expected && typeof entries[0][1] === 'boolean'
 }
 
-export function PostActions({apiBaseUrl, postId, authorId, liked, bookmarked, followsAuthor, labels}: {apiBaseUrl: string; postId: string; authorId: string; liked: boolean; bookmarked: boolean; followsAuthor: boolean; labels: ActionLabels}) {
+export function PostActions({postId, authorId, liked, bookmarked, followsAuthor, labels}: {postId: string; authorId: string; liked: boolean; bookmarked: boolean; followsAuthor: boolean; labels: ActionLabels}) {
+  const router = useRouter()
   const [state, setState] = useState({like: liked, bookmark: bookmarked, follow: followsAuthor})
   const [pending, setPending] = useState<Action | null>(null)
   const [error, setError] = useState(false)
-  const baseUrl = apiBaseUrl.replace(/\/+$/, '')
 
   async function mutate(action: Action) {
     const active = state[action]
     const method = active ? 'DELETE' : 'PUT'
-    const path = action === 'follow' ? `/v1/profiles/${authorId}/follow` : `/v1/posts/${postId}/${action}`
+    const path = action === 'follow' ? `/profiles/${authorId}/follow` : `/posts/${postId}/${action}`
     setPending(action)
     setError(false)
     try {
-      const response = await fetch(`${baseUrl}${path}`, {credentials: 'include', method})
+      const response = await fetch(`/api/social${path}`, {credentials: 'include', method})
       const body: unknown = await response.json()
       if (!response.ok || !validMutationResponse(body, method)) throw new Error('mutation failed')
       setState((current) => ({...current, [action]: !active}))
+      router.refresh()
     } catch {
       setError(true)
     } finally {

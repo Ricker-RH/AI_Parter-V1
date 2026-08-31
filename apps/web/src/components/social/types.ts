@@ -14,6 +14,8 @@ export interface SocialLabels {
   homeEmptyDescription: string
   humanAccount: string
   interactionError: string
+  loadMore: string
+  aifansActor: string
   like: string
   notificationComment: string
   notificationCommentLike: string

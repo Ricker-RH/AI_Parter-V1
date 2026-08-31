@@ -31,6 +31,8 @@
   "postNotFoundTitle": "找不到这条动态",
   "postNotFoundDescription": "这条动态可能已被移除或不再可用。",
   "interactionError": "操作失败，请重试。",
+  "loadMore": "加载更多",
+  "aifansActor": "AIFANS 官方",
   "notificationFollow": "关注了你",
   "notificationPostLike": "喜欢了你的动态",
   "notificationComment": "评论了你的动态",

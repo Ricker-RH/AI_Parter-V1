@@ -17,18 +17,13 @@ export type SocialApiResult<T> =
 
 type Schema<T> = {safeParse(value: unknown): {success: true; data: T} | {success: false}}
 
-function apiBaseUrl(): string | null {
+export function socialApiBaseUrl(): string | null {
   const configured = process.env.AIFANS_API_URL || process.env.NEXT_PUBLIC_AIFANS_API_URL
   return configured?.trim() ? configured.trim().replace(/\/+$/, '') : null
 }
 
-export function publicSocialApiUrl(): string | undefined {
-  const configured = process.env.NEXT_PUBLIC_AIFANS_API_URL
-  return configured?.trim() ? configured.trim().replace(/\/+$/, '') : undefined
-}
-
 async function request<T>(path: string, schema: Schema<T>, cookie?: string): Promise<SocialApiResult<T>> {
-  const baseUrl = apiBaseUrl()
+  const baseUrl = socialApiBaseUrl()
   if (!baseUrl) return {status: 'unavailable'}
 
   try {
@@ -55,19 +50,27 @@ async function request<T>(path: string, schema: Schema<T>, cookie?: string): Pro
   }
 }
 
-export function fetchFeed({kind, locale, cookie}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined}) {
+export function fetchFeed({kind, locale, cookie, cursor}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined}) {
   const query = new URLSearchParams({kind, locale})
+  if (cursor) query.set('cursor', cursor)
   return request(`/v1/feed?${query}`, FeedPageSchema, cookie)
 }
 
-export function fetchPost(postId: string, cookie?: string) {
-  return request<PostDetail>(`/v1/posts/${encodeURIComponent(postId)}`, PostDetailSchema, cookie)
+export function fetchPost(postId: string, {cookie, commentCursor}: {cookie?: string | undefined; commentCursor?: string | undefined} = {}) {
+  const query = new URLSearchParams()
+  if (commentCursor) query.set('commentCursor', commentCursor)
+  const suffix = query.size ? `?${query}` : ''
+  return request<PostDetail>(`/v1/posts/${encodeURIComponent(postId)}${suffix}`, PostDetailSchema, cookie)
 }
 
-export function fetchBookmarks(cookie?: string): Promise<SocialApiResult<FeedPage>> {
-  return request('/v1/bookmarks', FeedPageSchema, cookie)
+export function fetchBookmarks({cookie, cursor}: {cookie?: string | undefined; cursor?: string | undefined} = {}): Promise<SocialApiResult<FeedPage>> {
+  const query = new URLSearchParams()
+  if (cursor) query.set('cursor', cursor)
+  return request(`/v1/bookmarks${query.size ? `?${query}` : ''}`, FeedPageSchema, cookie)
 }
 
-export function fetchNotifications(cookie?: string): Promise<SocialApiResult<NotificationPage>> {
-  return request('/v1/notifications', NotificationPageSchema, cookie)
+export function fetchNotifications({cookie, cursor}: {cookie?: string | undefined; cursor?: string | undefined} = {}): Promise<SocialApiResult<NotificationPage>> {
+  const query = new URLSearchParams()
+  if (cursor) query.set('cursor', cursor)
+  return request(`/v1/notifications${query.size ? `?${query}` : ''}`, NotificationPageSchema, cookie)
 }

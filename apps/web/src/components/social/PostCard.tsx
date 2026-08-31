@@ -8,7 +8,7 @@ function publishedTime(value: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(value))
 }
 
-export function PostCard({post, locale, labels, linked = true, apiBaseUrl}: {post: FeedPost; locale: Locale; labels: SocialLabels; linked?: boolean; apiBaseUrl?: string | undefined}) {
+export function PostCard({post, locale, labels, linked = true}: {post: FeedPost; locale: Locale; labels: SocialLabels; linked?: boolean}) {
   const body = <p className="post-body">{post.body}</p>
   return <article className="post-card">
     <header className="post-author">
@@ -23,8 +23,8 @@ export function PostCard({post, locale, labels, linked = true, apiBaseUrl}: {pos
       {post.viewerHasBookmarked === true ? <span>{labels.removeBookmark}</span> : null}
       {post.viewerFollowsAuthor === true ? <span>{labels.followingAction}</span> : null}
     </footer>
-    {apiBaseUrl && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined && post.viewerFollowsAuthor !== undefined
-      ? <PostActions apiBaseUrl={apiBaseUrl} authorId={post.author.id} bookmarked={post.viewerHasBookmarked} followsAuthor={post.viewerFollowsAuthor} labels={labels} liked={post.viewerHasLiked} postId={post.id} />
+    {post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined && post.viewerFollowsAuthor !== undefined
+      ? <PostActions authorId={post.author.id} bookmarked={post.viewerHasBookmarked} followsAuthor={post.viewerFollowsAuthor} labels={labels} liked={post.viewerHasLiked} postId={post.id} />
       : null}
   </article>
 }

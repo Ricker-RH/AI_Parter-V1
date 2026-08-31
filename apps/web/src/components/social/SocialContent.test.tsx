@@ -1,10 +1,12 @@
 import {render, screen} from '@testing-library/react'
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import type {FeedPost, Notification, PostDetail} from '@aifans/contracts'
 import {FeedContent} from './FeedContent.js'
 import {NotificationsContent} from './NotificationsContent.js'
 import {PostDetailContent} from './PostDetailContent.js'
 import type {SocialLabels} from './types.js'
+
+vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
 
 const labels: SocialLabels = {
   aiAccount: 'AI/IP', authRequiredTitle: 'Sign in required', authRequiredDescription: 'Sign in to see this page.',
@@ -17,18 +19,20 @@ const labels: SocialLabels = {
   postNotFoundTitle: 'Post not found', postNotFoundDescription: 'It may have been removed.',
   removeBookmark: 'Remove bookmark', unlike: 'Unlike', unavailableTitle: 'Unable to load', unavailableDescription: 'Try again later.',
   interactionError: 'Action failed. Try again.',
+  loadMore: 'Load more', aifansActor: 'AIFANS',
 }
 const ip = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en' as const]}
 const post: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', author: ip, likeCount: 4, commentCount: 2, viewerHasLiked: true, viewerHasBookmarked: false, viewerFollowsAuthor: false}
 
 describe('real social content', () => {
   it('renders API post fields and preserves the locale in the detail URL', () => {
-    render(<FeedContent labels={labels} locale="zh-CN" result={{status: 'ok', data: {items: [post], nextCursor: null}}} />)
+    render(<FeedContent labels={labels} locale="zh-CN" moreHref="/zh-CN?cursor=opaque" result={{status: 'ok', data: {items: [post], nextCursor: 'opaque'}}} />)
     expect(screen.getByRole('article')).toHaveTextContent('Luma')
     expect(screen.getByRole('article')).toHaveTextContent('A real post')
     expect(screen.getByRole('article')).toHaveTextContent('4')
     expect(screen.getByRole('link', {name: /A real post/})).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
     expect(screen.getByText('AI/IP')).toBeVisible()
+    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN?cursor=opaque')
   })
 
   it('renders localized empty, authentication, and unavailable states without posts', () => {
@@ -45,19 +49,21 @@ describe('real social content', () => {
     const detail: PostDetail = {...post, comments: {items: [
       {id: '33333333-3333-4333-8333-333333333333', postId: post.id, parentCommentId: null, state: 'published', body: 'Human reply', createdAt: '2026-08-31T12:05:00.000Z', author: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex'}},
       {id: '55555555-5555-4555-8555-555555555555', postId: post.id, parentCommentId: null, state: 'deleted', createdAt: '2026-08-31T12:06:00.000Z', author: ip},
-    ], nextCursor: null}}
-    render(<PostDetailContent labels={labels} locale="en" result={{status: 'ok', data: detail}} />)
+    ], nextCursor: 'comments-next'}}
+    render(<PostDetailContent labels={labels} locale="en" moreHref={`/en/posts/${post.id}?commentCursor=comments-next`} result={{status: 'ok', data: detail}} />)
     expect(screen.getByText('Human')).toBeVisible()
     expect(screen.getAllByText('AI/IP').length).toBeGreaterThan(0)
     expect(screen.getByText('Human reply')).toBeVisible()
     expect(screen.getByText('This comment was deleted.')).toBeVisible()
+    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', `/en/posts/${post.id}?commentCursor=comments-next`)
   })
 
   it('renders real notification rows and safe empty/auth states', () => {
     const notification: Notification = {id: '66666666-6666-4666-8666-666666666666', kind: 'post_like', actor: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex'}, postId: post.id, commentId: null, createdAt: '2026-08-31T12:07:00.000Z', readAt: null}
-    const {rerender} = render(<NotificationsContent labels={labels} locale="zh-CN" result={{status: 'ok', data: {items: [notification], nextCursor: null}}} />)
-    expect(screen.getByRole('link')).toHaveTextContent('Alex liked your post')
-    expect(screen.getByRole('link')).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
+    const {rerender} = render(<NotificationsContent labels={labels} locale="zh-CN" moreHref="/zh-CN/notifications?cursor=next" result={{status: 'ok', data: {items: [notification], nextCursor: 'next'}}} />)
+    expect(screen.getByRole('link', {name: /Alex liked your post/})).toHaveTextContent('Alex liked your post')
+    expect(screen.getByRole('link', {name: /Alex liked your post/})).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
+    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN/notifications?cursor=next')
     rerender(<NotificationsContent labels={labels} locale="zh-CN" result={{status: 'auth-required'}} />)
     expect(screen.getByRole('heading', {name: 'Sign in required'})).toBeVisible()
   })

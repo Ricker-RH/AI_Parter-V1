@@ -31,6 +31,8 @@
   "postNotFoundTitle": "Post not found",
   "postNotFoundDescription": "This post may have been removed or is no longer available.",
   "interactionError": "Action failed. Please try again.",
+  "loadMore": "Load more",
+  "aifansActor": "AIFANS",
   "notificationFollow": "followed you",
   "notificationPostLike": "liked your post",
   "notificationComment": "commented on your post",

@@ -36,13 +36,32 @@ describe('social API client', () => {
     const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({items: [post], nextCursor: null}), {status: 200}))
     vi.stubGlobal('fetch', request)
 
-    const result = await fetchFeed({kind: 'following', locale: 'en', cookie: 'session=real'})
+    const result = await fetchFeed({kind: 'following', locale: 'en', cookie: 'session=real', cursor: 'next page'})
 
     expect(result).toEqual({status: 'ok', data: {items: [post], nextCursor: null}})
     expect(request).toHaveBeenCalledWith(
-      'https://server.example/v1/feed?kind=following&locale=en',
+      'https://server.example/v1/feed?kind=following&locale=en&cursor=next+page',
       expect.objectContaining({cache: 'no-store', credentials: 'include', headers: {cookie: 'session=real'}}),
     )
+  })
+
+  it('forwards opaque cursors for bookmark, notification, and comment pagination', async () => {
+    process.env.AIFANS_API_URL = 'https://server.example'
+    const request = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({...post, comments: {items: [], nextCursor: null}}), {status: 200}))
+    vi.stubGlobal('fetch', request)
+
+    await fetchBookmarks({cursor: 'bookmark cursor'})
+    await fetchNotifications({cursor: 'notification cursor'})
+    await fetchPost(post.id, {commentCursor: 'comment cursor'})
+
+    expect(request.mock.calls.map(([url]) => url)).toEqual([
+      'https://server.example/v1/bookmarks?cursor=bookmark+cursor',
+      'https://server.example/v1/notifications?cursor=notification+cursor',
+      `https://server.example/v1/posts/${post.id}?commentCursor=comment+cursor`,
+    ])
   })
 
   it('falls back to the public URL and maps authentication failures', async () => {
