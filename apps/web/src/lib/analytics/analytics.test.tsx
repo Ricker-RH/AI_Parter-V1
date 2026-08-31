@@ -1,8 +1,10 @@
-import {fireEvent, render, screen} from '@testing-library/react'
+import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 import {
   ANALYTICS_EVENT_NAMES,
+  MAX_SEARCH_QUERY_LENGTH,
   createAnalyticsEvent,
+  createAnalyticsPage,
   type AnalyticsClient,
 } from './contracts.js'
 import {trackChatOpened, trackFeedTabSelected} from './events.js'
@@ -48,6 +50,18 @@ describe('analytics event contract', () => {
     expect(() => createAnalyticsEvent('post_viewed', {post_id: postId, comment_body: 'private comment'} as never)).toThrow('not allowed')
     expect(() => createAnalyticsEvent('generation_requested', {prompt: 'private prompt', visual_type: 'portrait'} as never)).toThrow('not allowed')
     expect(() => createAnalyticsEvent('post_viewed', {locale: 'en'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsEvent('landing_viewed', {locale: 'en', route_name: '/[locale]?email=private@example.com'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsEvent('creator_center_viewed', {locale: 'en', route_name: 'https://secret.example/[locale]'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsEvent('sign_up_started', {locale: 'en', action_source: 'https://secret.example'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsEvent('ip_creation_step_viewed', {locale: 'en', creation_step: 'private persona prompt'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsEvent('generation_requested', {locale: 'en', visual_type: 'https://private-image.example'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsEvent('search_performed', {category: 'all', locale: 'en', query_length: MAX_SEARCH_QUERY_LENGTH + 1} as never)).toThrow('invalid')
+  })
+
+  it('allows only static route templates in custom events and PostHog system page views', () => {
+    expect(createAnalyticsPage({locale: 'en', route_name: '/[locale]/posts/[postId]'})).toEqual({event_version: 1, locale: 'en', route_name: '/[locale]/posts/[postId]'})
+    expect(() => createAnalyticsPage({locale: 'en', route_name: '/[locale]#private'} as never)).toThrow('invalid')
+    expect(() => createAnalyticsPage({locale: 'en', route_name: '/en/posts/11111111-1111-4111-8111-111111111111'} as never)).toThrow('invalid')
   })
 
   it('emits only allow-listed chat and feed intent data', () => {
@@ -68,7 +82,7 @@ describe('PostHog browser adapter', () => {
     await analytics.capture(createAnalyticsEvent('landing_viewed', {locale: 'en', route_name: '/[locale]'}))
     await analytics.identify(profileId)
     await analytics.reset()
-    await analytics.page({locale: 'en', route_name: '/[locale]'})
+    await analytics.page(createAnalyticsPage({locale: 'en', route_name: '/[locale]'}))
     expect(load).not.toHaveBeenCalled()
   })
 
@@ -85,8 +99,8 @@ describe('PostHog browser adapter', () => {
       capture_pageview: false,
     })
     expect(sdk.capture).toHaveBeenCalledWith('post_viewed', {event_version: 1, locale: 'en', post_id: postId})
-    await analytics.page({locale: 'en', route_name: '/[locale]/posts/[postId]'})
-    expect(sdk.capture).toHaveBeenLastCalledWith('$pageview', {locale: 'en', route_name: '/[locale]/posts/[postId]'})
+    await analytics.page(createAnalyticsPage({locale: 'en', route_name: '/[locale]/posts/[postId]'}))
+    expect(sdk.capture).toHaveBeenLastCalledWith('$pageview', {event_version: 1, locale: 'en', route_name: '/[locale]/posts/[postId]'})
   })
 
   it('identifies only a stable profile UUID and resets identity on logout', async () => {
@@ -123,5 +137,17 @@ describe('PostHog browser adapter', () => {
     expect(routeNameForPath('/en')).toBe('/[locale]')
     expect(routeNameForPath(`/zh-CN/posts/${postId}`)).toBe('/[locale]/posts/[postId]')
     expect(routeNameForPath('/en/messages')).toBe('/[locale]/messages')
+    expect(routeNameForPath('/en?email=private@example.com')).toBeNull()
+  })
+
+  it('identifies the passed profile UUID and resets the browser identity when signed out', async () => {
+    const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
+    const {rerender} = render(<AnalyticsProvider analytics={analytics} locale="en" profileId={profileId}><div>Signed in</div></AnalyticsProvider>)
+    await waitFor(() => expect(analytics.identify).toHaveBeenCalledWith(profileId))
+    expect(analytics.reset).not.toHaveBeenCalled()
+    expect(analytics.page).toHaveBeenCalledWith({event_version: 1, locale: 'en', route_name: '/[locale]'})
+    expect(analytics.capture).toHaveBeenCalledWith({name: 'landing_viewed', properties: {event_version: 1, locale: 'en', route_name: '/[locale]'}})
+    rerender(<AnalyticsProvider analytics={analytics} locale="en"><div>Signed out</div></AnalyticsProvider>)
+    await waitFor(() => expect(analytics.reset).toHaveBeenCalledTimes(1))
   })
 })

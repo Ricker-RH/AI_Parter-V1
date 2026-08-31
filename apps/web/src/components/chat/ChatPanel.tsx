@@ -81,6 +81,7 @@ async function sendChat(ipProfileId: string, body: object) {
 
 export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}) {
   const analytics = useAnalytics()
+  const openedTarget = useRef<string | null>(null)
   const [ipProfileId, setIpProfileId] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -102,7 +103,10 @@ export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}
       return
     }
 
-    trackChatOpened(analytics, {ipProfileId: target, locale})
+    if (openedTarget.current !== target) {
+      trackChatOpened(analytics, {ipProfileId: target, locale})
+      openedTarget.current = target
+    }
 
     localId.current += 1
     const userMessage: ChatMessage = {id: `local-${localId.current}`, role: 'user', text: payload.data.message}
@@ -121,6 +125,7 @@ export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}
   }
 
   function resetConversation() {
+    openedTarget.current = null
     setConversationId(null)
     setMessages([])
     setDraft('')

@@ -48,6 +48,28 @@ describe('ChatPanel', () => {
     expect(JSON.stringify(analyticsCapture.mock.calls)).not.toContain('This private message must not be tracked')
   })
 
+  it('captures chat opening once per target and again only after starting a new conversation', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json(response, {status: 201}))
+      .mockResolvedValueOnce(Response.json({...response, answer: 'Second reply'}, {status: 200}))
+      .mockResolvedValueOnce(Response.json({...response, conversationId: secondConversationId}, {status: 201}))
+    vi.stubGlobal('fetch', fetcher)
+    render(<ChatPanel labels={labels} locale="en" />)
+    selectTarget()
+    fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'First'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+    await screen.findByText('Hello back')
+    fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'Continue'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+    await screen.findByText('Second reply')
+    expect(analyticsCapture).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', {name: 'New conversation'}))
+    selectTarget()
+    fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'New session'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+    await waitFor(() => expect(analyticsCapture).toHaveBeenCalledTimes(2))
+  })
+
   it('renders a real answer and reuses its conversation ID for continuation', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(Response.json(response, {status: 201}))
