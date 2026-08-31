@@ -273,7 +273,7 @@ git commit -m "chore: enforce UI licensing boundary"
 ```ts
 // packages/contracts/src/account.test.ts
 import {describe, expect, it} from 'vitest'
-import {AccountSchema, AppSettingsSchema} from './index'
+import {AccountSchema, AppSettingsSchema} from './index.js'
 
 describe('AIFANS contracts', () => {
   it('accepts a human account without publishing capability', () => {
@@ -331,11 +331,11 @@ export const ApiErrorSchema = z.object({
 })
 ```
 
-Export all symbols from `src/index.ts`. Configure the package to build ESM declarations into `dist`, with scripts for `build`, `typecheck`, and `test`, and dependencies pinned to `zod@4.5.4`.
+Export `./account.js` and `./settings.js` from `src/index.ts`. Configure the package to build ESM declarations into `dist`, with scripts for `build`, `typecheck`, and `test`, and dependencies pinned to `zod@4.5.4`.
 
 - [ ] **Step 4: Verify contracts**
 
-Run: `pnpm --dir packages/contracts test && pnpm --dir packages/contracts typecheck`  
+Run: `pnpm install && pnpm --dir packages/contracts test && pnpm --dir packages/contracts typecheck`  
 Expected: all tests PASS and TypeScript exits 0.
 
 - [ ] **Step 5: Commit**
