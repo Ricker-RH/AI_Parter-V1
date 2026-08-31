@@ -10,6 +10,7 @@ import {
   timestamp,
   uuid,
   unique,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -90,18 +91,18 @@ export const platformSettings = pgTable(
 )
 
 export const profileRoles = pgTable('profile_roles', {
-  profileId: uuid('profile_id').notNull(), role: appRoleEnum('role').notNull(), grantedByProfileId: uuid('granted_by_profile_id').notNull(), grantedAt: timestamp('granted_at', {withTimezone: true}).notNull().defaultNow(), revokedAt: timestamp('revoked_at', {withTimezone: true}),
-}, (table) => [unique('profile_roles_primary').on(table.profileId, table.role)])
+  profileId: uuid('profile_id').notNull().references(() => profiles.id), role: appRoleEnum('role').notNull(), grantedByProfileId: uuid('granted_by_profile_id').notNull().references(() => profiles.id), grantedAt: timestamp('granted_at', {withTimezone: true}).notNull().defaultNow(), revokedAt: timestamp('revoked_at', {withTimezone: true}),
+}, (table) => [primaryKey({columns: [table.profileId, table.role]})])
 
 export const auditEvents = pgTable('audit_events', {
-  id: uuid().primaryKey(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorType: auditActorTypeEnum('actor_type').notNull(), actorProfileId: uuid('actor_profile_id'), action: text().notNull(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), requestId: uuid('request_id'), sourceApp: auditSourceEnum('source_app').notNull(), result: auditResultEnum('result').notNull(), changeSummary: jsonb('change_summary').notNull().default({}),
-})
+  id: uuid().primaryKey(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorType: auditActorTypeEnum('actor_type').notNull(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), action: text().notNull(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), requestId: uuid('request_id'), sourceApp: auditSourceEnum('source_app').notNull(), result: auditResultEnum('result').notNull(), changeSummary: jsonb('change_summary').notNull().default({}),
+}, (table) => [check('audit_events_action_check', sql`${table.action} ~ '[^[:space:]]'`), check('audit_events_entity_type_check', sql`${table.entityType} ~ '[^[:space:]]'`)])
 export const businessEvents = pgTable('business_events', {
-  id: uuid().primaryKey(), eventName: text('event_name').notNull(), schemaVersion: smallint('schema_version').notNull(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorProfileId: uuid('actor_profile_id'), subjectEntityType: text('subject_entity_type').notNull(), subjectEntityId: uuid('subject_entity_id').notNull(), requestId: uuid('request_id'), environment: text().notNull(), properties: jsonb().notNull().default({}),
-})
+  id: uuid().primaryKey(), eventName: text('event_name').notNull(), schemaVersion: smallint('schema_version').notNull(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), subjectEntityType: text('subject_entity_type').notNull(), subjectEntityId: uuid('subject_entity_id').notNull(), requestId: uuid('request_id'), environment: text().notNull(), properties: jsonb().notNull().default({}),
+}, (table) => [check('business_events_event_name_check', sql`${table.eventName} ~ '^[a-z][a-z0-9_]*$'`), check('business_events_schema_version_check', sql`${table.schemaVersion} > 0`), check('business_events_subject_entity_type_check', sql`${table.subjectEntityType} ~ '[^[:space:]]'`), check('business_events_environment_check', sql`${table.environment} ~ '[^[:space:]]'`)])
 export const workflowTransitions = pgTable('workflow_transitions', {
-  id: uuid().primaryKey(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), previousState: text('previous_state'), nextState: text('next_state').notNull(), actorProfileId: uuid('actor_profile_id'), reasonCode: text('reason_code'), operatorNote: text('operator_note'), requestId: uuid('request_id'), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(),
-})
+  id: uuid().primaryKey(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), previousState: text('previous_state'), nextState: text('next_state').notNull(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), reasonCode: text('reason_code'), operatorNote: text('operator_note'), requestId: uuid('request_id'), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [check('workflow_transitions_entity_type_check', sql`${table.entityType} ~ '[^[:space:]]'`), check('workflow_transitions_next_state_check', sql`${table.nextState} ~ '[^[:space:]]'`)])
 export const analyticsOutbox = pgTable('analytics_outbox', {
-  id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull(), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
-})
+  id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull().unique().references(() => businessEvents.id), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [check('analytics_outbox_payload_version_check', sql`${table.payloadVersion} > 0`), check('analytics_outbox_destination_check', sql`${table.destination} ~ '[^[:space:]]'`), check('analytics_outbox_attempt_count_check', sql`${table.attemptCount} >= 0`), check('analytics_outbox_delivery_state_check', sql`(${table.state} = 'delivered') = (${table.deliveredAt} IS NOT NULL)` )])

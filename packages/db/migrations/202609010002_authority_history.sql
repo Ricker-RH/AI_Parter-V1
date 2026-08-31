@@ -100,6 +100,57 @@ BEGIN
 END;
 $$;
 
+CREATE FUNCTION public.guard_analytics_outbox_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'analytics_outbox is append-only';
+  END IF;
+
+  IF OLD.id IS DISTINCT FROM NEW.id
+    OR OLD.business_event_id IS DISTINCT FROM NEW.business_event_id
+    OR OLD.destination IS DISTINCT FROM NEW.destination
+    OR OLD.payload_version IS DISTINCT FROM NEW.payload_version
+    OR OLD.payload IS DISTINCT FROM NEW.payload
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+    RAISE EXCEPTION 'analytics_outbox immutable fields cannot be changed';
+  END IF;
+
+  IF OLD.state <> 'pending' THEN
+    RAISE EXCEPTION 'analytics_outbox terminal rows cannot be changed';
+  END IF;
+
+  IF NEW.state = 'pending' THEN
+    IF NEW.attempt_count <> OLD.attempt_count + 1
+      OR NEW.next_attempt_at = OLD.next_attempt_at
+      OR NEW.last_error_code IS NULL
+      OR NEW.last_error_code !~ '[^[:space:]]'
+      OR NEW.delivered_at IS NOT NULL THEN
+      RAISE EXCEPTION 'analytics_outbox retry must advance attempt scheduling with an error code';
+    END IF;
+  ELSIF NEW.state = 'delivered' THEN
+    IF NEW.attempt_count NOT IN (OLD.attempt_count, OLD.attempt_count + 1)
+      OR NEW.delivered_at IS NULL
+      OR NEW.last_error_code IS NOT NULL THEN
+      RAISE EXCEPTION 'analytics_outbox delivery must record one successful attempt';
+    END IF;
+  ELSIF NEW.state = 'failed' THEN
+    IF NEW.attempt_count NOT IN (OLD.attempt_count, OLD.attempt_count + 1)
+      OR NEW.delivered_at IS NOT NULL
+      OR NEW.last_error_code IS NULL
+      OR NEW.last_error_code !~ '[^[:space:]]' THEN
+      RAISE EXCEPTION 'analytics_outbox failure must record one permanent error';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'analytics_outbox invalid state transition';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
 CREATE TRIGGER profile_roles_require_humans
 BEFORE INSERT OR UPDATE ON public.profile_roles
 FOR EACH ROW EXECUTE FUNCTION public.profile_roles_require_humans();
@@ -110,8 +161,8 @@ CREATE TRIGGER business_events_append_only BEFORE UPDATE OR DELETE ON public.bus
 FOR EACH ROW EXECUTE FUNCTION public.reject_history_mutation();
 CREATE TRIGGER workflow_transitions_append_only BEFORE UPDATE OR DELETE ON public.workflow_transitions
 FOR EACH ROW EXECUTE FUNCTION public.reject_history_mutation();
-CREATE TRIGGER analytics_outbox_append_only BEFORE UPDATE OR DELETE ON public.analytics_outbox
-FOR EACH ROW EXECUTE FUNCTION public.reject_history_mutation();
+CREATE TRIGGER analytics_outbox_guard BEFORE UPDATE OR DELETE ON public.analytics_outbox
+FOR EACH ROW EXECUTE FUNCTION public.guard_analytics_outbox_mutation();
 
 CREATE FUNCTION public.current_operator()
 RETURNS boolean
@@ -139,5 +190,5 @@ ALTER TABLE public.analytics_outbox ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE public.profile_roles, public.audit_events, public.business_events, public.workflow_transitions, public.analytics_outbox FROM PUBLIC, aifans_anon, aifans_authenticated;
 REVOKE ALL ON TYPE public.app_role, public.audit_actor_type, public.audit_source, public.audit_result, public.outbox_state FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.profile_roles_require_humans(), public.reject_history_mutation(), public.current_operator() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.profile_roles_require_humans(), public.reject_history_mutation(), public.guard_analytics_outbox_mutation(), public.current_operator() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.current_operator() TO aifans_authenticated;

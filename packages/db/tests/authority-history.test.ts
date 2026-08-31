@@ -3,8 +3,8 @@ import { Pool, type PoolClient } from 'pg'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   createAuthorityRepository,
-  createHistoryRepository,
 } from '../src/index.js'
+import {createHistoryRepository} from '../src/history.js'
 import {createActorSession} from '../src/session.js'
 
 const connectionString = process.env.DATABASE_URL ?? ''
@@ -47,8 +47,12 @@ async function expectPermissionDenied(client: PoolClient, sql: string): Promise<
 }
 
 async function expectAppendOnly(client: PoolClient, sql: string): Promise<void> {
+  return expectRejected(client, sql, /append-only/)
+}
+
+async function expectRejected(client: PoolClient, sql: string, error: RegExp): Promise<void> {
   await client.query('SAVEPOINT append_only')
-  await expect(client.query(sql)).rejects.toThrow(/append-only/)
+  await expect(client.query(sql)).rejects.toThrow(error)
   await client.query('ROLLBACK TO SAVEPOINT append_only')
   await client.query('RELEASE SAVEPOINT append_only')
 }
@@ -126,7 +130,7 @@ describeIntegration('operator authority and append-only history', () => {
         transition: { entityType: 'profile', entityId: actor.id, nextState: 'active', actorProfileId: actor.id },
         outbox: { destination: 'posthog', payloadVersion: 1, payload: { event_id: 'fixture' } },
       })
-      for (const [table, id] of Object.entries(ids)) {
+      for (const [table, id] of Object.entries(ids).filter(([table]) => table !== 'analytics_outbox')) {
         await expectAppendOnly(client, `UPDATE public.${table} SET id = id WHERE id = '${id}'`)
         await expectAppendOnly(client, `DELETE FROM public.${table} WHERE id = '${id}'`)
       }
@@ -137,6 +141,44 @@ describeIntegration('operator authority and append-only history', () => {
         throw new Error('force rollback')
       })).rejects.toThrow('force rollback')
       await expect(client.query("SELECT * FROM public.workflow_transitions WHERE next_state = 'failed'")).resolves.toMatchObject({ rowCount: 0 })
+    })
+  })
+
+  it('allows a pending outbox row to retry, deliver, or fail once but protects its event payload', async () => {
+    await transaction(async (client) => {
+      const actor = await insertHuman(client)
+      const history = createHistoryRepository()
+      const eventId = await history.recordBusinessEvent(client, {
+        eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: {event_id: 'fixture'},
+      })
+      const retryId = await history.recordOutbox(client, eventId, {destination: 'posthog', payloadVersion: 1, payload: {event_id: 'fixture'}})
+      await expect(client.query(`UPDATE public.analytics_outbox SET attempt_count = 1, next_attempt_at = clock_timestamp() + interval '1 minute', last_error_code = 'timeout' WHERE id = $1`, [retryId])).resolves.toMatchObject({rowCount: 1})
+      await expect(client.query(`UPDATE public.analytics_outbox SET state = 'delivered', delivered_at = clock_timestamp(), last_error_code = NULL WHERE id = $1`, [retryId])).resolves.toMatchObject({rowCount: 1})
+      await expectRejected(client, `UPDATE public.analytics_outbox SET attempt_count = 2 WHERE id = '${retryId}'`, /terminal/)
+      await expectRejected(client, `UPDATE public.analytics_outbox SET payload = '{}'::jsonb WHERE id = '${retryId}'`, /immutable/)
+      await expectAppendOnly(client, `DELETE FROM public.analytics_outbox WHERE id = '${retryId}'`)
+
+      const failedEventId = await history.recordBusinessEvent(client, {
+        eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: {event_id: 'failed'},
+      })
+      const failedId = await history.recordOutbox(client, failedEventId, {destination: 'posthog', payloadVersion: 1, payload: {event_id: 'failed'}})
+      await expect(client.query(`UPDATE public.analytics_outbox SET state = 'failed', last_error_code = 'invalid_payload' WHERE id = $1`, [failedId])).resolves.toMatchObject({rowCount: 1})
+      await expectRejected(client, `UPDATE public.analytics_outbox SET state = 'pending' WHERE id = '${failedId}'`, /terminal/)
+    })
+  })
+
+  it('rejects unknown or sensitive history contract fields before they persist', async () => {
+    await transaction(async (client) => {
+      const actor = await insertHuman(client)
+      const history = createHistoryRepository()
+      await expect(history.recordAudit(client, {
+        actorProfileId: actor.id, action: 'operator_granted', entityType: 'profile', entityId: actor.id, sourceApp: 'admin', changeSummary: {email: 'private@example.com'},
+      })).rejects.toThrow(/sensitive|unknown/i)
+      await expect(history.recordBusinessEvent(client, {
+        eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: {email: 'private@example.com'} as never,
+      })).rejects.toThrow(/sensitive|unknown/i)
+      await expect(history.recordOutbox(client, randomUUID(), {destination: 'other', payloadVersion: 99, payload: {event_id: 'fixture'}})).rejects.toThrow(/destination|version/i)
+      await expect(client.query('SELECT * FROM public.audit_events WHERE actor_profile_id = $1', [actor.id])).resolves.toMatchObject({rowCount: 0})
     })
   })
 })
