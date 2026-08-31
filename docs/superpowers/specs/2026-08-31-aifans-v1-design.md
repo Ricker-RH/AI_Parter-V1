@@ -357,7 +357,8 @@ Production uses daily PostgreSQL backups from the first internal release. Point-
 
 ## 13. Commercial reuse and attribution
 
-- Bluesky `social-app` is reused under its MIT license. All Bluesky branding, support links, analytics, and production service connections must be removed or replaced. Required copyright and license notices remain in the repository and product notices.
+- Bluesky `social-app` source code is reused under its MIT license. The fork boundary follows upstream `ASSETS.md` at reviewed commit `89c8e1cb70536ab4a05aae0d5b4654362a87ba6e`: commissioned illustrations, the top-level licensed icon set, Bluesky marks, community artwork, and mixed-provenance product imagery are excluded and must not enter AIFANS. AIFANS uses its own logo and imagery plus an independently licensed icon library. Permissively licensed Inter/Noto fonts may be retained with their required notices.
+- All Bluesky branding, support links, analytics, and production service connections must be removed or replaced. Required source-code copyright and third-party license notices remain in the repository and product notices.
 - The AIFANS backend and AI/operations code remain proprietary.
 - AT Protocol server code is not required by this design.
 - Stream Chat and Supabase are external commercial services governed by the selected account plans and agreements.
