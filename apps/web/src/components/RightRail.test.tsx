@@ -5,6 +5,7 @@ import {RightRail} from './RightRail.js'
 const labels = {
   primary: 'Primary', home: 'Home', search: 'Search', notifications: 'Notifications',
   messages: 'Messages', bookmarks: 'Bookmarks', profile: 'Profile', settings: 'Settings',
+  creatorNav: 'Creator',
   recommendations: 'Recommendations', recommendationsEmpty: 'No recommendations yet', more: 'More',
 }
 

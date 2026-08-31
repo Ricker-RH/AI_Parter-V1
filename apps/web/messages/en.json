@@ -7,6 +7,7 @@
   "bookmarks": "Bookmarks",
   "profile": "Profile",
   "settings": "Settings",
+  "creatorNav": "Creator",
   "recommendations": "Recommendations",
   "recommendationsEmpty": "No recommendations yet",
   "more": "More",
@@ -142,6 +143,18 @@
     "providerUnavailable": "The chat provider is unavailable. Try again later.",
     "requestFailed": "The message could not be sent. Check the fields and try again.",
     "invalidResponse": "The chat service returned an invalid response. No AI reply was added."
+  },
+  "creator": {
+    "eyebrow": "Creator mode", "title": "Creator Center", "description": "Create an identity proposal. AIFANS controls every post; creators never operate or publish as the IP.", "newIdentity": "New identity", "emptyTitle": "Create an AI/IP identity", "emptyDescription": "Start with an empty identity card. Nothing is published until platform review.", "drafts": "Drafts", "identities": "Created identities", "loading": "Loading creator data…", "unavailable": "Creator services are unavailable. Try again later.", "authRequired": "Sign in with a human account to use creator mode.",
+    "draftForm": "Identity draft", "identity": "Identity card", "persona": "Persona", "username": "Username", "displayName": "Display name", "shortDescription": "Short description", "languages": "Languages (comma-separated)", "themes": "Content themes (comma-separated)", "personality": "Personality", "background": "Background", "world": "World", "values": "Values", "tone": "Tone", "interests": "Interests (comma-separated)", "boundaries": "Boundaries", "relationshipStyle": "Relationship style", "appearance": "Appearance", "visualType": "Visual type", "realistic": "Realistic", "anime": "Anime", "hybrid": "Hybrid", "saveDraft": "Save draft", "saving": "Saving…", "saveError": "The draft could not be saved.", "saved": "Draft saved.", "cancel": "Cancel",
+    "references": "Reference images", "referenceCount": "{count} of 8 references", "uploadReference": "Upload reference image", "uploading": "Uploading securely…", "uploadError": "The image could not be uploaded. Check type and size.", "assetsUnavailable": "Private image storage is not configured yet.", "generateReferences": "Generate references", "generationUnavailable": "Image generation is not configured yet.", "generationPending": "Starting generation…", "roleAvatar": "Avatar", "roleCover": "Cover", "rolePortrait": "Portrait", "roleFullBody": "Full body", "roleSupporting1": "Supporting 1", "roleSupporting2": "Supporting 2", "roleSupporting3": "Supporting 3", "roleSupporting4": "Supporting 4",
+    "authorization": "Operating authorization", "authorizationText": "I authorize AIFANS to operate this identity and control its published content under the current creator terms.", "authorizationAccept": "I accept the operating authorization", "submit": "Submit for review", "submitting": "Submitting…", "submitError": "The identity could not be submitted. Select 5–8 unique roles including avatar, cover, portrait, full body and a supporting image.", "submittedReadOnly": "Submitted drafts are read-only.", "back": "Creator Center",
+    "analytics": "Read-only analytics", "followers": "Followers", "followerDelta": "Follower change", "publishedPosts": "Published posts", "likes": "Likes", "comments": "Comments", "popularPosts": "Popular posts", "analyticsPrivate": "Only aggregated performance data is shown. Viewer identities and chat history are never included.",
+    "requests": "Change or removal requests", "requestKind": "Request type", "requestReason": "Reason", "change": "Propose an identity change", "unpublish": "Request unpublish", "deletion": "Request deletion", "sendRequest": "Send request", "requestSent": "Request submitted for platform review.", "requestError": "The request could not be submitted.",
+    "statusDraft": "Draft", "statusSubmitted": "Submitted", "statusPending": "Pending", "statusApproved": "Approved", "statusRejected": "Rejected"
+  },
+  "creatorAdmin": {
+    "eyebrow": "Internal review", "title": "Creator review", "description": "Review identity proposals and creator requests. Approval never grants the creator publishing or operation access.", "submissions": "Pending submissions", "requests": "Pending requests", "emptySubmissions": "No submissions waiting.", "emptyRequests": "No change requests waiting.", "loading": "Loading review queue…", "unavailable": "Creator review is unavailable or this account is not an operator.", "currentIdentity": "Current public identity", "proposedIdentity": "Proposed identity", "approve": "Approve", "reject": "Reject", "reason": "Decision reason", "reasonRequired": "A rejection reason is required.", "updated": "Review updated.", "decisionError": "The review decision could not be saved."
   },
   "metadataTitle": "AIFANS",
   "metadataDescription": "A thoughtful social space."

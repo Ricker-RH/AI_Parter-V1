@@ -7,6 +7,7 @@
   "bookmarks": "书签",
   "profile": "个人资料",
   "settings": "设置",
+  "creatorNav": "创作者",
   "recommendations": "推荐",
   "recommendationsEmpty": "暂时没有推荐",
   "more": "更多",
@@ -142,6 +143,18 @@
     "providerUnavailable": "聊天服务提供方暂时不可用，请稍后重试。",
     "requestFailed": "消息未能发送，请检查填写内容后重试。",
     "invalidResponse": "聊天服务返回了无效响应，未添加 AI 回复。"
+  },
+  "creator": {
+    "eyebrow": "创作者模式", "title": "创作者中心", "description": "创建 IP 身份提案。所有内容均由 AIFANS 控制，创作者不能以该 IP 运营或发布内容。", "newIdentity": "新建身份", "emptyTitle": "创建一个 AI/IP 身份", "emptyDescription": "从空白身份卡开始；平台审核通过前不会公开任何内容。", "drafts": "草稿", "identities": "我创建的身份", "loading": "正在加载创作者数据…", "unavailable": "创作者服务暂不可用，请稍后重试。", "authRequired": "请使用真人账户登录后开启创作者模式。",
+    "draftForm": "身份草稿", "identity": "身份卡", "persona": "角色设定", "username": "用户名", "displayName": "显示名称", "shortDescription": "简介", "languages": "语言（逗号分隔）", "themes": "内容主题（逗号分隔）", "personality": "性格", "background": "背景故事", "world": "世界观", "values": "价值观", "tone": "语气", "interests": "兴趣（逗号分隔）", "boundaries": "边界", "relationshipStyle": "关系风格", "appearance": "外观", "visualType": "视觉类型", "realistic": "真人", "anime": "动漫", "hybrid": "混合", "saveDraft": "保存草稿", "saving": "正在保存…", "saveError": "草稿保存失败。", "saved": "草稿已保存。", "cancel": "取消",
+    "references": "参考图片", "referenceCount": "已选 {count}/8 张参考图", "uploadReference": "上传参考图片", "uploading": "正在安全上传…", "uploadError": "图片上传失败，请检查格式和大小。", "assetsUnavailable": "私有图片存储尚未配置。", "generateReferences": "生成参考图片", "generationUnavailable": "图片生成服务尚未配置。", "generationPending": "正在启动生成…", "roleAvatar": "头像", "roleCover": "封面", "rolePortrait": "肖像", "roleFullBody": "全身", "roleSupporting1": "辅助图 1", "roleSupporting2": "辅助图 2", "roleSupporting3": "辅助图 3", "roleSupporting4": "辅助图 4",
+    "authorization": "运营授权", "authorizationText": "我同意按照当前创作者条款授权 AIFANS 运营此身份并控制其公开内容。", "authorizationAccept": "我接受运营授权", "submit": "提交审核", "submitting": "正在提交…", "submitError": "身份提交失败。请选择 5–8 个唯一角色，且包含头像、封面、肖像、全身和至少一张辅助图。", "submittedReadOnly": "已提交的草稿为只读状态。", "back": "创作者中心",
+    "analytics": "只读数据", "followers": "关注者", "followerDelta": "关注变化", "publishedPosts": "已发布帖子", "likes": "点赞", "comments": "评论", "popularPosts": "热门帖子", "analyticsPrivate": "这里只显示汇总表现数据，不包含任何用户身份或聊天记录。",
+    "requests": "变更或移除申请", "requestKind": "申请类型", "requestReason": "申请原因", "change": "提出身份变更", "unpublish": "申请下架", "deletion": "申请删除", "sendRequest": "提交申请", "requestSent": "申请已提交平台审核。", "requestError": "申请提交失败。",
+    "statusDraft": "草稿", "statusSubmitted": "已提交", "statusPending": "待处理", "statusApproved": "已批准", "statusRejected": "已拒绝"
+  },
+  "creatorAdmin": {
+    "eyebrow": "内部审核", "title": "创作者审核", "description": "审核身份提案和创作者申请；批准不会赋予创作者发布或运营权限。", "submissions": "待审核身份", "requests": "待审核申请", "emptySubmissions": "暂无待审核身份。", "emptyRequests": "暂无待审核变更申请。", "loading": "正在加载审核队列…", "unavailable": "创作者审核暂不可用，或当前账户不是运营人员。", "currentIdentity": "当前公开身份", "proposedIdentity": "提议的新身份", "approve": "批准", "reject": "拒绝", "reason": "审核原因", "reasonRequired": "拒绝时必须填写原因。", "updated": "审核已更新。", "decisionError": "审核决定保存失败。"
   },
   "metadataTitle": "AIFANS",
   "metadataDescription": "一个专注的社交空间。"

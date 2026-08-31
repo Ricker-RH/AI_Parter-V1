@@ -5,5 +5,6 @@ import {MobileNav} from './MobileNav'
 import {RightRail} from './RightRail'
 
 export function AppShell({locale, labels, children}: {locale: Locale; labels: ShellLabels; children: ReactNode}) {
-  return <div className="shell"><AppNav labels={labels} locale={locale} /><div className="content">{children}</div><RightRail labels={labels} /><MobileNav labels={labels} locale={locale} /></div>
+  const creatorModeEnabled=process.env.CREATOR_MODE_ENABLED!=='false'
+  return <div className="shell"><AppNav creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale} /><div className="content">{children}</div><RightRail labels={labels} /><MobileNav creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale} /></div>
 }

@@ -1,16 +1,17 @@
 'use client'
 
 import type {Locale} from '../i18n/config'
-import {navItems, type ShellLabels} from './AppNav'
+import {visibleNavItems, type ShellLabels} from './AppNav'
 import {usePathname} from 'next/navigation'
 import Link from 'next/link'
 import {useState} from 'react'
 
-export function MobileNav({locale, labels}: {locale: Locale; labels: ShellLabels}) {
+export function MobileNav({locale, labels,creatorModeEnabled=true}: {locale: Locale; labels: ShellLabels;creatorModeEnabled?:boolean}) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
-  const mobileItems = navItems.slice(0, 4)
-  const moreItems = navItems.slice(4)
+  const items=visibleNavItems(creatorModeEnabled)
+  const mobileItems = items.slice(0, 4)
+  const moreItems = items.slice(4)
   return <nav aria-label={labels.primary} className="mobile-nav">{mobileItems.map((item) => {
     const href = `/${locale}${item.href}`
     const Icon = item.icon
