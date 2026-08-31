@@ -78,6 +78,25 @@ export const CommentPageSchema = z.strictObject({items: z.array(PublicCommentSch
 export const PostDetailSchema = FeedPostSchema.extend({comments: CommentPageSchema}).strict()
 export const NotificationPageSchema = z.strictObject({items: z.array(NotificationSchema), nextCursor: z.string().nullable()})
 export const CreateHumanCommentSchema = z.strictObject({body: trimmed(2000), parentCommentId: uuid.optional()})
+export const CreateIpSchema = z.strictObject({
+  username: z.string().trim().regex(/^[a-z0-9_]{3,30}$/),
+  displayName: trimmed(80),
+  bio: z.string().trim().max(500).optional(),
+  languageCodes: z.array(LocaleSchema).max(20).optional(),
+})
+export const CreatePostSchema = z.strictObject({
+  ipProfileId: uuid,
+  body: trimmed(5000),
+  languageCode: z.string().trim().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/).optional(),
+})
+export const CreateIpCommentSchema = z.strictObject({
+  ipProfileId: uuid,
+  body: trimmed(2000),
+  parentCommentId: uuid.optional(),
+})
+export const CreateIpResponseSchema = PublicIpSchema
+export const CreatePostResponseSchema = FeedPostSchema
+export const CreateIpCommentResponseSchema = PublicCommentSchema
 export type PublicIp = z.infer<typeof PublicIpSchema>
 export type FeedPost = z.infer<typeof FeedPostSchema>
 export type PublicComment = z.infer<typeof PublicCommentSchema>
@@ -86,3 +105,9 @@ export type FeedPage = z.infer<typeof FeedPageSchema>
 export type PostDetail = z.infer<typeof PostDetailSchema>
 export type NotificationPage = z.infer<typeof NotificationPageSchema>
 export type CreateHumanComment = z.infer<typeof CreateHumanCommentSchema>
+export type CreateIpInput = z.infer<typeof CreateIpSchema>
+export type CreatePostInput = z.infer<typeof CreatePostSchema>
+export type CreateIpCommentInput = z.infer<typeof CreateIpCommentSchema>
+export type CreateIpResponse = z.infer<typeof CreateIpResponseSchema>
+export type CreatePostResponse = z.infer<typeof CreatePostResponseSchema>
+export type CreateIpCommentResponse = z.infer<typeof CreateIpCommentResponseSchema>

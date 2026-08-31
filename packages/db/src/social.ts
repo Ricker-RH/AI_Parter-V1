@@ -5,8 +5,11 @@ import {
   type NotificationPage, NotificationPageSchema, type PageQuery, type PostDetail,
   type PublicComment, type PublicIp, decodeCursor, decodeNotificationCursor,
   encodeNotificationCursor, type Cursor as SocialCursor,
+  type CreateIpInput, CreateIpSchema, type CreatePostInput, CreatePostSchema,
+  type CreateIpCommentInput, CreateIpCommentSchema, PublicIpSchema, FeedPostSchema,
+  PublicCommentSchema,
 } from '@aifans/contracts'
-import {type Actor, type QueryClient, type QueryPool, type WithActor, withActor} from './session.js'
+import {type Actor, type QueryClient, type QueryPool, type WithActor, type WithPlatformActor, withActor, withPlatformActor} from './session.js'
 
 export type CommandContext = {requestId: string}
 
@@ -23,6 +26,12 @@ export type SocialRepository = {
   createHumanComment(actor: Actor, postId: string, input: CreateHumanComment, context: CommandContext): Promise<PublicComment>
   listNotifications(actor: Actor, page: PageQuery): Promise<NotificationPage>
   markNotificationRead(actor: Actor, notificationId: string): Promise<{readAt: string} | null>
+}
+
+export type PlatformSocialRepository = {
+  createIp(input: {actor: Actor; requestId: string; ip: CreateIpInput}): Promise<PublicIp>
+  publishPost(input: {actor: Actor; requestId: string; post: CreatePostInput}): Promise<FeedPost>
+  publishIpComment(input: {actor: Actor; requestId: string; postId: string; comment: CreateIpCommentInput}): Promise<PublicComment>
 }
 
 type PublicSession = <T>(callback: (client: QueryClient) => Promise<T>) => Promise<T>
@@ -85,3 +94,63 @@ export function createSocialRepository({withActor: runWithActor = withActor, wit
 }
 
 export type {SocialCursor}
+
+type PlatformPostRow = PostRow
+type PlatformCommentRow = PublicIpRow & {
+  comment_id: string
+  post_id: string
+  parent_comment_id: string | null
+  body: string
+  created_at: Date | string
+}
+
+export function createPlatformSocialRepository(
+  {withPlatformActor: runWithPlatformActor = withPlatformActor}: {withPlatformActor?: WithPlatformActor} = {},
+): PlatformSocialRepository {
+  return {
+    async createIp(input) {
+      const value = CreateIpSchema.parse(input.ip)
+      return runWithPlatformActor(input.actor, async (client) => {
+        const result = await client.query<PublicIpRow>(
+          'SELECT * FROM public.platform_create_ip($1,$2,$3,$4,$5)',
+          [value.username, value.displayName, value.bio ?? null, value.languageCodes ?? [], input.requestId],
+        )
+        const created = result.rows[0]
+        if (!created) throw new Error('IP_NOT_PUBLISHABLE')
+        return PublicIpSchema.parse(publicIp(created))
+      })
+    },
+    async publishPost(input) {
+      const value = CreatePostSchema.parse(input.post)
+      return runWithPlatformActor(input.actor, async (client) => {
+        const result = await client.query<PlatformPostRow>(
+          'SELECT * FROM public.platform_publish_post($1,$2,$3,$4)',
+          [value.ipProfileId, value.body, value.languageCode ?? null, input.requestId],
+        )
+        const created = result.rows[0]
+        if (!created) throw new Error('IP_NOT_PUBLISHABLE')
+        return FeedPostSchema.parse(post(created))
+      })
+    },
+    async publishIpComment(input) {
+      const value = CreateIpCommentSchema.parse(input.comment)
+      return runWithPlatformActor(input.actor, async (client) => {
+        const result = await client.query<PlatformCommentRow>(
+          'SELECT * FROM public.platform_publish_ip_comment($1,$2,$3,$4,$5)',
+          [input.postId, value.ipProfileId, value.body, value.parentCommentId ?? null, input.requestId],
+        )
+        const created = result.rows[0]
+        if (!created) throw new Error('COMMENT_INVALID')
+        return PublicCommentSchema.parse({
+          id: created.comment_id,
+          postId: created.post_id,
+          parentCommentId: created.parent_comment_id,
+          author: publicIp(created),
+          state: 'published',
+          body: created.body,
+          createdAt: iso(created.created_at),
+        })
+      })
+    },
+  }
+}

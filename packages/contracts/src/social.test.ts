@@ -11,6 +11,9 @@ import {
   NotificationCursorSchema,
   decodeNotificationCursor,
   encodeNotificationCursor,
+  CreateIpSchema,
+  CreatePostSchema,
+  CreateIpCommentSchema,
 } from './social.js'
 
 const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
@@ -50,5 +53,31 @@ describe('social contracts', () => {
       Buffer.from(JSON.stringify({...cursor, id: 'not-a-uuid'}), 'utf8').toString('base64url'),
       Buffer.from(JSON.stringify({...cursor, kind: 'comments'}), 'utf8').toString('base64url'),
     ]) expect(() => decodeNotificationCursor(invalid)).toThrow('INVALID_CURSOR')
+  })
+
+  it('accepts only clean platform business inputs and returns existing safe projections', () => {
+    expect(CreateIpSchema.parse({
+      username: '  platform_ip  ',
+      displayName: '  Platform IP  ',
+      bio: '  Public bio  ',
+      languageCodes: ['en', 'zh-CN'],
+    })).toEqual({username: 'platform_ip', displayName: 'Platform IP', bio: 'Public bio', languageCodes: ['en', 'zh-CN']})
+    expect(CreatePostSchema.parse({ipProfileId: id, body: '  Hello  ', languageCode: 'en'})).toEqual({ipProfileId: id, body: 'Hello', languageCode: 'en'})
+    expect(CreateIpCommentSchema.parse({ipProfileId: id, body: '  Reply  ', parentCommentId: id})).toEqual({ipProfileId: id, body: 'Reply', parentCommentId: id})
+
+    for (const unsafe of [
+      {...CreateIpSchema.parse({username: 'platform_ip', displayName: 'IP'}), actingOperatorProfileId: id},
+      {ipProfileId: id, body: 'post', mediaUrls: ['https://example.com/image.png']},
+      {ipProfileId: id, body: 'comment', source: 'worker'},
+      {ipProfileId: id, body: 'comment', state: 'published'},
+    ]) {
+      const schema = 'username' in unsafe ? CreateIpSchema : 'mediaUrls' in unsafe ? CreatePostSchema : CreateIpCommentSchema
+      expect(() => schema.parse(unsafe)).toThrow()
+    }
+
+    const ip = CreateIpSchema.parse({username: 'platform_ip', displayName: 'IP'})
+    expect(ip).not.toHaveProperty('operatorProfileId')
+    expect(() => CreatePostSchema.parse({ipProfileId: id, body: '   '})).toThrow()
+    expect(() => CreateIpCommentSchema.parse({ipProfileId: id, body: '   '})).toThrow()
   })
 })

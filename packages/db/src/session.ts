@@ -24,7 +24,12 @@ export type WithActor = <T>(
   callback: (client: QueryClient) => Promise<T>,
 ) => Promise<T>
 
-function requirePostgresUrl(name: 'DATABASE_USER_URL' | 'DATABASE_ADMIN_URL'): string {
+export type WithPlatformActor = <T>(
+  actor: Actor,
+  callback: (client: QueryClient) => Promise<T>,
+) => Promise<T>
+
+function requirePostgresUrl(name: 'DATABASE_USER_URL' | 'DATABASE_ADMIN_URL' | 'DATABASE_PLATFORM_URL'): string {
   const value = process.env[name]
   try {
     const {protocol} = new URL(value ?? '')
@@ -35,46 +40,52 @@ function requirePostgresUrl(name: 'DATABASE_USER_URL' | 'DATABASE_ADMIN_URL'): s
   throw new Error(`${name} must be a valid postgres URL`)
 }
 
-export function createActorSession(pool: QueryPool): {withActor: WithActor} {
-  return {
-    async withActor<T>(actor: Actor, callback: (client: QueryClient) => Promise<T>): Promise<T> {
-      if (!actor.subject.trim()) {
-        throw new Error('Actor subject must not be blank')
-      }
-
-      const client = await pool.connect()
-      const transaction = await client.query<{txid: string | null}>(
-        'SELECT txid_current_if_assigned() AS txid',
-      )
-      const ownsTransaction = transaction.rows[0]?.txid === null
+function createRoleSession(pool: QueryPool, role: 'aifans_authenticated' | 'aifans_platform') {
+  return async <T>(actor: Actor, callback: (client: QueryClient) => Promise<T>): Promise<T> => {
+    if (!actor.subject.trim()) throw new Error('Actor subject must not be blank')
+    const client = await pool.connect()
+    const transaction = await client.query<{txid: string | null}>('SELECT txid_current_if_assigned() AS txid')
+    const ownsTransaction = transaction.rows[0]?.txid === null
+    const savepoint = role === 'aifans_platform' ? 'platform_session' : 'actor_session'
+    try {
+      await client.query(ownsTransaction ? 'BEGIN' : `SAVEPOINT ${savepoint}`)
       try {
-        await client.query(ownsTransaction ? 'BEGIN' : 'SAVEPOINT actor_session')
-        try {
-          await client.query('SET LOCAL ROLE aifans_authenticated')
-          await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
-            JSON.stringify({sub: actor.subject}),
-          ])
-          const result = await callback(client)
-          await client.query(ownsTransaction ? 'COMMIT' : 'RELEASE SAVEPOINT actor_session')
-          if (!ownsTransaction) await client.query('SET LOCAL ROLE NONE')
-          return result
-        } catch (error) {
-          await client.query(ownsTransaction ? 'ROLLBACK' : 'ROLLBACK TO SAVEPOINT actor_session').catch(() => undefined)
-          if (!ownsTransaction) await client.query('RELEASE SAVEPOINT actor_session').catch(() => undefined)
-          throw error
-        }
-      } finally {
-        client.release()
+        await client.query(`SET LOCAL ROLE ${role}`)
+        await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify({sub: actor.subject})])
+        const result = await callback(client)
+        await client.query(ownsTransaction ? 'COMMIT' : `RELEASE SAVEPOINT ${savepoint}`)
+        if (!ownsTransaction) await client.query('SET LOCAL ROLE NONE')
+        return result
+      } catch (error) {
+        await client.query(ownsTransaction ? 'ROLLBACK' : `ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => undefined)
+        if (!ownsTransaction) await client.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => undefined)
+        throw error
       }
-    },
+    } finally {
+      client.release()
+    }
   }
 }
 
+export function createActorSession(pool: QueryPool): {withActor: WithActor} {
+  return {withActor: createRoleSession(pool, 'aifans_authenticated')}
+}
+
+export function createPlatformSession(pool: QueryPool): {withPlatformActor: WithPlatformActor} {
+  return {withPlatformActor: createRoleSession(pool, 'aifans_platform')}
+}
+
 let userPool: Pool | undefined
+let platformPool: Pool | undefined
 
 function getUserPool(): Pool {
   userPool ??= new Pool({connectionString: requirePostgresUrl('DATABASE_USER_URL')})
   return userPool
+}
+
+function getPlatformPool(): Pool {
+  platformPool ??= new Pool({connectionString: requirePostgresUrl('DATABASE_PLATFORM_URL')})
+  return platformPool
 }
 
 export async function withActor<T>(
@@ -82,4 +93,12 @@ export async function withActor<T>(
   callback: (client: QueryClient) => Promise<T>,
 ): Promise<T> {
   return createActorSession(getUserPool()).withActor(actor, callback)
+}
+
+
+export async function withPlatformActor<T>(
+  actor: Actor,
+  callback: (client: QueryClient) => Promise<T>,
+): Promise<T> {
+  return createPlatformSession(getPlatformPool()).withPlatformActor(actor, callback)
 }

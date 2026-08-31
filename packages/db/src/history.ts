@@ -6,6 +6,7 @@ const uuid = z.string().uuid()
 const nonBlank = z.string().regex(/[^\s]/)
 const sensitiveKey = /(^|_)(access_?token|email(_address)?|database_url|signed_url|private_message|post_text|comment_text|search_query|prompt|cookie|secret|token|password|body|message)(_|$)/i
 const auditSummary = z.object({role: z.literal('operator')}).strict()
+const platformAuditSummary = z.object({source: z.literal('admin'), represented_ip_profile_id: uuid}).strict()
 const correlation = {
   locale: z.enum(['en', 'zh-CN']).optional(),
   request_id: uuid.optional(),
@@ -15,20 +16,33 @@ const correlation = {
 }
 const accountRegisteredProperties = z.object({event_id: uuid, ...correlation}).strict()
 const posthogAccountRegisteredPayload = z.object({event_id: uuid, event_name: z.literal('account_registered'), event_version: z.literal(1), ...correlation}).strict()
-const auditInput = z.object({actorProfileId: uuid.optional(), action: z.literal('operator_granted'), entityType: z.literal('profile'), entityId: uuid, sourceApp: z.enum(['api', 'admin', 'worker']), result: z.enum(['succeeded', 'rejected', 'failed']).optional(), actorType: z.enum(['human', 'operator', 'system']).optional(), requestId: uuid.optional(), changeSummary: auditSummary}).strict()
+const auditInput = z.discriminatedUnion('action', [
+  z.object({actorProfileId: uuid.optional(), action: z.literal('operator_granted'), entityType: z.literal('profile'), entityId: uuid, sourceApp: z.enum(['api', 'admin', 'worker']), result: z.enum(['succeeded', 'rejected', 'failed']).optional(), actorType: z.enum(['human', 'operator', 'system']).optional(), requestId: uuid.optional(), changeSummary: auditSummary}).strict(),
+  z.object({actorProfileId: uuid, action: z.literal('ip_created'), entityType: z.literal('ip_profile'), entityId: uuid, sourceApp: z.literal('admin'), result: z.literal('succeeded').optional(), actorType: z.literal('operator'), requestId: uuid, changeSummary: platformAuditSummary}).strict(),
+  z.object({actorProfileId: uuid, action: z.literal('post_published'), entityType: z.literal('post'), entityId: uuid, sourceApp: z.literal('admin'), result: z.literal('succeeded').optional(), actorType: z.literal('operator'), requestId: uuid, changeSummary: platformAuditSummary}).strict(),
+  z.object({actorProfileId: uuid, action: z.literal('ip_comment_published'), entityType: z.literal('comment'), entityId: uuid, sourceApp: z.literal('admin'), result: z.literal('succeeded').optional(), actorType: z.literal('operator'), requestId: uuid, changeSummary: platformAuditSummary}).strict(),
+])
 const socialEventProperties = z.object({event_id: uuid, request_id: uuid}).strict()
 const followProperties = z.object({event_id: uuid, profile_id: uuid, request_id: uuid}).strict()
+const platformIpProperties = z.object({event_id: uuid, request_id: uuid, ip_profile_id: uuid, action_source: z.literal('admin')}).strict()
+const platformCommentProperties = platformIpProperties.extend({post_id: uuid}).strict()
 const businessInput = z.discriminatedUnion('eventName', [
   z.object({eventName: z.literal('account_registered'), actorProfileId: uuid.optional(), subjectEntityType: z.literal('profile'), subjectEntityId: uuid, environment: nonBlank, properties: accountRegisteredProperties, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict(),
   z.object({eventName: z.literal('follow_created'), actorProfileId: uuid, subjectEntityType: z.literal('profile'), subjectEntityId: uuid, environment: nonBlank, properties: followProperties, requestId: uuid, schemaVersion: z.literal(1).optional()}).strict(),
   z.object({eventName: z.literal('post_liked'), actorProfileId: uuid, subjectEntityType: z.literal('post'), subjectEntityId: uuid, environment: nonBlank, properties: socialEventProperties, requestId: uuid, schemaVersion: z.literal(1).optional()}).strict(),
   z.object({eventName: z.literal('comment_created'), actorProfileId: uuid, subjectEntityType: z.literal('comment'), subjectEntityId: uuid, environment: nonBlank, properties: socialEventProperties, requestId: uuid, schemaVersion: z.literal(1).optional()}).strict(),
+  z.object({eventName: z.literal('ip_created'), actorProfileId: uuid, subjectEntityType: z.literal('ip_profile'), subjectEntityId: uuid, environment: nonBlank, properties: platformIpProperties, requestId: uuid, schemaVersion: z.literal(1).optional()}).strict(),
+  z.object({eventName: z.literal('post_published'), actorProfileId: uuid, subjectEntityType: z.literal('post'), subjectEntityId: uuid, environment: nonBlank, properties: platformIpProperties, requestId: uuid, schemaVersion: z.literal(1).optional()}).strict(),
+  z.object({eventName: z.literal('ip_comment_published'), actorProfileId: uuid, subjectEntityType: z.literal('comment'), subjectEntityId: uuid, environment: nonBlank, properties: platformCommentProperties, requestId: uuid, schemaVersion: z.literal(1).optional()}).strict(),
 ])
 const transitionInput = z.object({entityType: z.string().regex(/[^\s]/), entityId: uuid, nextState: z.string().regex(/[^\s]/), previousState: z.string().optional(), actorProfileId: uuid.optional(), reasonCode: z.string().optional(), operatorNote: z.string().optional(), requestId: uuid.optional()}).strict()
 const followOutboxPayload = z.object({event_id: uuid, event_name: z.literal('follow_created'), event_version: z.literal(1), request_id: uuid, profile_id: uuid}).strict()
 const postLikedOutboxPayload = z.object({event_id: uuid, event_name: z.literal('post_liked'), event_version: z.literal(1), request_id: uuid}).strict()
 const commentCreatedOutboxPayload = z.object({event_id: uuid, event_name: z.literal('comment_created'), event_version: z.literal(1), request_id: uuid}).strict()
-const outboxPayload = z.discriminatedUnion('event_name', [posthogAccountRegisteredPayload, followOutboxPayload, postLikedOutboxPayload, commentCreatedOutboxPayload])
+const ipCreatedOutboxPayload = platformIpProperties.extend({event_name: z.literal('ip_created'), event_version: z.literal(1)}).strict()
+const postPublishedOutboxPayload = platformIpProperties.extend({event_name: z.literal('post_published'), event_version: z.literal(1)}).strict()
+const ipCommentPublishedOutboxPayload = platformCommentProperties.extend({event_name: z.literal('ip_comment_published'), event_version: z.literal(1)}).strict()
+const outboxPayload = z.discriminatedUnion('event_name', [posthogAccountRegisteredPayload, followOutboxPayload, postLikedOutboxPayload, commentCreatedOutboxPayload, ipCreatedOutboxPayload, postPublishedOutboxPayload, ipCommentPublishedOutboxPayload])
 const outboxInput = z.object({destination: z.literal('posthog'), payloadVersion: z.literal(1), payload: outboxPayload}).strict()
 
 type AuditInput = z.infer<typeof auditInput>
