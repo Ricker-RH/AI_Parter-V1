@@ -20,7 +20,17 @@ export type MigrateOptions = {
 }
 
 export function discoverMigrations(directory: string): Migration[] {
-  return readdirSync(directory)
+  let entries: string[]
+  try {
+    entries = readdirSync(directory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
+
+  return entries
     .filter((name) => migrationName.test(name))
     .sort()
     .map((name) => {

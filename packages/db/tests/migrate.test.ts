@@ -1,4 +1,4 @@
-import {mkdtempSync, writeFileSync} from 'node:fs'
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {describe, expect, it} from 'vitest'
@@ -22,6 +22,21 @@ describe('database environment', () => {
 })
 
 describe('migration discovery', () => {
+  it('returns no migrations when the directory is absent', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'aifans-missing-migrations-'))
+    rmSync(directory, {recursive: true})
+
+    expect(discoverMigrations(directory)).toEqual([])
+  })
+
+  it('propagates filesystem errors other than a missing directory', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'aifans-migration-file-'))
+    const file = join(directory, 'not-a-directory')
+    writeFileSync(file, '')
+
+    expect(() => discoverMigrations(file)).toThrow()
+  })
+
   it('sorts SQL files and includes a stable SHA-256 checksum', () => {
     const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
     writeFileSync(join(directory, '202608310002_second.sql'), 'select 2;\n')
