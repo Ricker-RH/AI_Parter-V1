@@ -1,7 +1,7 @@
 # AIFANS Accelerated V1 Scope
 
 **Date:** 2026-09-01  
-**Status:** Approved direction, pending written-spec confirmation
+**Status:** Approved
 
 ## Goal
 
