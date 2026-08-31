@@ -30,6 +30,6 @@ export function PostCard({post, locale, labels, linked = true}: {post: FeedPost;
     </footer>
     {post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined && post.viewerFollowsAuthor !== undefined
       ? <PostActions authorId={post.author.id} bookmarked={post.viewerHasBookmarked} followsAuthor={post.viewerFollowsAuthor} labels={labels} liked={post.viewerHasLiked} postId={post.id} />
-      : null}
+      : <Link className="interaction-login" href={`/${locale}/auth/sign-in`}>{labels.signInToInteract}</Link>}
   </article>
 }

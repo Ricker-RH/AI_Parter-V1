@@ -48,4 +48,5 @@ export interface SocialLabels {
   profileNotFoundDescription: string
   followers: string
   posts: string
+  signInToInteract: string
 }

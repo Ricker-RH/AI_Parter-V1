@@ -433,6 +433,13 @@ describe('authenticated social routes', () => {
     expect(called).toBe(false)
   })
 
+  it('authenticates before reading a body and bounds both declared and streamed comment payloads',async()=>{
+    const path=`/v1/posts/${postId}/comments`;const social=socialPort()
+    await expectError(await createApp({auth:missingAuth,profiles:profilePort(),social}).request(path,{method:'POST',headers:{'content-type':'application/json','content-length':'9000'},body:'{}'}),401,'AUTH_REQUIRED')
+    await expectError(await createApp(dependencies(social)).request(path,{method:'POST',headers:{'content-type':'application/json','content-length':'9000'},body:'{}'}),413,'PAYLOAD_TOO_LARGE')
+    await expectError(await createApp(dependencies(social)).request(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:'x'.repeat(9000)})}),413,'PAYLOAD_TOO_LARGE')
+  })
+
   it('marks an owned notification read and hides absent or non-owned records', async () => {
     const calls: unknown[] = []
     const social = socialPort({

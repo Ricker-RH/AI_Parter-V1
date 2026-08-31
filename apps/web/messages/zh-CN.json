@@ -36,6 +36,7 @@
   "commentSuccess": "评论已发布。",
   "reply": "回复",
   "signInToComment": "登录后参与讨论",
+  "signInToInteract": "登录后即可喜欢、收藏或关注",
   "authRequiredTitle": "需要登录",
   "authRequiredDescription": "登录后即可查看你的个性化动态。",
   "unavailableTitle": "暂时无法加载",

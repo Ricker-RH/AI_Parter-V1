@@ -41,4 +41,11 @@ describe('authenticated server API transport', () => {
     const fetcher=vi.fn((_url:string|URL|Request,init?:RequestInit)=>new Promise<Response>((_resolve,reject)=>init?.signal?.addEventListener('abort',()=>reject(init.signal?.reason),{once:true})))
     await expect(fetchAifansApi('/v1/feed',{fetcher,getToken:async()=>null,timeoutMs:1})).rejects.toThrow('timeout')
   })
+
+  it('uses the same deadline while waiting for an auth token', async () => {
+    process.env.AIFANS_API_URL='https://api.example'
+    const fetcher=vi.fn()
+    await expect(fetchAifansApi('/v1/feed',{fetcher,getToken:()=>new Promise(()=>undefined),timeoutMs:1})).rejects.toThrow('timeout')
+    expect(fetcher).not.toHaveBeenCalled()
+  })
 })

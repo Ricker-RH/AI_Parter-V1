@@ -30,6 +30,7 @@ const labels: SocialLabels = {
   loadMore: 'Load more', aifansActor: 'AIFANS',
   visualTypeFilter: 'IP style', allTypes: 'All', realistic: 'Realistic', anime: 'Anime', hybrid: 'Hybrid', createdBy: 'Created by',
   commentPlaceholder:'Write a comment',commentSubmit:'Comment',commentSending:'Posting',commentSuccess:'Posted',reply:'Reply',signInToComment:'Sign in to comment',markRead:'Mark as read',markingRead:'Marking',profileNotFoundTitle:'Profile not found',profileNotFoundDescription:'Not public',followers:'followers',posts:'Posts',
+  signInToInteract:'Sign in to like, save, or follow',
 }
 const ip = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
 const post: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', author: ip, likeCount: 4, commentCount: 2, viewerHasLiked: true, viewerHasBookmarked: false, viewerFollowsAuthor: false}
@@ -54,6 +55,8 @@ describe('real social content', () => {
     expect(analyticsCapture).toHaveBeenCalledWith({name: 'post_viewed', properties: {event_version: 1, locale: 'en', post_id: post.id}})
     expect(JSON.stringify(analyticsCapture.mock.calls)).not.toContain(post.body)
   })
+
+  it('shows anonymous users a localized sign-in interaction control',()=>{const anonymous={...post};delete anonymous.viewerHasLiked;delete anonymous.viewerHasBookmarked;delete anonymous.viewerFollowsAuthor;render(<FeedContent labels={labels} locale="en" result={{status:'ok',data:{items:[anonymous],nextCursor:null}}}/>);expect(screen.getByRole('link',{name:'Sign in to like, save, or follow'})).toHaveAttribute('href','/en/auth/sign-in')})
 
   it('renders localized empty, authentication, and unavailable states without posts', () => {
     const {rerender} = render(<FeedContent labels={labels} locale="en" result={{status: 'ok', data: {items: [], nextCursor: null}}} />)

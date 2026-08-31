@@ -36,6 +36,7 @@
   "commentSuccess": "Comment posted.",
   "reply": "Reply",
   "signInToComment": "Sign in to join the conversation",
+  "signInToInteract": "Sign in to like, save, or follow",
   "authRequiredTitle": "Sign in required",
   "authRequiredDescription": "Sign in to see your personalized activity.",
   "unavailableTitle": "Unable to load this page",

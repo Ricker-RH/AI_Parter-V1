@@ -39,6 +39,7 @@ const PostQuerySchema = z.strictObject({
 const CreatedSchema = z.strictObject({created: z.boolean()})
 const DeletedSchema = z.strictObject({deleted: z.boolean()})
 const NotificationReadSchema = z.strictObject({readAt: z.iso.datetime()})
+const COMMENT_BODY_LIMIT=8192
 
 const invalidRequest = (c: ApiContext) => apiError(c, 400, 'INVALID_REQUEST', 'Request is invalid')
 const invalidCursor = (c: ApiContext) => apiError(c, 400, 'INVALID_CURSOR', 'Cursor is invalid')
@@ -59,6 +60,19 @@ function parseId(value: string | undefined): string | null {
   const parsed = IdParameterSchema.safeParse(value)
   if (!parsed.success) return null
   return parsed.data
+}
+
+function declaredBodyTooLarge(request: Request,limit:number): boolean {
+  const value=request.headers.get('content-length')
+  return value!==null&&(!/^\d+$/.test(value)||Number(value)>limit)
+}
+
+async function readBoundedBody(request:Request,limit:number):Promise<string> {
+  if(declaredBodyTooLarge(request,limit)) throw new Error('BODY_TOO_LARGE')
+  if(!request.body) return ''
+  const reader=request.body.getReader();const chunks:Uint8Array[]=[];let size=0
+  try { for(;;){const {done,value}=await reader.read();if(done)break;if(value){size+=value.byteLength;if(size>limit){await reader.cancel();throw new Error('BODY_TOO_LARGE')}chunks.push(value)}} } finally { reader.releaseLock() }
+  const joined=new Uint8Array(size);let offset=0;for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength}return new TextDecoder().decode(joined)
 }
 
 async function parseEmptyBody(c: ApiContext): Promise<boolean> {
@@ -338,18 +352,20 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     if (query === null || !EmptyQuerySchema.safeParse(query).success) return invalidRequest(c)
     const postId = parseId(c.req.param('postId'))
     if (!postId) return invalidRequest(c)
+    const actor = await resolveActor(c, dependencies, true)
+    if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
+    if(declaredBodyTooLarge(c.req.raw,COMMENT_BODY_LIMIT)) return apiError(c,413,'PAYLOAD_TOO_LARGE','Request body is too large')
     let raw: unknown
     try {
-      const text=await c.req.text()
+      const text=await readBoundedBody(c.req.raw,COMMENT_BODY_LIMIT)
       if(hasDuplicateTopLevelJsonKey(text)) throw new Error('duplicate key')
       raw = JSON.parse(text)
-    } catch {
+    } catch (error) {
+      if(error instanceof Error&&error.message==='BODY_TOO_LARGE') return apiError(c,413,'PAYLOAD_TOO_LARGE','Request body is too large')
       return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
     }
     const input = CreateHumanCommentSchema.safeParse(raw)
     if (!input.success) return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
-    const actor = await resolveActor(c, dependencies, true)
-    if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
     try {
       return c.json(PublicCommentSchema.parse(await dependencies.social!.createHumanComment(actor.actor, postId, input.data, {requestId: c.get('requestId')})), 201)
     } catch (error) {

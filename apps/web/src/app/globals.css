@@ -92,6 +92,7 @@ button { color: inherit; }
 .post-actions button { background: transparent; border: 1px solid var(--shell-border); border-radius: 999px; cursor: pointer; min-height: 34px; padding: 0 12px; }
 .post-actions button:hover, .post-actions button[aria-pressed='true'] { background: var(--shell-hover); border-color: var(--shell-text); }
 .post-actions button:disabled { cursor: wait; opacity: .65; }
+.interaction-login { color: var(--shell-muted); display: inline-block; font-size: 13px; margin-top: 13px; text-decoration: underline; }
 .interaction-error { color: var(--shell-muted); font-size: 13px; }
 .comments-section > h2 { border-bottom: 1px solid var(--shell-border); font-size: 18px; margin: 0; padding: 20px 24px 14px; }
 .comment { border-bottom: 1px solid var(--shell-border); padding: 18px 24px; }

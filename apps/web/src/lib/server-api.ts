@@ -45,13 +45,14 @@ export async function fetchAifansApi(
   if (!safePath(path)) throw new Error('Invalid API path')
   const baseUrl = readApiBaseUrl()
   if (!baseUrl) throw new Error('AIFANS API is not configured')
-  const token = await getToken()
   const controller=new AbortController()
   if(requestInit.signal?.aborted) controller.abort(requestInit.signal.reason)
   const onAbort=()=>controller.abort(requestInit.signal?.reason)
   requestInit.signal?.addEventListener('abort',onAbort,{once:true})
   const timer=setTimeout(()=>controller.abort(new Error('AIFANS API timeout')),timeoutMs)
   try {
+    const timeout=new Promise<never>((_resolve,reject)=>{const rejectOnAbort=()=>reject(controller.signal.reason??new Error('AIFANS API timeout'));if(controller.signal.aborted)rejectOnAbort();else controller.signal.addEventListener('abort',rejectOnAbort,{once:true})})
+    const token=await Promise.race([getToken(),timeout])
     return await fetcher(`${baseUrl}${path}`, {...requestInit,cache:'no-store',headers:Object.fromEntries(outboundHeaders(requestInit.headers,token)),signal:controller.signal})
   } finally {
     clearTimeout(timer)
