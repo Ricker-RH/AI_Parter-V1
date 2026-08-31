@@ -25,9 +25,11 @@ function dependencies(overrides: Record<string, unknown> = {}) {
     createDraft: vi.fn(async () => draft), updateDraft: vi.fn(async () => draft), deleteDraft: vi.fn(async () => ({deleted: true})),
     getDraft: vi.fn(async () => draft), listDrafts: vi.fn(async () => ({items: [draft], nextCursor: null})),
     getIp: vi.fn(async () => null), listIps: vi.fn(async () => ({items: [], nextCursor: null})),
+    reserveReferenceUpload: vi.fn(async (_actor, inputDraftId, reservation) => ({...reservation, draftId: inputDraftId})),
+    getReferenceUploadReservation: vi.fn(async () => ({id: assetId, draftId, contentType: 'image/png' as const, sizeBytes: 4096, expiresAt: now})),
     registerReference: vi.fn(async () => ({created: true})), submitDraft: vi.fn(), getSubmission: vi.fn(async () => null),
     listSubmissions: vi.fn(async () => ({items: [], nextCursor: null})), createRequest: vi.fn(), listRequests: vi.fn(async () => ({items: [], nextCursor: null})),
-    getAnalytics: vi.fn(async () => null),
+    getRequest: vi.fn(async () => null), getAnalytics: vi.fn(async () => null),
   }
   const assets: AssetPort = {
     createUploadIntent: vi.fn(async () => ({assetId, method: 'PUT', url: 'https://signed.example/upload', headers: {'content-type': 'image/png'}, expiresAt: now, maxBytes: 10_485_760})),
@@ -104,17 +106,18 @@ describe('creator routes', () => {
     const body = await response.json() as Record<string, unknown>
     expect(body).toEqual({assetId, method: 'PUT', url: 'https://signed.example/upload', headers: {'content-type': 'image/png'}, expiresAt: now, maxBytes: 10_485_760})
     expect(JSON.stringify(body)).not.toContain('objectKey')
-    expect(deps.assets.createUploadIntent).toHaveBeenCalledWith({creatorProfileId: profileId, draftId, contentType: 'image/png', sizeBytes: 4096})
+    expect(deps.creator.reserveReferenceUpload).toHaveBeenCalledWith({subject: actorSubject}, draftId, expect.objectContaining({id: expect.any(String), contentType: 'image/png', sizeBytes: 4096, expiresAt: expect.any(String)}))
+    expect(deps.assets.createUploadIntent).toHaveBeenCalledWith(expect.objectContaining({creatorProfileId: profileId, draftId, assetId: expect.any(String), contentType: 'image/png', sizeBytes: 4096, expiresAt: expect.any(String)}))
   })
 
   it('registers only an inspected upload and enforces the eight-reference boundary before signing', async () => {
     const {instance, deps} = app()
     const response = await instance.request(`/v1/creator/drafts/${draftId}/references`, {
-      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId, contentType: 'image/png', width: 1024, height: 1024}),
+      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId, width: 1024, height: 1024}),
     })
     expect(response.status).toBe(201)
-    expect(deps.assets.inspectUpload).toHaveBeenCalledWith({creatorProfileId: profileId, draftId, assetId, contentType: 'image/png'})
-    expect(deps.creator.registerReference).toHaveBeenCalledWith({subject: actorSubject}, draftId, {id: assetId, contentType: 'image/png', width: 1024, height: 1024})
+    expect(deps.assets.inspectUpload).toHaveBeenCalledWith({creatorProfileId: profileId, draftId, assetId, contentType: 'image/png', expectedSizeBytes: 4096})
+    expect(deps.creator.registerReference).toHaveBeenCalledWith({subject: actorSubject}, draftId, {id: assetId, contentType: 'image/png', sizeBytes: 4096, width: 1024, height: 1024})
 
     vi.mocked(deps.creator.getDraft).mockResolvedValue({...draft, references: Array.from({length: 8}, (_, index) => ({id: randomUUID(), role: ['avatar', 'cover', 'portrait', 'full_body', 'supporting_1', 'supporting_2', 'supporting_3', 'supporting_4'][index] as never}))})
     await error(await instance.request(`/v1/creator/drafts/${draftId}/references/upload-intent`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({contentType: 'image/png', sizeBytes: 100})}), 409, 'REFERENCE_LIMIT_REACHED')
@@ -149,6 +152,24 @@ describe('creator routes', () => {
     const request = await instance.request(`/v1/creator/ips/${ipProfileId}/requests`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'unpublish', reason: 'Please unpublish this identity.'})})
     expect(request.status).toBe(201)
     expect(deps.creator.createRequest).toHaveBeenCalledWith({subject: actorSubject}, {ipProfileId, kind: 'unpublish', reason: 'Please unpublish this identity.'}, {requestId: expect.any(String)})
+  })
+
+  it('returns only an owned creator request detail with its immutable proposed revision', async () => {
+    const {instance, deps} = app()
+    const requestId = randomUUID()
+    const record = {id: requestId, ipProfileId: randomUUID(), kind: 'unpublish' as const, reason: 'Please unpublish this identity.', state: 'pending' as const, proposedRevision: null, createdAt: now, decidedAt: null, decisionReason: null}
+    vi.mocked(deps.creator.getRequest).mockResolvedValue(record)
+    expect(await (await instance.request(`/v1/creator/requests/${requestId}`)).json()).toEqual(record)
+    vi.mocked(deps.creator.getRequest).mockResolvedValue(null)
+    await error(await instance.request(`/v1/creator/requests/${requestId}`), 404, 'CREATOR_REQUEST_NOT_FOUND')
+  })
+
+  it('strictly projects a configured generation provider response', async () => {
+    const generation = {createGenerationIntent: vi.fn(async () => ({jobId: randomUUID(), status: 'queued' as const, candidates: [], providerPrompt: 'must-not-leak'}))}
+    const configured = app(dependencies({imageGeneration: generation}))
+    const response = await configured.instance.request(`/v1/creator/drafts/${draftId}/generation-intent`, {method: 'POST', headers: {'content-type': 'application/json'}, body: '{}'})
+    expect(response.status).toBe(500)
+    expect(await response.text()).not.toContain('providerPrompt')
   })
 
   it('maps ownership/not-found, quota/conflict, and invalid persistence failures safely', async () => {

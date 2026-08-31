@@ -13,12 +13,13 @@ import {
   CreatorSubmissionRecordSchema,
   CreatorSubmissionSchema,
 } from '@aifans/contracts'
+import {randomUUID} from 'node:crypto'
 import type {Actor} from '@aifans/db'
 import type {Context, Hono} from 'hono'
 import {z} from 'zod'
 import {apiError} from '../errors.js'
 import type {ApiVariables} from '../middleware/request-id.js'
-import type {AssetPort, ImageGenerationPort} from '../ports/assets.js'
+import {CREATOR_ASSET_INTENT_TTL_SECONDS, type AssetPort, type ImageGenerationPort} from '../ports/assets.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {CreatorPort} from '../ports/creator.js'
 import type {ProfilePort} from '../ports/profiles.js'
@@ -41,10 +42,16 @@ const emptyQuerySchema = z.strictObject({})
 const pageQuerySchema = z.strictObject({limit: z.coerce.number().int().min(1).max(50).default(20), cursor: z.string().min(1).optional()})
 const contentTypeSchema = z.enum(['image/jpeg', 'image/png', 'image/webp'])
 const uploadIntentSchema = z.strictObject({contentType: contentTypeSchema, sizeBytes: z.number().int().min(1).max(10_485_760)})
-const registerReferenceSchema = z.strictObject({assetId: idSchema, contentType: contentTypeSchema, width: z.number().int().min(1).max(16384), height: z.number().int().min(1).max(16384)})
+const registerReferenceSchema = z.strictObject({assetId: idSchema, width: z.number().int().min(1).max(16384), height: z.number().int().min(1).max(16384)})
 const submitBodySchema = z.strictObject({authorizationVersion: z.string().trim().min(1).max(100), references: z.array(CreatorReferenceSelectionSchema).min(5).max(8)})
 const requestBodySchema = z.strictObject({kind: z.enum(['change', 'unpublish', 'deletion']), reason: z.string().trim().min(10).max(2000), proposedDraftId: idSchema.optional()})
 const emptyBodySchema = z.strictObject({})
+const readIntentSchema = z.strictObject({method: z.literal('GET'), url: z.url(), expiresAt: z.iso.datetime()})
+const generationIntentSchema = z.strictObject({
+  jobId: idSchema,
+  status: z.enum(['queued', 'ready']),
+  candidates: z.array(z.strictObject({id: idSchema, readIntent: readIntentSchema})).max(8),
+})
 
 function pageInput(query: {limit: number; cursor?: string | undefined}) {
   return {limit: query.limit, ...(query.cursor === undefined ? {} : {cursor: query.cursor})}
@@ -166,7 +173,12 @@ export function registerCreatorRoutes(app: Hono<{Variables: ApiVariables}>, depe
       if (owned.draft.status !== 'draft') return apiError(c, 409, 'CREATOR_CONFLICT', 'Creator draft is immutable')
       if (owned.draft.references.length >= 8) return apiError(c, 409, 'REFERENCE_LIMIT_REACHED', 'Reference limit was reached')
       if (!dependencies.assets) return apiError(c, 503, 'ASSETS_NOT_CONFIGURED', 'Private assets are not configured')
-      return c.json(await dependencies.assets.createUploadIntent({creatorProfileId: human.human.profileId, draftId, ...body}), 201)
+      const reservation = await creator.reserveReferenceUpload(human.human.actor, draftId, {
+        id: randomUUID(),
+        ...body,
+        expiresAt: new Date(Date.now() + CREATOR_ASSET_INTENT_TTL_SECONDS * 1000).toISOString(),
+      })
+      return c.json(await dependencies.assets.createUploadIntent({creatorProfileId: human.human.profileId, draftId, assetId: reservation.id, contentType: reservation.contentType, sizeBytes: reservation.sizeBytes, expiresAt: reservation.expiresAt}), 201)
     } catch (error) { return creatorError(c, error) }
   })
 
@@ -180,8 +192,10 @@ export function registerCreatorRoutes(app: Hono<{Variables: ApiVariables}>, depe
       const owned = await ownedDraft(c, creator, human.human, draftId); if (!owned.ok) return owned.response
       if (owned.draft.status !== 'draft' || owned.draft.references.length >= 8) return apiError(c, 409, 'CREATOR_CONFLICT', 'Creator reference conflicts with its current state')
       if (!dependencies.assets) return apiError(c, 503, 'ASSETS_NOT_CONFIGURED', 'Private assets are not configured')
-      const inspected = await dependencies.assets.inspectUpload({creatorProfileId: human.human.profileId, draftId, assetId: body.assetId, contentType: body.contentType})
-      const result = await creator.registerReference(human.human.actor, draftId, {id: inspected.assetId, contentType: inspected.contentType, width: body.width, height: body.height})
+      const reservation = await creator.getReferenceUploadReservation(human.human.actor, draftId, body.assetId)
+      if (!reservation) return apiError(c, 404, 'CREATOR_REFERENCE_UPLOAD_NOT_FOUND', 'Creator reference upload was not found')
+      const inspected = await dependencies.assets.inspectUpload({creatorProfileId: human.human.profileId, draftId, assetId: body.assetId, contentType: reservation.contentType, expectedSizeBytes: reservation.sizeBytes})
+      const result = await creator.registerReference(human.human.actor, draftId, {id: inspected.assetId, contentType: inspected.contentType, sizeBytes: reservation.sizeBytes, width: body.width, height: body.height})
       return c.json({assetId: inspected.assetId, created: result.created}, result.created ? 201 : 200)
     } catch (error) { return creatorError(c, error) }
   })
@@ -209,7 +223,7 @@ export function registerCreatorRoutes(app: Hono<{Variables: ApiVariables}>, depe
       const creator = requireCreator(c, dependencies); if (creator instanceof Response) return creator
       const owned = await ownedDraft(c, creator, human.human, draftId); if (!owned.ok) return owned.response
       if (!dependencies.imageGeneration) return apiError(c, 503, 'IMAGE_GENERATION_NOT_CONFIGURED', 'Image generation is not configured')
-      return c.json(await dependencies.imageGeneration.createGenerationIntent({actorSubject: human.human.actor.subject, creatorProfileId: human.human.profileId, draftId, requestId: c.get('requestId')}), 201)
+      return c.json(generationIntentSchema.parse(await dependencies.imageGeneration.createGenerationIntent({actorSubject: human.human.actor.subject, creatorProfileId: human.human.profileId, draftId, requestId: c.get('requestId')})), 201)
     } catch (error) { return creatorError(c, error) }
   })
 
@@ -254,5 +268,9 @@ export function registerCreatorRoutes(app: Hono<{Variables: ApiVariables}>, depe
   app.get('/v1/creator/requests', async (c) => {
     const query = strictQuery(c, pageQuerySchema); if (!query) return apiError(c, 400, 'INVALID_REQUEST', 'Request is invalid')
     try { const human = await requireHuman(c, dependencies); if (!human.ok) return human.response; const creator = requireCreator(c, dependencies); if (creator instanceof Response) return creator; return c.json(CreatorRequestPageSchema.parse(await creator.listRequests(human.human.actor, pageInput(query)))) } catch (error) { return creatorError(c, error) }
+  })
+  app.get('/v1/creator/requests/:requestId', async (c) => {
+    if (noQuery(c)) return noQuery(c)!; const id = parsedId(c, 'requestId'); if (!id) return apiError(c, 400, 'INVALID_REQUEST', 'Request is invalid')
+    try { const human = await requireHuman(c, dependencies); if (!human.ok) return human.response; const creator = requireCreator(c, dependencies); if (creator instanceof Response) return creator; const value = await creator.getRequest(human.human.actor, id); return value ? c.json(CreatorRequestSchema.parse(value)) : apiError(c, 404, 'CREATOR_REQUEST_NOT_FOUND', 'Creator request was not found') } catch (error) { return creatorError(c, error) }
   })
 }

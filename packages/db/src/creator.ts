@@ -44,9 +44,18 @@ export type CreatorPageQuery = { limit: number; cursor?: string };
 export type CreatorReferenceRegistration = {
   id: string;
   contentType: string;
+  sizeBytes: number;
   width: number;
   height: number;
 };
+export type CreatorUploadReservation = {
+  id: string;
+  draftId: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  sizeBytes: number;
+  expiresAt: string;
+};
+export type CreatorUploadReservationInput = Omit<CreatorUploadReservation, "draftId">;
 
 export type CreatorRepository = {
   createDraft(actor: Actor, input: CreatorDraftInput): Promise<CreatorDraft>;
@@ -60,6 +69,8 @@ export type CreatorRepository = {
   listDrafts(actor: Actor, page: CreatorPageQuery): Promise<CreatorDraftPage>;
   getIp(actor: Actor, ipProfileId: string): Promise<CreatorIp | null>;
   listIps(actor: Actor, page: CreatorPageQuery): Promise<CreatorIpPage>;
+  reserveReferenceUpload(actor: Actor, draftId: string, input: CreatorUploadReservationInput): Promise<CreatorUploadReservation>;
+  getReferenceUploadReservation(actor: Actor, draftId: string, assetId: string): Promise<CreatorUploadReservation | null>;
   registerReference(
     actor: Actor,
     draftId: string,
@@ -87,6 +98,7 @@ export type CreatorRepository = {
     actor: Actor,
     page: CreatorPageQuery,
   ): Promise<CreatorRequestPage>;
+  getRequest(actor: Actor, requestId: string): Promise<CreatorRequest | null>;
   getAnalytics(
     actor: Actor,
     ipProfileId: string,
@@ -136,9 +148,18 @@ const pageSchema = z.strictObject({
 const registrationSchema = z.strictObject({
   id: uuid,
   contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  sizeBytes: z.number().int().min(1).max(10_485_760),
   width: z.number().int().min(1).max(16384),
   height: z.number().int().min(1).max(16384),
 });
+const uploadReservationSchema = z.strictObject({
+  id: uuid,
+  draftId: uuid,
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  sizeBytes: z.number().int().min(1).max(10_485_760),
+  expiresAt: z.iso.datetime(),
+});
+const uploadReservationInputSchema = uploadReservationSchema.omit({draftId: true});
 const contextSchema = z.strictObject({ requestId: uuid });
 
 type JsonRow = { value: unknown };
@@ -310,6 +331,31 @@ export function createCreatorRepository({
         ),
       );
     },
+    async reserveReferenceUpload(actor, draftId, input) {
+      const id = uuid.parse(draftId);
+      const value = uploadReservationInputSchema.parse(input);
+      return runWithActor(actor, async (client) =>
+        requireValue(
+          (await client.query<JsonRow>(
+            "SELECT public.creator_reserve_reference_upload($1,$2,$3,$4,$5) AS value",
+            [id, value.id, value.contentType, value.sizeBytes, value.expiresAt],
+          )).rows,
+          uploadReservationSchema,
+          "CREATOR_UPLOAD_RESERVATION_INVALID",
+        ),
+      );
+    },
+    async getReferenceUploadReservation(actor, draftId, assetId) {
+      const draft = uuid.parse(draftId);
+      const asset = uuid.parse(assetId);
+      return runWithActor(actor, async (client) => {
+        const value = (await client.query<JsonRow>(
+          "SELECT public.creator_get_reference_upload($1,$2) AS value",
+          [draft, asset],
+        )).rows[0]?.value;
+        return value == null ? null : uploadReservationSchema.parse(value);
+      });
+    },
     async registerReference(actor, draftId, input) {
       const id = uuid.parse(draftId);
       const value = registrationSchema.parse(input);
@@ -317,8 +363,8 @@ export function createCreatorRepository({
         created:
           (
             await client.query<{ created: boolean }>(
-              "SELECT public.creator_register_reference($1,$2,$3,$4,$5) AS created",
-              [id, value.id, value.contentType, value.width, value.height],
+              "SELECT public.creator_register_reserved_reference($1,$2,$3,$4,$5,$6) AS created",
+              [id, value.id, value.contentType, value.sizeBytes, value.width, value.height],
             )
           ).rows[0]?.created === true,
       }));
@@ -406,6 +452,16 @@ export function createCreatorRepository({
           ),
         ),
       );
+    },
+    async getRequest(actor, requestId) {
+      const id = uuid.parse(requestId);
+      return runWithActor(actor, async (client) => {
+        const value = (await client.query<JsonRow>(
+          "SELECT public.creator_get_request($1) AS value",
+          [id],
+        )).rows[0]?.value;
+        return value == null ? null : CreatorRequestSchema.parse(value);
+      });
     },
     async getAnalytics(actor, ipProfileId) {
       const id = uuid.parse(ipProfileId);

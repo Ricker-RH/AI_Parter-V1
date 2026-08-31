@@ -1,4 +1,3 @@
-import {randomUUID} from 'node:crypto'
 import {GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3'
 import {getSignedUrl} from '@aws-sdk/s3-request-presigner'
 import {z} from 'zod'
@@ -7,14 +6,14 @@ import {
   CREATOR_ASSET_MAX_BYTES,
   type AssetPort,
   type CreatorImageContentType,
-  type UploadedAssetInput,
 } from '../ports/assets.js'
 
 const contentTypeSchema = z.enum(['image/jpeg', 'image/png', 'image/webp'])
 const uuid = z.uuid()
 const locationSchema = z.strictObject({creatorProfileId: uuid, draftId: uuid})
-const uploadSchema = locationSchema.extend({contentType: contentTypeSchema, sizeBytes: z.number().int().min(1).max(CREATOR_ASSET_MAX_BYTES)}).strict()
-const uploadedSchema = locationSchema.extend({assetId: uuid, contentType: contentTypeSchema}).strict()
+const uploadSchema = locationSchema.extend({assetId: uuid, contentType: contentTypeSchema, sizeBytes: z.number().int().min(1).max(CREATOR_ASSET_MAX_BYTES), expiresAt: z.iso.datetime()}).strict()
+const uploadedSchema = locationSchema.extend({assetId: uuid, contentType: contentTypeSchema, expectedSizeBytes: z.number().int().min(1).max(CREATOR_ASSET_MAX_BYTES)}).strict()
+const objectLocationSchema = locationSchema.extend({assetId: uuid, contentType: contentTypeSchema}).strict()
 
 export type R2AssetEnvironment = {
   R2_ACCOUNT_ID: string
@@ -30,6 +29,7 @@ export type R2SignInput = {
   key: string
   expiresIn: number
   contentType?: CreatorImageContentType
+  contentLength?: number
 }
 
 type R2Dependencies = {
@@ -64,8 +64,8 @@ function extension(contentType: CreatorImageContentType): string {
   return contentType === 'image/jpeg' ? 'jpg' : contentType === 'image/png' ? 'png' : 'webp'
 }
 
-function objectKey(input: UploadedAssetInput): string {
-  const value = uploadedSchema.parse(input)
+function objectKey(input: {creatorProfileId: string; draftId: string; assetId: string; contentType: CreatorImageContentType}): string {
+  const value = objectLocationSchema.parse({creatorProfileId: input.creatorProfileId, draftId: input.draftId, assetId: input.assetId, contentType: input.contentType})
   return `private/creator/${value.creatorProfileId}/${value.draftId}/${value.assetId}.${extension(value.contentType)}`
 }
 
@@ -82,7 +82,7 @@ function awsDependencies(configuration: R2AssetEnvironment): R2Dependencies {
   return {
     async sign(input) {
       const command = input.operation === 'put'
-        ? new PutObjectCommand({Bucket: input.bucket, Key: input.key, ContentType: input.contentType})
+        ? new PutObjectCommand({Bucket: input.bucket, Key: input.key, ContentType: input.contentType, ContentLength: input.contentLength})
         : new GetObjectCommand({Bucket: input.bucket, Key: input.key})
       return getSignedUrl(client, command, {expiresIn: input.expiresIn})
     },
@@ -111,17 +111,18 @@ export function createR2AssetPort(configuration: R2AssetEnvironment, dependencie
     async createUploadIntent(input) {
       let value: z.infer<typeof uploadSchema>
       try { value = uploadSchema.parse(input) } catch { throw new Error('ASSET_INVALID') }
-      const assetId = randomUUID()
-      const key = objectKey({creatorProfileId: value.creatorProfileId, draftId: value.draftId, contentType: value.contentType, assetId})
-      const url = await driver.sign({operation: 'put', bucket: configuration.R2_PRIVATE_BUCKET, key, contentType: value.contentType, expiresIn: CREATOR_ASSET_INTENT_TTL_SECONDS})
-      return {assetId, method: 'PUT', url, headers: {'content-type': value.contentType}, expiresAt: expiry(now), maxBytes: CREATOR_ASSET_MAX_BYTES}
+      const remainingSeconds = Math.ceil((Date.parse(value.expiresAt) - now().getTime()) / 1000)
+      if (remainingSeconds < 1 || remainingSeconds > CREATOR_ASSET_INTENT_TTL_SECONDS) throw new Error('ASSET_INVALID')
+      const key = objectKey(value)
+      const url = await driver.sign({operation: 'put', bucket: configuration.R2_PRIVATE_BUCKET, key, contentType: value.contentType, contentLength: value.sizeBytes, expiresIn: remainingSeconds})
+      return {assetId: value.assetId, method: 'PUT', url, headers: {'content-type': value.contentType}, expiresAt: value.expiresAt, maxBytes: CREATOR_ASSET_MAX_BYTES}
     },
     async inspectUpload(input) {
       let value: z.infer<typeof uploadedSchema>
       try { value = uploadedSchema.parse(input) } catch { throw new Error('ASSET_INVALID') }
       const metadata = await driver.inspect({bucket: configuration.R2_PRIVATE_BUCKET, key: objectKey(value)})
       if (!metadata) throw new Error('ASSET_NOT_FOUND')
-      if (metadata.contentType !== value.contentType || !Number.isInteger(metadata.sizeBytes) || metadata.sizeBytes! < 1 || metadata.sizeBytes! > CREATOR_ASSET_MAX_BYTES) {
+      if (metadata.contentType !== value.contentType || metadata.sizeBytes !== value.expectedSizeBytes) {
         throw new Error('ASSET_INVALID')
       }
       return {assetId: value.assetId, contentType: value.contentType, sizeBytes: metadata.sizeBytes!}

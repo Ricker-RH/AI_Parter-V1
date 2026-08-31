@@ -114,9 +114,17 @@ async function completeReferences(
   const selections = [];
   for (const role of roles) {
     const assetId = randomUUID();
+    const expiresAt = new Date(Date.now() + 300_000).toISOString();
+    await creator.reserveReferenceUpload(actor, draftId, {
+      id: assetId,
+      contentType: "image/png",
+      sizeBytes: 4096,
+      expiresAt,
+    });
     await creator.registerReference(actor, draftId, {
       id: assetId,
       contentType: "image/png",
+      sizeBytes: 4096,
       width: 1024,
       height: 1024,
     });
@@ -290,6 +298,7 @@ integration("creator mode database lifecycle", () => {
         "creator_quotas",
         "creator_drafts",
         "creator_reference_assets",
+        "creator_asset_upload_intents",
         "creator_revisions",
         "creator_revision_references",
         "creator_ip_revisions",
@@ -312,21 +321,30 @@ integration("creator mode database lifecycle", () => {
       const privileges = await client.query<{
         authenticated_raw: boolean;
         platform_raw: boolean;
+        authenticated_upload_raw: boolean;
         authenticated_creator: boolean;
+        authenticated_legacy_upload: boolean;
+        authenticated_reserved_upload: boolean;
         authenticated_platform: boolean;
         platform_creator: boolean;
         platform_decision: boolean;
       }>(`SELECT
       has_table_privilege('aifans_authenticated','public.creator_drafts','SELECT,INSERT,UPDATE,DELETE') authenticated_raw,
       has_table_privilege('aifans_platform','public.creator_drafts','SELECT,INSERT,UPDATE,DELETE') platform_raw,
+      has_table_privilege('aifans_authenticated','public.creator_asset_upload_intents','SELECT,INSERT,UPDATE,DELETE') authenticated_upload_raw,
       has_function_privilege('aifans_authenticated','public.creator_create_draft(uuid,text,text,text,text[],text[],text,text,text,text,text,text[],text,text,creator_visual_type,text)','EXECUTE') authenticated_creator,
+      has_function_privilege('aifans_authenticated','public.creator_register_reference(uuid,uuid,text,integer,integer)','EXECUTE') authenticated_legacy_upload,
+      has_function_privilege('aifans_authenticated','public.creator_register_reserved_reference(uuid,uuid,text,integer,integer,integer)','EXECUTE') authenticated_reserved_upload,
       has_function_privilege('aifans_authenticated','public.platform_decide_creator_submission(uuid,creator_decision_value,text,uuid)','EXECUTE') authenticated_platform,
       has_function_privilege('aifans_platform','public.creator_submit_draft(uuid,text,uuid[],creator_reference_role[],uuid)','EXECUTE') platform_creator,
       has_function_privilege('aifans_platform','public.platform_decide_creator_submission(uuid,creator_decision_value,text,uuid)','EXECUTE') platform_decision`);
       expect(privileges.rows[0]).toEqual({
         authenticated_raw: false,
         platform_raw: false,
+        authenticated_upload_raw: false,
         authenticated_creator: true,
+        authenticated_legacy_upload: false,
+        authenticated_reserved_upload: true,
         authenticated_platform: false,
         platform_creator: false,
         platform_decision: true,
@@ -377,6 +395,39 @@ integration("creator mode database lifecycle", () => {
       });
       expect(secondPage.items).toHaveLength(1);
       expect(secondPage.items[0]!.id).not.toBe(firstPage.items[0]!.id);
+    }));
+
+  it("persists bounded upload reservations, recovers expired capacity, and consumes exact declared sizes", async () =>
+    transaction(async (client) => {
+      const owner = await human(client, "reservation");
+      const stranger = await human(client, "stranger");
+      const { creator } = repositories(client);
+      const draft = await creator.createDraft(owner, input("reservation"));
+      const reservations = [];
+      for (let index = 0; index < 8; index += 1) {
+        reservations.push(await creator.reserveReferenceUpload(owner, draft.id, {
+          id: randomUUID(), contentType: "image/png", sizeBytes: 4096,
+          expiresAt: new Date(Date.now() + 300_000).toISOString(),
+        }));
+      }
+      await expect(creator.reserveReferenceUpload(owner, draft.id, {
+        id: randomUUID(), contentType: "image/png", sizeBytes: 4096,
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      })).rejects.toMatchObject({code: "P0001"});
+      await expect(creator.getReferenceUploadReservation(stranger, draft.id, reservations[0]!.id)).resolves.toBeNull();
+      await client.query("UPDATE public.creator_asset_upload_intents SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [reservations[0]!.id]);
+      const replacement = await creator.reserveReferenceUpload(owner, draft.id, {
+        id: randomUUID(), contentType: "image/webp", sizeBytes: 8192,
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      });
+      await expect(creator.getReferenceUploadReservation(owner, draft.id, replacement.id)).resolves.toEqual(replacement);
+      await expect(creator.registerReference(owner, draft.id, {
+        id: replacement.id, contentType: "image/webp", sizeBytes: 8191, width: 1024, height: 1024,
+      })).rejects.toMatchObject({code: "23514"});
+      await expect(creator.registerReference(owner, draft.id, {
+        id: replacement.id, contentType: "image/webp", sizeBytes: 8192, width: 1024, height: 1024,
+      })).resolves.toEqual({created: true});
+      await expect(creator.getReferenceUploadReservation(owner, draft.id, replacement.id)).resolves.toBeNull();
     }));
 
   it("bounds nullable SQL page limits and filters platform queues before pagination", async () =>
@@ -491,6 +542,7 @@ integration("creator mode database lifecycle", () => {
         "UPDATE public.platform_settings SET creator_ip_requires_approval=true",
       );
       const creatorActor = await human(client, "quotacycle");
+      const strangerActor = await human(client, "requeststranger");
       const platformActor = await operator(client);
       const { creator, platform } = repositories(client);
       await platform.setQuota(platformActor, creatorActor.id, 1);
@@ -563,6 +615,9 @@ integration("creator mode database lifecycle", () => {
         },
         { requestId: randomUUID() },
       );
+      await expect(creator.getRequest(creatorActor, change.id)).resolves.toEqual(change);
+      await expect(creator.getRequest(strangerActor, change.id)).resolves.toBeNull();
+      await expect(creator.getRequest(creatorActor, randomUUID())).resolves.toBeNull();
       await platform.decideRequest({
         actor: platformActor,
         requestId: change.id,

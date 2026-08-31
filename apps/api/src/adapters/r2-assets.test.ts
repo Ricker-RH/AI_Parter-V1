@@ -21,10 +21,10 @@ describe('R2 private creator asset adapter', () => {
     const inspect = vi.fn(async () => ({contentType: 'image/png', sizeBytes: 4096}))
     const port = createR2AssetPort(readR2AssetEnv(environment)!, {sign, inspect, now: () => new Date('2026-09-01T00:00:00.000Z')})
     const creatorProfileId = randomUUID(); const draftId = randomUUID()
-    const intent = await port.createUploadIntent({creatorProfileId, draftId, contentType: 'image/png', sizeBytes: 4096})
+    const intent = await port.createUploadIntent({creatorProfileId, draftId, assetId: randomUUID(), contentType: 'image/png', sizeBytes: 4096, expiresAt: '2026-09-01T00:05:00.000Z'})
     expect(intent).toMatchObject({method: 'PUT', headers: {'content-type': 'image/png'}, maxBytes: 10_485_760})
     expect(intent.expiresAt).toBe('2026-09-01T00:05:00.000Z')
-    expect(sign).toHaveBeenCalledWith(expect.objectContaining({operation: 'put', bucket: 'aifans-private', key: expect.stringMatching(new RegExp(`^private/creator/${creatorProfileId}/${draftId}/[0-9a-f-]{36}\\.png$`)), contentType: 'image/png', expiresIn: 300}))
+    expect(sign).toHaveBeenCalledWith(expect.objectContaining({operation: 'put', bucket: 'aifans-private', key: expect.stringMatching(new RegExp(`^private/creator/${creatorProfileId}/${draftId}/[0-9a-f-]{36}\\.png$`)), contentType: 'image/png', contentLength: 4096, expiresIn: 300}))
     expect(JSON.stringify(intent)).not.toContain('key')
   })
 
@@ -33,9 +33,10 @@ describe('R2 private creator asset adapter', () => {
     const inspect = vi.fn(async () => ({contentType: 'image/png', sizeBytes: 10_485_761}))
     const port = createR2AssetPort(readR2AssetEnv(environment)!, {sign, inspect})
     const base = {creatorProfileId: randomUUID(), draftId: randomUUID()}
-    await expect(port.createUploadIntent({...base, contentType: 'image/gif' as never, sizeBytes: 100})).rejects.toThrow('ASSET_INVALID')
-    await expect(port.createUploadIntent({...base, contentType: 'image/png', sizeBytes: 10_485_761})).rejects.toThrow('ASSET_INVALID')
-    await expect(port.inspectUpload({...base, assetId: randomUUID(), contentType: 'image/png'})).rejects.toThrow('ASSET_INVALID')
+    const uploadBase = {...base, assetId: randomUUID(), expiresAt: new Date(Date.now() + 300_000).toISOString()}
+    await expect(port.createUploadIntent({...uploadBase, contentType: 'image/gif' as never, sizeBytes: 100})).rejects.toThrow('ASSET_INVALID')
+    await expect(port.createUploadIntent({...uploadBase, contentType: 'image/png', sizeBytes: 10_485_761})).rejects.toThrow('ASSET_INVALID')
+    await expect(port.inspectUpload({...base, assetId: randomUUID(), contentType: 'image/png', expectedSizeBytes: 10_485_760})).rejects.toThrow('ASSET_INVALID')
     expect(sign).not.toHaveBeenCalled()
   })
 

@@ -247,6 +247,23 @@ export const creatorReferenceAssets = pgTable('creator_reference_assets', {
   check('creator_reference_assets_height_check', sql`${table.height} BETWEEN 1 AND 16384`),
 ])
 
+export const creatorAssetUploadIntents = pgTable('creator_asset_upload_intents', {
+  id: uuid().primaryKey(),
+  draftId: uuid('draft_id').notNull().references(() => creatorDrafts.id, {onDelete: 'cascade'}),
+  creatorProfileId: uuid('creator_profile_id').notNull().references(() => profiles.id),
+  contentType: text('content_type').notNull(),
+  declaredSizeBytes: integer('declared_size_bytes').notNull(),
+  expiresAt: timestamp('expires_at', {withTimezone: true}).notNull(),
+  registeredAt: timestamp('registered_at', {withTimezone: true}),
+  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+}, (table) => [
+  unique('creator_asset_upload_intents_id_draft_id_key').on(table.id, table.draftId),
+  foreignKey({name: 'creator_asset_upload_intents_draft_id_creator_profile_id_fkey', columns: [table.draftId, table.creatorProfileId], foreignColumns: [creatorDrafts.id, creatorDrafts.creatorProfileId]}),
+  check('creator_asset_upload_intents_content_type_check', sql`${table.contentType} IN ('image/jpeg','image/png','image/webp')`),
+  check('creator_asset_upload_intents_declared_size_bytes_check', sql`${table.declaredSizeBytes} BETWEEN 1 AND 10485760`),
+  index('creator_asset_upload_intents_active_draft_idx').on(table.draftId, table.expiresAt).where(sql`${table.registeredAt} IS NULL`),
+])
+
 export const creatorRevisions = pgTable('creator_revisions', {
   id: uuid().primaryKey(),
   draftId: uuid('draft_id').notNull().references(() => creatorDrafts.id),

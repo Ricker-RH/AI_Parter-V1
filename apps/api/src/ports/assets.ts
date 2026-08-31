@@ -9,13 +9,16 @@ type OwnedAssetLocation = {
 }
 
 export type CreateUploadIntentInput = OwnedAssetLocation & {
+  assetId: string
   contentType: CreatorImageContentType
   sizeBytes: number
+  expiresAt: string
 }
 
 export type UploadedAssetInput = OwnedAssetLocation & {
   assetId: string
   contentType: CreatorImageContentType
+  expectedSizeBytes: number
 }
 
 export type ReadAssetInput = OwnedAssetLocation & {assetId: string}
@@ -42,5 +45,11 @@ export type AssetPort = {
 }
 
 export type ImageGenerationPort = {
-  createGenerationIntent(input: {actorSubject: string; creatorProfileId: string; draftId: string; requestId: string}): Promise<unknown>
+  createGenerationIntent(input: {actorSubject: string; creatorProfileId: string; draftId: string; requestId: string}): Promise<ImageGenerationIntent>
+}
+
+export type ImageGenerationIntent = {
+  jobId: string
+  status: 'queued' | 'ready'
+  candidates: Array<{id: string; readIntent: AssetReadIntent}>
 }
