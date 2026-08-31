@@ -27,7 +27,7 @@
 - Create: `packages/contracts/src/creator.ts`
 - Create: `packages/contracts/src/creator.test.ts`
 - Modify: `packages/contracts/src/index.ts`
-- Create: `packages/db/migrations/202609010021_creator_mode.sql`
+- Create: `packages/db/migrations/202609010022_creator_mode.sql`
 - Modify: `packages/db/src/schema.ts`
 - Create: `packages/db/src/creator.ts`
 - Create: `packages/db/tests/creator-mode.test.ts`
@@ -42,9 +42,9 @@
 - [ ] **Step 3: Implement strict Zod contracts** with closed objects and public DTOs that exclude prompts, object keys, operator IDs, auth subjects, and raw viewer identities.
 - [ ] **Step 4: Write RED real-PostgreSQL tests** covering own-draft CRUD, default/per-user quota, immutable submitted revisions, cross-user isolation, submit approval switch, operator approval/rejection, creator change/unpublish/deletion requests, idempotent decisions, and full rollback of audit/history/outbox failure.
 - [ ] **Step 5: Run RED** against a disposable migrated PostgreSQL database; expect missing relations/functions.
-- [ ] **Step 6: Add migration 021** with creator drafts, immutable revisions, selected reference metadata, operating-authorization acceptance, decision/request tables, indexes, RLS/revokes, actor-derived bounded functions, audit/workflow/business-event/outbox writes, and platform approval that creates `source='creator'` live IPs with `operation_enabled=false`.
+- [ ] **Step 6: Add migration 022** with creator drafts, immutable revisions, selected reference metadata, operating-authorization acceptance, decision/request tables, indexes, RLS/revokes, actor-derived bounded functions, audit/workflow/business-event/outbox writes, and platform approval that creates `source='creator'` live IPs with `operation_enabled=false`.
 - [ ] **Step 7: Add Drizzle parity and repositories** using parameterized SQL, strict schema parsing, keyset cursors, and existing owned/nested session boundaries.
-- [ ] **Step 8: Run GREEN** for contracts, DB focused/full tests, typecheck, build, license scan, fresh 001→021 migration, and `git diff --check`.
+- [ ] **Step 8: Run GREEN** for contracts, DB focused/full tests, typecheck, build, license scan, fresh 001→022 migration, and `git diff --check`.
 - [ ] **Step 9: Commit** as `feat: add creator approval lifecycle`.
 
 ### Task 2: Creator and operator HTTP APIs plus private asset seam
@@ -77,7 +77,7 @@
 ### Task 3: Public creator attribution and visual-type discovery
 
 **Files:**
-- Create: `packages/db/migrations/202609010022_creator_public_projection.sql`
+- Create: `packages/db/migrations/202609010023_creator_public_projection.sql`
 - Modify: `packages/contracts/src/social.ts`
 - Modify: `packages/db/src/social.ts`
 - Modify: `apps/api/src/routes/social.ts`
@@ -92,7 +92,7 @@
 
 - [ ] **Step 1: Write RED DB/API/Web tests** for safe creator projection, no private draft leakage, mixed/default feed, type tabs, locale-preserving links, and exact `Created by @username` rendering.
 - [ ] **Step 2: Run RED** and confirm failures are caused by missing fields/filtering/UI.
-- [ ] **Step 3: Add migration 022 bounded projection** and update repository/API contracts without granting raw creator workflow table access.
+- [ ] **Step 3: Add migration 023 bounded projection** and update repository/API contracts without granting raw creator workflow table access.
 - [ ] **Step 4: Add monochrome responsive tabs and attribution** to feed cards/profile surfaces; empty filtered results remain polished and contain no mock content.
 - [ ] **Step 5: Run GREEN** for DB/API/Web tests, typechecks, builds, fresh migration, bilingual key parity, and `git diff --check`.
 - [ ] **Step 6: Commit** as `feat: expose creator attribution and IP types`.
@@ -126,7 +126,7 @@
 
 ### Final release verification
 
-- [ ] Apply migrations 017–022 to hosted Neon only after fresh local migration and database review pass.
+- [ ] Apply migrations 017–023 to hosted Neon only after fresh local migration and database review pass.
 - [ ] Verify hosted migration ledger and confirm product tables remain empty unless real operator/user actions created rows.
 - [ ] Run root tests, typecheck, build, license scan, and `git diff --check`.
 - [ ] Verify no browser bundle or repository file contains provider/database secrets.
