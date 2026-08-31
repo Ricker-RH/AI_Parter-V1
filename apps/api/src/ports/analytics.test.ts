@@ -4,7 +4,7 @@ import {AnalyticsDeliveryError, createAnalyticsDeliveryWorker, type AnalyticsOut
 
 const eventId = randomUUID()
 const events = [{
-  id: randomUUID(), eventId, attemptCount: 2, occurredAt: '2026-09-01T01:02:03.456Z',
+  id: randomUUID(), eventId, attemptCount: 2, occurredAt: '2026-09-01T01:02:03.456Z', actorProfileId: randomUUID(), distinctId: randomUUID(),
   payload: {event_id: eventId, event_name: 'account_registered' as const, event_version: 1 as const},
 }]
 
@@ -35,12 +35,12 @@ describe('analytics delivery worker', () => {
   it('backs off transient failures and permanently closes rejected events', async () => {
     const transientCalls: unknown[] = []
     const transient = createAnalyticsDeliveryWorker({
-      outbox: outbox(transientCalls), retryBaseSeconds: 10,
+      outbox: outbox(transientCalls), retryBaseSeconds: 10, random: () => 0,
       createLeaseToken: () => '2fc21fb0-e91a-4644-8b2d-a690107c633c',
       capture: {capture: async () => { throw new AnalyticsDeliveryError('transient', 'provider_timeout') }},
     })
     await expect(transient.deliverBatch(1)).resolves.toEqual({claimed: 1, delivered: 0, retried: 1, failed: 0})
-    expect(transientCalls).toContainEqual(['retry', events[0]!.id, '2fc21fb0-e91a-4644-8b2d-a690107c633c', 'provider_timeout', 40])
+    expect(transientCalls).toContainEqual(['retry', events[0]!.id, '2fc21fb0-e91a-4644-8b2d-a690107c633c', 'provider_timeout', 20])
 
     const permanentCalls: unknown[] = []
     const permanent = createAnalyticsDeliveryWorker({
@@ -51,10 +51,25 @@ describe('analytics delivery worker', () => {
     expect(permanentCalls).toContainEqual(['fail', events[0]!.id, 'd35d60a8-e3dc-40ba-9ebf-84353d51217f', 'provider_rejected'])
   })
 
+  it('caps exponential jitter even after many attempts', async () => {
+    const calls: unknown[] = []
+    const highAttempt = {...events[0]!, attemptCount: 50}
+    const boundedOutbox = outbox(calls)
+    boundedOutbox.claim = async (input) => { calls.push(['claim', input]); return [highAttempt] }
+    const worker = createAnalyticsDeliveryWorker({
+      outbox: boundedOutbox,
+      createLeaseToken: () => '5c677e89-a6ac-44e6-bd84-15c2577d907e',
+      random: () => 0.999999,
+      capture: {capture: async () => { throw new AnalyticsDeliveryError('transient', 'provider_unavailable') }},
+    })
+    await worker.deliverBatch(1)
+    expect(calls).toContainEqual(['retry', highAttempt.id, '5c677e89-a6ac-44e6-bd84-15c2577d907e', 'provider_unavailable', 86400])
+  })
+
   it('isolates unexpected provider failures as safe transient failures', async () => {
     const calls: unknown[] = []
     const worker = createAnalyticsDeliveryWorker({
-      outbox: outbox(calls), createLeaseToken: () => 'f95ee634-478a-4cc7-b4ed-4d79d620421c',
+      outbox: outbox(calls), createLeaseToken: () => 'f95ee634-478a-4cc7-b4ed-4d79d620421c', random: () => 0.999999,
       capture: {capture: async () => { throw new Error('provider secret') }},
     })
     await worker.deliverBatch(1)

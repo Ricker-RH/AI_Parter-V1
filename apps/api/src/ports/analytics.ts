@@ -39,10 +39,12 @@ export function createAnalyticsDeliveryWorker(input: {
   leaseSeconds?: number
   retryBaseSeconds?: number
   createLeaseToken?: () => string
+  random?: () => number
 }): AnalyticsDeliveryWorker {
   const leaseSeconds = input.leaseSeconds ?? 300
   const retryBaseSeconds = input.retryBaseSeconds ?? 30
   const createLeaseToken = input.createLeaseToken ?? randomUUID
+  const random = input.random ?? Math.random
 
   return {
     async deliverBatch(requestedLimit) {
@@ -62,7 +64,11 @@ export function createAnalyticsDeliveryWorker(input: {
           if (error.kind === 'permanent') {
             if (await input.outbox.fail(event.id, leaseToken, error.code)) summary.failed += 1
           } else {
-            const retrySeconds = Math.min(86400, retryBaseSeconds * 2 ** Math.min(event.attemptCount, 10))
+            const exponentialCeiling = Math.min(86400, retryBaseSeconds * 2 ** Math.min(event.attemptCount, 30))
+            const lowerBound = Math.max(1, Math.ceil(exponentialCeiling / 2))
+            const sample = random()
+            const boundedSample = Number.isFinite(sample) ? Math.min(0.999999999999, Math.max(0, sample)) : 0.5
+            const retrySeconds = lowerBound + Math.floor(boundedSample * (exponentialCeiling - lowerBound + 1))
             if (await input.outbox.retry(event.id, leaseToken, error.code, retrySeconds)) summary.retried += 1
           }
         }

@@ -1,5 +1,6 @@
 import {z} from 'zod'
 import {Pool} from '@neondatabase/serverless'
+import {createAnalyticsDeliveryIdentity} from '@aifans/contracts'
 import {parseHistoryOutboxPayload, type HistoryOutboxPayload} from './history.js'
 import type {QueryClient, QueryPool} from './session.js'
 
@@ -16,6 +17,8 @@ export type AnalyticsOutboxEvent = {
   eventId: string
   attemptCount: number
   occurredAt: string
+  actorProfileId: string | null
+  distinctId: string
   payload: HistoryOutboxPayload
 }
 
@@ -26,7 +29,13 @@ export function createAnalyticsOutboxRepository(client: QueryClient) {
     async claim(input: z.infer<typeof claimOptions>): Promise<AnalyticsOutboxEvent[]> {
       input = claimOptions.parse(input)
       const result = await client.query<{
-        id: string; event_id: string | null; attempt_count: number; occurred_at: Date | string; payload: unknown
+        id: string
+        event_id: string | null
+        attempt_count: number
+        occurred_at: Date | string
+        actor_profile_id: string | null
+        actor_kind: 'human' | 'ip' | null
+        payload: unknown
       }>('SELECT * FROM public.claim_analytics_outbox($1,$2,$3)', [input.leaseToken, input.limit, input.leaseSeconds])
       const events: AnalyticsOutboxEvent[] = []
       for (const row of result.rows) {
@@ -36,7 +45,10 @@ export function createAnalyticsOutboxRepository(client: QueryClient) {
           const eventId = uuid.parse(row.event_id)
           if (payload.event_id !== eventId) throw new Error('Mismatched analytics event ID')
           const occurredAt = z.union([z.date(), z.iso.datetime()]).transform((value) => typeof value === 'string' ? new Date(value).toISOString() : value.toISOString()).parse(row.occurred_at)
-          events.push({id, eventId, attemptCount: z.number().int().min(0).parse(row.attempt_count), occurredAt, payload})
+          const actorProfileId = row.actor_profile_id === null ? null : uuid.parse(row.actor_profile_id)
+          const actorKind = z.enum(['human', 'ip']).nullable().parse(row.actor_kind)
+          const {distinctId} = createAnalyticsDeliveryIdentity(actorKind, actorProfileId)
+          events.push({id, eventId, attemptCount: z.number().int().min(0).parse(row.attempt_count), occurredAt, actorProfileId, distinctId, payload})
         } catch {
           await client.query('SELECT public.fail_analytics_outbox($1,$2,$3)', [id, input.leaseToken, 'invalid_payload'])
         }

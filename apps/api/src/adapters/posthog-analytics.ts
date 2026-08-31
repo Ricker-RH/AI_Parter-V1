@@ -45,7 +45,7 @@ export function createPostHogAnalyticsCapture({
             timestamp: item.occurredAt,
             properties: {
               ...item.payload,
-              distinct_id: item.eventId,
+              distinct_id: item.distinctId,
               $insert_id: item.eventId,
             },
           }),

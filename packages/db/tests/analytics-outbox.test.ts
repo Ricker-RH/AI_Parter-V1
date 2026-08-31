@@ -39,6 +39,13 @@ async function pendingEvent(client: PoolClient, eventId = randomUUID()) {
   return {businessEventId, eventId, outboxId, profileId}
 }
 
+async function expectInvalidCall(client: PoolClient, text: string, values: unknown[]) {
+  await client.query('SAVEPOINT invalid_analytics_call')
+  await expect(client.query(text, values)).rejects.toThrow(/invalid analytics/i)
+  await client.query('ROLLBACK TO SAVEPOINT invalid_analytics_call')
+  await client.query('RELEASE SAVEPOINT invalid_analytics_call')
+}
+
 describeIntegration('analytics outbox delivery', () => {
   afterAll(async () => pool.end())
 
@@ -57,6 +64,52 @@ describeIntegration('analytics outbox delivery', () => {
       expect(new Set(claimA.map((row) => row.eventId))).toEqual(new Set([first.eventId, second.eventId]))
       expect(claimA[0]?.payload.event_id).toBe(claimA[0]?.eventId)
       expect(claimA[0]?.occurredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+      expect(claimA.find((row) => row.eventId === first.eventId)).toMatchObject({
+        actorProfileId: first.profileId,
+        distinctId: first.profileId,
+      })
+    })
+  })
+
+  it('projects stable non-PII identities for human, IP, and system actors', async () => {
+    await transaction(async (client) => {
+      const human = await pendingEvent(client)
+      const ipProfileId = randomUUID()
+      await client.query(
+        "INSERT INTO public.profiles(id,account_kind,username,display_name) VALUES($1,'ip',$2,'Analytics IP')",
+        [ipProfileId, `analytics_ip_${ipProfileId.replaceAll('-', '').slice(0, 16)}`],
+      )
+      const history = createHistoryRepository()
+      const ipEventId = randomUUID()
+      const ipBusinessId = await history.recordBusinessEvent(client, {
+        eventName: 'account_registered', actorProfileId: ipProfileId, subjectEntityType: 'profile', subjectEntityId: ipProfileId,
+        environment: 'test', properties: {event_id: ipEventId},
+      })
+      await history.recordOutbox(client, ipBusinessId, {destination: 'posthog', payloadVersion: 1, payload: {event_id: ipEventId, event_name: 'account_registered', event_version: 1}})
+      const systemEventId = randomUUID()
+      const systemBusinessId = await history.recordBusinessEvent(client, {
+        eventName: 'account_registered', subjectEntityType: 'profile', subjectEntityId: human.profileId,
+        environment: 'test', properties: {event_id: systemEventId},
+      })
+      await history.recordOutbox(client, systemBusinessId, {destination: 'posthog', payloadVersion: 1, payload: {event_id: systemEventId, event_name: 'account_registered', event_version: 1}})
+
+      const claimed = await createAnalyticsOutboxRepository(client).claim({leaseToken: randomUUID(), limit: 3, leaseSeconds: 60})
+      const byEvent = new Map(claimed.map((event) => [event.eventId, event]))
+      expect(byEvent.get(human.eventId)).toMatchObject({actorProfileId: human.profileId, distinctId: human.profileId})
+      expect(byEvent.get(ipEventId)).toMatchObject({actorProfileId: ipProfileId, distinctId: `aifans:ip:${ipProfileId}`})
+      expect(byEvent.get(systemEventId)).toMatchObject({actorProfileId: null, distinctId: 'aifans:system'})
+      for (const event of claimed) expect(event.distinctId).not.toBe(event.eventId)
+    })
+  })
+
+  it('explicitly rejects NULL claim bounds and retry delay at the SQL boundary', async () => {
+    await transaction(async (client) => {
+      const leaseToken = randomUUID()
+      await expectInvalidCall(client, 'SELECT * FROM public.claim_analytics_outbox($1,$2,$3)', [leaseToken, null, 60])
+      await expectInvalidCall(client, 'SELECT * FROM public.claim_analytics_outbox($1,$2,$3)', [leaseToken, 1, null])
+      const created = await pendingEvent(client)
+      await client.query('SELECT * FROM public.claim_analytics_outbox($1,1,60)', [leaseToken])
+      await expectInvalidCall(client, 'SELECT public.retry_analytics_outbox($1,$2,$3,$4)', [created.outboxId, leaseToken, 'provider_timeout', null])
     })
   })
 

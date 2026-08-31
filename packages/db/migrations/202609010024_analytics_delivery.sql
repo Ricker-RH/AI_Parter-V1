@@ -96,14 +96,24 @@ CREATE FUNCTION public.claim_analytics_outbox(
   requested_limit integer,
   requested_lease_seconds integer
 )
-RETURNS TABLE(id uuid, event_id text, attempt_count integer, occurred_at timestamptz, payload jsonb)
+RETURNS TABLE(
+  id uuid,
+  event_id text,
+  attempt_count integer,
+  occurred_at timestamptz,
+  actor_profile_id uuid,
+  actor_kind public.account_kind,
+  payload jsonb
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
   IF requested_lease_token IS NULL
+    OR requested_limit IS NULL
     OR requested_limit NOT BETWEEN 1 AND 100
+    OR requested_lease_seconds IS NULL
     OR requested_lease_seconds NOT BETWEEN 1 AND 3600 THEN
     RAISE EXCEPTION 'invalid analytics claim bounds';
   END IF;
@@ -127,9 +137,11 @@ BEGIN
     WHERE target.id = candidates.id
     RETURNING target.id, target.business_event_id, target.attempt_count, target.payload
   )
-  SELECT claimed.id, claimed.payload->>'event_id', claimed.attempt_count, event.occurred_at, claimed.payload
+  SELECT claimed.id, claimed.payload->>'event_id', claimed.attempt_count, event.occurred_at,
+    event.actor_profile_id, actor.account_kind, claimed.payload
   FROM claimed
   JOIN public.business_events AS event ON event.id = claimed.business_event_id
+  LEFT JOIN public.profiles AS actor ON actor.id = event.actor_profile_id
   ORDER BY claimed.id;
 END;
 $$;
@@ -169,6 +181,7 @@ AS $$
 DECLARE changed boolean;
 BEGIN
   IF requested_error_code IS NULL OR requested_error_code !~ '^[a-z][a-z0-9_]{0,63}$'
+    OR requested_retry_seconds IS NULL
     OR requested_retry_seconds NOT BETWEEN 1 AND 86400 THEN
     RAISE EXCEPTION 'invalid analytics retry metadata';
   END IF;

@@ -1,4 +1,4 @@
-import {timingSafeEqual} from 'node:crypto'
+import {createHash, timingSafeEqual} from 'node:crypto'
 import type {Hono} from 'hono'
 import {apiError} from '../errors.js'
 import type {ApiVariables} from '../middleware/request-id.js'
@@ -10,10 +10,10 @@ type AnalyticsRouteDependencies = {
 }
 
 function validSecret(header: string | undefined, expected: string): boolean {
-  if (!header?.startsWith('Bearer ')) return false
-  const actual = Buffer.from(header.slice(7))
-  const wanted = Buffer.from(expected)
-  return actual.length === wanted.length && timingSafeEqual(actual, wanted)
+  const actual = header?.startsWith('Bearer ') ? header.slice(7) : ''
+  const actualDigest = createHash('sha256').update(actual).digest()
+  const expectedDigest = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(actualDigest, expectedDigest)
 }
 
 export function registerInternalAnalyticsRoutes(

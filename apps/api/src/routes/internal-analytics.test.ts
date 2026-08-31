@@ -16,8 +16,12 @@ describe('POST /internal/analytics/deliver', () => {
   it('requires an exact cron bearer secret and accepts no body or query', async () => {
     const calls: number[] = []
     const app = createApp({analyticsWorker: worker(calls), analyticsCronSecret: 'cron-secret'})
-    expect((await app.request('/internal/analytics/deliver', {method: 'POST'})).status).toBe(401)
-    expect((await app.request('/internal/analytics/deliver', {method: 'POST', headers: {authorization: 'Bearer wrong'}})).status).toBe(401)
+    const missing = await app.request('/internal/analytics/deliver', {method: 'POST'})
+    const wrong = await app.request('/internal/analytics/deliver', {method: 'POST', headers: {authorization: 'Bearer wrong'}})
+    expect(missing.status).toBe(401)
+    expect(wrong.status).toBe(401)
+    expect(await missing.json()).toMatchObject({code: 'UNAUTHORIZED', message: 'Unauthorized'})
+    expect(await wrong.json()).toMatchObject({code: 'UNAUTHORIZED', message: 'Unauthorized'})
     expect((await app.request('/internal/analytics/deliver?limit=999', {method: 'POST', headers: {authorization: 'Bearer cron-secret'}})).status).toBe(400)
     expect((await app.request('/internal/analytics/deliver', {method: 'POST', headers: {authorization: 'Bearer cron-secret', 'content-type': 'application/json'}, body: '{}'})).status).toBe(422)
     expect(calls).toEqual([])

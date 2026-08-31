@@ -6,6 +6,7 @@ import {AnalyticsDeliveryError} from '../ports/analytics.js'
 const eventId = randomUUID()
 const event = {
   id: randomUUID(), eventId, attemptCount: 0, occurredAt: '2026-09-01T01:02:03.456Z',
+  actorProfileId: 'd175193f-619f-4556-b6ac-435ed8143817', distinctId: 'd175193f-619f-4556-b6ac-435ed8143817',
   payload: {event_id: eventId, event_name: 'account_registered' as const, event_version: 1 as const},
 }
 
@@ -25,7 +26,7 @@ describe('PostHog analytics capture adapter', () => {
       timestamp: '2026-09-01T01:02:03.456Z',
       properties: {
         event_id: eventId, event_name: 'account_registered', event_version: 1,
-        distinct_id: eventId, $insert_id: eventId,
+        distinct_id: event.distinctId, $insert_id: eventId,
       },
     })
     expect(init?.redirect).toBe('error')
