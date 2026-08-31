@@ -243,13 +243,14 @@ describe('PostHog browser adapter', () => {
     expect(analytics.capture).not.toHaveBeenCalled()
   })
 
-  it('resets once for authoritative anonymous state and does not reset again on unchanged focus refresh', async () => {
+  it('preserves the persisted anonymous ID on initial load and unchanged focus refresh', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 204})))
     const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
     render(<AnalyticsProvider analytics={analytics} locale="en"><div>Anonymous</div></AnalyticsProvider>)
-    await waitFor(() => expect(analytics.reset).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(analytics.page).toHaveBeenCalledTimes(1))
+    expect(analytics.reset).not.toHaveBeenCalled()
     window.dispatchEvent(new Event('focus'))
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
-    expect(analytics.reset).toHaveBeenCalledTimes(1)
+    expect(analytics.reset).not.toHaveBeenCalled()
   })
 })

@@ -235,7 +235,7 @@ function createIdentityGate(analytics: AnalyticsClient) {
       await flush()
     },
     async anonymous() {
-      if (stable?.status !== 'anonymous') await analytics.reset()
+      if (stable?.status === 'authenticated') await analytics.reset()
       stable = {status: 'anonymous'}
       resolving = false
       await flush()
