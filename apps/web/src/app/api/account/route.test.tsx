@@ -19,13 +19,19 @@ describe('analytics account endpoint', () => {
     expect(upstream).toHaveBeenCalledWith('https://server.example/v1/me', expect.objectContaining({headers: {cookie: 'session=real'}, signal: expect.any(AbortSignal)}))
   })
 
-  it('returns an empty signed-out response for upstream authentication and validation failures', async () => {
+  it('returns an empty signed-out response only for authoritative upstream authentication failures', async () => {
     process.env.AIFANS_API_URL = 'https://server.example'
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({code: 'AUTH_REQUIRED'}, {status: 401})))
     expect((await GET(new Request('https://web.example/api/account'))).status).toBe(204)
+  })
+
+  it('returns unavailable for validation, transport, and upstream failures', async () => {
+    process.env.AIFANS_API_URL = 'https://server.example'
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({...account, id: 'auth-subject-not-a-profile-uuid'})))
-    expect((await GET(new Request('https://web.example/api/account'))).status).toBe(204)
+    expect((await GET(new Request('https://web.example/api/account'))).status).toBe(503)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({...account, email: 'must-not-leak@example.com'})))
-    expect((await GET(new Request('https://web.example/api/account'))).status).toBe(204)
+    expect((await GET(new Request('https://web.example/api/account'))).status).toBe(503)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    expect((await GET(new Request('https://web.example/api/account'))).status).toBe(503)
   })
 })

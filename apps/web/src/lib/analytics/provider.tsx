@@ -25,6 +25,8 @@ type PostHogCaptureResult = {
 }
 
 type PostHogInitOptions = {
+  advanced_disable_flags: true
+  advanced_disable_toolbar_metrics: true
   api_host: string
   autocapture: false
   before_send: (event: PostHogCaptureResult | null) => PostHogCaptureResult | null
@@ -34,7 +36,12 @@ type PostHogInitOptions = {
   capture_pageview: false
   capture_performance: false
   disable_external_dependency_loading: true
+  disable_conversations: true
+  disable_product_tours: true
   disable_session_recording: true
+  disable_surveys: true
+  disable_surveys_automatic_display: true
+  disable_web_experiments: true
   mask_all_element_attributes: true
   mask_all_text: true
   property_denylist: string[]
@@ -54,6 +61,33 @@ export const POSTHOG_PROPERTY_DENYLIST = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'gclid', 'gad_source', 'fbclid', 'msclkid', 'dclid',
   'email', 'cookie', 'authorization', 'access_token', 'password',
 ] as const
+
+export function createPostHogInitOptions(host: string): PostHogInitOptions {
+  return {
+    advanced_disable_flags: true,
+    advanced_disable_toolbar_metrics: true,
+    api_host: host,
+    autocapture: false,
+    before_send: sanitizePostHogEvent,
+    capture_dead_clicks: false,
+    capture_exceptions: false,
+    capture_pageleave: false,
+    capture_pageview: false,
+    capture_performance: false,
+    disable_conversations: true,
+    disable_external_dependency_loading: true,
+    disable_product_tours: true,
+    disable_session_recording: true,
+    disable_surveys: true,
+    disable_surveys_automatic_display: true,
+    disable_web_experiments: true,
+    mask_all_element_attributes: true,
+    mask_all_text: true,
+    property_denylist: [...POSTHOG_PROPERTY_DENYLIST],
+    save_campaign_params: false,
+    save_referrer: false,
+  }
+}
 
 const productPropertyKeys = [
   'event_version', 'locale', 'route_name', 'action_source', 'feed', 'category', 'query_length', 'ip_profile_id', 'post_id', 'creation_step', 'visual_type',
@@ -125,23 +159,7 @@ export function createPostHogAnalytics({key, host = 'https://us.i.posthog.com', 
   async function getSdk() {
     if (!key || typeof window === 'undefined') return null
     sdk ??= load().then((client) => {
-      client.init(key, {
-        api_host: host,
-        autocapture: false,
-        before_send: sanitizePostHogEvent,
-        capture_dead_clicks: false,
-        capture_exceptions: false,
-        capture_pageleave: false,
-        capture_pageview: false,
-        capture_performance: false,
-        disable_external_dependency_loading: true,
-        disable_session_recording: true,
-        mask_all_element_attributes: true,
-        mask_all_text: true,
-        property_denylist: [...POSTHOG_PROPERTY_DENYLIST],
-        save_campaign_params: false,
-        save_referrer: false,
-      })
+      client.init(key, createPostHogInitOptions(host))
       return client
     })
     try { return await sdk } catch { return null }
@@ -173,19 +191,60 @@ export function routeNameForPath(pathname: string): AnalyticsRouteName | null {
 }
 
 function safely(analytics: AnalyticsClient): AnalyticsClient {
-  function run(operation: () => void | Promise<void>) { try { void Promise.resolve(operation()).catch(() => undefined) } catch { /* Future providers are isolated too. */ } }
+  async function run(operation: () => void | Promise<void>) { try { await operation() } catch { /* Future providers are isolated too. */ } }
   return {capture: (event) => run(() => analytics.capture(event)), identify: (profileId) => run(() => analytics.identify(profileId)), reset: () => run(() => analytics.reset()), page: (page) => run(() => analytics.page(page))}
 }
 
-async function loadAnalyticsProfileId(signal: AbortSignal) {
+type AccountIdentity = {status: 'authenticated'; profileId: string} | {status: 'anonymous'} | {status: 'unavailable'}
+
+async function loadAnalyticsIdentity(signal: AbortSignal): Promise<AccountIdentity> {
   try {
     const response = await fetch('/api/account', {cache: 'no-store', credentials: 'include', signal})
-    if (!response.ok) return null
+    if (response.status === 204) return {status: 'anonymous'}
+    if (!response.ok) return {status: 'unavailable'}
     const body: unknown = await response.json()
-    if (!isRecord(body) || Object.keys(body).length !== 1 || typeof body.profileId !== 'string' || !isProfileUuid(body.profileId)) return null
-    return body.profileId
+    if (!isRecord(body) || Object.keys(body).length !== 1 || typeof body.profileId !== 'string' || !isProfileUuid(body.profileId)) return {status: 'unavailable'}
+    return {status: 'authenticated', profileId: body.profileId}
   } catch {
-    return null
+    return {status: 'unavailable'}
+  }
+}
+
+type StableIdentity = {status: 'authenticated'; profileId: string} | {status: 'anonymous'}
+
+function createIdentityGate(analytics: AnalyticsClient) {
+  let stable: StableIdentity | undefined
+  let resolving = true
+  const queue: Array<() => void | Promise<void>> = []
+  async function flush() {
+    while (queue.length) await queue.shift()?.()
+  }
+  const client: AnalyticsClient = {
+    capture: (event) => resolving ? void queue.push(() => analytics.capture(event)) : analytics.capture(event),
+    page: (page) => resolving ? void queue.push(() => analytics.page(page)) : analytics.page(page),
+    identify: (profileId) => analytics.identify(profileId),
+    reset: () => analytics.reset(),
+  }
+  return {
+    client,
+    beginResolution() { resolving = true },
+    async authenticated(profileId: string) {
+      if (stable?.status !== 'authenticated' || stable.profileId !== profileId) await analytics.identify(profileId)
+      stable = {status: 'authenticated', profileId}
+      resolving = false
+      await flush()
+    },
+    async anonymous() {
+      if (stable?.status !== 'anonymous') await analytics.reset()
+      stable = {status: 'anonymous'}
+      resolving = false
+      await flush()
+    },
+    async unavailable() {
+      if (!stable) return
+      resolving = false
+      await flush()
+    },
   }
 }
 
@@ -193,7 +252,8 @@ const AnalyticsContext = createContext<AnalyticsClient>(noOpAnalytics)
 
 export function AnalyticsProvider({analytics, children, locale}: {analytics?: AnalyticsClient; children: React.ReactNode; locale: Locale}) {
   const pathname = usePathname()
-  const [client] = useState(() => safely(analytics ?? createBrowserAnalytics()))
+  const [gate] = useState(() => createIdentityGate(safely(analytics ?? createBrowserAnalytics())))
+  const client = gate.client
   const routeName = routeNameForPath(pathname)
   useEffect(() => {
     if (!routeName) return
@@ -201,14 +261,31 @@ export function AnalyticsProvider({analytics, children, locale}: {analytics?: An
     if (routeName === '/[locale]') trackLandingViewed(client, {locale, routeName})
   }, [client, locale, routeName])
   useEffect(() => {
-    const controller = new AbortController()
-    void loadAnalyticsProfileId(controller.signal).then((loadedProfileId) => {
-      if (controller.signal.aborted) return
-      if (loadedProfileId) client.identify(loadedProfileId)
-      else client.reset()
-    })
-    return () => controller.abort()
-  }, [client])
+    let controller: AbortController | undefined
+    let sequence = 0
+    function refresh() {
+      const refreshSequence = ++sequence
+      controller?.abort()
+      controller = new AbortController()
+      gate.beginResolution()
+      void loadAnalyticsIdentity(controller.signal).then(async (identity) => {
+        if (refreshSequence !== sequence || controller?.signal.aborted) return
+        if (identity.status === 'authenticated') await gate.authenticated(identity.profileId)
+        else if (identity.status === 'anonymous') await gate.anonymous()
+        else await gate.unavailable()
+      })
+    }
+    function refreshWhenVisible() { if (document.visibilityState === 'visible') refresh() }
+    refresh()
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      sequence++
+      controller?.abort()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [gate])
   return <AnalyticsContext.Provider value={client}>{children}</AnalyticsContext.Provider>
 }
 

@@ -104,6 +104,8 @@ describe('PostHog browser adapter', () => {
     expect(load).toHaveBeenCalledTimes(1)
     expect(sdk.init).toHaveBeenCalledWith('phc_public_key', expect.objectContaining({
       api_host: 'https://eu.i.posthog.com',
+      advanced_disable_flags: true,
+      advanced_disable_toolbar_metrics: true,
       autocapture: false,
       before_send: expect.any(Function),
       capture_exceptions: false,
@@ -111,6 +113,11 @@ describe('PostHog browser adapter', () => {
       capture_pageview: false,
       capture_performance: false,
       disable_session_recording: true,
+      disable_conversations: true,
+      disable_product_tours: true,
+      disable_surveys: true,
+      disable_surveys_automatic_display: true,
+      disable_web_experiments: true,
       mask_all_element_attributes: true,
       mask_all_text: true,
       property_denylist: expect.arrayContaining(['$current_url', '$referrer', 'utm_campaign', 'email', 'cookie', 'access_token']),
@@ -188,14 +195,30 @@ describe('PostHog browser adapter', () => {
     expect(routeNameForPath('/en?email=private@example.com')).toBeNull()
   })
 
-  it('loads a profile UUID asynchronously from the narrow same-origin endpoint', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({profileId})))
-    const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
+  it('identifies before flushing initial events and handles authenticated-to-anonymous transitions in a persistent layout', async () => {
+    const fetchAccount = vi.fn()
+      .mockResolvedValueOnce(Response.json({profileId}))
+      .mockResolvedValueOnce(new Response(null, {status: 204}))
+    vi.stubGlobal('fetch', fetchAccount)
+    const order: string[] = []
+    const analytics: AnalyticsClient = {
+      capture: vi.fn(async (event) => { order.push(`capture:${event.name}`) }),
+      identify: vi.fn(async (id) => { order.push(`identify:${id}`) }),
+      page: vi.fn(async () => { order.push('page') }),
+      reset: vi.fn(async () => { order.push('reset') }),
+    }
     render(<AnalyticsProvider analytics={analytics} locale="en"><div>Signed in</div></AnalyticsProvider>)
+    expect(analytics.page).not.toHaveBeenCalled()
+    expect(analytics.capture).not.toHaveBeenCalled()
     await waitFor(() => expect(analytics.identify).toHaveBeenCalledWith(profileId))
     expect(analytics.reset).not.toHaveBeenCalled()
     expect(analytics.page).toHaveBeenCalledWith({event_version: 1, locale: 'en', route_name: '/[locale]'})
     expect(analytics.capture).toHaveBeenCalledWith({name: 'landing_viewed', properties: {event_version: 1, locale: 'en', route_name: '/[locale]'}})
+    expect(order).toEqual([`identify:${profileId}`, 'page', 'capture:landing_viewed'])
+
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(analytics.reset).toHaveBeenCalledTimes(1))
+    expect(fetchAccount).toHaveBeenCalledTimes(2)
   })
 
   it('renders immediately and leaves identity unchanged while the account request hangs', () => {
@@ -209,11 +232,24 @@ describe('PostHog browser adapter', () => {
     expect(analytics.reset).not.toHaveBeenCalled()
   })
 
-  it('treats account endpoint failures as signed out without surfacing the failure', async () => {
+  it('does not reset or flush queued events when account resolution is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 503})))
+    const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
+    render(<AnalyticsProvider analytics={analytics} locale="en"><div>Unavailable</div></AnalyticsProvider>)
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(analytics.reset).not.toHaveBeenCalled()
+    expect(analytics.identify).not.toHaveBeenCalled()
+    expect(analytics.page).not.toHaveBeenCalled()
+    expect(analytics.capture).not.toHaveBeenCalled()
+  })
+
+  it('resets once for authoritative anonymous state and does not reset again on unchanged focus refresh', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 204})))
     const analytics: AnalyticsClient = {capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
-    render(<AnalyticsProvider analytics={analytics} locale="en"><div>Signed out</div></AnalyticsProvider>)
+    render(<AnalyticsProvider analytics={analytics} locale="en"><div>Anonymous</div></AnalyticsProvider>)
     await waitFor(() => expect(analytics.reset).toHaveBeenCalledTimes(1))
-    expect(analytics.identify).not.toHaveBeenCalled()
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    expect(analytics.reset).toHaveBeenCalledTimes(1)
   })
 })
