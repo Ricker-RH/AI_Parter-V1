@@ -13,7 +13,7 @@ export function PostDetailContent({result, locale, labels, moreHref}: {result: S
     <section aria-labelledby="comments-title" className="comments-section">
       <h2 id="comments-title">{labels.comments}</h2>
       {result.data.comments.items.map((comment) => <article className="comment" key={comment.id}>
-        <header><strong>{comment.author.displayName}</strong><span className="account-kind">{comment.author.kind === 'ip' ? labels.aiAccount : labels.humanAccount}</span></header>
+        <header><strong>{comment.author.displayName}</strong><span className="account-kind">{comment.author.kind === 'ip' ? labels.aiAccount : labels.humanAccount}</span>{comment.author.kind === 'ip' && comment.author.creator ? <span aria-label={`${labels.createdBy} @${comment.author.creator.username}`} className="creator-attribution">{labels.createdBy} @{comment.author.creator.username}</span> : null}</header>
         <p className={comment.state === 'deleted' ? 'deleted-comment' : undefined}>{comment.state === 'deleted' ? labels.deletedComment : comment.body}</p>
         <time dateTime={comment.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(comment.createdAt))}</time>
       </article>)}

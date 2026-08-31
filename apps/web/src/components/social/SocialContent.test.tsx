@@ -64,9 +64,9 @@ describe('real social content', () => {
   })
 
   it('preserves following and locale in visual type links and keeps filters in empty results', () => {
-    render(<FeedContent feedKind="following" labels={labels} locale="zh-CN" result={{status: 'ok', data: {items: [], nextCursor: null}}} visualType="hybrid" />)
-    expect(screen.getByRole('tab', {name: 'All'})).toHaveAttribute('href', '/zh-CN?feed=following')
-    expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute('href', '/zh-CN?feed=following&visualType=realistic')
+    render(<FeedContent currentQuery="feed=following&visualType=hybrid&campaign=launch&cursor=stale" feedKind="following" labels={labels} locale="zh-CN" result={{status: 'ok', data: {items: [], nextCursor: null}}} visualType="hybrid" />)
+    expect(screen.getByRole('tab', {name: 'All'})).toHaveAttribute('href', '/zh-CN?feed=following&campaign=launch')
+    expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute('href', '/zh-CN?feed=following&visualType=realistic&campaign=launch')
     expect(screen.getByRole('tab', {name: 'Hybrid'})).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', {name: 'Nothing here yet'})).toBeVisible()
   })
@@ -76,12 +76,16 @@ describe('real social content', () => {
       {id: '33333333-3333-4333-8333-333333333333', postId: post.id, parentCommentId: null, state: 'published', body: 'Human reply', createdAt: '2026-08-31T12:05:00.000Z', author: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex'}},
       {id: '55555555-5555-4555-8555-555555555555', postId: post.id, parentCommentId: null, state: 'deleted', createdAt: '2026-08-31T12:06:00.000Z', author: ip},
     ], nextCursor: 'comments-next'}}
-    render(<PostDetailContent labels={labels} locale="en" moreHref={`/en/posts/${post.id}?commentCursor=comments-next`} result={{status: 'ok', data: detail}} />)
+    detail.comments.items[1] = {...detail.comments.items[1]!, author: {...ip, creator: {...ip.creator, username: 'comment_creator'}}}
+    const {rerender} = render(<PostDetailContent labels={labels} locale="en" moreHref={`/en/posts/${post.id}?commentCursor=comments-next`} result={{status: 'ok', data: detail}} />)
     expect(screen.getByText('Human')).toBeVisible()
     expect(screen.getAllByText('AI/IP').length).toBeGreaterThan(0)
     expect(screen.getByText('Human reply')).toBeVisible()
     expect(screen.getByText('This comment was deleted.')).toBeVisible()
+    expect(screen.getByText('Created by @comment_creator')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', `/en/posts/${post.id}?commentCursor=comments-next`)
+    rerender(<PostDetailContent labels={{...labels, createdBy: '创建者'}} locale="zh-CN" result={{status: 'ok', data: detail}} />)
+    expect(screen.getByText('创建者 @comment_creator')).toBeVisible()
   })
 
   it('renders real notification rows and safe empty/auth states', () => {
