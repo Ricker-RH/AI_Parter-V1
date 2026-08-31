@@ -144,7 +144,10 @@ export const ipIdentityRevisions = pgTable('ip_identity_revisions', {
   createdByProfileId: uuid('created_by_profile_id').references(() => profiles.id),
   previousRevisionId: uuid('previous_revision_id').references((): AnyPgColumn => ipIdentityRevisions.id),
   createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
-}, (table) => [unique('ip_identity_revisions_ip_profile_id_version_key').on(table.ipProfileId, table.version)])
+}, (table) => [
+  unique('ip_identity_revisions_ip_profile_id_version_key').on(table.ipProfileId, table.version),
+  unique('ip_identity_revisions_id_ip_profile_id_key').on(table.id, table.ipProfileId),
+])
 
 export const posts = pgTable('posts', {
   id: uuid().primaryKey(),

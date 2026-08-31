@@ -52,10 +52,13 @@ async function ip(client: PoolClient, state: 'published' | 'draft' | 'paused' = 
     [id, `ip_${id.replaceAll('-', '').slice(0, 20)}`],
   )
   await client.query(
-    `INSERT INTO public.ip_profiles (profile_id, source, public_state, operation_enabled)
-     VALUES ($1, 'platform', $2, true)`,
-    [id, state],
+    `INSERT INTO public.ip_profiles (profile_id, source, operation_enabled)
+     VALUES ($1, 'platform', true)`,
+    [id],
   )
+  const revisionId = randomUUID()
+  await client.query(`INSERT INTO public.ip_identity_revisions (id, ip_profile_id, version, display_name) VALUES ($1, $2, 1, 'IP fixture')`, [revisionId, id])
+  await client.query('UPDATE public.ip_profiles SET current_identity_revision_id = $1, public_state = $2 WHERE profile_id = $3', [revisionId, state, id])
   return { id }
 }
 
@@ -150,6 +153,50 @@ describeIntegration('social core authorization', () => {
       await expect(savepoint(client, () => client.query('SELECT auth_subject FROM public.profiles'))).rejects.toThrow(/permission denied/)
       await expect(savepoint(client, () => client.query('SELECT acting_operator_profile_id FROM public.posts'))).rejects.toThrow(/permission denied/)
       expect(hidden.id).toBeTruthy()
+    })
+  })
+
+  it('keeps comment attribution hidden and permits controlled post lifecycle transitions', async () => {
+    await transaction(async (client) => {
+      const author = await ip(client)
+      const postId = await publishedPost(client, author.id)
+      const commentId = randomUUID()
+      const reader = await human(client)
+      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Safe comment')`, [commentId, postId, reader.id])
+      const draftId = randomUUID()
+      await client.query(`INSERT INTO public.posts (id, author_profile_id, source, body) VALUES ($1, $2, 'worker', 'Draft')`, [draftId, author.id])
+      await expect(client.query(`UPDATE public.posts SET body = 'Edited draft' WHERE id = $1`, [draftId])).resolves.toMatchObject({rowCount: 1})
+      await expect(client.query(`UPDATE public.posts SET state = 'published', published_at = clock_timestamp() WHERE id = $1`, [draftId])).resolves.toMatchObject({rowCount: 1})
+      await client.query('SET LOCAL ROLE aifans_anon')
+      await expect(client.query('SELECT id, body FROM public.comments WHERE id = $1', [commentId])).resolves.toMatchObject({rowCount: 1})
+      await expect(savepoint(client, () => client.query('SELECT acting_operator_profile_id, source FROM public.comments'))).rejects.toThrow(/permission denied/)
+    })
+  })
+
+  it('enforces immutable identities, soft deletion, notification ownership, and IP identity lifecycle', async () => {
+    await transaction(async (client) => {
+      const first = await human(client)
+      const second = await human(client)
+      const author = await ip(client)
+      const postId = await publishedPost(client, author.id)
+      const revision = await client.query('SELECT current_identity_revision_id FROM public.ip_profiles WHERE profile_id = $1', [author.id])
+      const revisionId = revision.rows[0]?.current_identity_revision_id as string
+      await expect(savepoint(client, () => client.query('UPDATE public.ip_identity_revisions SET display_name = $1 WHERE id = $2', ['Changed', revisionId]))).rejects.toThrow(/immutable/)
+      await expect(savepoint(client, () => client.query('DELETE FROM public.ip_identity_revisions WHERE id = $1', [revisionId]))).rejects.toThrow(/immutable/)
+      const commentId = randomUUID()
+      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Delete me')`, [commentId, postId, first.id])
+      await expect(savepoint(client, () => client.query('DELETE FROM public.comments WHERE id = $1', [commentId]))).rejects.toThrow(/soft deleted/)
+      await client.query(`UPDATE public.comments SET state = 'deleted', deleted_at = clock_timestamp() WHERE id = $1`, [commentId])
+      expect((await client.query('SELECT state FROM public.comments WHERE id = $1', [commentId])).rows).toEqual([{state: 'deleted'}])
+      await expect(savepoint(client, () => client.query('DELETE FROM public.posts WHERE id = $1', [postId]))).rejects.toThrow(/cannot be deleted/)
+      const notificationId = randomUUID()
+      await client.query(`INSERT INTO public.notifications (id, recipient_profile_id, actor_profile_id, kind, post_id) VALUES ($1, $2, $3, 'post_like', $4)`, [notificationId, first.id, author.id, postId])
+      await become(client, second.subject)
+      expect((await client.query('SELECT id FROM public.notifications')).rows).toEqual([])
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.notifications (id, recipient_profile_id, kind) VALUES ($1, $2, 'follow')`, [randomUUID(), second.id]))).rejects.toThrow(/permission denied/)
+      await become(client, first.subject)
+      await expect(client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])).resolves.toMatchObject({rowCount: 1})
+      await expect(client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])).resolves.toMatchObject({rowCount: 0})
     })
   })
 })

@@ -33,10 +33,11 @@ CREATE TABLE public.ip_identity_revisions (
   created_by_profile_id uuid REFERENCES public.profiles(id),
   previous_revision_id uuid REFERENCES public.ip_identity_revisions(id),
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (ip_profile_id, version)
+  UNIQUE (ip_profile_id, version),
+  UNIQUE (id, ip_profile_id)
 );
 ALTER TABLE public.ip_profiles ADD CONSTRAINT ip_profiles_current_identity_revision_fk
-  FOREIGN KEY (current_identity_revision_id) REFERENCES public.ip_identity_revisions(id) DEFERRABLE INITIALLY DEFERRED;
+  FOREIGN KEY (current_identity_revision_id, profile_id) REFERENCES public.ip_identity_revisions(id, ip_profile_id) DEFERRABLE INITIALLY DEFERRED;
 
 CREATE TABLE public.posts (
   id uuid PRIMARY KEY,
@@ -98,7 +99,7 @@ CREATE TABLE public.comments (
   state public.comment_state NOT NULL DEFAULT 'published',
   created_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
-  CHECK ((source = 'human' AND acting_operator_profile_id IS NULL) OR (source IN ('admin', 'worker') AND acting_operator_profile_id IS NOT NULL)),
+  CHECK ((source = 'human' AND acting_operator_profile_id IS NULL) OR (source = 'admin' AND acting_operator_profile_id IS NOT NULL) OR (source = 'worker' AND acting_operator_profile_id IS NULL)),
   CHECK ((state = 'published' AND deleted_at IS NULL) OR (state = 'deleted' AND deleted_at IS NOT NULL))
 );
 CREATE TABLE public.comment_likes (
@@ -154,16 +155,26 @@ BEGIN
   NEW.updated_at := clock_timestamp(); RETURN NEW;
 END;
 $$;
+CREATE FUNCTION public.require_published_ip_identity()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF NEW.public_state = 'published' AND NEW.current_identity_revision_id IS NULL THEN RAISE EXCEPTION 'published IP requires a current identity revision'; END IF;
+  RETURN NEW;
+END;
+$$;
 CREATE FUNCTION public.reject_ip_identity_revision_mutation()
 RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN RAISE EXCEPTION 'ip identity revisions are immutable'; END; $$;
 CREATE FUNCTION public.guard_post()
 RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.author_profile_id AND account_kind = 'ip') THEN RAISE EXCEPTION 'posts require an IP author'; END IF;
-  IF NEW.source = 'admin' AND NEW.acting_operator_profile_id IS NULL THEN RAISE EXCEPTION 'admin posts require an operator'; END IF;
+  IF NEW.source = 'admin' AND NOT EXISTS (SELECT 1 FROM public.profile_roles r JOIN public.profiles p ON p.id = r.profile_id WHERE r.profile_id = NEW.acting_operator_profile_id AND r.role = 'operator' AND r.revoked_at IS NULL AND p.account_kind = 'human') THEN RAISE EXCEPTION 'admin posts require an active human operator'; END IF;
+  IF NEW.source = 'worker' AND NEW.acting_operator_profile_id IS NOT NULL THEN RAISE EXCEPTION 'worker posts require system attribution'; END IF;
   IF TG_OP = 'UPDATE' THEN
-    IF OLD.id IS DISTINCT FROM NEW.id OR OLD.author_profile_id IS DISTINCT FROM NEW.author_profile_id OR OLD.source IS DISTINCT FROM NEW.source OR OLD.acting_operator_profile_id IS DISTINCT FROM NEW.acting_operator_profile_id OR OLD.body IS DISTINCT FROM NEW.body OR OLD.language_code IS DISTINCT FROM NEW.language_code OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN RAISE EXCEPTION 'published post content is immutable'; END IF;
-    IF NOT (OLD.state = 'published' AND NEW.state = 'withdrawn') THEN RAISE EXCEPTION 'posts may only transition from published to withdrawn'; END IF;
+    IF OLD.id IS DISTINCT FROM NEW.id OR OLD.author_profile_id IS DISTINCT FROM NEW.author_profile_id OR OLD.source IS DISTINCT FROM NEW.source OR OLD.acting_operator_profile_id IS DISTINCT FROM NEW.acting_operator_profile_id OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN RAISE EXCEPTION 'post attribution is immutable'; END IF;
+    IF OLD.state = 'draft' AND NEW.state IN ('draft', 'published') THEN NULL;
+    ELSIF OLD.state = 'published' AND NEW.state = 'withdrawn' AND OLD.body IS NOT DISTINCT FROM NEW.body AND OLD.language_code IS NOT DISTINCT FROM NEW.language_code AND OLD.published_at IS NOT DISTINCT FROM NEW.published_at THEN NULL;
+    ELSE RAISE EXCEPTION 'invalid post lifecycle transition'; END IF;
   END IF;
   NEW.updated_at := clock_timestamp(); RETURN NEW;
 END;
@@ -184,6 +195,13 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+CREATE FUNCTION public.reject_post_delete()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF OLD.state <> 'draft' THEN RAISE EXCEPTION 'published or withdrawn posts cannot be deleted'; END IF;
+  RETURN OLD;
+END;
+$$;
 CREATE FUNCTION public.guard_comment()
 RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
 DECLARE parent_post uuid; grandparent uuid;
@@ -192,10 +210,14 @@ BEGIN
   IF NEW.source = 'human' THEN
     IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.author_profile_id AND account_kind = 'human') THEN RAISE EXCEPTION 'human comments require a human author'; END IF;
   ELSIF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.author_profile_id AND account_kind = 'ip') THEN RAISE EXCEPTION 'platform comments require an IP author'; END IF;
+  IF NEW.source = 'admin' AND NOT EXISTS (SELECT 1 FROM public.profile_roles r JOIN public.profiles p ON p.id = r.profile_id WHERE r.profile_id = NEW.acting_operator_profile_id AND r.role = 'operator' AND r.revoked_at IS NULL AND p.account_kind = 'human') THEN RAISE EXCEPTION 'admin comments require an active human operator'; END IF;
+  IF NEW.source = 'worker' AND NEW.acting_operator_profile_id IS NOT NULL THEN RAISE EXCEPTION 'worker comments require system attribution'; END IF;
   IF TG_OP = 'UPDATE' AND NOT (OLD.state = 'published' AND NEW.state = 'deleted' AND NEW.deleted_at IS NOT NULL AND OLD.id = NEW.id AND OLD.post_id = NEW.post_id AND OLD.parent_comment_id IS NOT DISTINCT FROM NEW.parent_comment_id AND OLD.author_profile_id = NEW.author_profile_id AND OLD.acting_operator_profile_id IS NOT DISTINCT FROM NEW.acting_operator_profile_id AND OLD.source = NEW.source AND OLD.body = NEW.body AND OLD.created_at = NEW.created_at) THEN RAISE EXCEPTION 'comments can only be soft deleted'; END IF;
   RETURN NEW;
 END;
 $$;
+CREATE FUNCTION public.reject_comment_delete()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN RAISE EXCEPTION 'comments must be soft deleted'; END; $$;
 CREATE FUNCTION public.guard_notification_read()
 RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
@@ -204,11 +226,14 @@ END;
 $$;
 
 CREATE TRIGGER ip_profiles_require_valid_profiles BEFORE INSERT OR UPDATE ON public.ip_profiles FOR EACH ROW EXECUTE FUNCTION public.ip_profiles_require_valid_profiles();
+CREATE CONSTRAINT TRIGGER ip_profiles_require_published_identity AFTER INSERT OR UPDATE ON public.ip_profiles DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.require_published_ip_identity();
 CREATE TRIGGER ip_identity_revisions_immutable BEFORE UPDATE OR DELETE ON public.ip_identity_revisions FOR EACH ROW EXECUTE FUNCTION public.reject_ip_identity_revision_mutation();
 CREATE TRIGGER posts_guard BEFORE INSERT OR UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION public.guard_post();
+CREATE TRIGGER posts_reject_delete BEFORE DELETE ON public.posts FOR EACH ROW EXECUTE FUNCTION public.reject_post_delete();
 CREATE CONSTRAINT TRIGGER posts_require_content AFTER INSERT OR UPDATE ON public.posts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.require_publishable_post();
 CREATE CONSTRAINT TRIGGER post_media_preserves_content AFTER INSERT OR DELETE OR UPDATE ON public.post_media DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.require_publishable_post();
 CREATE TRIGGER comments_guard BEFORE INSERT OR UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.guard_comment();
+CREATE TRIGGER comments_reject_delete BEFORE DELETE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.reject_comment_delete();
 CREATE TRIGGER notifications_guard_read BEFORE UPDATE ON public.notifications FOR EACH ROW EXECUTE FUNCTION public.guard_notification_read();
 
 ALTER TABLE public.ip_profiles ENABLE ROW LEVEL SECURITY;
@@ -244,7 +269,7 @@ CREATE POLICY notifications_owner_read ON public.notifications FOR UPDATE TO aif
 
 REVOKE ALL ON TABLE public.ip_profiles, public.ip_identity_revisions, public.posts, public.post_media, public.follows, public.post_likes, public.bookmarks, public.comments, public.comment_likes, public.notifications FROM PUBLIC, aifans_anon, aifans_authenticated;
 REVOKE ALL ON TYPE public.ip_source, public.ip_public_state, public.post_state, public.post_source, public.media_kind, public.comment_source, public.comment_state, public.notification_kind FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.current_profile_id(), public.is_published_post(uuid), public.is_public_profile(uuid), public.ip_profiles_require_valid_profiles(), public.reject_ip_identity_revision_mutation(), public.guard_post(), public.require_publishable_post(), public.guard_comment(), public.guard_notification_read() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.current_profile_id(), public.is_published_post(uuid), public.is_public_profile(uuid), public.ip_profiles_require_valid_profiles(), public.require_published_ip_identity(), public.reject_ip_identity_revision_mutation(), public.guard_post(), public.require_publishable_post(), public.reject_post_delete(), public.guard_comment(), public.reject_comment_delete(), public.guard_notification_read() FROM PUBLIC;
 GRANT USAGE ON TYPE public.ip_source, public.ip_public_state, public.post_state, public.post_source, public.media_kind, public.comment_source, public.comment_state, public.notification_kind TO aifans_anon, aifans_authenticated;
 GRANT EXECUTE ON FUNCTION public.current_profile_id(), public.is_published_post(uuid), public.is_public_profile(uuid) TO aifans_authenticated;
 GRANT SELECT (profile_id, identity_label, created_at, updated_at) ON public.ip_profiles TO aifans_anon, aifans_authenticated;
@@ -253,7 +278,7 @@ GRANT SELECT (id, author_profile_id, state, body, language_code, published_at, c
 GRANT SELECT (id, post_id, position, alt_text, content_type, width, height, created_at) ON public.post_media TO aifans_anon, aifans_authenticated;
 GRANT INSERT, DELETE ON public.follows, public.bookmarks, public.comment_likes TO aifans_authenticated;
 GRANT SELECT, INSERT, DELETE ON public.post_likes TO aifans_authenticated;
-GRANT SELECT, INSERT, UPDATE (state, deleted_at) ON public.comments TO aifans_authenticated;
-GRANT SELECT ON public.comments TO aifans_anon;
+GRANT SELECT (id, post_id, parent_comment_id, author_profile_id, body, state, created_at) ON public.comments TO aifans_anon, aifans_authenticated;
+GRANT INSERT, UPDATE (state, deleted_at) ON public.comments TO aifans_authenticated;
 GRANT SELECT, INSERT, DELETE ON public.bookmarks TO aifans_authenticated;
 GRANT SELECT, UPDATE (read_at) ON public.notifications TO aifans_authenticated;

@@ -18,3 +18,11 @@
 - Public grants intentionally exclude auth subjects, operator attribution, creator/source internals, and object keys.
 - Human roles have no top-level post or IP-comment write path; bookmarks are owner-only.
 - There is no seed or mock product data in the migration.
+
+## Lifecycle hardening follow-up
+
+- Restricted reads now have column-only grants for comments; operator attribution and source are not selectable by anonymous or authenticated users.
+- Draft posts may be edited or published, while published content is immutable except for withdrawal; published/withdrawn posts cannot be hard-deleted. Comments reject hard deletion and retain soft-deleted rows.
+- Published IPs require a current immutable revision belonging to that IP through a deferred composite foreign key and lifecycle trigger.
+- Admin post/comment attribution requires an active human operator; worker attribution is explicitly system-only (`acting_operator_profile_id IS NULL`).
+- Added focused checks for hidden comment fields, lifecycle transitions, revision immutability, soft deletion, notification ownership/read state, and published-post delete denial.
