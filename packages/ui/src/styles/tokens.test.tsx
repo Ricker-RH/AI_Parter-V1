@@ -1,8 +1,9 @@
 import {readFileSync} from 'node:fs'
-import {resolve} from 'node:path'
+import {dirname, resolve} from 'node:path'
+import {fileURLToPath} from 'node:url'
 import {describe, expect, it} from 'vitest'
 
-const packageRoot = process.cwd()
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const tokens = readFileSync(resolve(packageRoot, 'src/styles/tokens.css'), 'utf8')
 const packageManifest = JSON.parse(
   readFileSync(resolve(packageRoot, 'package.json'), 'utf8'),
