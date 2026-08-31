@@ -11,7 +11,11 @@
     "license:check": "node scripts/check-forbidden-assets.mjs .",
     "typecheck": "turbo run typecheck",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:start": "docker compose -f infra/postgres/compose.yaml up -d --wait",
+    "db:stop": "docker compose -f infra/postgres/compose.yaml down",
+    "db:migrate": "pnpm --dir packages/db migrate",
+    "db:test": "pnpm db:start && DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test pnpm db:migrate && DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test pnpm --dir packages/db test"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
