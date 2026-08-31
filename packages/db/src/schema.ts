@@ -5,6 +5,8 @@ import {
   text,
   boolean,
   integer,
+  jsonb,
+  smallint,
   timestamp,
   uuid,
   unique,
@@ -13,6 +15,11 @@ import { sql } from 'drizzle-orm'
 
 export const accountKindEnum = pgEnum('account_kind', ['human', 'ip'])
 export const appLocaleEnum = pgEnum('app_locale', ['en', 'zh-CN'])
+export const appRoleEnum = pgEnum('app_role', ['operator'])
+export const auditActorTypeEnum = pgEnum('audit_actor_type', ['human', 'operator', 'system'])
+export const auditSourceEnum = pgEnum('audit_source', ['api', 'admin', 'worker'])
+export const auditResultEnum = pgEnum('audit_result', ['succeeded', 'rejected', 'failed'])
+export const outboxStateEnum = pgEnum('outbox_state', ['pending', 'delivered', 'failed'])
 
 export const profiles = pgTable(
   'profiles',
@@ -81,3 +88,20 @@ export const platformSettings = pgTable(
     ),
   ],
 )
+
+export const profileRoles = pgTable('profile_roles', {
+  profileId: uuid('profile_id').notNull(), role: appRoleEnum('role').notNull(), grantedByProfileId: uuid('granted_by_profile_id').notNull(), grantedAt: timestamp('granted_at', {withTimezone: true}).notNull().defaultNow(), revokedAt: timestamp('revoked_at', {withTimezone: true}),
+}, (table) => [unique('profile_roles_primary').on(table.profileId, table.role)])
+
+export const auditEvents = pgTable('audit_events', {
+  id: uuid().primaryKey(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorType: auditActorTypeEnum('actor_type').notNull(), actorProfileId: uuid('actor_profile_id'), action: text().notNull(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), requestId: uuid('request_id'), sourceApp: auditSourceEnum('source_app').notNull(), result: auditResultEnum('result').notNull(), changeSummary: jsonb('change_summary').notNull().default({}),
+})
+export const businessEvents = pgTable('business_events', {
+  id: uuid().primaryKey(), eventName: text('event_name').notNull(), schemaVersion: smallint('schema_version').notNull(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorProfileId: uuid('actor_profile_id'), subjectEntityType: text('subject_entity_type').notNull(), subjectEntityId: uuid('subject_entity_id').notNull(), requestId: uuid('request_id'), environment: text().notNull(), properties: jsonb().notNull().default({}),
+})
+export const workflowTransitions = pgTable('workflow_transitions', {
+  id: uuid().primaryKey(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), previousState: text('previous_state'), nextState: text('next_state').notNull(), actorProfileId: uuid('actor_profile_id'), reasonCode: text('reason_code'), operatorNote: text('operator_note'), requestId: uuid('request_id'), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(),
+})
+export const analyticsOutbox = pgTable('analytics_outbox', {
+  id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull(), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+})

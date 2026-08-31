@@ -43,18 +43,24 @@ export function createActorSession(pool: QueryPool): {withActor: WithActor} {
       }
 
       const client = await pool.connect()
+      const transaction = await client.query<{txid: string | null}>(
+        'SELECT txid_current_if_assigned() AS txid',
+      )
+      const ownsTransaction = transaction.rows[0]?.txid === null
       try {
-        await client.query('BEGIN')
+        await client.query(ownsTransaction ? 'BEGIN' : 'SAVEPOINT actor_session')
         try {
           await client.query('SET LOCAL ROLE aifans_authenticated')
           await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
             JSON.stringify({sub: actor.subject}),
           ])
           const result = await callback(client)
-          await client.query('COMMIT')
+          await client.query(ownsTransaction ? 'COMMIT' : 'RELEASE SAVEPOINT actor_session')
+          if (!ownsTransaction) await client.query('SET LOCAL ROLE NONE')
           return result
         } catch (error) {
-          await client.query('ROLLBACK').catch(() => undefined)
+          await client.query(ownsTransaction ? 'ROLLBACK' : 'ROLLBACK TO SAVEPOINT actor_session').catch(() => undefined)
+          if (!ownsTransaction) await client.query('RELEASE SAVEPOINT actor_session').catch(() => undefined)
           throw error
         }
       } finally {

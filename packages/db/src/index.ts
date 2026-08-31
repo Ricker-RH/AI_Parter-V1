@@ -9,8 +9,21 @@ export type {
 export {
   accountKindEnum,
   appLocaleEnum,
+  appRoleEnum,
+  auditActorTypeEnum,
+  auditSourceEnum,
+  auditResultEnum,
+  outboxStateEnum,
+  profileRoles,
+  auditEvents,
+  businessEvents,
+  workflowTransitions,
+  analyticsOutbox,
   platformSettings,
   profiles,
 } from './schema.js'
 export {withActor} from './session.js'
 export type {Actor} from './session.js'
+export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'
+export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
+export {createHistoryRepository} from './history.js'
