@@ -43,6 +43,7 @@ packages/db/tests/*.test.ts                Unit and real Docker integration test
 - Create: `infra/postgres/compose.yaml`
 - Create: `packages/db/package.json`
 - Create: `packages/db/tsconfig.json`
+- Create: `packages/db/vitest.config.ts`
 - Create: `packages/db/src/env.ts`
 - Create: `packages/db/src/migrate.ts`
 - Create: `packages/db/src/index.ts`
@@ -138,6 +139,19 @@ Expected: FAIL because `packages/db` and its source modules do not exist.
     "vitest": "4.1.11"
   }
 }
+```
+
+```ts
+// packages/db/vitest.config.ts
+import {defineConfig} from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    name: 'db',
+    include: ['tests/**/*.test.ts'],
+    testTimeout: 15_000,
+  },
+})
 ```
 
 ```yaml
@@ -264,7 +278,7 @@ The migration must create:
 - enum `public.account_kind` with `human`, `ip`;
 - enum `public.app_locale` with `en`, `zh-CN`;
 - schema `app` with no public create privilege;
-- `public.profiles` with UUID primary key, nullable unique `auth_subject`, immutable `account_kind`, username constrained by `^[a-z0-9_]{3,48}$`, display name constrained to 1–80 non-whitespace characters, bio limited to 500 characters, avatar object key limited to 512 characters, locale, creator-mode flag, and timestamps;
+- `public.profiles` with UUID primary key, nullable unique `auth_subject`, immutable `account_kind`, username constrained by `^[a-z0-9_]{3,30}$` to match `AccountSchema`, display name constrained to 1–80 non-whitespace characters, bio limited to 500 characters, avatar object key limited to 512 characters, locale, creator-mode flag, and timestamps;
 - `public.platform_settings` restricted to the literal key `global`, default approval flag `false`, and positive default IP quota `3`;
 - exactly one required `global` configuration row;
 - `app.current_auth_subject()` reading only transaction-local `request.jwt.claims.sub` and returning null for missing/invalid claims;
@@ -332,7 +346,7 @@ const second = await ensureHumanProfile({
 
 expect(second.id).toBe(first.id)
 expect(first.accountKind).toBe('human')
-expect(first.username).toMatch(/^user_[a-f0-9]{32}$/)
+expect(first.username).toMatch(/^user_[a-f0-9]{25}$/)
 expect(first.displayName).toBe('luna')
 expect(await getCurrentAccount({subject: first.authSubject})).toMatchObject({id: first.id})
 expect(await getCurrentAccount(null)).toBeNull()
@@ -358,7 +372,7 @@ Production construction uses `@neondatabase/serverless` Pool with `DATABASE_URL`
 
 - [ ] **Step 4: Implement idempotent profile provisioning and lookup**
 
-`ensureHumanProfile` runs only on the admin connection. It inserts an immutable human row and uses `ON CONFLICT (auth_subject) DO NOTHING`, then selects the existing row. The generated username is `user_` plus the first 32 lowercase hexadecimal characters of `sha256(authSubject)`, avoiding assumptions about Neon Auth's external ID format. Display name priority is non-blank supplied name, non-blank email local-part, then `AIFANS User`.
+`ensureHumanProfile` runs only on the admin connection. It first selects by auth subject, then inserts an immutable human row with `ON CONFLICT (auth_subject) DO NOTHING` and re-selects the existing row. A username candidate is `user_` plus 25 lowercase hexadecimal characters from a fresh UUID, which fits `AccountSchema`; retry up to five fresh candidates only when the username unique constraint collides. This avoids assumptions about Neon Auth's external ID format without letting a collision abort signup. Display name priority is non-blank supplied name, non-blank email local-part, then `AIFANS User`.
 
 Normalize returned rows into the existing `AccountSchema` shape. `getCurrentAccount(null)` returns null without opening a database transaction; authenticated calls use `withActor` and `public.current_account()`.
 
