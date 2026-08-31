@@ -11,7 +11,10 @@ type HomeSearchParams = Record<string, string | string[] | undefined>
 
 function currentQueryString(values: HomeSearchParams) {
   const query = new URLSearchParams()
-  for (const [key, value] of Object.entries(values)) if (typeof value === 'string') query.set(key, value)
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value === 'string') query.append(key, value)
+    else if (Array.isArray(value)) for (const item of value) query.append(key, item)
+  }
   return query.toString()
 }
 
