@@ -49,7 +49,7 @@ tests/e2e/              Playwright browser journeys
 - Create: `pnpm-workspace.yaml`
 - Create: `turbo.json`
 - Create: `tsconfig.base.json`
-- Create: `vitest.workspace.ts`
+- Create: `vitest.config.ts`
 - Create: `tests/workspace.test.ts`
 
 **Interfaces:**
@@ -98,7 +98,7 @@ Expected: FAIL because `package.json` does not exist.
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "vitest run --workspace vitest.workspace.ts",
+    "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
@@ -136,14 +136,18 @@ packages:
 Set `.nvmrc` to `24.19.0`, `.npmrc` to `engine-strict=true`, and `tsconfig.base.json` to strict TypeScript settings with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` enabled. Set `.env.example` to contain names only: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `API_ORIGIN`, and `WEB_ORIGIN`. Ignore `.env*` except `.env.example`, build output, coverage, Playwright output, and local Supabase state.
 
 ```ts
-// vitest.workspace.ts
-import {defineWorkspace} from 'vitest/config'
+// vitest.config.ts
+import {defineConfig} from 'vitest/config'
 
-export default defineWorkspace([
-  'tests/**/*.test.ts',
-  'apps/*/vitest.config.ts',
-  'packages/*/vitest.config.ts',
-])
+export default defineConfig({
+  test: {
+    projects: [
+      {test: {name: 'root', include: ['tests/**/*.test.ts']}},
+      'apps/*/vitest.config.ts',
+      'packages/*/vitest.config.ts',
+    ],
+  },
+})
 ```
 
 - [ ] **Step 4: Install and verify the baseline**
@@ -157,7 +161,7 @@ Expected: the two workspace contract tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add .nvmrc .npmrc .gitignore .env.example package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json vitest.workspace.ts tests/workspace.test.ts
+git add .nvmrc .npmrc .gitignore .env.example package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json vitest.config.ts tests/workspace.test.ts
 git commit -m "build: establish AIFANS monorepo"
 ```
 
