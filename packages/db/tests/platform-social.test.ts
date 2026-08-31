@@ -93,7 +93,7 @@ integration('platform social repository', () => {
     await expect(platform.createIp({actor: operator, requestId: randomUUID(), ip: {username: `ip_${randomUUID().replaceAll('-', '').slice(0, 20)}`, displayName: 'Revoked'}})).rejects.toMatchObject({code: '42501'})
   }))
 
-  it('enforces SQL language nullability and the 20-language bound', async () => tx(async (client) => {
+  it('enforces SQL language nullability, non-null elements, and the 20-language bound', async () => tx(async (client) => {
     const operator = await human(client, true)
     const session = createPlatformSession(
       {connect: async () => ({query: client.query.bind(client), release() {}})},
@@ -110,7 +110,29 @@ integration('platform social repository', () => {
     )
 
     await expect(invoke(null)).rejects.toMatchObject({code: '23514'})
+    await expect(invoke(['en', null] as unknown as string[])).rejects.toMatchObject({code: '23514'})
     await expect(invoke(Array.from({length: 21}, () => 'en'))).rejects.toMatchObject({code: '23514'})
+  }))
+
+  it.each(['success', 'failure'] as const)('restores a nested caller role and claims after %s', async (outcome) => tx(async (client) => {
+    const claims = JSON.stringify({sub: 'outer-reader', scope: 'public'})
+    await client.query('SET LOCAL ROLE aifans_anon')
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [claims])
+    const session = createPlatformSession(
+      {connect: async () => ({query: client.query.bind(client), release() {}})},
+      {transactionMode: 'nested'},
+    )
+
+    const call = session.withPlatformActor({subject: 'operator'}, async (scoped) => {
+      if (outcome === 'failure') throw new Error('nested failure')
+      await scoped.query('SELECT 1')
+    })
+    if (outcome === 'failure') await expect(call).rejects.toThrow('nested failure')
+    else await expect(call).resolves.toBeUndefined()
+
+    await expect(client.query("SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims")).resolves.toMatchObject({
+      rows: [{role: 'aifans_anon', claims}],
+    })
   }))
 
   it('locks authorization and publishability rows inside platform commands', async () => tx(async (client) => {
@@ -126,6 +148,9 @@ integration('platform social repository', () => {
     expect(byName.get('platform_publish_post')).toMatch(/FOR UPDATE OF ip, r/)
     expect(byName.get('platform_publish_ip_comment')).toMatch(/FOR UPDATE OF target/)
     expect(byName.get('platform_publish_ip_comment')).toMatch(/FOR UPDATE OF parent/)
+    expect(byName.get('platform_publish_ip_comment')).toMatch(/ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
+    const commentDefinition = byName.get('platform_publish_ip_comment') ?? ''
+    expect(commentDefinition.indexOf('ORDER BY ip.profile_id')).toBeLessThan(commentDefinition.indexOf('FOR UPDATE OF target'))
   }))
 
   it('publishes attributed text-only posts and IP comments into public projections', async () => tx(async (client) => {

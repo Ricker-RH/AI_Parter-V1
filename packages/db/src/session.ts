@@ -55,6 +55,12 @@ function createRoleSession(
     const ownsTransaction = transactionMode === 'owned'
     const savepoint = role === 'aifans_platform' ? 'platform_session' : 'actor_session'
     try {
+      const callerState = ownsTransaction
+        ? undefined
+        : (await client.query<{role: string; claims: string | null}>(
+            "SELECT current_user AS role, current_setting('request.jwt.claims', true) AS claims",
+          )).rows[0]
+      if (!ownsTransaction && !callerState) throw new Error('Unable to read nested role session state')
       await client.query(ownsTransaction ? 'BEGIN' : `SAVEPOINT ${savepoint}`)
       try {
         await client.query(`SET LOCAL ROLE ${role}`)
@@ -63,8 +69,8 @@ function createRoleSession(
         if (ownsTransaction) {
           await client.query('COMMIT')
         } else {
-          await client.query('SET LOCAL ROLE NONE')
-          await client.query("SELECT set_config('request.jwt.claims', '', true)")
+          await client.query("SELECT set_config('role', $1, true)", [callerState!.role])
+          await client.query("SELECT set_config('request.jwt.claims', $1, true)", [callerState!.claims ?? ''])
           await client.query(`RELEASE SAVEPOINT ${savepoint}`)
         }
         return result
