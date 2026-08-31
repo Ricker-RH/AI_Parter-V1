@@ -2,6 +2,9 @@ import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {ChatPanel, type ChatLabels} from './ChatPanel.js'
 
+const analyticsCapture = vi.fn()
+vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture: analyticsCapture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()})}))
+
 const ipProfileId = '11111111-1111-4111-8111-111111111111'
 const conversationId = '22222222-2222-4222-8222-222222222222'
 const secondConversationId = '44444444-4444-4444-8444-444444444444'
@@ -11,7 +14,10 @@ const labels: ChatLabels = {
 
 const response = {answer: 'Hello back', conversationId, messageId: '33333333-3333-4333-8333-333333333333', createdAt: '2026-09-01T01:00:00.000Z'}
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  analyticsCapture.mockClear()
+})
 
 function selectTarget() {
   fireEvent.change(screen.getByLabelText('AI/IP public ID'), {target: {value: ipProfileId}})
@@ -29,6 +35,17 @@ describe('ChatPanel', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Send'}))
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid AI/IP public ID before sending.')
     expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('captures chat-open intent after target validation without copying the message body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(response, {status: 201})))
+    render(<ChatPanel labels={labels} locale="en" />)
+    selectTarget()
+    fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'This private message must not be tracked'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+    await waitFor(() => expect(analyticsCapture).toHaveBeenCalledTimes(1))
+    expect(analyticsCapture).toHaveBeenCalledWith({name: 'chat_opened', properties: {event_version: 1, ip_profile_id: ipProfileId, locale: 'en'}})
+    expect(JSON.stringify(analyticsCapture.mock.calls)).not.toContain('This private message must not be tracked')
   })
 
   it('renders a real answer and reuses its conversation ID for continuation', async () => {

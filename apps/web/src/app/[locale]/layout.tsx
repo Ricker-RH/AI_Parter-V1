@@ -4,6 +4,7 @@ import '../globals.css'
 import {AppShell} from '../../components/AppShell'
 import {ThemeProvider} from '../../components/ThemeProvider'
 import {getMessages, isLocale, locales} from '../../i18n/config'
+import {AnalyticsProvider} from '../../lib/analytics/provider'
 
 export function generateStaticParams() {
   return locales.map((locale) => ({locale}))
@@ -20,5 +21,5 @@ export default async function LocaleLayout({children, params}: Readonly<{childre
   const {locale: candidate} = await params
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
-  return <html lang={candidate} suppressHydrationWarning><body><ThemeProvider><AppShell labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></body></html>
+  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><ThemeProvider><AppShell labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
 }

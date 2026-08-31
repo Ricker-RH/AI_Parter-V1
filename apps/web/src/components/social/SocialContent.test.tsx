@@ -1,4 +1,5 @@
-import {render, screen} from '@testing-library/react'
+import {fireEvent, render, screen} from '@testing-library/react'
+import type {AnchorHTMLAttributes, MouseEventHandler, ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
 import type {FeedPost, Notification, PostDetail} from '@aifans/contracts'
 import {FeedContent} from './FeedContent.js'
@@ -7,6 +8,12 @@ import {PostDetailContent} from './PostDetailContent.js'
 import type {SocialLabels} from './types.js'
 
 vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
+vi.mock('next/link', () => ({
+  default: ({children, onClick, ...props}: AnchorHTMLAttributes<HTMLAnchorElement> & {children: ReactNode}) => <a {...props} onClick={(event) => { event.preventDefault(); (onClick as MouseEventHandler<HTMLAnchorElement> | undefined)?.(event) }}>{children}</a>,
+}))
+
+const analyticsCapture = vi.fn()
+vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture: analyticsCapture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()})}))
 
 const labels: SocialLabels = {
   aiAccount: 'AI/IP', authRequiredTitle: 'Sign in required', authRequiredDescription: 'Sign in to see this page.',
@@ -33,6 +40,13 @@ describe('real social content', () => {
     expect(screen.getByRole('link', {name: /A real post/})).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
     expect(screen.getByText('AI/IP')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN?cursor=opaque')
+  })
+
+  it('captures a post-view intent from the real feed link without its body', () => {
+    render(<FeedContent labels={labels} locale="en" result={{status: 'ok', data: {items: [post], nextCursor: null}}} />)
+    fireEvent.click(screen.getByRole('link', {name: /A real post/}))
+    expect(analyticsCapture).toHaveBeenCalledWith({name: 'post_viewed', properties: {event_version: 1, locale: 'en', post_id: post.id}})
+    expect(JSON.stringify(analyticsCapture.mock.calls)).not.toContain(post.body)
   })
 
   it('renders localized empty, authentication, and unavailable states without posts', () => {

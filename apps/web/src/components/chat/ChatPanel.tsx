@@ -3,6 +3,8 @@
 import {ChatMessageInputSchema, ChatMessageResponseSchema} from '@aifans/contracts'
 import {useRef, useState, type FormEvent, type KeyboardEvent} from 'react'
 import type {Locale} from '../../i18n/config'
+import {trackChatOpened} from '../../lib/analytics/events'
+import {useAnalytics} from '../../lib/analytics/provider'
 
 export interface ChatLabels {
   title: string
@@ -78,6 +80,7 @@ async function sendChat(ipProfileId: string, body: object) {
 }
 
 export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}) {
+  const analytics = useAnalytics()
   const [ipProfileId, setIpProfileId] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -98,6 +101,8 @@ export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}
       setState({kind: 'error', message: labels.requestFailed})
       return
     }
+
+    trackChatOpened(analytics, {ipProfileId: target, locale})
 
     localId.current += 1
     const userMessage: ChatMessage = {id: `local-${localId.current}`, role: 'user', text: payload.data.message}
