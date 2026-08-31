@@ -26,6 +26,7 @@ export interface ShellLabels {
   settings: string
   recommendations: string
   recommendationsEmpty: string
+  more: string
 }
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>

@@ -5,7 +5,7 @@ import {AppShell} from './AppShell.js'
 const labels = {
   primary: 'Primary', home: 'Home', search: 'Search', notifications: 'Notifications',
   messages: 'Messages', bookmarks: 'Bookmarks', profile: 'Profile', settings: 'Settings',
-  recommendations: 'Recommendations', recommendationsEmpty: 'No recommendations yet',
+  recommendations: 'Recommendations', recommendationsEmpty: 'No recommendations yet', more: 'More',
 }
 
 describe('AppShell', () => {

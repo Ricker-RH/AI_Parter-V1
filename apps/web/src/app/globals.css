@@ -30,7 +30,7 @@ body {
   margin: 0;
   background: var(--shell-canvas);
   color: var(--shell-text);
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
   font-size: 16px;
   line-height: 1.5;
 }
@@ -51,9 +51,10 @@ button { color: inherit; }
 
 .desktop-nav { border-right: 1px solid var(--shell-border); padding: 24px 20px; }
 .nav-sticky, .rail-sticky { position: sticky; top: 0; }
-.brand { display: inline-flex; width: 128px; margin: 2px 0 28px 10px; }
-.brand svg { width: 100%; height: auto; filter: grayscale(1) contrast(1000%); }
-[data-theme='dark'] .brand svg { filter: grayscale(1) contrast(1000%) invert(1); }
+.brand { color: var(--shell-text); display: inline-flex; width: 128px; margin: 2px 0 28px 10px; }
+.brand svg { width: 100%; height: auto; }
+.brand svg path:first-of-type { fill: currentColor; }
+.brand svg path:nth-of-type(2) { fill: var(--shell-surface); }
 .nav-title { color: var(--shell-muted); font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; margin: 0 0 10px 10px; }
 .nav-list { display: grid; gap: 3px; }
 .nav-link, .mobile-link {
@@ -98,6 +99,10 @@ button { color: inherit; }
   .mobile-nav { background: color-mix(in srgb, var(--shell-surface) 94%, transparent); border-top: 1px solid var(--shell-border); bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); left: 0; padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)); position: fixed; right: 0; z-index: 10; }
   .mobile-link { flex-direction: column; font-size: 10px; gap: 2px; justify-content: center; min-height: 52px; padding: 2px; }
   .mobile-link .nav-icon { height: 20px; width: 20px; }
+  .mobile-more-toggle { background: transparent; border: 0; cursor: pointer; }
+  .mobile-more-menu { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 10px; bottom: 76px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 2px; left: 12px; padding: 6px; position: fixed; right: 12px; }
+  .mobile-more-item { align-items: center; border-radius: 7px; display: flex; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 15px; font-weight: 600; gap: 12px; min-height: 44px; padding: 0 12px; }
+  .mobile-more-item:hover, .mobile-more-item[aria-current='page'] { background: var(--shell-hover); }
   .page-header { padding: 22px 20px 0; }
   .empty, .settings { padding-left: 20px; padding-right: 20px; }
 }
