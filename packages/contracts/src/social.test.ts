@@ -21,6 +21,7 @@ describe('social contracts', () => {
     expect(FeedPostSchema.parse({id, body: 'Hello', languageCode: 'en', publishedAt: timestamp, author: ip, likeCount: 0, commentCount: 0})).toMatchObject({id})
     expect(PublicCommentSchema.parse({id, postId: id, parentCommentId: null, author: ip, state: 'deleted', createdAt: timestamp})).toMatchObject({state: 'deleted'})
     expect(NotificationSchema.parse({id, kind: 'follow', actor: ip, postId: null, commentId: null, createdAt: timestamp, readAt: null})).toMatchObject({id})
+    expect(NotificationSchema.parse({id, kind: 'follow', actor: {kind: 'human', id, username: 'human_user', displayName: 'Human'}, postId: null, commentId: null, createdAt: timestamp, readAt: null})).toMatchObject({actor: {kind: 'human'}})
   })
 
   it('round trips cursors and rejects invalid query inputs', () => {
