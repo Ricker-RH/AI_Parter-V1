@@ -13,6 +13,7 @@
 - Humans cannot publish top-level posts or change their account kind to `ip`.
 - Browser code never receives a database connection string or calls product tables directly.
 - User-scoped queries run as a non-owner role with transaction-local verified claims and remain subject to RLS.
+- The API is the sole holder of user-scoped database credentials; browsers and arbitrary-SQL clients can never set trusted actor claims.
 - Platform-only mutations use a separate privileged path and will be audited when the audit subsystem is introduced.
 - Development, test, staging, and production contain no seeded mock product data.
 - Tests may create ephemeral fixtures only in an isolated test database and must roll them back or delete them.
@@ -255,7 +256,11 @@ await expect(readCurrentAccount(owner, firstSubject)).resolves.toMatchObject({id
 await expect(readCurrentAccount(owner, null)).resolves.toBeNull()
 ```
 
-Also assert that uppercase/invalid usernames, blank display names, human rows without `auth_subject`, IP rows with `auth_subject`, and a second `global` settings row are rejected by database constraints.
+Also assert that uppercase/invalid usernames, blank display names, human rows without `auth_subject`, IP rows with `auth_subject`, a negative quota, and a second `global` settings row are rejected by database constraints. Assert that quota `0` is accepted to match `AppSettingsSchema` and support administratively disabling new creator capacity.
+
+Add exact tests proving malformed claims (`''`, invalid JSON, JSON null, arrays, numbers, booleans, `{}`, blank `sub`) return no current account rather than throwing. The current-account JSON keys must be exactly `id`, `account_kind`, `username`, `display_name`, `preferred_locale`, and `creator_mode_enabled`; it must not expose `auth_subject`, bio, timestamps, or an R2 object key.
+
+Run owner-level trigger tests that attempt to change `id`, `auth_subject`, `account_kind`, and `created_at` and expect rejection, then prove an allowed owner update advances `updated_at`. Run constraint cases as owner so a privilege denial cannot masquerade as constraint enforcement.
 
 - [ ] **Step 2: Start Docker, run migrations/tests, and verify RED**
 
@@ -279,13 +284,13 @@ The migration must create:
 - enum `public.app_locale` with `en`, `zh-CN`;
 - schema `app` with no public create privilege;
 - `public.profiles` with UUID primary key, nullable unique `auth_subject`, immutable `account_kind`, username constrained by `^[a-z0-9_]{3,30}$` to match `AccountSchema`, display name constrained to 1–80 non-whitespace characters, bio limited to 500 characters, avatar object key limited to 512 characters, locale, creator-mode flag, and timestamps;
-- `public.platform_settings` restricted to the literal key `global`, default approval flag `false`, and positive default IP quota `3`;
+- `public.platform_settings` restricted to the literal key `global`, default approval flag `false`, and non-negative default IP quota `3` bounded to the existing contract range `0..100`;
 - exactly one required `global` configuration row;
-- `app.current_auth_subject()` reading only transaction-local `request.jwt.claims.sub` and returning null for missing/invalid claims;
-- a zero-argument `public.current_account()` returning the caller profile as JSONB;
+- `app.current_auth_subject()` defensively reading only transaction-local `request.jwt.claims.sub`; missing, empty, malformed, non-object, absent, non-string, or blank subjects return null without throwing;
+- a zero-argument, hardened security-definer `public.current_account()` returning only the six safe snake-case fields specified in Step 1 as JSONB, never `auth_subject` or unrestricted `to_jsonb(profiles)` output;
 - a hardened trigger that manages `updated_at` while rejecting owner attempts to change immutable fields.
 
-Use explicit revokes/grants. `aifans_anon` receives only profile `SELECT`. `aifans_authenticated` receives profile `SELECT`, settings `SELECT`, and `UPDATE` only on `username`, `display_name`, `bio`, `avatar_object_key`, `preferred_locale`, and `creator_mode_enabled`. Neither role receives profile insert/delete, settings mutation, or schema-create rights.
+Use explicit revokes/grants. `aifans_anon` and `aifans_authenticated` receive profile `SELECT` only on `id`, `account_kind`, `username`, `display_name`, `bio`, `avatar_object_key`, `preferred_locale`, `creator_mode_enabled`, `created_at`, and `updated_at`; neither can select `auth_subject`. `aifans_authenticated` additionally receives settings `SELECT`, `UPDATE` only on `username`, `display_name`, `bio`, `avatar_object_key`, `preferred_locale`, and `creator_mode_enabled`, and execute permission on `current_account()`. Neither role receives profile insert/delete, settings mutation, or schema-create rights.
 
 Grant both NOLOGIN roles to the migration's `CURRENT_USER` so the server-side owner connection can enter a restricted role with `SET LOCAL ROLE`. Enable RLS on both tables; do not force RLS because the table owner is the explicitly privileged platform path. Policies must be exactly:
 
@@ -293,11 +298,11 @@ Grant both NOLOGIN roles to the migration's `CURRENT_USER` so the server-side ow
 - `profiles_owner_update` for authenticated update using and checking `auth_subject = app.current_auth_subject()`;
 - `settings_authenticated_read` for authenticated select.
 
-All security-definer functions use `SET search_path = ''`, fully qualified objects, and revoked public execution. The platform owner keeps the rights needed for provisioning and operations.
+All security-definer functions use `SET search_path = ''`, fully qualified objects, and revoked public execution before narrow grants. `current_account()` derives identity only from the defensive claim function and explicitly projects safe fields. The platform owner keeps the rights needed for provisioning and operations.
 
 - [ ] **Step 4: Define a matching typed Drizzle schema**
 
-`src/schema.ts` defines the exact database column names/types and exports the four symbols named in this task's Interfaces. It must repeat the SQL username, display-name, auth-subject/account-kind, settings-key, and positive-quota constraints with Drizzle `check(...)` declarations, plus the unique auth-subject and username constraints. SQL remains authoritative for grants, functions, triggers, and policies.
+`src/schema.ts` defines the exact database column names/types and exports the four symbols named in this task's Interfaces. It must repeat the SQL username, display-name, auth-subject/account-kind, settings-key, and quota `0..100` constraints with Drizzle `check(...)` declarations, plus the unique auth-subject and username constraints. SQL remains authoritative for grants, functions, triggers, and policies.
 
 - [ ] **Step 5: Reset and verify GREEN**
 
@@ -325,9 +330,10 @@ git commit -m "feat: add Neon profile authorization foundation"
 - Create: `packages/db/src/profiles.ts`
 - Create: `packages/db/tests/profiles.test.ts`
 - Modify: `packages/db/src/index.ts`
+- Modify: `.env.example`
 
 **Interfaces:**
-- Consumes: verified external auth subject, optional email/name, `DATABASE_URL` for user-scoped queries, and `DATABASE_ADMIN_URL` for platform provisioning.
+- Consumes: verified external auth subject, optional email/name, `DATABASE_USER_URL` for non-owner user-scoped queries, and `DATABASE_ADMIN_URL` for platform provisioning.
 - Produces: `withActor(actor, callback)`, `ensureHumanProfile(input)`, `getCurrentAccount(actor)`, `Actor`, and `CurrentAccount`.
 
 - [ ] **Step 1: Write failing real-database repository tests**
@@ -352,14 +358,14 @@ expect(await getCurrentAccount({subject: first.authSubject})).toMatchObject({id:
 expect(await getCurrentAccount(null)).toBeNull()
 ```
 
-Add a no-email case that safely falls back to `AIFANS User`. Add a test proving a user-scoped callback cannot update `account_kind` or another user's profile.
+Add a no-email case that safely falls back to `AIFANS User`. Add tests proving a user-scoped callback rejects blank subjects, cannot update `account_kind` or another user's profile, and leaves no role/claim state behind when the same injected test connection is reused.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
 Run:
 
 ```bash
-DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test -- profiles.test.ts
+DATABASE_USER_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test -- profiles.test.ts
 ```
 
 Expected: FAIL because the repository functions do not exist.
@@ -368,7 +374,9 @@ Expected: FAIL because the repository functions do not exist.
 
 `Actor` is `{subject: string}`. `withActor` rejects blank subjects, opens a transaction, executes `SET LOCAL ROLE aifans_authenticated`, sets a JSON claim containing only the verified `sub`, executes the callback, and commits/rolls back. It never accepts arbitrary claim objects or role names from callers.
 
-Production construction uses `@neondatabase/serverless` Pool with `DATABASE_URL`; tests may inject a `pg`-compatible pool. Do not export raw pools or privileged clients from the package root.
+Production construction uses `@neondatabase/serverless` Pool with `DATABASE_USER_URL`, whose login role is a member of `aifans_authenticated`, has no owner or `BYPASSRLS` privilege, and is held only by the API. Tests may inject a `pg`-compatible pool and use the local owner only to enter the restricted role. Do not export raw pools or privileged clients from the package root.
+
+Add the name `DATABASE_USER_URL` to `.env.example`. Keep `DATABASE_ADMIN_URL` separate; no runtime fallback from the user URL to the admin/owner URL is allowed.
 
 - [ ] **Step 4: Implement idempotent profile provisioning and lookup**
 
@@ -381,7 +389,7 @@ Normalize returned rows into the existing `AccountSchema` shape. `getCurrentAcco
 Run:
 
 ```bash
-DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test
+DATABASE_USER_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test
 PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db typecheck
 PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db build
 PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm license:check
@@ -392,7 +400,7 @@ Expected: tests, typecheck, build, and license scan all exit 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/db
+git add .env.example packages/db
 git commit -m "feat: add authenticated profile repository"
 ```
 

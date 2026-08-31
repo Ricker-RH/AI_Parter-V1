@@ -41,10 +41,10 @@ The Web and Admin applications use Neon Auth through an `AuthProvider` adapter. 
 
 The API has two explicit database execution paths:
 
-1. **User-scoped path:** uses a non-owner PostgreSQL role, sets verified actor claims for the current transaction, and remains subject to RLS.
+1. **User-scoped path:** uses a dedicated non-owner PostgreSQL login held only by the API, sets verified actor claims for the current transaction, and remains subject to RLS. Browsers and arbitrary-SQL clients never receive this credential and therefore cannot forge the claims GUC.
 2. **Platform path:** used only by approved admin operations, webhooks, and AI workers through a separate privileged credential. Every privileged mutation records an audit event.
 
-The privileged credential is server-only and cannot enter Web bundles, logs, browser responses, or preview artifacts.
+The privileged credential is server-only and cannot enter Web bundles, logs, browser responses, or preview artifacts. The Neon owner credential is reserved for reviewed migrations and platform provisioning and is never used as the fallback for user-scoped requests.
 
 ## 4. Identity and authorization
 
