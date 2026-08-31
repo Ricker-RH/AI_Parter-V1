@@ -1,7 +1,7 @@
 # AIFANS History and Product Analytics Design
 
 **Date:** 2026-09-01
-**Status:** Pending written-spec review
+**Status:** Approved
 **Scope:** Business history, auditability, server-side conversion events, and Web product analytics.
 
 ## 1. Decision
