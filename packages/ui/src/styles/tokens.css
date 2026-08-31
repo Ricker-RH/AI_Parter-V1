@@ -12,6 +12,16 @@
   --aifans-radius-sm: 0.5rem;
   --aifans-radius-md: 0.75rem;
   --aifans-radius-lg: 1rem;
+  --aifans-space-1: 0.25rem;
+  --aifans-space-2: 0.5rem;
+  --aifans-space-3: 0.75rem;
+  --aifans-space-4: 1rem;
+  --aifans-space-5: 1.5rem;
+  --aifans-space-6: 2rem;
+  --aifans-space-8: 3rem;
+  --aifans-elevation-1: 0 1px 2px rgb(16 24 40 / 0.08);
+  --aifans-elevation-2: 0 4px 8px rgb(16 24 40 / 0.1);
+  --aifans-elevation-3: 0 12px 24px rgb(16 24 40 / 0.14);
   --aifans-content-width: 40rem;
   --aifans-nav-width: 16rem;
   --aifans-main-width: 40rem;
@@ -28,4 +38,7 @@
   --aifans-brand-violet: #a78bfa;
   --aifans-danger: #ff6b61;
   --aifans-focus: #9bb0ff;
+  --aifans-elevation-1: 0 1px 2px rgb(0 0 0 / 0.3);
+  --aifans-elevation-2: 0 4px 8px rgb(0 0 0 / 0.35);
+  --aifans-elevation-3: 0 12px 24px rgb(0 0 0 / 0.45);
 }
