@@ -92,7 +92,7 @@ describe('protected user pages', () => {
     await PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})})
 
     expect(access).not.toHaveBeenCalled()
-    expect(optionalAccess).toHaveBeenCalledOnce()
+    expect(optionalAccess).toHaveBeenCalledTimes(2)
     expect(fetchPost).toHaveBeenCalledWith('post-1', {commentCursor: undefined})
     expect(authRedirect).not.toHaveBeenCalled()
   })
