@@ -4,7 +4,7 @@ import * as route from './route.js'
 
 const id = '11111111-1111-4111-8111-111111111111'
 
-afterEach(() => { vi.unstubAllGlobals(); delete process.env.AIFANS_API_URL })
+afterEach(() => { vi.unstubAllGlobals(); delete process.env.AIFANS_API_URL; delete process.env.CREATOR_MODE_ENABLED })
 
 function request(path: string, method: string, body?: object) {
   return new Request(`https://web.example/api/creator/${path}`, {
@@ -55,6 +55,20 @@ describe('same-origin creator proxy', () => {
     const duplicate=new Request('https://web.example/api/creator/drafts',{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:'{"username":"a","username":"b"}'})
     expect((await route.POST(duplicate,{params:Promise.resolve({path:['drafts']})})).status).toBe(422)
     const large=request('drafts','POST',{}); large.headers.set('content-length','70000'); expect((await route.POST(large,{params:Promise.resolve({path:['drafts']})})).status).toBe(413)
+    expect(upstream).not.toHaveBeenCalled()
+  })
+
+  it('rejects nested duplicate JSON keys at every object depth',async()=>{
+    process.env.AIFANS_API_URL='https://api.internal';const upstream=vi.fn();vi.stubGlobal('fetch',upstream)
+    const duplicate=new Request('https://web.example/api/creator/drafts',{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:'{"persona":{"tone":"warm","tone":"cold"}}'})
+    expect((await route.POST(duplicate,{params:Promise.resolve({path:['drafts']})})).status).toBe(422)
+    expect(upstream).not.toHaveBeenCalled()
+  })
+
+  it('returns not found for creator and admin creator routes when creator mode is disabled',async()=>{
+    process.env.CREATOR_MODE_ENABLED='false';process.env.AIFANS_API_URL='https://api.internal';const upstream=vi.fn();vi.stubGlobal('fetch',upstream)
+    expect((await route.GET(request('drafts','GET'),{params:Promise.resolve({path:['drafts']})})).status).toBe(404)
+    expect((await route.GET(request('admin/submissions','GET'),{params:Promise.resolve({path:['admin','submissions']})})).status).toBe(404)
     expect(upstream).not.toHaveBeenCalled()
   })
 

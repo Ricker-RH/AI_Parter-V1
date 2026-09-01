@@ -45,4 +45,13 @@ describe('CreatorCenter',()=>{
     expect(await screen.findByRole('alert')).toHaveTextContent('The draft could not be saved.')
     await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(3))
   })
+
+  it('shows a localized sign-in action and hides creation controls after a 401',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({code:'AUTH_REQUIRED'},{status:401})))
+    render(<CreatorCenter labels={en.creator} locale="en" />)
+    expect(await screen.findByText(en.creator.authRequired)).toBeVisible()
+    expect(screen.getByRole('link',{name:'Sign in'})).toHaveAttribute('href','/en/auth/sign-in')
+    expect(screen.queryByRole('button',{name:en.creator.newIdentity})).toBeNull()
+    expect(screen.queryByRole('form',{name:en.creator.draftForm})).toBeNull()
+  })
 })

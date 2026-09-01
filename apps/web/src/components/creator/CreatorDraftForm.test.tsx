@@ -21,9 +21,15 @@ describe('CreatorDraftForm',()=>{
   })
 
   it('requires authorization acceptance and five unique reference roles before submit',async()=>{
-    render(<CreatorDraftForm draft={draft} labels={en.creator} locale="en" />)
+    const duplicateReferences=Array.from({length:5},(_,index)=>({id:`00000000-0000-4000-8000-00000000000${index}`,role:'avatar' as const}))
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({url:'https://read.example'})))
+    const {unmount}=render(<CreatorDraftForm draft={{...draft,references:duplicateReferences}} labels={en.creator} locale="en" />)
+    fireEvent.click(screen.getByLabelText('I accept the operating authorization'))
     expect(screen.getByRole('button',{name:'Submit for review'})).toBeDisabled()
-    expect(screen.getByLabelText('I accept the operating authorization')).not.toBeChecked()
+    const validReferences=duplicateReferences.map((reference,index)=>({...reference,role:(['avatar','cover','portrait','full_body','supporting_1'] as const)[index]!}))
+    unmount();render(<CreatorDraftForm draft={{...draft,references:validReferences}} labels={en.creator} locale="en" />)
+    fireEvent.click(screen.getByLabelText('I accept the operating authorization'))
+    expect(screen.getByRole('button',{name:'Submit for review'})).toBeEnabled()
   })
 
   it('is read-only after submission',()=>{

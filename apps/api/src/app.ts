@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import {bodyLimit} from 'hono/body-limit'
 import { apiError } from "./errors.js";
 import {
   requestIdMiddleware,
@@ -23,6 +24,11 @@ import type { AnalyticsDeliveryWorker } from "./ports/analytics.js";
 import type { AssetPort, ImageGenerationPort } from "./ports/assets.js";
 import type { CreatorPort, PlatformCreatorPort } from "./ports/creator.js";
 import type { PostMediaAssetPort } from "./ports/post-media-assets.js";
+import type {RateLimitPort} from './ports/rate-limit.js'
+import type {ReadinessPort} from './ports/readiness.js'
+import type {StructuredLogger} from './ports/logger.js'
+import {rateLimitMiddleware} from './middleware/rate-limit.js'
+import {structuredLoggerMiddleware} from './middleware/structured-logger.js'
 
 export type AppDependencies = {
   auth?: AuthVerifier;
@@ -39,13 +45,22 @@ export type AppDependencies = {
   assets?: AssetPort;
   imageGeneration?: ImageGenerationPort;
   postMediaAssets?: PostMediaAssetPort;
+  rateLimit?:RateLimitPort;
+  rateLimitHmacSecret?:string;
+  requireRateLimit?:boolean;
+  readiness?:ReadinessPort;
+  logger?:StructuredLogger;
 };
 
 export const createApp = (dependencies: AppDependencies = {}) => {
   const app = new Hono<{ Variables: ApiVariables }>();
 
   app.use("*", requestIdMiddleware);
-  registerHealthRoutes(app);
+  if(dependencies.logger) app.use('*',structuredLoggerMiddleware(dependencies.logger))
+  const globalBodyLimit=bodyLimit({maxSize:65_536,onError:(c)=>apiError(c,413,'PAYLOAD_TOO_LARGE','Request body is too large')})
+  app.use('*',(c,next)=>/^\/v1\/admin\/(?:ips|posts|post-media)(?:\/|$)/.test(new URL(c.req.url).pathname)?next():globalBodyLimit(c,next))
+  app.use('*',rateLimitMiddleware({...(dependencies.rateLimit?{port:dependencies.rateLimit}:{}),...(dependencies.rateLimitHmacSecret?{hmacSecret:dependencies.rateLimitHmacSecret}:{}),required:dependencies.requireRateLimit===true}))
+  registerHealthRoutes(app,dependencies.readiness);
   registerAdminRoutes(app, dependencies);
   registerMeRoutes(app, dependencies);
   registerSocialRoutes(app, dependencies);

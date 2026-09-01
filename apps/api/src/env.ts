@@ -17,6 +17,8 @@ const environmentSchema = z.object({
   DATABASE_USER_URL: postgresUrl,
   DATABASE_PLATFORM_URL: postgresUrl,
   DATABASE_PROVISIONING_URL: postgresUrl,
+  DATABASE_RATE_LIMIT_URL:postgresUrl.optional(),
+  RATE_LIMIT_HMAC_SECRET:z.string().min(32).optional(),
   NEON_AUTH_JWKS_URL: httpsUrl,
   NEON_AUTH_ISSUER: httpsUrl,
   NEON_AUTH_AUDIENCE: z.string().trim().min(1).max(200),
@@ -56,6 +58,7 @@ export type ApiEnvironment = {
     cronSecret: string;
   };
   postMedia?: R2PostMediaConfig;
+  rateLimit?:{databaseUrl:string;hmacSecret:string};
 };
 export type R2PostMediaConfig = {
   accountId: string;
@@ -78,6 +81,7 @@ export function readApiEnv(
   ) {
     throw new Error("Invalid API environment");
   }
+  if((value.DATABASE_RATE_LIMIT_URL===undefined)!==(value.RATE_LIMIT_HMAC_SECRET===undefined)) throw new Error('Invalid API environment')
   const analyticsValues = [
     value.DATABASE_ANALYTICS_URL,
     value.POSTHOG_API_KEY,
@@ -125,6 +129,7 @@ export function readApiEnv(
       issuer: value.NEON_AUTH_ISSUER,
       audience: value.NEON_AUTH_AUDIENCE,
     },
+    ...(value.DATABASE_RATE_LIMIT_URL&&value.RATE_LIMIT_HMAC_SECRET?{rateLimit:{databaseUrl:value.DATABASE_RATE_LIMIT_URL,hmacSecret:value.RATE_LIMIT_HMAC_SECRET}}:{}),
     ...(value.DIFY_API_URL && value.DIFY_API_KEY
       ? { dify: { baseUrl: value.DIFY_API_URL, apiKey: value.DIFY_API_KEY } }
       : {}),

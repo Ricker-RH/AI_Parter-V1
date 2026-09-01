@@ -1,4 +1,5 @@
 import {fetchAifansApi} from '../../../../lib/server-api'
+import {isCreatorModeEnabled} from '../../../../lib/creator-mode'
 
 type RouteContext={params:Promise<{path:string[]}>}
 type Method='GET'|'POST'|'PATCH'|'DELETE'
@@ -37,10 +38,11 @@ function safeQuery(request:Request,method:Method):string|null {
   return `?${values.toString()}`
 }
 function sameOrigin(request:Request){const origin=request.headers.get('origin');if(!origin)return false;try{const value=new URL(origin);const runtime=new URL(request.url);const host=request.headers.get('host')??runtime.host;const protocol=(request.headers.get('x-forwarded-proto')??runtime.protocol.replace(':','')).toLowerCase();return value.host===host&&value.protocol===`${protocol}:`}catch{return false}}
-function duplicateTopLevelKey(text:string){const keys=new Set<string>();let depth=0;for(let i=0;i<text.length;i++){if(text[i]==='"'){const start=i;for(i++;i<text.length;i++){if(text[i]==='\\')i++;else if(text[i]==='"')break}if(depth===1){let after=i+1;while(/\s/.test(text[after]??''))after++;if(text[after]===':'){try{const key=JSON.parse(text.slice(start,i+1));if(typeof key==='string'){if(keys.has(key))return true;keys.add(key)}}catch{return true}}}}else if(text[i]==='{')depth++;else if(text[i]==='}')depth--}return false}
+function hasDuplicateJsonKey(text:string){const containers:Array<Set<string>|null>=[];for(let i=0;i<text.length;i++){if(text[i]==='"'){const start=i;for(i++;i<text.length;i++){if(text[i]==='\\')i++;else if(text[i]==='"')break}let after=i+1;while(/\s/.test(text[after]??''))after++;const keys=containers.at(-1);if(text[after]===':'&&keys){try{const key=JSON.parse(text.slice(start,i+1));if(typeof key==='string'){if(keys.has(key))return true;keys.add(key)}}catch{return true}}}else if(text[i]==='{')containers.push(new Set());else if(text[i]==='[')containers.push(null);else if(text[i]==='}'||text[i]===']')containers.pop()}return false}
 async function boundedBody(request:Request){if(!request.body)return'';const reader=request.body.getReader();const chunks:Uint8Array[]=[];let size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;if(value){size+=value.byteLength;if(size>BODY_LIMIT){await reader.cancel();throw new Error('BODY_TOO_LARGE')}chunks.push(value)}}}finally{reader.releaseLock()}const joined=new Uint8Array(size);let offset=0;for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength}return new TextDecoder().decode(joined)}
 
 async function proxy(request:Request,context:RouteContext,method:Method){
+  if(!isCreatorModeEnabled())return new Response(null,{status:404})
   if(method!=='GET'&&!sameOrigin(request))return Response.json({code:'CSRF_REJECTED'},{status:403})
   const path=creatorPath((await context.params).path,method);const query=safeQuery(request,method)
   if(!path||query===null)return new Response(null,{status:404})
@@ -49,7 +51,7 @@ async function proxy(request:Request,context:RouteContext,method:Method){
     if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))return Response.json({code:'INVALID_REQUEST'},{status:422})
     const declared=request.headers.get('content-length');if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>BODY_LIMIT))return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})
     try{body=await boundedBody(request)}catch{return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})}
-    if(!body.trim()||duplicateTopLevelKey(body))return Response.json({code:'INVALID_REQUEST'},{status:422})
+    if(!body.trim()||hasDuplicateJsonKey(body))return Response.json({code:'INVALID_REQUEST'},{status:422})
   }
   try{
     const upstream=await fetchAifansApi(`/v1/${path}${query}`,{requestInit:{method,headers:request.headers,...(body===undefined?{}:{body})}})
