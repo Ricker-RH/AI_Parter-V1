@@ -5,6 +5,7 @@ import {useRouter} from 'next/navigation'
 import {useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import type {SocialLabels} from './types'
+import {authHref} from '../../lib/auth/return-to'
 
 type Labels=Pick<SocialLabels,'commentPlaceholder'|'commentSubmit'|'commentSending'|'commentSuccess'|'interactionError'|'signInToComment'>
 
@@ -13,7 +14,7 @@ export function CommentComposer({postId,parentCommentId,authenticated,locale,lab
   const [body,setBody]=useState('')
   const [pending,setPending]=useState(false)
   const [status,setStatus]=useState<'idle'|'success'|'error'>('idle')
-  if (!authenticated) return <p className="comment-signin"><Link href={`/${locale}/auth/sign-in`}>{labels.signInToComment}</Link></p>
+  if (!authenticated) return <p className="comment-signin"><Link href={authHref(locale, `/${locale}/posts/${postId}`)}>{labels.signInToComment}</Link></p>
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     const value=body.trim()
@@ -21,6 +22,7 @@ export function CommentComposer({postId,parentCommentId,authenticated,locale,lab
     setPending(true);setStatus('idle')
     try {
       const response=await fetch(`/api/social/posts/${postId}/comments`,{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({body:value,...(parentCommentId?{parentCommentId}:{})})})
+      if (response.status===401) { router.replace(authHref(locale, `${window.location.pathname}${window.location.search}`)); return }
       if (!response.ok) throw new Error('comment failed')
       setBody('');setStatus('success');router.refresh()
     } catch { setStatus('error') } finally { setPending(false) }

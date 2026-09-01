@@ -3,6 +3,8 @@
 import {useState} from 'react'
 import {useRouter} from 'next/navigation'
 import type {SocialLabels} from './types'
+import type {Locale} from '../../i18n/config'
+import {authHref} from '../../lib/auth/return-to'
 
 type ActionLabels = Pick<SocialLabels, 'bookmark' | 'follow' | 'followingAction' | 'interactionError' | 'like' | 'removeBookmark' | 'unlike'>
 type Action = 'like' | 'bookmark' | 'follow'
@@ -14,7 +16,7 @@ function validMutationResponse(value: unknown, method: 'PUT' | 'DELETE'): boolea
   return entries.length === 1 && entries[0]?.[0] === expected && typeof entries[0][1] === 'boolean'
 }
 
-export function PostActions({postId, authorId, liked, bookmarked, followsAuthor, labels}: {postId: string; authorId: string; liked: boolean; bookmarked: boolean; followsAuthor: boolean; labels: ActionLabels}) {
+export function PostActions({postId, authorId, liked, bookmarked, followsAuthor, labels, locale}: {postId: string; authorId: string; liked: boolean; bookmarked: boolean; followsAuthor: boolean; labels: ActionLabels; locale: Locale}) {
   const router = useRouter()
   const [state, setState] = useState({like: liked, bookmark: bookmarked, follow: followsAuthor})
   const [pending, setPending] = useState<Action | null>(null)
@@ -29,6 +31,10 @@ export function PostActions({postId, authorId, liked, bookmarked, followsAuthor,
     try {
       const response = await fetch(`/api/social${path}`, {credentials: 'include', method})
       const body: unknown = await response.json()
+      if (response.status === 401) {
+        router.replace(authHref(locale, `${window.location.pathname}${window.location.search}`))
+        return
+      }
       if (!response.ok || !validMutationResponse(body, method)) throw new Error('mutation failed')
       setState((current) => ({...current, [action]: !active}))
       router.refresh()

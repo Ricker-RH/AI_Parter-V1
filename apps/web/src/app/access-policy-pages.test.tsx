@@ -1,7 +1,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {access, redirect, authRedirect, currentAccount, fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile, fetchAifansApi} = vi.hoisted(() => ({
+const {access, optionalAccess, redirect, authRedirect, currentAccount, fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile, fetchAifansApi} = vi.hoisted(() => ({
   access: vi.fn(),
+  optionalAccess: vi.fn(),
   redirect: vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`) }),
   authRedirect: vi.fn(({locale, returnTo}: {locale: string; returnTo: string}) => { throw new Error(`REDIRECT:/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`) }),
   currentAccount: vi.fn(async () => ({status: 'anonymous'})),
@@ -13,7 +14,7 @@ const {access, redirect, authRedirect, currentAccount, fetchBookmarks, fetchNoti
 }))
 
 vi.mock('next/navigation', () => ({notFound: vi.fn(() => { throw new Error('NOT_FOUND') }), redirect}))
-vi.mock('../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn: authRedirect}))
+vi.mock('../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess, requireAuthenticatedPage: access, redirectToUserSignIn: authRedirect}))
 vi.mock('../lib/request-cookie.js', () => ({requestCookie: vi.fn(async () => undefined)}))
 vi.mock('../lib/current-account.js', () => ({fetchCurrentAccountResult: currentAccount}))
 vi.mock('../lib/social-api.js', () => ({fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile}))
@@ -34,6 +35,8 @@ describe('protected user pages', () => {
   beforeEach(() => {
     process.env.CREATOR_MODE_ENABLED = 'true'
     access.mockReset().mockResolvedValue({status: 'unavailable'})
+    optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'})
+    authRedirect.mockReset()
     currentAccount.mockReset().mockResolvedValue({status: 'anonymous'})
     for (const fn of [fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile]) fn.mockReset().mockResolvedValue({status: 'unavailable'})
     fetchAifansApi.mockReset().mockResolvedValue(new Response(null, {status: 503}))
@@ -42,11 +45,9 @@ describe('protected user pages', () => {
   afterEach(() => { delete process.env.CREATOR_MODE_ENABLED })
 
   it.each([
-    ['search', () => SearchPage({params: Promise.resolve({locale: 'en'})}), '/en/search'],
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/bookmarks'],
     ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/notifications'],
     ['my profile', () => ProfilePage({params: Promise.resolve({locale: 'en'})}), '/en/profile'],
-    ['post detail', () => PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})}), '/en/posts/post-1'],
     ['AI/IP profile detail', () => PublicProfilePage({params: Promise.resolve({locale: 'en', profileId: 'profile-1'}), searchParams: Promise.resolve({})}), '/en/profiles/profile-1'],
     ['creator root', () => CreatorPage({params: Promise.resolve({locale: 'en'})}), '/en/creator'],
     ['creator draft', () => CreatorDraftPage({params: Promise.resolve({locale: 'en', draftId})}), `/en/creator/${draftId}`],
@@ -64,7 +65,6 @@ describe('protected user pages', () => {
   it.each([
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchBookmarks, '/en/bookmarks'],
     ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchNotifications, '/en/notifications'],
-    ['post detail', () => PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})}), fetchPost, '/en/posts/post-1'],
     ['AI/IP profile detail', () => PublicProfilePage({params: Promise.resolve({locale: 'en', profileId: 'profile-1'}), searchParams: Promise.resolve({})}), fetchPublicProfile, '/en/profiles/profile-1'],
   ])('redirects to sign in when %s receives a 401 result', async (_name, page, fetchPage, returnTo) => {
     access.mockResolvedValue({status: 'authenticated', token: 'token'})
@@ -76,7 +76,6 @@ describe('protected user pages', () => {
   it.each([
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchBookmarks],
     ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchNotifications],
-    ['post detail', () => PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})}), fetchPost],
     ['AI/IP profile detail', () => PublicProfilePage({params: Promise.resolve({locale: 'en', profileId: 'profile-1'}), searchParams: Promise.resolve({})}), fetchPublicProfile],
   ])('reuses the guarded token for the %s data request', async (_name, page, fetchPage) => {
     access.mockResolvedValue({status: 'authenticated', token: 'token'})
@@ -86,12 +85,16 @@ describe('protected user pages', () => {
     expect(fetchPage.mock.calls[0]?.at(-1)).toEqual(expect.objectContaining({token: 'token'}))
   })
 
-  it('redirects post detail when its current-account request returns 401', async () => {
-    access.mockResolvedValue({status: 'authenticated', token: 'token'})
-    currentAccount.mockResolvedValue({status: 'auth-required'})
+  it('lets anonymous visitors read search and a published post without redirecting', async () => {
+    fetchPost.mockResolvedValue({status: 'ok', data: {comments: {items: [], nextCursor: null}}} as never)
 
-    await expect(PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})}))
-      .rejects.toThrow(`REDIRECT:/en/auth/sign-in?next=${encodeURIComponent('/en/posts/post-1')}`)
+    await SearchPage({params: Promise.resolve({locale: 'en'})})
+    await PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})})
+
+    expect(access).not.toHaveBeenCalled()
+    expect(optionalAccess).toHaveBeenCalledOnce()
+    expect(fetchPost).toHaveBeenCalledWith('post-1', {commentCursor: undefined})
+    expect(authRedirect).not.toHaveBeenCalled()
   })
 
   it('redirects the creator draft page when its API request returns 401', async () => {

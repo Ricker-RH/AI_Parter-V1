@@ -3,11 +3,30 @@ import type {Locale} from '../../i18n/config'
 import {authHref} from './return-to'
 
 export type AuthenticatedPageAccess = {status: 'authenticated'; token: string}
+export type AnonymousPageAccess = {status: 'anonymous'}
 export type UnavailablePageAccess = {status: 'unavailable'}
 export type PageAccess = AuthenticatedPageAccess | UnavailablePageAccess
+export type OptionalPageAccess = AuthenticatedPageAccess | AnonymousPageAccess | UnavailablePageAccess
 
 export function redirectToUserSignIn({locale, returnTo, redirect = nextRedirect}: {locale: Locale; returnTo: string; redirect?: (path: string) => void}): void {
   redirect(authHref(locale, returnTo))
+}
+
+export async function getOptionalPageAccess({
+  getToken,
+}: {
+  getToken?: () => Promise<string | null>
+} = {}): Promise<OptionalPageAccess> {
+  try {
+    const provider = getToken ?? (async () => {
+      const {getApiBearerToken} = await import('./server')
+      return getApiBearerToken()
+    })
+    const token = await provider()
+    return typeof token === 'string' && token.length > 0 ? {status: 'authenticated', token} : {status: 'anonymous'}
+  } catch {
+    return {status: 'unavailable'}
+  }
 }
 
 export async function requireAuthenticatedPage({

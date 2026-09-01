@@ -231,7 +231,7 @@ describe("real social content", () => {
     );
     expect(
       screen.getByRole("link", { name: "Sign in to like, save, or follow" }),
-    ).toHaveAttribute("href", "/en/auth/sign-in");
+    ).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
   });
 
   it("renders localized empty, authentication, and unavailable states without posts", () => {
@@ -437,6 +437,16 @@ describe("real social content", () => {
           body: JSON.stringify({ body: "Hello IP" }),
         }),
       ),
+    );
+  });
+
+  it("keeps guest comment sign-in on the localized post detail route", () => {
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+    render(<PostDetailContent authenticated={false} labels={labels} locale="zh-CN" result={{status: "ok", data: detail}} />);
+
+    expect(screen.getByRole("link", {name: "Sign in to comment"})).toHaveAttribute(
+      "href",
+      `/zh-CN/auth/sign-in?next=${encodeURIComponent(`/zh-CN/posts/${post.id}`)}`,
     );
   });
 

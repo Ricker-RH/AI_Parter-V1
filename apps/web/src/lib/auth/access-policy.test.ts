@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from 'vitest'
-import {requireAuthenticatedPage} from './access-policy.js'
+import {getOptionalPageAccess, requireAuthenticatedPage} from './access-policy.js'
 
 describe('requireAuthenticatedPage', () => {
   it('returns a non-empty token without redirecting', async () => {
@@ -18,5 +18,18 @@ describe('requireAuthenticatedPage', () => {
     const redirect = vi.fn()
     await expect(requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages', getToken: async () => { throw new Error('provider failed') }, redirect})).resolves.toEqual({status: 'unavailable'})
     expect(redirect).not.toHaveBeenCalled()
+  })
+})
+
+describe('getOptionalPageAccess', () => {
+  it('keeps anonymous public-page visitors on the requested page', async () => {
+    const redirect = vi.fn()
+
+    await expect(getOptionalPageAccess({getToken: async () => null})).resolves.toEqual({status: 'anonymous'})
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
+  it('reuses a non-empty token for optional personalized reads', async () => {
+    await expect(getOptionalPageAccess({getToken: async () => 'token'})).resolves.toEqual({status: 'authenticated', token: 'token'})
   })
 })

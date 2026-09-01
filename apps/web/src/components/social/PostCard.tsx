@@ -7,6 +7,7 @@ import { trackPostViewed } from "../../lib/analytics/events";
 import { useAnalytics } from "../../lib/analytics/provider";
 import type { SocialLabels } from "./types";
 import { PostActions } from "./PostActions";
+import { authHref } from "../../lib/auth/return-to";
 
 function publishedTime(value: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale, {
@@ -41,11 +42,13 @@ export function PostCard({
   locale,
   labels,
   linked = true,
+  returnTo,
 }: {
   post: FeedPost;
   locale: Locale;
   labels: SocialLabels;
   linked?: boolean;
+  returnTo?: string;
 }) {
   const analytics = useAnalytics();
   const isThreeImageGrid = post.media?.length === 3;
@@ -146,10 +149,11 @@ export function PostCard({
           followsAuthor={post.viewerFollowsAuthor}
           labels={labels}
           liked={post.viewerHasLiked}
+          locale={locale}
           postId={post.id}
         />
       ) : (
-        <Link className="interaction-login" href={`/${locale}/auth/sign-in`}>
+        <Link className="interaction-login" href={authHref(locale, returnTo ?? `/${locale}`)}>
           {labels.signInToInteract}
         </Link>
       )}
