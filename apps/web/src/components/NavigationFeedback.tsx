@@ -106,8 +106,7 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
       const main = document.querySelector<HTMLElement>('main:not(.route-skeleton)')
       if (!main || document.querySelector('.route-skeleton')) return null
       if (!routeReady || routeReady.route !== pending.targetRoute || routeReady.generation <= pending.readyGeneration) return null
-      main.setAttribute('data-route-ready', pending.targetRoute)
-      return main.getAttribute('data-route-ready') === pending.targetRoute ? main : null
+      return main
     }
     const reportReady = () => {
       if (currentRoute !== pending.targetRoute || !targetReadyMain()) return

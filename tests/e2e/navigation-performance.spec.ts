@@ -41,7 +41,7 @@ async function activateNavigation({expectSkeleton=false, page, href, link}: {exp
   const feedbackMs = feedbackAt - started
   const skeletonMs = skeletonAppeared ? (await skeletonAppeared) - started : null
   if (expectSkeleton) await skeleton.waitFor({state: 'hidden'})
-  await page.waitForFunction((route) => document.querySelector('main')?.getAttribute('data-route-ready') === route, targetRoute)
+  await page.waitForFunction((route) => document.querySelector('[data-route-ready]')?.getAttribute('data-route-ready') === route, targetRoute)
   const navigationMs = await page.evaluate((value) => performance.now() - value, started)
 
   return {feedbackMs, navigationMs, skeletonMs}

@@ -1,13 +1,14 @@
 'use client'
 
 import type {ReactNode} from 'react'
-import {useLayoutEffect, useRef} from 'react'
+import {useLayoutEffect, useRef, useState} from 'react'
 import {usePathname, useSearchParams} from 'next/navigation'
 
 export function RouteReadySignal({content}: {content: ReactNode}) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const generation = useRef(0)
+  const [ready, setReady] = useState<{generation: number; route: string} | null>(null)
   const route = `${pathname}${searchParams.size ? `?${searchParams}` : ''}`
   const latestRoute = useRef(route)
   latestRoute.current = route
@@ -20,7 +21,7 @@ export function RouteReadySignal({content}: {content: ReactNode}) {
       if (!main) return
       reported = true
       const nextGeneration = ++generation.current
-      main.setAttribute('data-route-ready', latestRoute.current)
+      setReady({generation: nextGeneration, route: latestRoute.current})
       document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: nextGeneration, route: latestRoute.current}}))
     }
     reportReady()
@@ -29,5 +30,5 @@ export function RouteReadySignal({content}: {content: ReactNode}) {
     return () => observer.disconnect()
   }, [content, route])
 
-  return null
+  return ready ? <span aria-hidden="true" data-route-generation={ready.generation} data-route-ready={ready.route} hidden /> : null
 }

@@ -20,6 +20,8 @@ describe('RouteReadySignal', () => {
     await act(async () => { await Promise.resolve() })
 
     expect(ready).toHaveBeenCalledWith(expect.objectContaining({detail: {generation: 2, route: '/en/messages'}}))
+    expect(document.querySelector('main')).not.toHaveAttribute('data-route-ready')
+    expect(document.querySelector('[data-route-ready="/en/messages"]')).toHaveAttribute('data-route-generation', '2')
     document.removeEventListener('aifans:route-ready', ready)
     pathname = '/en'
   })

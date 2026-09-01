@@ -85,7 +85,7 @@ describe('NavigationFeedback', () => {
     act(() => { frames.forEach((frame) => frame(performance.now())) })
 
     expect(screen.queryByRole('status')).toBeNull()
-    expect(screen.getByRole('main')).toHaveAttribute('data-route-ready', '/en/messages')
+    expect(screen.getByRole('main')).not.toHaveAttribute('data-route-ready')
     vi.unstubAllGlobals()
   })
 
@@ -126,7 +126,7 @@ describe('NavigationFeedback', () => {
     act(() => { frames.forEach((frame) => frame(performance.now())) })
 
     expect(screen.queryByRole('status')).toBeNull()
-    expect(screen.getByRole('main')).toHaveAttribute('data-route-ready', '/en/messages')
+    expect(screen.getByRole('main')).not.toHaveAttribute('data-route-ready')
     vi.unstubAllGlobals()
     pathname = '/en'
   })
