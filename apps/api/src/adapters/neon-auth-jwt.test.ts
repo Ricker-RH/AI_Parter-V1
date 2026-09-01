@@ -21,7 +21,7 @@ async function fixture() {
     .setIssuedAt()
     .setExpirationTime('2m')
     .sign(privateKey)
-  return {audience, issuer, privateKey, token, verifier}
+  return {audience, issuer, privateKey, publicKey, token, verifier}
 }
 
 describe('Neon Auth JWT verifier', () => {
@@ -44,7 +44,16 @@ describe('Neon Auth JWT verifier', () => {
   })
 
   it('rejects a valid signature with the wrong issuer or audience', async () => {
-    const {audience, privateKey, verifier} = await fixture()
+    const events: Array<{status: string; code?: string; claim?: string; actual?: string}> = []
+    const {audience, issuer, privateKey, publicKey} = await fixture()
+    const jwk = await exportJWK(publicKey)
+    const verifier = createNeonJwtAuthVerifier({
+      audience,
+      issuer,
+      jwksUrl: 'https://auth.example/.well-known/jwks.json',
+      keySet: createLocalJWKSet({keys: [{...jwk, alg: 'ES256', kid: 'test-key', use: 'sig'}]}),
+      onVerification: (event) => events.push(event),
+    })
     const token = await new SignJWT({})
       .setProtectedHeader({alg: 'ES256', kid: 'test-key'})
       .setIssuer('https://attacker.example')
@@ -53,6 +62,7 @@ describe('Neon Auth JWT verifier', () => {
       .setExpirationTime('2m')
       .sign(privateKey)
     await expect(verifier.verify(new Request('https://api.example', {headers: {authorization: `Bearer ${token}`}}))).resolves.toEqual({status: 'invalid'})
+    expect(events).toEqual([{status: 'invalid', code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', claim: 'iss', actual: 'https://attacker.example'}])
   })
 
   it('reports only a safe verification classification for operational diagnosis', async () => {

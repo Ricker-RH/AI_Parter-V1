@@ -10,7 +10,7 @@ export type NeonJwtAuthOptions = {
   issuer: string
   audience: string
   keySet?: JWTVerifyGetKey
-  onVerification?: (event: {status: 'missing' | 'invalid' | 'authenticated'; code?: string; claim?: string}) => void
+  onVerification?: (event: {status: 'missing' | 'invalid' | 'authenticated'; code?: string; claim?: string; actual?: string}) => void
 }
 
 function bearerToken(request: Request): string | null | undefined {
@@ -69,7 +69,18 @@ export function createNeonJwtAuthVerifier(options: NeonJwtAuthOptions): AuthVeri
         const claim = error && typeof error === 'object' && 'claim' in error && typeof error.claim === 'string'
           ? error.claim
           : undefined
-        options.onVerification?.({status: 'invalid', code, ...(claim === undefined ? {} : {claim})})
+        const payload = error && typeof error === 'object' && 'payload' in error && error.payload && typeof error.payload === 'object'
+          ? error.payload as Record<string, unknown>
+          : undefined
+        const actualClaim = claim && (claim === 'iss' || claim === 'aud') && typeof payload?.[claim] === 'string'
+          ? payload[claim].slice(0, 500)
+          : undefined
+        options.onVerification?.({
+          status: 'invalid',
+          code,
+          ...(claim === undefined ? {} : {claim}),
+          ...(actualClaim === undefined ? {} : {actual: actualClaim}),
+        })
         return {status: 'invalid'}
       }
     },
