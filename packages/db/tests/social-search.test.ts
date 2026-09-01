@@ -25,6 +25,9 @@ describe('mixed public search pagination', () => {
     expect(migration).toContain('viewer_follows_author boolean')
     expect(migration).toContain('social_post_metrics')
     expect(migration).toContain('social_viewer_flags')
+    expect(migration).toContain('SECURITY DEFINER SET search_path=\'\'')
+    expect(migration).toContain('REVOKE ALL ON FUNCTION public.social_public_search_posts')
+    expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
   })
 
   it('does not query posts when profiles exceed the page limit', () => {
