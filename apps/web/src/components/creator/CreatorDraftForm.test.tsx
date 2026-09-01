@@ -59,4 +59,11 @@ describe('CreatorDraftForm',()=>{
 
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
+
+  it('redirects only once when concurrent reference previews find a stale session',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(null,{status:401})))
+    render(<CreatorDraftForm draft={{...draft,references:[{id:'22222222-2222-4222-8222-222222222222',role:'avatar'},{id:'33333333-3333-4333-8333-333333333333',role:'cover'}]}} labels={en.creator} locale="en" />)
+
+    await waitFor(()=>expect(replace).toHaveBeenCalledTimes(1))
+  })
 })
