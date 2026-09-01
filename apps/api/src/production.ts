@@ -74,6 +74,7 @@ export function createProductionDependencies(
     creator: database.creator,
     platformCreator: database.platformCreator,
     requireRateLimit:true,
+    rateLimitIdentitySecret:env.webApiRateLimitSigningSecret,
     ...(env.rateLimit?{rateLimit:factories.createRateLimit(env.rateLimit.databaseUrl),rateLimitHmacSecret:env.rateLimit.hmacSecret}:{}),
     readiness:{check:async()=>Boolean(env.rateLimit)&&await readiness.check()},
     logger:jsonConsoleLogger,

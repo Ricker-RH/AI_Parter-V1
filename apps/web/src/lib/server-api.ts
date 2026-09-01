@@ -1,4 +1,5 @@
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+import {createRateLimitIdentity} from './rate-limit-identity'
 
 async function defaultToken(): Promise<string | null> {
   const {getApiBearerToken} = await import('./auth/server')
@@ -22,7 +23,7 @@ function safePath(path: string): boolean {
   return (path === '/health' || path.startsWith('/v1/')) && !path.startsWith('//')
 }
 
-function outboundHeaders(input: HeadersInit | undefined, token: string | null): Headers {
+function outboundHeaders(input: HeadersInit | undefined, token: string | null, trustedClientHeaders?: Headers): Headers {
   const incoming = new Headers(input)
   const headers = new Headers()
   for (const name of ['content-type', 'x-request-id']) {
@@ -30,6 +31,8 @@ function outboundHeaders(input: HeadersInit | undefined, token: string | null): 
     if (value) headers.set(name, value)
   }
   if (token) headers.set('authorization', `Bearer ${token}`)
+  const identity = trustedClientHeaders && createRateLimitIdentity(trustedClientHeaders, Date.now(), process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET)
+  if (identity) headers.set('x-aifans-rate-limit-identity', identity)
   return headers
 }
 
@@ -40,7 +43,8 @@ export async function fetchAifansApi(
     getToken = defaultToken,
     requestInit = {},
     timeoutMs = 8000,
-  }: {fetcher?: Fetcher; getToken?: () => Promise<string | null>; requestInit?: RequestInit; timeoutMs?: number} = {},
+    trustedClientHeaders,
+  }: {fetcher?: Fetcher; getToken?: () => Promise<string | null>; requestInit?: RequestInit; timeoutMs?: number; trustedClientHeaders?: Headers} = {},
 ): Promise<Response> {
   if (!safePath(path)) throw new Error('Invalid API path')
   const baseUrl = readApiBaseUrl()
@@ -53,7 +57,7 @@ export async function fetchAifansApi(
   try {
     const timeout=new Promise<never>((_resolve,reject)=>{const rejectOnAbort=()=>reject(controller.signal.reason??new Error('AIFANS API timeout'));if(controller.signal.aborted)rejectOnAbort();else controller.signal.addEventListener('abort',rejectOnAbort,{once:true})})
     const token=await Promise.race([getToken(),timeout])
-    return await fetcher(`${baseUrl}${path}`, {...requestInit,cache:'no-store',headers:Object.fromEntries(outboundHeaders(requestInit.headers,token)),signal:controller.signal})
+    return await fetcher(`${baseUrl}${path}`, {...requestInit,cache:'no-store',headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,trustedClientHeaders)),signal:controller.signal})
   } finally {
     clearTimeout(timer)
     requestInit.signal?.removeEventListener('abort',onAbort)

@@ -19,6 +19,7 @@ const environmentSchema = z.object({
   DATABASE_PROVISIONING_URL: postgresUrl,
   DATABASE_RATE_LIMIT_URL:postgresUrl.optional(),
   RATE_LIMIT_HMAC_SECRET:z.string().min(32).optional(),
+  WEB_API_RATE_LIMIT_SIGNING_SECRET:z.string().min(32),
   NEON_AUTH_JWKS_URL: httpsUrl,
   NEON_AUTH_ISSUER: httpsUrl,
   NEON_AUTH_AUDIENCE: z.string().trim().min(1).max(200),
@@ -59,6 +60,7 @@ export type ApiEnvironment = {
   };
   postMedia?: R2PostMediaConfig;
   rateLimit?:{databaseUrl:string;hmacSecret:string};
+  webApiRateLimitSigningSecret: string;
 };
 export type R2PostMediaConfig = {
   accountId: string;
@@ -129,6 +131,7 @@ export function readApiEnv(
       issuer: value.NEON_AUTH_ISSUER,
       audience: value.NEON_AUTH_AUDIENCE,
     },
+    webApiRateLimitSigningSecret: value.WEB_API_RATE_LIMIT_SIGNING_SECRET,
     ...(value.DATABASE_RATE_LIMIT_URL&&value.RATE_LIMIT_HMAC_SECRET?{rateLimit:{databaseUrl:value.DATABASE_RATE_LIMIT_URL,hmacSecret:value.RATE_LIMIT_HMAC_SECRET}}:{}),
     ...(value.DIFY_API_URL && value.DIFY_API_KEY
       ? { dify: { baseUrl: value.DIFY_API_URL, apiKey: value.DIFY_API_KEY } }

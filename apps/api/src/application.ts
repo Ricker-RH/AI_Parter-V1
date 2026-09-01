@@ -47,6 +47,7 @@ export type AppDependencies = {
   postMediaAssets?: PostMediaAssetPort;
   rateLimit?:RateLimitPort;
   rateLimitHmacSecret?:string;
+  rateLimitIdentitySecret?:string;
   requireRateLimit?:boolean;
   readiness?:ReadinessPort;
   logger?:StructuredLogger;
@@ -69,7 +70,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   if(dependencies.logger) app.use('*',structuredLoggerMiddleware(dependencies.logger))
   const globalBodyLimit=bodyLimit({maxSize:65_536,onError:(c)=>apiError(c,413,'PAYLOAD_TOO_LARGE','Request body is too large')})
   app.use('*',(c,next)=>/^\/v1\/admin\/(?:ips|posts|post-media)(?:\/|$)/.test(new URL(c.req.url).pathname)?next():globalBodyLimit(c,next))
-  app.use('*',rateLimitMiddleware({...(dependencies.rateLimit?{port:dependencies.rateLimit}:{}),...(dependencies.rateLimitHmacSecret?{hmacSecret:dependencies.rateLimitHmacSecret}:{}),required:dependencies.requireRateLimit===true}))
+  app.use('*',rateLimitMiddleware({...(dependencies.rateLimit?{port:dependencies.rateLimit}:{}),...(dependencies.rateLimitHmacSecret?{hmacSecret:dependencies.rateLimitHmacSecret}:{}),...(dependencies.rateLimitIdentitySecret?{identitySecret:dependencies.rateLimitIdentitySecret}:{}),required:dependencies.requireRateLimit===true}))
   registerHealthRoutes(app,dependencies.readiness);
   registerAdminRoutes(app, dependencies);
   registerMeRoutes(app, dependencies);

@@ -10,12 +10,13 @@ const answer = {answer: 'Hello back', conversationId, messageId, createdAt: '202
 afterEach(() => {
   vi.unstubAllGlobals()
   delete process.env.AIFANS_API_URL
+  delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET
 })
 
 function request(body: unknown, suffix = '') {
   return new Request(`https://web.example/api/chat/${ipProfileId}/messages${suffix}`, {
     method: 'POST',
-    headers: {'content-type': 'application/json', cookie: 'session=real', 'x-request-id': 'req-chat'},
+    headers: {origin: 'https://web.example', 'content-type': 'application/json', cookie: 'session=real', 'x-request-id': 'req-chat'},
     body: JSON.stringify(body),
   })
 }
@@ -60,6 +61,32 @@ describe('same-origin chat proxy', () => {
     expect('GET' in route).toBe(false)
     expect('PUT' in route).toBe(false)
     expect('DELETE' in route).toBe(false)
+  })
+
+  it('rejects missing and cross-origin browser requests before upstream access', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    const upstream = vi.fn()
+    vi.stubGlobal('fetch', upstream)
+    const missingOrigin = new Request(`https://web.example/api/chat/${ipProfileId}/messages`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'})})
+    const crossOrigin = new Request(`https://web.example/api/chat/${ipProfileId}/messages`, {method: 'POST', headers: {origin: 'https://evil.example', 'content-type': 'application/json'}, body: JSON.stringify({message: 'hi'})})
+    for (const input of [missingOrigin, crossOrigin]) {
+      const response = await route.POST(input, {params: Promise.resolve({ipProfileId})})
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({code: 'CSRF_REJECTED'})
+    }
+    expect(upstream).not.toHaveBeenCalled()
+  })
+
+  it('rejects declared and streamed chat bodies above 32 KiB before upstream access', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    const upstream = vi.fn()
+    vi.stubGlobal('fetch', upstream)
+    const payload = JSON.stringify({message: 'x'.repeat(32_768)})
+    const url = `https://web.example/api/chat/${ipProfileId}/messages`
+    const declared = new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'content-length': '32769'}, body: '{}'})
+    const streamed = new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json'}, body: payload})
+    for (const input of [declared, streamed]) expect((await route.POST(input, {params: Promise.resolve({ipProfileId})})).status).toBe(413)
+    expect(upstream).not.toHaveBeenCalled()
   })
 
   it('returns a safe 503 without configuration or on network failure', async () => {

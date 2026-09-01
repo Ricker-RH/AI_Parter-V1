@@ -1,8 +1,17 @@
+import {createHmac} from 'node:crypto'
 import {describe, expect, it, vi} from 'vitest'
 import {createApp} from './application.js'
 import type {RateLimitPort} from './ports/rate-limit.js'
 
 describe('API production hardening', () => {
+  const identitySecret = 'i'.repeat(32)
+  const rateLimitSecret = 'r'.repeat(32)
+  const identity = (minute: number, address = '203.0.113.7') => {
+    const clientHash = createHmac('sha256', identitySecret).update(address).digest('hex')
+    const unsigned = `v1.${minute}.${clientHash}`
+    return `${unsigned}.${createHmac('sha256', identitySecret).update(unsigned).digest('hex')}`
+  }
+
   it('fails closed for protected mutations when production rate limiting is unavailable', async () => {
     const response=await createApp({requireRateLimit:true}).request('/v1/chat/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
     expect(response.status).toBe(503)
@@ -12,10 +21,26 @@ describe('API production hardening', () => {
   it('maps fixed endpoint families to fixed policies and returns Retry-After on denial', async () => {
     const consume=vi.fn(async()=>({allowed:false,retryAfterSeconds:17,remaining:0}))
     const rateLimit={consume} satisfies RateLimitPort
-    const response=await createApp({requireRateLimit:true,rateLimit,rateLimitHmacSecret:'s'.repeat(32)}).request('/v1/posts/11111111-1111-4111-8111-111111111111/comments',{method:'POST',headers:{'content-type':'application/json','x-vercel-forwarded-for':'203.0.113.7'},body:'{}'})
+    const response=await createApp({requireRateLimit:true,rateLimit,rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret}).request('/v1/posts/11111111-1111-4111-8111-111111111111/comments',{method:'POST',headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(Math.floor(Date.now()/60_000))},body:'{}'})
     expect(response.status).toBe(429)
     expect(response.headers.get('retry-after')).toBe('17')
     expect(consume).toHaveBeenCalledWith(expect.objectContaining({policy:'comment_create',identifierHash:expect.stringMatching(/^[a-f0-9]{64}$/)}))
+    expect(JSON.stringify(consume.mock.calls)).not.toContain('203.0.113.7')
+  })
+
+  it('accepts only current signed mutation identities and never trusts forwarded client addresses', async () => {
+    const consume = vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))
+    const app = createApp({requireRateLimit:true,rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})
+    const path = '/v1/chat/11111111-1111-4111-8111-111111111111/messages'
+    const now = Math.floor(Date.now() / 60_000)
+    const valid = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now),'x-forwarded-for':'203.0.113.7'},body:'{}'})
+    const missing = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-forwarded-for':'203.0.113.7'},body:'{}'})
+    const expired = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now - 2)},body:'{}'})
+    const tampered = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':`${identity(now).slice(0, -1)}0`},body:'{}'})
+    expect(valid.status).not.toBe(503)
+    expect((await missing.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
+    expect((await expired.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
+    expect((await tampered.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect(JSON.stringify(consume.mock.calls)).not.toContain('203.0.113.7')
   })
 

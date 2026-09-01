@@ -9,6 +9,7 @@ const valid = {
   NEON_AUTH_JWKS_URL: "https://auth.example/.well-known/jwks.json",
   NEON_AUTH_ISSUER: "https://auth.example",
   NEON_AUTH_AUDIENCE: "aifans-api",
+  WEB_API_RATE_LIMIT_SIGNING_SECRET: "w".repeat(32),
 } as const;
 
 describe("API production environment", () => {
@@ -49,6 +50,11 @@ describe("API production environment", () => {
       expect(String(error)).not.toContain(secretUrl);
     }
   });
+
+  it('requires a minimum-length server-only Web-to-API signing secret', () => {
+    expect(() => readApiEnv({...valid, WEB_API_RATE_LIMIT_SIGNING_SECRET: undefined})).toThrow('Invalid API environment')
+    expect(() => readApiEnv({...valid, WEB_API_RATE_LIMIT_SIGNING_SECRET: 'short'})).toThrow('Invalid API environment')
+  })
 
   it("accepts analytics delivery only as a complete server-only configuration", () => {
     expect(

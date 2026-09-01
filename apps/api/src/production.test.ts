@@ -12,6 +12,7 @@ const environment = {
   NEON_AUTH_JWKS_URL: "https://auth.example/.well-known/jwks.json",
   NEON_AUTH_ISSUER: "https://auth.example",
   NEON_AUTH_AUDIENCE: "aifans-api",
+  WEB_API_RATE_LIMIT_SIGNING_SECRET: "w".repeat(32),
 } as const;
 
 describe("production API composition", () => {
@@ -29,6 +30,10 @@ describe("production API composition", () => {
     expect(createProductionDependencies(environment).chat).toBeUndefined();
     expect(createProductionDependencies(environment).assets).toBeUndefined();
   });
+
+  it('passes the configured Web-to-API identity secret to production middleware', () => {
+    expect(createProductionDependencies(environment)).toMatchObject({rateLimitIdentitySecret: environment.WEB_API_RATE_LIMIT_SIGNING_SECRET})
+  })
 
   it("fails startup before serving when required configuration is absent", () => {
     expect(() => createProductionApp({})).toThrow("Invalid API environment");
