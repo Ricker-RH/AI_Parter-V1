@@ -16,6 +16,7 @@ describe('AppNav', () => {
     expect(screen.getByRole('link', {name: 'For You'})).toHaveAttribute('href', '/en')
     expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?feed=following')
     expect(screen.queryByRole('button', {name: /post|compose|publish/i})).toBeNull()
+    expect(screen.queryByRole('link', {name: 'Settings'})).toBeNull()
   })
 
   it('marks only Following active for a following query and exposes rail labels', () => {
@@ -40,5 +41,10 @@ describe('AppNav', () => {
   it('keeps expanded labels available for the compact rail at desktop widths', () => {
     const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
     expect(css).toContain('.desktop-nav-compact[data-expanded] .nav-link-label')
+  })
+
+  it('keeps query-aware navigation within an explicit Suspense boundary', () => {
+    const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/AppNav.tsx' : 'apps/web/src/components/AppNav.tsx', 'utf8')
+    expect(source).toContain('<Suspense')
   })
 })

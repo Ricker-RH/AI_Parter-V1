@@ -10,8 +10,8 @@ vi.mock('next/link', () => ({default: ({children, onClick, ...props}: {children:
 describe('FeedTabs', () => {
   it('uses combined mobile labels and removes stale cursors without replacing the other feed filter', () => {
     render(<FeedTabs currentQuery="visualType=anime&campaign=launch&cursor=stale" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="anime" />)
-    expect(screen.getByRole('tab', {name: 'For you · Anime'})).toBeVisible()
-    fireEvent.click(screen.getByRole('tab', {name: 'Following · All'}))
+    expect(screen.getByRole('button', {name: 'For you · Anime'})).toHaveAttribute('aria-haspopup', 'menu')
+    fireEvent.click(screen.getByRole('button', {name: 'Following · All'}))
     expect(screen.getByRole('menuitem', {name: 'Anime'})).toHaveAttribute('href', '/en?campaign=launch&feed=following&visualType=anime')
     fireEvent.click(screen.getByRole('menuitem', {name: 'Anime'}))
     expect(capture).toHaveBeenCalledWith({name: 'feed_tab_selected', properties: {event_version: 1, feed: 'following', locale: 'en'}})
@@ -21,6 +21,6 @@ describe('FeedTabs', () => {
   it('preserves the inactive selection over a page rerender without encoding it in the URL', () => {
     const {rerender} = render(<FeedTabs currentQuery="visualType=anime" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="anime" />)
     rerender(<FeedTabs currentQuery="feed=following" following labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="all" />)
-    expect(screen.getByRole('tab', {name: 'For you · Anime'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'For you · Anime'})).toBeVisible()
   })
 })

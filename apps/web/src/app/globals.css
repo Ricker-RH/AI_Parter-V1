@@ -1678,39 +1678,6 @@ button {
     height: 20px;
     width: 20px;
   }
-  .mobile-more-toggle {
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-  }
-  .mobile-more-menu {
-    background: var(--shell-surface);
-    border: 1px solid var(--shell-border);
-    border-radius: 10px;
-    bottom: 76px;
-    box-shadow: var(--aifans-elevation-2);
-    display: grid;
-    gap: 2px;
-    left: 12px;
-    padding: 6px;
-    position: fixed;
-    right: 12px;
-  }
-  .mobile-more-item {
-    align-items: center;
-    border-radius: 7px;
-    display: flex;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    font-size: 15px;
-    font-weight: 600;
-    gap: 12px;
-    min-height: 44px;
-    padding: 0 12px;
-  }
-  .mobile-more-item:hover,
-  .mobile-more-item[aria-current="page"] {
-    background: var(--shell-hover);
-  }
   .page-header {
     padding: 22px 20px 0;
   }
@@ -1920,6 +1887,8 @@ button {
   .rail-controls { display: block; margin-bottom: 8px; }
   .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
   .rail-expand::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
+  .rail-expand::after { content: none; }
+  .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
   .desktop-nav[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }
   .post-card { padding-inline: 24px; }
 }
@@ -1939,6 +1908,8 @@ button {
   .desktop-nav-compact .rail-controls { display: block; margin-bottom: 8px; }
   .desktop-nav-compact .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
   .desktop-nav-compact .rail-expand::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
+  .desktop-nav-compact .rail-expand::after { content: none; }
+  .desktop-nav-compact .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
   .desktop-nav-compact[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }
   .desktop-nav-compact .global-more { display: block; }
   .desktop-nav-compact .global-more .more-trigger { font-size: 0; justify-content: center; min-height: 44px; padding: 0; width: 44px; }

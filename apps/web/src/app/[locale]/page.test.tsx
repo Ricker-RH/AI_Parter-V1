@@ -26,7 +26,7 @@ describe('home feed query navigation', () => {
       }),
     }))
 
-    expect(screen.getByRole('tab', {name: 'Following · All'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'Following · All'})).toBeVisible()
     expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute(
       'href',
       '/en?campaign=launch&campaign=return&visualType=realistic',
