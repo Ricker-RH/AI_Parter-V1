@@ -57,6 +57,6 @@ function NavLink({item, locale, label, mobile = false}: {item: (typeof navItems)
 }
 
 export function visibleNavItems(creatorModeEnabled=true){return creatorModeEnabled?navItems:navItems.filter((item)=>item.key!=='creatorNav')}
-export function AppNav({locale, labels,creatorModeEnabled=true}: {locale: Locale; labels: ShellLabels;creatorModeEnabled?:boolean}) {
-  return <nav aria-label={labels.primary} className="desktop-nav"><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo /></Link><p className="nav-title">{labels.primary}</p><div className="nav-list">{visibleNavItems(creatorModeEnabled).map((item) => <NavLink item={item} key={item.key} label={labels[item.key]} locale={locale} />)}</div></div></nav>
+export function AppNav({locale, labels, creatorModeEnabled=true, compact=false}: {locale: Locale; labels: ShellLabels; creatorModeEnabled?: boolean; compact?: boolean}) {
+  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo /></Link><p className="nav-title">{labels.primary}</p><div className="nav-list">{visibleNavItems(creatorModeEnabled).map((item) => <NavLink item={item} key={item.key} label={labels[item.key]} locale={locale} />)}</div></div></nav>
 }

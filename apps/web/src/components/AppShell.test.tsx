@@ -34,4 +34,25 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
     expect(screen.queryByText('Recommendations')).toBeNull()
   })
+
+  it('does not render ordinary navigation or recommendations on auth routes', () => {
+    pathname = '/en/auth/sign-in'
+    render(<AppShell locale="en" labels={labels}><main>Sign in</main></AppShell>)
+    expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
+    expect(screen.queryByText('Recommendations')).toBeNull()
+  })
+
+  it('selects the compact, recommendation-free messages shell', () => {
+    pathname = '/en/messages'
+    render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)
+    expect(document.querySelector('[data-shell="messages"]')).toHaveAttribute('data-nav-variant', 'compact')
+    expect(screen.queryByText('Recommendations')).toBeNull()
+  })
+
+  it('selects the isolated creator shell', () => {
+    pathname = '/en/creator'
+    render(<AppShell locale="en" labels={labels}><main>Creator</main></AppShell>)
+    expect(document.querySelector('[data-shell="creator"]')).toBeInTheDocument()
+    expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
+  })
 })

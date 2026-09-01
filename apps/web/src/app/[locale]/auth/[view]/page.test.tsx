@@ -16,6 +16,15 @@ describe('auth recovery route', () => {
     expect(rejected.props.returnTo).toBeUndefined()
   })
 
+  it('also accepts the separate user return allowlist without broadening admin routes', async () => {
+    const accepted = await AuthPage({
+      params: Promise.resolve({locale: 'en', view: 'sign-in'}),
+      searchParams: Promise.resolve({next: '/en/messages'}),
+    })
+
+    expect(accepted.props).toMatchObject({returnTo: '/en/messages'})
+  })
+
   it('makes the password-request page reachable', async () => {
     const page = await AuthPage({
       params: Promise.resolve({locale: 'en', view: 'forgot-password'}),

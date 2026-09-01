@@ -2,7 +2,7 @@ import {notFound} from 'next/navigation'
 import {AuthPanel, type AuthMode} from '../../../../components/auth/AuthPanel'
 import {isLocale} from '../../../../i18n/config'
 import {readWebAuthEnv} from '../../../../lib/auth/env'
-import {readAdminReturnTo} from '../../../../lib/auth/return-to'
+import {readAdminReturnTo, readUserReturnTo} from '../../../../lib/auth/return-to'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +26,7 @@ export default async function AuthPage({
   const configuration = readWebAuthEnv(process.env)
   const query = await searchParams
   const resetToken = view === 'reset-password' ? readResetToken(query.token) : undefined
-  const returnTo = readAdminReturnTo(locale, query.next)
+  const returnTo = readAdminReturnTo(locale, query.next) ?? readUserReturnTo(locale, query.next)
   return <AuthPanel
     configured={configuration.status === 'configured'}
     locale={locale}
