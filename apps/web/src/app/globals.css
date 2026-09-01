@@ -204,12 +204,12 @@ button {
   border-color: currentColor;
   font-weight: 700;
 }
-.visual-filter {
+.search-category-tabs {
   border-bottom: 1px solid var(--shell-border);
   overflow-x: auto;
   padding: 0 24px;
 }
-.visual-filter .tabs {
+.search-category-tabs .tabs {
   gap: 22px;
   min-width: max-content;
 }
@@ -1951,7 +1951,7 @@ button {
   .home-title { height: 1px; margin: -1px !important; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .mobile-feed-tabs { border-bottom: 1px solid var(--shell-border); gap: 0; overflow: visible; width: 100%; }
   .mobile-feed-tabs > .tab { flex: 1; font-size: 15px; min-height: 48px; padding: 0 8px; text-align: center; width: 50%; }
-  .visual-filter { display: none; }
+  .search-category-tabs { display: none; }
   .activity-tabs { padding-inline: 20px; }
   .post-card { padding: 12px; }
   .post-action { min-height: 44px; min-width: 44px; }

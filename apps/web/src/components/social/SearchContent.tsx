@@ -36,7 +36,7 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
         <button type="submit">{labels.searchSubmit ?? labels.search}</button>
       </div>
     </form>
-    <nav aria-label={labels.searchCategory ?? labels.search} className="visual-filter">
+    <nav aria-label={labels.searchCategory ?? labels.search} className="search-category-tabs">
       <div className="tabs" role="tablist">
         {categories.map((item) => <Link aria-selected={category === item.key} className="tab" href={normalized ? searchHref(locale, normalized, item.key) : `/${locale}/search`} key={item.key} role="tab">{labels[item.label] ?? item.key}</Link>)}
       </div>
