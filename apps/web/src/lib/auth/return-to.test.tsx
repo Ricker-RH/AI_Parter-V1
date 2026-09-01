@@ -32,6 +32,7 @@ describe('user auth return target', () => {
     ['en', '/en?feed=following&visualType=anime'],
     ['zh-CN', '/zh-CN/bookmarks'],
     ['zh-CN', '/zh-CN/posts/123'],
+    ['en', '/en/search?q=luna%20moon&category=posts&cursor=abc_DEF-123'],
   ] as const)('accepts the same-locale protected target %s', (locale, target) => {
     expect(readUserReturnTo(locale, target)).toBe(target)
   })
@@ -46,6 +47,11 @@ describe('user auth return target', () => {
     ['en', '/en/admin'],
     ['en', '/en/not-allowed'],
     ['en', '/en/messages#fragment'],
+    ['en', '/en/search?q=luna&sort=recent'],
+    ['en', '/en/search?q=luna&category=users'],
+    ['en', '/en/search?q='],
+    ['en', '/en/search?q=luna&q=moon'],
+    ['en', '/en/search?q=luna&cursor=bad.cursor'],
   ] as const)('rejects unsafe, malformed, or unsupported user target %#', (locale, target) => {
     expect(readUserReturnTo(locale, target)).toBeUndefined()
   })

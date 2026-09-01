@@ -20,7 +20,7 @@ function searchHref(locale: Locale, q: string, category: SearchCategory, cursor?
   return `/${locale}/search?${params}`
 }
 
-export function SearchContent({locale, labels, query, category, result}: {locale: Locale; labels: SocialLabels; query?: string; category: SearchCategory; result?: SocialApiResult<SearchPage>}) {
+export function SearchContent({locale, labels, query, category, result, canMutate = false}: {locale: Locale; labels: SocialLabels; query?: string; category: SearchCategory; result?: SocialApiResult<SearchPage>; canMutate?: boolean}) {
   const normalized = query?.trim().replace(/\s+/g, ' ') ?? ''
   return <>
     {normalized ? <SearchAnalytics category={category} locale={locale} queryLength={normalized.length} /> : null}
@@ -42,7 +42,7 @@ export function SearchContent({locale, labels, query, category, result}: {locale
       : result.data.items.length === 0 ? <div className="empty"><EmptyState title={labels.searchNoResults ?? labels.searchEmptyTitle ?? labels.homeEmptyTitle} /></div>
       : <section aria-labelledby="search-results-title" className="search-results"><h2 className="section-title" id="search-results-title">{labels.searchResults ?? labels.search}</h2><div className="feed-list">
         {result.data.items.map((item) => item.type === 'post'
-          ? <PostCard canMutate={false} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} returnTo={searchHref(locale, normalized, category)} />
+          ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} returnTo={searchHref(locale, normalized, category)} />
           : <article className="post-card" key={`profile-${item.profile.id}`}><h3>{item.profile.displayName}</h3><p className="author-meta">@{item.profile.username} · {labels[item.profile.visualType] ?? item.profile.visualType}</p>{item.profile.bio ? <p>{item.profile.bio}</p> : null}</article>)}
         {result.data.nextCursor ? <Link className="load-more" href={searchHref(locale, normalized, category, result.data.nextCursor)}>{labels.loadMore}</Link> : <p className="search-end">{labels.searchEnd ?? labels.loadMore}</p>}
       </div></section>}

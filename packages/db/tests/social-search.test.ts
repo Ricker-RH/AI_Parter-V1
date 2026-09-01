@@ -1,4 +1,7 @@
 import {describe, expect, it} from 'vitest'
+import {readFileSync} from 'node:fs'
+import {dirname, resolve} from 'node:path'
+import {fileURLToPath} from 'node:url'
 import type {SearchResult} from '@aifans/contracts'
 import {paginateSearchResults, searchPostFetchLimit} from '../src/social-search.js'
 
@@ -13,6 +16,17 @@ const post = (n: number): SearchResult => ({type: 'post', post: {
 }})
 
 describe('mixed public search pagination', () => {
+  it('search post projection includes public metrics and viewer capability flags', () => {
+    const migration = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../migrations/202609020001_public_search.sql'), 'utf8')
+    expect(migration).toContain('like_count integer')
+    expect(migration).toContain('comment_count integer')
+    expect(migration).toContain('viewer_has_liked boolean')
+    expect(migration).toContain('viewer_has_bookmarked boolean')
+    expect(migration).toContain('viewer_follows_author boolean')
+    expect(migration).toContain('social_post_metrics')
+    expect(migration).toContain('social_viewer_flags')
+  })
+
   it('does not query posts when profiles exceed the page limit', () => {
     expect(searchPostFetchLimit({category: 'all', profileCount: 4, limit: 3})).toBe(0)
     const page = paginateSearchResults({category: 'all', query: 'luna', profiles: [profile(1), profile(2), profile(3), profile(4)], posts: [], limit: 3})

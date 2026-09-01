@@ -58,7 +58,9 @@ RETURNS TABLE(
   post_id uuid,author_profile_id uuid,body text,language_code text,published_at timestamptz,
   id uuid,username text,display_name text,bio text,languages text[],
   visual_type public.creator_visual_type,
-  creator_id uuid,creator_username text,creator_display_name text
+  creator_id uuid,creator_username text,creator_display_name text,
+  like_count integer,comment_count integer,
+  viewer_has_liked boolean,viewer_has_bookmarked boolean,viewer_follows_author boolean
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
   WITH escaped AS (
@@ -66,9 +68,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
   )
   SELECT p.post_id,p.author_profile_id,p.body,p.language_code,p.published_at,
     p.id,p.username,p.display_name,p.bio,p.languages,p.visual_type,
-    p.creator_id,p.creator_username,p.creator_display_name
+    p.creator_id,p.creator_username,p.creator_display_name,
+    metrics.like_count,metrics.comment_count,
+    flags.viewer_has_liked,flags.viewer_has_bookmarked,flags.viewer_follows_author
   FROM public.social_public_posts() p
   CROSS JOIN escaped
+  CROSS JOIN LATERAL public.social_viewer_flags(p.post_id,p.id) flags
+  CROSS JOIN LATERAL public.social_post_metrics(p.post_id,p.id,NULL::text) metrics
   WHERE (p.body ILIKE '%'||escaped.q||'%' ESCAPE chr(92)
     OR p.username ILIKE '%'||escaped.q||'%' ESCAPE chr(92)
     OR p.display_name ILIKE '%'||escaped.q||'%' ESCAPE chr(92))

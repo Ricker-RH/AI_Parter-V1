@@ -22,6 +22,19 @@ function hasOnlyQueryKeys(query: string, keys: readonly string[]): boolean {
   return [...params].every(([key, value]) => keys.includes(key) && value.length > 0)
 }
 
+function hasSafeSearchQuery(query: string): boolean {
+  if (!queryIsWellFormed(query)) return false
+  const params = new URLSearchParams(query)
+  const keys = [...params.keys()]
+  if (keys.some((key) => !['q', 'category', 'cursor'].includes(key))) return false
+  if (params.getAll('q').length !== 1) return false
+  const q = params.get('q') ?? ''
+  if (q.length < 1 || q.length > 80 || q.trim().replace(/\s+/g, ' ') !== q) return false
+  if (params.getAll('category').length > 1 || (params.get('category') !== null && !['all', 'ips', 'posts'].includes(params.get('category')!))) return false
+  if (params.getAll('cursor').length > 1 || (params.get('cursor') !== null && !/^[A-Za-z0-9_-]{1,512}$/.test(params.get('cursor')!))) return false
+  return true
+}
+
 export function readUserReturnTo(locale: Locale, value: string | readonly string[] | undefined): string | undefined {
   if (typeof value !== 'string' || value.length === 0 || value.includes('#') || /[\\\u0000-\u001F\u007F]/.test(value)) return undefined
   const splitAt = value.indexOf('?')
@@ -37,7 +50,9 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
     return params.getAll('feed').length === 1 && params.get('feed') === 'following' ? value : undefined
   }
 
-  const exactPaths = new Set([`${base}/search`, `${base}/messages`, `${base}/profile`, `${base}/creator`])
+  if (pathname === `${base}/search`) return hasSafeSearchQuery(query) ? value : undefined
+
+  const exactPaths = new Set([`${base}/messages`, `${base}/profile`, `${base}/creator`])
   if (exactPaths.has(pathname)) return hasOnlyQueryKeys(query, []) ? value : undefined
 
   const cursorPaths = new Set([`${base}/notifications`, `${base}/bookmarks`])

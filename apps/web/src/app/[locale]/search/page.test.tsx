@@ -1,8 +1,9 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {fetchSearch} = vi.hoisted(() => ({fetchSearch: vi.fn()}))
+const {fetchSearch, optionalAccess} = vi.hoisted(() => ({fetchSearch: vi.fn(), optionalAccess: vi.fn()}))
 vi.mock('../../../lib/social-api.js', () => ({fetchSearch}))
+vi.mock('../../../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess}))
 
 import SearchPage from './page.js'
 
@@ -16,7 +17,7 @@ const profile = {
 }
 
 describe('public search page', () => {
-  beforeEach(() => fetchSearch.mockReset())
+  beforeEach(() => { fetchSearch.mockReset(); optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'}) })
 
   it('renders an anonymous search form without requesting an empty query', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
@@ -43,5 +44,13 @@ describe('public search page', () => {
       searchParams: Promise.resolve({q: 'unknown'}),
     }))
     expect(screen.getByText('No results found')).toBeVisible()
+  })
+
+  it('passes the optional authenticated token so signed-in users keep interaction capabilities', async () => {
+    optionalAccess.mockResolvedValue({status: 'authenticated', token: 'token'})
+    fetchSearch.mockResolvedValue({status: 'ok', data: {items: [], nextCursor: null}})
+    await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna'})})
+    expect(optionalAccess).toHaveBeenCalledOnce()
+    expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({q: 'luna', token: 'token'}))
   })
 })
