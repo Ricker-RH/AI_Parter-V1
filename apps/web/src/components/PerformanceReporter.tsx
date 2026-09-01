@@ -14,14 +14,13 @@ function performanceMetric(name: string): AnalyticsPerformanceMetric | null {
   return name === 'INP' || name === 'LCP' || name === 'CLS' ? name : null
 }
 
-export function PerformanceReporter({locale}: {locale: Locale}) {
+export function PerformanceReporter({locale, release}: {locale: Locale; release: string}) {
   const analytics = useAnalytics()
   const pathname = usePathname()
-  const current = useRef({analytics, locale, pathname})
-  current.current = {analytics, locale, pathname}
+  const initial = useRef({analytics, locale, pathname, release})
   const report = useCallback((metric: WebVital) => {
     try {
-      const state = current.current
+      const state = initial.current
       const route_name = routeNameForPath(state.pathname)
       const name = performanceMetric(metric.name)
       if (!route_name || !name || !Number.isFinite(metric.value) || metric.value < 0 || !metric.id) return
@@ -32,8 +31,8 @@ export function PerformanceReporter({locale}: {locale: Locale}) {
         metric_id: metric.id,
         value: metric.value,
         rating: metric.rating,
-        device_type: deviceType(navigator.userAgent),
-        release: process.env.NEXT_PUBLIC_RELEASE ?? 'unknown',
+        device_type: deviceType(navigator.userAgent, navigator.maxTouchPoints),
+        release: state.release,
       })
     } catch {
       // Browser navigation and rendering must never depend on analytics.

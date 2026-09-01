@@ -8,6 +8,7 @@ import {getMessages, isLocale, locales} from '../../i18n/config'
 import {AnalyticsProvider} from '../../lib/analytics/provider'
 import {readWebAuthEnv} from '../../lib/auth/env'
 import {isCreatorModeEnabled} from '../../lib/creator-mode'
+import {analyticsRelease} from '../../lib/analytics/release'
 
 export function generateStaticParams() {
   return locales.map((locale) => ({locale}))
@@ -25,5 +26,5 @@ export default async function LocaleLayout({children, params}: Readonly<{childre
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
   const authConfigured = readWebAuthEnv(process.env).status === 'configured'
-  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><PerformanceReporter locale={candidate} /><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={isCreatorModeEnabled()} labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
+  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><PerformanceReporter locale={candidate} release={analyticsRelease(process.env)} /><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={isCreatorModeEnabled()} labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
 }

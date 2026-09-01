@@ -8,7 +8,7 @@ export function trackPerformanceMeasured(analytics: AnalyticsClient, properties:
   capturePerformanceMeasured(analytics, properties)
 }
 
-export function deviceType(userAgent: string): AnalyticsDeviceType {
-  if (/iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent)) return 'tablet'
+export function deviceType(userAgent: string, maxTouchPoints = 0): AnalyticsDeviceType {
+  if (/iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent) || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1)) return 'tablet'
   return /Mobi|Android|iPhone|iPod/i.test(userAgent) ? 'mobile' : 'desktop'
 }

@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest'
 import {createAnalyticsEvent} from './contracts.js'
-import {trackPerformanceMeasured} from './performance.js'
+import {deviceType, trackPerformanceMeasured} from './performance.js'
+import {sanitizePostHogEvent} from './provider.js'
 
 const properties = {
   locale: 'en' as const,
@@ -53,5 +54,14 @@ describe('performance analytics contract', () => {
   it('does not let a performance transport failure affect the browser', () => {
     const capture = vi.fn(() => { throw new Error('unavailable') })
     expect(() => trackPerformanceMeasured({capture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()}, properties)).not.toThrow()
+  })
+
+  it('strips enriched sensitive fields and rejects invalid performance payloads before PostHog sends', () => {
+    expect(sanitizePostHogEvent({uuid: 'event', event: 'performance_measured', properties: {event_version: 1, ...properties, email: 'private@example.com', cookie: 'session=private', $current_url: 'https://private.example/?token=private'}})).toMatchObject({properties: {event_version: 1, ...properties}})
+    expect(sanitizePostHogEvent({uuid: 'event', event: 'performance_measured', properties: {event_version: 1, ...properties, metric_id: 'https://private.example/?token=private'}})).toBeNull()
+  })
+
+  it('recognizes iPadOS desktop user agents by touch capability', () => {
+    expect(deviceType('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', 5)).toBe('tablet')
   })
 })

@@ -14,5 +14,5 @@ export function ResultState({result, labels, empty, profile=false}: {result: Exc
     : result.status === 'not-found'
       ? profile?{title:labels.profileNotFoundTitle,description:labels.profileNotFoundDescription}:{title: labels.postNotFoundTitle, description: labels.postNotFoundDescription}
       : {title: labels.unavailableTitle, description: labels.unavailableDescription}
-  return <div className="empty"><EmptyState description={content.description} title={content.title} /></div>
+  return <div className="empty" role={result.status === 'unavailable' ? 'alert' : undefined}><EmptyState description={content.description} title={content.title} /></div>
 }

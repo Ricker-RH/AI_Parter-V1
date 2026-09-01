@@ -119,6 +119,8 @@ and English message-key parity, and a passing license check.
 - Cloudflare account state, R2 objects and access tokens
 - PostHog event data and project-token values
 
+`AIFANS_RELEASE` may contain only a bounded public release identifier, never a secret. When available, Vercel's commit SHA is used instead.
+
 Those are not missing development context. A maintainer with access to the
 managed-service consoles can inspect or rotate them there.
 
