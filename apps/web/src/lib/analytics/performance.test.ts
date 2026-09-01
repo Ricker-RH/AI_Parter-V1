@@ -44,7 +44,7 @@ describe('performance analytics contract', () => {
     expect(() => createAnalyticsEvent('performance_measured', {...properties, ...invalid} as never)).toThrow()
   })
 
-  it.each(['metric_id', 'release', 'value', 'rating', 'device_type'] as const)('requires performance property %s', (property) => {
+  it.each(['locale', 'route_name', 'metric', 'metric_id', 'release', 'value', 'rating', 'device_type'] as const)('requires performance property %s', (property) => {
     const incomplete = {...properties} as Record<string, unknown>
     delete incomplete[property]
     expect(() => createAnalyticsEvent('performance_measured', incomplete as never)).toThrow()
