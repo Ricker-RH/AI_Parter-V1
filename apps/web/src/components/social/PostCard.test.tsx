@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { FeedPost } from "@aifans/contracts";
 import { PostCard } from "./PostCard.js";
@@ -43,22 +44,47 @@ const post: FeedPost = {
   ],
 };
 
-describe("PostCard media geometry", () => {
-  it("wraps every image in a stable frame and uses dimensions, contract ratio, then 4:5 fallback", () => {
-    const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={{ ...post, media: post.media?.slice(0, 3) }} />);
+function staticMediaFrames(count: 1 | 2 | 3 | 4) {
+  const markup = renderToStaticMarkup(
+    <PostCard
+      linked={false}
+      labels={labels}
+      locale="en"
+      post={{ ...post, media: post.media?.slice(0, count) }}
+    />,
+  );
+  const template = document.createElement("template");
+  template.innerHTML = markup;
+  return template.content.querySelectorAll<HTMLElement>(".post-media-frame");
+}
 
-    const frames = container.querySelectorAll(".post-media-frame");
-    expect(frames).toHaveLength(3);
-    expect(frames[0]).toHaveStyle({ aspectRatio: "1.5" });
-    expect(frames[1]).toHaveStyle({ aspectRatio: "1.25" });
-    expect(frames[2]).toHaveStyle({ aspectRatio: "0.8" });
+function requiredFrame(frames: NodeListOf<HTMLElement>, index: number) {
+  const frame = frames.item(index);
+  if (!frame) throw new Error(`Expected media frame at index ${index}`);
+  return frame;
+}
+
+describe("PostCard media geometry", () => {
+  it("uses dimensions, contract ratio, then 4:5 fallback for ordinary frames", () => {
+    const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
+
+    const frames = staticMediaFrames(4);
+    expect(frames).toHaveLength(4);
+    expect(requiredFrame(frames, 0).getAttribute("style")).toBe("aspect-ratio:1.5");
+    expect(requiredFrame(frames, 1).getAttribute("style")).toBe("aspect-ratio:1.25");
+    expect(requiredFrame(frames, 2).getAttribute("style")).toBe("aspect-ratio:0.8");
+    expect(requiredFrame(frames, 3).getAttribute("style")).toBe("aspect-ratio:1");
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("width", "1200");
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("height", "800");
     expect(screen.getByRole("img", { name: "Contract ratio" })).not.toHaveAttribute("width");
     expect(screen.getByRole("img", { name: "Fallback ratio" })).toHaveAttribute("loading", "lazy");
   });
 
-  it.each([1, 2, 3, 4] as const)("keeps the %i-image grid contract", (count) => {
+  it.each([
+    [1, ["1.5"]],
+    [2, ["1.5", "1.25"]],
+    [4, ["1.5", "1.25", "0.8", "1"]],
+  ] as const)("keeps the %i-image grid contract without a featured frame", (count, ratios) => {
     const { container } = render(
       <PostCard
         linked={false}
@@ -70,11 +96,20 @@ describe("PostCard media geometry", () => {
 
     const grid = container.querySelector(".post-media-grid");
     expect(grid).toHaveAttribute("data-count", String(count));
-    expect(grid?.querySelectorAll(".post-media-frame")).toHaveLength(count);
+    const frames = staticMediaFrames(count);
+    expect(frames).toHaveLength(count);
     expect(grid?.querySelectorAll("img")).toHaveLength(count);
+    expect([...frames].map((frame) => frame.getAttribute("style"))).toEqual(
+      ratios.map((ratio) => `aspect-ratio:${ratio}`),
+    );
+    expect(
+      [...frames].every(
+        (frame) => !frame.classList.contains("post-media-frame--featured"),
+      ),
+    ).toBe(true);
   });
 
-  it("marks the first frame as featured only in a three-image grid", () => {
+  it("lets only the three-image featured frame take its height from the spanned grid area", () => {
     const { container } = render(
       <PostCard
         linked={false}
@@ -84,25 +119,18 @@ describe("PostCard media geometry", () => {
       />,
     );
 
-    const frames = container.querySelectorAll(".post-media-frame");
-    expect(frames[0]).toHaveClass("post-media-frame--featured");
-    expect(frames[1]).not.toHaveClass("post-media-frame--featured");
-    expect(frames[2]).not.toHaveClass("post-media-frame--featured");
-  });
-
-  it("lets the three-image featured frame take its height from the spanned grid area", () => {
-    const { container } = render(
-      <PostCard
-        linked={false}
-        labels={labels}
-        locale="en"
-        post={{ ...post, media: post.media?.slice(0, 3) }}
-      />,
+    const frames = staticMediaFrames(3);
+    expect(requiredFrame(frames, 0).classList.contains("post-media-frame--featured")).toBe(
+      true,
     );
-
-    const frames = container.querySelectorAll(".post-media-frame");
-    expect(frames[0]).not.toHaveAttribute("style");
-    expect(frames[1]).toHaveStyle({ aspectRatio: "1.25" });
-    expect(frames[2]).toHaveStyle({ aspectRatio: "0.8" });
+    expect(requiredFrame(frames, 0).getAttribute("style")).toBeNull();
+    expect(requiredFrame(frames, 1).classList.contains("post-media-frame--featured")).toBe(
+      false,
+    );
+    expect(requiredFrame(frames, 2).classList.contains("post-media-frame--featured")).toBe(
+      false,
+    );
+    expect(requiredFrame(frames, 1).getAttribute("style")).toBe("aspect-ratio:1.25");
+    expect(requiredFrame(frames, 2).getAttribute("style")).toBe("aspect-ratio:0.8");
   });
 });
