@@ -1,0 +1,246 @@
+# Review package: c1b2c1e..0ee7024
+
+## Commits
+0ee7024 chore: enforce UI licensing boundary
+
+## Files changed
+ THIRD_PARTY_NOTICES.md                    | 102 ++++++++++++++++++++++++++++++
+ docs/third-party/bluesky-ui-provenance.md |  33 ++++++++++
+ package.json                              |   3 +-
+ scripts/check-forbidden-assets.mjs        |  29 +++++++++
+ tests/forbidden-assets.test.ts            |  17 +++++
+ 5 files changed, 183 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/THIRD_PARTY_NOTICES.md b/THIRD_PARTY_NOTICES.md
+new file mode 100644
+index 0000000..e84b6c5
+--- /dev/null
++++ b/THIRD_PARTY_NOTICES.md
+@@ -0,0 +1,102 @@
++# Third-party notices
++
++This file carries notices for third-party material distributed with AIFANS.
++Add a notice here before distributing a dependency or asset that requires one.
++
++## Bluesky social-app source
++
++The selectively reusable source code reviewed from
++`bluesky-social/social-app` commit `89c8e1cb70536ab4a05aae0d5b4654362a87ba6e`
++is available under the MIT License:
++
++```text
++Copyright 2023–2026 Bluesky Social PBC
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the “Software”), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
++```
++
++This notice applies only to source files explicitly recorded in
++[`docs/third-party/bluesky-ui-provenance.md`](docs/third-party/bluesky-ui-provenance.md).
++It does not grant rights to Bluesky's carved-out assets or trademarks.
++
++## Inter
++
++```text
++Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
++```
++
++Inter is licensed under the SIL Open Font License, Version 1.1. The bundled
++license does not designate a Reserved Font Name.
++
++## Noto Sans
++
++```text
++(c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
++Copyright 2015-2020 Google LLC. All Rights Reserved.
++Copyright 2024 The Noto Project Authors (https://github.com/notofonts/hebrew)
++Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai)
++```
++
++Noto Sans is licensed under the SIL Open Font License, Version 1.1. The CJK
++families reserve the name "Source."
++
++## Lucide
++
++```text
++ISC License
++
++Copyright (c) 2026 Lucide Icons and Contributors
++
++Permission to use, copy, modify, and/or distribute this software for any
++purpose with or without fee is hereby granted, provided that the above
++copyright notice and this permission notice appear in all copies.
++
++THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
++REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
++AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
++INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
++LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
++OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
++PERFORMANCE OF THIS SOFTWARE.
++```
++
++Some Lucide icons are derived from Feather and are available under the MIT
++License:
++
++```text
++Copyright (c) 2013-present Cole Bemis
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
++```
+diff --git a/docs/third-party/bluesky-ui-provenance.md b/docs/third-party/bluesky-ui-provenance.md
+new file mode 100644
+index 0000000..4dccd3b
+--- /dev/null
++++ b/docs/third-party/bluesky-ui-provenance.md
+@@ -0,0 +1,33 @@
++# Bluesky UI provenance
++
++## Upstream review
++
++- **Repository:** [bluesky-social/social-app](https://github.com/bluesky-social/social-app)
++- **Reviewed commit:** `89c8e1cb70536ab4a05aae0d5b4654362a87ba6e`
++- **Source-code license:** MIT, as recorded in that commit's `LICENSE`
++- **Asset boundary:** `ASSETS.md` and `NOTICE.md` at that commit are part of
++  this review and take precedence for asset provenance.
++
++The Bluesky source code is MIT-licensed, but its repository does not grant
++rights to all files in its asset tree. AIFANS must only selectively port
++source files after recording them below and carrying applicable notices in
++[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
++
++## Excluded upstream assets
++
++Do not import the following Bluesky assets into AIFANS:
++
++- `assets/illustrations/`
++- `assets/icons/`, except separately licensed `assets/icons/flags/`
++- `assets/images/`
++- `assets/app-icons/` and `assets/splash/`
++- `assets/favicon*`, `assets/logo*`, and `assets/default-avatar*`
++
++The repository-level checker enforces these path boundaries. It is a guardrail,
++not a substitute for maintaining the provenance record.
++
++## Selectively ported files
++
++| AIFANS file | Upstream file | Upstream commit | Modifications |
++| --- | --- | --- | --- |
++| None yet | — | — | No Bluesky files have been ported. Add one row for each future selective port before merging it. |
+diff --git a/package.json b/package.json
+index fc10c05..ea84801 100644
+--- a/package.json
++++ b/package.json
+@@ -1,20 +1,21 @@
+ {
+   "name": "aifans",
+   "private": true,
+   "type": "module",
+   "packageManager": "pnpm@11.21.0",
+   "engines": {"node": ">=24.19.0"},
+   "scripts": {
+     "build": "turbo run build",
+     "dev": "turbo run dev --parallel",
+-    "lint": "turbo run lint",
++    "lint": "pnpm license:check && turbo run lint",
++    "license:check": "node scripts/check-forbidden-assets.mjs .",
+     "typecheck": "turbo run typecheck",
+     "test": "vitest run",
+     "test:e2e": "playwright test"
+   },
+   "devDependencies": {
+     "@playwright/test": "1.62.1",
+     "@types/node": "^24.0.0",
+     "prettier": "3.9.6",
+     "turbo": "2.10.12",
+     "typescript": "7.0.2",
+diff --git a/scripts/check-forbidden-assets.mjs b/scripts/check-forbidden-assets.mjs
+new file mode 100644
+index 0000000..de4e494
+--- /dev/null
++++ b/scripts/check-forbidden-assets.mjs
+@@ -0,0 +1,29 @@
++import {readdirSync, statSync} from 'node:fs'
++import {join, relative, resolve} from 'node:path'
++
++const root = resolve(process.argv[2] ?? '.')
++const forbidden = [
++  /^assets\/illustrations\//,
++  /^assets\/icons\/(?!flags\/)/,
++  /^assets\/images\//,
++  /^assets\/(app-icons|splash)\//,
++  /^assets\/(favicon|logo|default-avatar)/,
++]
++const hits = []
++
++function walk(dir) {
++  for (const entry of readdirSync(dir)) {
++    const full = join(dir, entry)
++    if (statSync(full).isDirectory()) walk(full)
++    else {
++      const path = relative(root, full).replaceAll('\\', '/')
++      if (forbidden.some(pattern => pattern.test(path))) hits.push(path)
++    }
++  }
++}
++
++walk(root)
++if (hits.length) {
++  process.stderr.write(`Forbidden upstream assets:\n${hits.join('\n')}\n`)
++  process.exit(1)
++}
+diff --git a/tests/forbidden-assets.test.ts b/tests/forbidden-assets.test.ts
+new file mode 100644
+index 0000000..625843f
+--- /dev/null
++++ b/tests/forbidden-assets.test.ts
+@@ -0,0 +1,17 @@
++import {mkdirSync, rmSync, writeFileSync} from 'node:fs'
++import {spawnSync} from 'node:child_process'
++import {afterEach, expect, it} from 'vitest'
++
++const fixture = 'tests/.tmp-forbidden-assets'
++
++afterEach(() => rmSync(fixture, {recursive: true, force: true}))
++
++it('rejects carved-out Bluesky assets', () => {
++  mkdirSync(`${fixture}/assets/icons`, {recursive: true})
++  writeFileSync(`${fixture}/assets/icons/home.svg`, '<svg/>')
++
++  const result = spawnSync('node', ['scripts/check-forbidden-assets.mjs', fixture])
++
++  expect(result.status).toBe(1)
++  expect(result.stderr.toString()).toContain('assets/icons/home.svg')
++})

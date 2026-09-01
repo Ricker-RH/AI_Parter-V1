@@ -1,0 +1,717 @@
+# Review package: d9b80b0..e25b36b
+
+## Commits
+e25b36b fix: enforce social lifecycle boundaries
+fa2fade feat: add secure social core schema
+
+## Files changed
+ .superpowers/sdd/social-schema-task-1-report.md    |  28 ++
+ .../db/migrations/202609010003_social_core.sql     | 284 +++++++++++++++++++++
+ packages/db/src/index.ts                           |  18 ++
+ packages/db/src/schema.ts                          |  79 ++++++
+ packages/db/tests/social-core-rls.test.ts          | 202 +++++++++++++++
+ 5 files changed, 611 insertions(+)
+
+## Diff
+diff --git a/.superpowers/sdd/social-schema-task-1-report.md b/.superpowers/sdd/social-schema-task-1-report.md
+new file mode 100644
+index 0000000..27bb670
+--- /dev/null
++++ b/.superpowers/sdd/social-schema-task-1-report.md
+@@ -0,0 +1,28 @@
++# Task 1 report: AIFANS secure social core schema
++
++- Added the forward-only local PostgreSQL migration `202609010003_social_core.sql`; no hosted Neon database was used.
++- RED: `social-core-rls.test.ts` failed before the migration because `public.ip_profiles` did not exist.
++- GREEN: the focused real-PostgreSQL suite passes, covering human/IP write denial, current-actor interaction ownership, private bookmarks, published-only public visibility, safe column grants, and text-only published posts.
++- Added matching Drizzle enums/tables and package-root exports. SQL remains authoritative for RLS, column privileges, triggers, immutable revisions, soft deletion, and deferred publish validation.
++
++## Verification
++
++- `pnpm --dir packages/db test -- social-core-rls.test.ts` — pass (29 tests across the DB suite).
++- `pnpm --dir packages/db typecheck` — pass.
++- `pnpm --dir packages/db build` — pass.
++- `pnpm test` — pass (45 passed, 23 skipped).
++- `pnpm license:check` and `git diff --check` — pass.
++
++## Review notes
++
++- Public grants intentionally exclude auth subjects, operator attribution, creator/source internals, and object keys.
++- Human roles have no top-level post or IP-comment write path; bookmarks are owner-only.
++- There is no seed or mock product data in the migration.
++
++## Lifecycle hardening follow-up
++
++- Restricted reads now have column-only grants for comments; operator attribution and source are not selectable by anonymous or authenticated users.
++- Draft posts may be edited or published, while published content is immutable except for withdrawal; published/withdrawn posts cannot be hard-deleted. Comments reject hard deletion and retain soft-deleted rows.
++- Published IPs require a current immutable revision belonging to that IP through a deferred composite foreign key and lifecycle trigger.
++- Admin post/comment attribution requires an active human operator; worker attribution is explicitly system-only (`acting_operator_profile_id IS NULL`).
++- Added focused checks for hidden comment fields, lifecycle transitions, revision immutability, soft deletion, notification ownership/read state, and published-post delete denial.
+diff --git a/packages/db/migrations/202609010003_social_core.sql b/packages/db/migrations/202609010003_social_core.sql
+new file mode 100644
+index 0000000..b84c6e5
+--- /dev/null
++++ b/packages/db/migrations/202609010003_social_core.sql
+@@ -0,0 +1,284 @@
++CREATE TYPE public.ip_source AS ENUM ('platform', 'creator');
++CREATE TYPE public.ip_public_state AS ENUM ('draft', 'approved', 'published', 'paused', 'unpublished');
++CREATE TYPE public.post_state AS ENUM ('draft', 'published', 'withdrawn');
++CREATE TYPE public.post_source AS ENUM ('admin', 'worker');
++CREATE TYPE public.media_kind AS ENUM ('image');
++CREATE TYPE public.comment_source AS ENUM ('human', 'admin', 'worker');
++CREATE TYPE public.comment_state AS ENUM ('published', 'deleted');
++CREATE TYPE public.notification_kind AS ENUM ('follow', 'post_like', 'comment', 'reply', 'comment_like');
++
++CREATE TABLE public.ip_profiles (
++  profile_id uuid PRIMARY KEY REFERENCES public.profiles(id),
++  source public.ip_source NOT NULL,
++  creator_profile_id uuid REFERENCES public.profiles(id),
++  public_state public.ip_public_state NOT NULL DEFAULT 'draft',
++  operation_enabled boolean NOT NULL DEFAULT false,
++  identity_label text NOT NULL DEFAULT 'AI' CHECK (char_length(identity_label) BETWEEN 1 AND 80 AND identity_label ~ '[^[:space:]]'),
++  current_identity_revision_id uuid,
++  feed_weight integer NOT NULL DEFAULT 0 CHECK (feed_weight BETWEEN -1000 AND 1000),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  updated_at timestamptz NOT NULL DEFAULT now(),
++  CHECK (creator_profile_id IS NULL OR source = 'creator')
++);
++
++CREATE TABLE public.ip_identity_revisions (
++  id uuid PRIMARY KEY,
++  ip_profile_id uuid NOT NULL REFERENCES public.ip_profiles(profile_id),
++  version integer NOT NULL CHECK (version > 0),
++  display_name text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 80 AND display_name ~ '[^[:space:]]'),
++  bio text CHECK (bio IS NULL OR char_length(bio) <= 500),
++  avatar_object_key text CHECK (avatar_object_key IS NULL OR char_length(avatar_object_key) <= 512),
++  cover_object_key text CHECK (cover_object_key IS NULL OR char_length(cover_object_key) <= 512),
++  languages text[] NOT NULL DEFAULT '{}',
++  created_by_profile_id uuid REFERENCES public.profiles(id),
++  previous_revision_id uuid REFERENCES public.ip_identity_revisions(id),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  UNIQUE (ip_profile_id, version),
++  UNIQUE (id, ip_profile_id)
++);
++ALTER TABLE public.ip_profiles ADD CONSTRAINT ip_profiles_current_identity_revision_fk
++  FOREIGN KEY (current_identity_revision_id, profile_id) REFERENCES public.ip_identity_revisions(id, ip_profile_id) DEFERRABLE INITIALLY DEFERRED;
++
++CREATE TABLE public.posts (
++  id uuid PRIMARY KEY,
++  author_profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  acting_operator_profile_id uuid REFERENCES public.profiles(id),
++  state public.post_state NOT NULL DEFAULT 'draft',
++  source public.post_source NOT NULL,
++  body text NOT NULL DEFAULT '' CHECK (char_length(body) <= 5000),
++  language_code text CHECK (language_code IS NULL OR language_code ~ '^[a-z]{2,3}(-[A-Z]{2})?$'),
++  published_at timestamptz,
++  withdrawn_at timestamptz,
++  created_at timestamptz NOT NULL DEFAULT now(),
++  updated_at timestamptz NOT NULL DEFAULT now(),
++  CHECK ((state = 'draft' AND published_at IS NULL AND withdrawn_at IS NULL)
++    OR (state = 'published' AND published_at IS NOT NULL AND withdrawn_at IS NULL)
++    OR (state = 'withdrawn' AND published_at IS NOT NULL AND withdrawn_at IS NOT NULL))
++);
++
++CREATE TABLE public.post_media (
++  id uuid PRIMARY KEY,
++  post_id uuid NOT NULL REFERENCES public.posts(id) ON DELETE RESTRICT,
++  position smallint NOT NULL CHECK (position BETWEEN 1 AND 4),
++  object_key text NOT NULL CHECK (char_length(object_key) <= 512),
++  alt_text text CHECK (alt_text IS NULL OR char_length(alt_text) <= 1000),
++  content_type text NOT NULL CHECK (content_type LIKE 'image/%'),
++  width integer CHECK (width > 0),
++  height integer CHECK (height > 0),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  UNIQUE (post_id, position)
++);
++
++CREATE TABLE public.follows (
++  follower_profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  followed_profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  PRIMARY KEY (follower_profile_id, followed_profile_id),
++  CHECK (follower_profile_id <> followed_profile_id)
++);
++CREATE TABLE public.post_likes (
++  post_id uuid NOT NULL REFERENCES public.posts(id),
++  profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  PRIMARY KEY (post_id, profile_id)
++);
++CREATE TABLE public.bookmarks (
++  post_id uuid NOT NULL REFERENCES public.posts(id),
++  profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  PRIMARY KEY (post_id, profile_id)
++);
++CREATE TABLE public.comments (
++  id uuid PRIMARY KEY,
++  post_id uuid NOT NULL REFERENCES public.posts(id),
++  parent_comment_id uuid REFERENCES public.comments(id),
++  author_profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  acting_operator_profile_id uuid REFERENCES public.profiles(id),
++  source public.comment_source NOT NULL,
++  body text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000 AND body ~ '[^[:space:]]'),
++  state public.comment_state NOT NULL DEFAULT 'published',
++  created_at timestamptz NOT NULL DEFAULT now(),
++  deleted_at timestamptz,
++  CHECK ((source = 'human' AND acting_operator_profile_id IS NULL) OR (source = 'admin' AND acting_operator_profile_id IS NOT NULL) OR (source = 'worker' AND acting_operator_profile_id IS NULL)),
++  CHECK ((state = 'published' AND deleted_at IS NULL) OR (state = 'deleted' AND deleted_at IS NOT NULL))
++);
++CREATE TABLE public.comment_likes (
++  comment_id uuid NOT NULL REFERENCES public.comments(id),
++  profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  PRIMARY KEY (comment_id, profile_id)
++);
++CREATE TABLE public.notifications (
++  id uuid PRIMARY KEY,
++  recipient_profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  actor_profile_id uuid REFERENCES public.profiles(id),
++  kind public.notification_kind NOT NULL,
++  post_id uuid REFERENCES public.posts(id),
++  comment_id uuid REFERENCES public.comments(id),
++  created_at timestamptz NOT NULL DEFAULT now(),
++  read_at timestamptz
++);
++
++CREATE INDEX ip_profiles_public_state_enabled_idx ON public.ip_profiles (public_state, operation_enabled);
++CREATE INDEX ip_profiles_creator_profile_idx ON public.ip_profiles (creator_profile_id);
++CREATE INDEX posts_published_cursor_idx ON public.posts (published_at DESC, id DESC) WHERE state = 'published';
++CREATE INDEX posts_author_published_cursor_idx ON public.posts (author_profile_id, published_at DESC, id DESC) WHERE state = 'published';
++CREATE INDEX follows_followed_created_idx ON public.follows (followed_profile_id, created_at DESC);
++CREATE INDEX follows_follower_created_idx ON public.follows (follower_profile_id, created_at DESC);
++CREATE INDEX post_likes_profile_created_idx ON public.post_likes (profile_id, created_at DESC);
++CREATE INDEX bookmarks_profile_created_idx ON public.bookmarks (profile_id, created_at DESC);
++CREATE INDEX comments_post_published_idx ON public.comments (post_id, created_at, id) WHERE state = 'published';
++CREATE INDEX comments_parent_published_idx ON public.comments (parent_comment_id, created_at, id) WHERE state = 'published';
++CREATE INDEX comments_author_created_idx ON public.comments (author_profile_id, created_at DESC);
++CREATE INDEX notifications_recipient_created_idx ON public.notifications (recipient_profile_id, created_at DESC, id DESC);
++CREATE INDEX notifications_recipient_unread_idx ON public.notifications (recipient_profile_id, created_at DESC) WHERE read_at IS NULL;
++CREATE UNIQUE INDEX notifications_post_like_once_idx ON public.notifications (recipient_profile_id, actor_profile_id, kind, post_id) WHERE kind = 'post_like';
++
++CREATE FUNCTION public.current_profile_id()
++RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
++  SELECT p.id FROM public.profiles p WHERE p.auth_subject = app.current_auth_subject() AND p.account_kind = 'human'
++$$;
++CREATE FUNCTION public.is_published_post(target_id uuid)
++RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
++  SELECT EXISTS (SELECT 1 FROM public.posts p WHERE p.id = target_id AND p.state = 'published')
++$$;
++CREATE FUNCTION public.is_public_profile(target_id uuid)
++RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
++  SELECT EXISTS (SELECT 1 FROM public.ip_profiles ip WHERE ip.profile_id = target_id AND ip.public_state = 'published')
++  OR EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = target_id AND p.account_kind = 'human')
++$$;
++CREATE FUNCTION public.ip_profiles_require_valid_profiles()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.profile_id AND account_kind = 'ip') THEN RAISE EXCEPTION 'IP profile requires an IP account'; END IF;
++  IF NEW.creator_profile_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.creator_profile_id AND account_kind = 'human') THEN RAISE EXCEPTION 'IP creator requires a human account'; END IF;
++  NEW.updated_at := clock_timestamp(); RETURN NEW;
++END;
++$$;
++CREATE FUNCTION public.require_published_ip_identity()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++BEGIN
++  IF NEW.public_state = 'published' AND NEW.current_identity_revision_id IS NULL THEN RAISE EXCEPTION 'published IP requires a current identity revision'; END IF;
++  RETURN NEW;
++END;
++$$;
++CREATE FUNCTION public.reject_ip_identity_revision_mutation()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN RAISE EXCEPTION 'ip identity revisions are immutable'; END; $$;
++CREATE FUNCTION public.guard_post()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.author_profile_id AND account_kind = 'ip') THEN RAISE EXCEPTION 'posts require an IP author'; END IF;
++  IF NEW.source = 'admin' AND NOT EXISTS (SELECT 1 FROM public.profile_roles r JOIN public.profiles p ON p.id = r.profile_id WHERE r.profile_id = NEW.acting_operator_profile_id AND r.role = 'operator' AND r.revoked_at IS NULL AND p.account_kind = 'human') THEN RAISE EXCEPTION 'admin posts require an active human operator'; END IF;
++  IF NEW.source = 'worker' AND NEW.acting_operator_profile_id IS NOT NULL THEN RAISE EXCEPTION 'worker posts require system attribution'; END IF;
++  IF TG_OP = 'UPDATE' THEN
++    IF OLD.id IS DISTINCT FROM NEW.id OR OLD.author_profile_id IS DISTINCT FROM NEW.author_profile_id OR OLD.source IS DISTINCT FROM NEW.source OR OLD.acting_operator_profile_id IS DISTINCT FROM NEW.acting_operator_profile_id OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN RAISE EXCEPTION 'post attribution is immutable'; END IF;
++    IF OLD.state = 'draft' AND NEW.state IN ('draft', 'published') THEN NULL;
++    ELSIF OLD.state = 'published' AND NEW.state = 'withdrawn' AND OLD.body IS NOT DISTINCT FROM NEW.body AND OLD.language_code IS NOT DISTINCT FROM NEW.language_code AND OLD.published_at IS NOT DISTINCT FROM NEW.published_at THEN NULL;
++    ELSE RAISE EXCEPTION 'invalid post lifecycle transition'; END IF;
++  END IF;
++  NEW.updated_at := clock_timestamp(); RETURN NEW;
++END;
++$$;
++CREATE FUNCTION public.require_publishable_post()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++DECLARE target_id uuid; target_state public.post_state; target_body text;
++BEGIN
++  IF TG_TABLE_NAME = 'post_media' THEN
++    target_id := COALESCE(NEW.post_id, OLD.post_id);
++    SELECT state, body INTO target_state, target_body FROM public.posts WHERE id = target_id;
++  ELSE
++    target_id := NEW.id;
++    target_state := NEW.state;
++    target_body := NEW.body;
++  END IF;
++  IF target_state IN ('published', 'withdrawn') AND btrim(target_body) = '' AND NOT EXISTS (SELECT 1 FROM public.post_media WHERE post_id = target_id) THEN RAISE EXCEPTION 'published posts require nonblank text or verified media'; END IF;
++  RETURN NEW;
++END;
++$$;
++CREATE FUNCTION public.reject_post_delete()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++BEGIN
++  IF OLD.state <> 'draft' THEN RAISE EXCEPTION 'published or withdrawn posts cannot be deleted'; END IF;
++  RETURN OLD;
++END;
++$$;
++CREATE FUNCTION public.guard_comment()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++DECLARE parent_post uuid; grandparent uuid;
++BEGIN
++  IF NEW.parent_comment_id IS NOT NULL THEN SELECT post_id, parent_comment_id INTO parent_post, grandparent FROM public.comments WHERE id = NEW.parent_comment_id; IF parent_post IS NULL OR parent_post <> NEW.post_id THEN RAISE EXCEPTION 'comment parent must belong to the same post'; END IF; IF grandparent IS NOT NULL THEN RAISE EXCEPTION 'comments permit one reply level'; END IF; END IF;
++  IF NEW.source = 'human' THEN
++    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.author_profile_id AND account_kind = 'human') THEN RAISE EXCEPTION 'human comments require a human author'; END IF;
++  ELSIF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.author_profile_id AND account_kind = 'ip') THEN RAISE EXCEPTION 'platform comments require an IP author'; END IF;
++  IF NEW.source = 'admin' AND NOT EXISTS (SELECT 1 FROM public.profile_roles r JOIN public.profiles p ON p.id = r.profile_id WHERE r.profile_id = NEW.acting_operator_profile_id AND r.role = 'operator' AND r.revoked_at IS NULL AND p.account_kind = 'human') THEN RAISE EXCEPTION 'admin comments require an active human operator'; END IF;
++  IF NEW.source = 'worker' AND NEW.acting_operator_profile_id IS NOT NULL THEN RAISE EXCEPTION 'worker comments require system attribution'; END IF;
++  IF TG_OP = 'UPDATE' AND NOT (OLD.state = 'published' AND NEW.state = 'deleted' AND NEW.deleted_at IS NOT NULL AND OLD.id = NEW.id AND OLD.post_id = NEW.post_id AND OLD.parent_comment_id IS NOT DISTINCT FROM NEW.parent_comment_id AND OLD.author_profile_id = NEW.author_profile_id AND OLD.acting_operator_profile_id IS NOT DISTINCT FROM NEW.acting_operator_profile_id AND OLD.source = NEW.source AND OLD.body = NEW.body AND OLD.created_at = NEW.created_at) THEN RAISE EXCEPTION 'comments can only be soft deleted'; END IF;
++  RETURN NEW;
++END;
++$$;
++CREATE FUNCTION public.reject_comment_delete()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$ BEGIN RAISE EXCEPTION 'comments must be soft deleted'; END; $$;
++CREATE FUNCTION public.guard_notification_read()
++RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
++BEGIN
++  IF OLD.read_at IS NOT NULL OR NEW.read_at IS NULL OR OLD.id IS DISTINCT FROM NEW.id OR OLD.recipient_profile_id IS DISTINCT FROM NEW.recipient_profile_id OR OLD.actor_profile_id IS DISTINCT FROM NEW.actor_profile_id OR OLD.kind IS DISTINCT FROM NEW.kind OR OLD.post_id IS DISTINCT FROM NEW.post_id OR OLD.comment_id IS DISTINCT FROM NEW.comment_id OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN RAISE EXCEPTION 'notifications may only be marked read once'; END IF; RETURN NEW;
++END;
++$$;
++
++CREATE TRIGGER ip_profiles_require_valid_profiles BEFORE INSERT OR UPDATE ON public.ip_profiles FOR EACH ROW EXECUTE FUNCTION public.ip_profiles_require_valid_profiles();
++CREATE CONSTRAINT TRIGGER ip_profiles_require_published_identity AFTER INSERT OR UPDATE ON public.ip_profiles DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.require_published_ip_identity();
++CREATE TRIGGER ip_identity_revisions_immutable BEFORE UPDATE OR DELETE ON public.ip_identity_revisions FOR EACH ROW EXECUTE FUNCTION public.reject_ip_identity_revision_mutation();
++CREATE TRIGGER posts_guard BEFORE INSERT OR UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION public.guard_post();
++CREATE TRIGGER posts_reject_delete BEFORE DELETE ON public.posts FOR EACH ROW EXECUTE FUNCTION public.reject_post_delete();
++CREATE CONSTRAINT TRIGGER posts_require_content AFTER INSERT OR UPDATE ON public.posts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.require_publishable_post();
++CREATE CONSTRAINT TRIGGER post_media_preserves_content AFTER INSERT OR DELETE OR UPDATE ON public.post_media DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.require_publishable_post();
++CREATE TRIGGER comments_guard BEFORE INSERT OR UPDATE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.guard_comment();
++CREATE TRIGGER comments_reject_delete BEFORE DELETE ON public.comments FOR EACH ROW EXECUTE FUNCTION public.reject_comment_delete();
++CREATE TRIGGER notifications_guard_read BEFORE UPDATE ON public.notifications FOR EACH ROW EXECUTE FUNCTION public.guard_notification_read();
++
++ALTER TABLE public.ip_profiles ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.ip_identity_revisions ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.post_media ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.post_likes ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.bookmarks ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.comment_likes ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
++
++CREATE POLICY ip_profiles_public_read ON public.ip_profiles FOR SELECT TO aifans_anon, aifans_authenticated USING (public_state = 'published');
++CREATE POLICY revisions_public_current_read ON public.ip_identity_revisions FOR SELECT TO aifans_anon, aifans_authenticated USING (EXISTS (SELECT 1 FROM public.ip_profiles ip WHERE ip.profile_id = ip_identity_revisions.ip_profile_id AND ip.public_state = 'published' AND ip.current_identity_revision_id = ip_identity_revisions.id));
++CREATE POLICY posts_public_read ON public.posts FOR SELECT TO aifans_anon, aifans_authenticated USING (state = 'published');
++CREATE POLICY post_media_public_read ON public.post_media FOR SELECT TO aifans_anon, aifans_authenticated USING (public.is_published_post(post_id));
++CREATE POLICY follows_owner_insert ON public.follows FOR INSERT TO aifans_authenticated WITH CHECK (follower_profile_id = public.current_profile_id() AND public.is_public_profile(followed_profile_id));
++CREATE POLICY follows_owner_delete ON public.follows FOR DELETE TO aifans_authenticated USING (follower_profile_id = public.current_profile_id());
++CREATE POLICY likes_owner_insert ON public.post_likes FOR INSERT TO aifans_authenticated WITH CHECK (profile_id = public.current_profile_id() AND public.is_published_post(post_id));
++CREATE POLICY likes_owner_select ON public.post_likes FOR SELECT TO aifans_authenticated USING (profile_id = public.current_profile_id());
++CREATE POLICY likes_owner_delete ON public.post_likes FOR DELETE TO aifans_authenticated USING (profile_id = public.current_profile_id());
++CREATE POLICY bookmarks_owner_select ON public.bookmarks FOR SELECT TO aifans_authenticated USING (profile_id = public.current_profile_id());
++CREATE POLICY bookmarks_owner_insert ON public.bookmarks FOR INSERT TO aifans_authenticated WITH CHECK (profile_id = public.current_profile_id() AND public.is_published_post(post_id));
++CREATE POLICY bookmarks_owner_delete ON public.bookmarks FOR DELETE TO aifans_authenticated USING (profile_id = public.current_profile_id());
++CREATE POLICY comments_public_read ON public.comments FOR SELECT TO aifans_anon, aifans_authenticated USING (state = 'published');
++CREATE POLICY comments_human_insert ON public.comments FOR INSERT TO aifans_authenticated WITH CHECK (author_profile_id = public.current_profile_id() AND source = 'human' AND acting_operator_profile_id IS NULL AND state = 'published' AND public.is_published_post(post_id));
++CREATE POLICY comments_owner_soft_delete ON public.comments FOR UPDATE TO aifans_authenticated USING (author_profile_id = public.current_profile_id()) WITH CHECK (author_profile_id = public.current_profile_id() AND state = 'deleted');
++CREATE POLICY comment_likes_owner_insert ON public.comment_likes FOR INSERT TO aifans_authenticated WITH CHECK (profile_id = public.current_profile_id() AND EXISTS (SELECT 1 FROM public.comments c WHERE c.id = comment_id AND c.state = 'published'));
++CREATE POLICY comment_likes_owner_delete ON public.comment_likes FOR DELETE TO aifans_authenticated USING (profile_id = public.current_profile_id());
++CREATE POLICY notifications_owner_select ON public.notifications FOR SELECT TO aifans_authenticated USING (recipient_profile_id = public.current_profile_id());
++CREATE POLICY notifications_owner_read ON public.notifications FOR UPDATE TO aifans_authenticated USING (recipient_profile_id = public.current_profile_id() AND read_at IS NULL) WITH CHECK (recipient_profile_id = public.current_profile_id() AND read_at IS NOT NULL);
++
++REVOKE ALL ON TABLE public.ip_profiles, public.ip_identity_revisions, public.posts, public.post_media, public.follows, public.post_likes, public.bookmarks, public.comments, public.comment_likes, public.notifications FROM PUBLIC, aifans_anon, aifans_authenticated;
++REVOKE ALL ON TYPE public.ip_source, public.ip_public_state, public.post_state, public.post_source, public.media_kind, public.comment_source, public.comment_state, public.notification_kind FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.current_profile_id(), public.is_published_post(uuid), public.is_public_profile(uuid), public.ip_profiles_require_valid_profiles(), public.require_published_ip_identity(), public.reject_ip_identity_revision_mutation(), public.guard_post(), public.require_publishable_post(), public.reject_post_delete(), public.guard_comment(), public.reject_comment_delete(), public.guard_notification_read() FROM PUBLIC;
++GRANT USAGE ON TYPE public.ip_source, public.ip_public_state, public.post_state, public.post_source, public.media_kind, public.comment_source, public.comment_state, public.notification_kind TO aifans_anon, aifans_authenticated;
++GRANT EXECUTE ON FUNCTION public.current_profile_id(), public.is_published_post(uuid), public.is_public_profile(uuid) TO aifans_authenticated;
++GRANT SELECT (profile_id, identity_label, created_at, updated_at) ON public.ip_profiles TO aifans_anon, aifans_authenticated;
++GRANT SELECT (id, ip_profile_id, version, display_name, bio, languages, created_at) ON public.ip_identity_revisions TO aifans_anon, aifans_authenticated;
++GRANT SELECT (id, author_profile_id, state, body, language_code, published_at, created_at, updated_at) ON public.posts TO aifans_anon, aifans_authenticated;
++GRANT SELECT (id, post_id, position, alt_text, content_type, width, height, created_at) ON public.post_media TO aifans_anon, aifans_authenticated;
++GRANT INSERT, DELETE ON public.follows, public.bookmarks, public.comment_likes TO aifans_authenticated;
++GRANT SELECT, INSERT, DELETE ON public.post_likes TO aifans_authenticated;
++GRANT SELECT (id, post_id, parent_comment_id, author_profile_id, body, state, created_at) ON public.comments TO aifans_anon, aifans_authenticated;
++GRANT INSERT, UPDATE (state, deleted_at) ON public.comments TO aifans_authenticated;
++GRANT SELECT, INSERT, DELETE ON public.bookmarks TO aifans_authenticated;
++GRANT SELECT, UPDATE (read_at) ON public.notifications TO aifans_authenticated;
+diff --git a/packages/db/src/index.ts b/packages/db/src/index.ts
+index 4c1f754..664ff6a 100644
+--- a/packages/db/src/index.ts
++++ b/packages/db/src/index.ts
+@@ -7,22 +7,40 @@ export type {
+   HumanProfile,
+ } from './profiles.js'
+ export {
+   accountKindEnum,
+   appLocaleEnum,
+   appRoleEnum,
+   auditActorTypeEnum,
+   auditSourceEnum,
+   auditResultEnum,
+   outboxStateEnum,
++  ipSourceEnum,
++  ipPublicStateEnum,
++  postStateEnum,
++  postSourceEnum,
++  mediaKindEnum,
++  commentSourceEnum,
++  commentStateEnum,
++  notificationKindEnum,
+   profileRoles,
+   auditEvents,
+   businessEvents,
+   workflowTransitions,
+   analyticsOutbox,
+   platformSettings,
+   profiles,
++  ipProfiles,
++  ipIdentityRevisions,
++  posts,
++  postMedia,
++  follows,
++  postLikes,
++  bookmarks,
++  comments,
++  commentLikes,
++  notifications,
+ } from './schema.js'
+ export {withActor} from './session.js'
+ export type {Actor} from './session.js'
+ export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'
+ export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
+diff --git a/packages/db/src/schema.ts b/packages/db/src/schema.ts
+index 3e12e76..a5d3f2d 100644
+--- a/packages/db/src/schema.ts
++++ b/packages/db/src/schema.ts
+@@ -4,30 +4,39 @@ import {
+   pgTable,
+   text,
+   boolean,
+   integer,
+   jsonb,
+   smallint,
+   timestamp,
+   uuid,
+   unique,
+   primaryKey,
++  type AnyPgColumn,
+ } from 'drizzle-orm/pg-core'
+ import { sql } from 'drizzle-orm'
+ 
+ export const accountKindEnum = pgEnum('account_kind', ['human', 'ip'])
+ export const appLocaleEnum = pgEnum('app_locale', ['en', 'zh-CN'])
+ export const appRoleEnum = pgEnum('app_role', ['operator'])
+ export const auditActorTypeEnum = pgEnum('audit_actor_type', ['human', 'operator', 'system'])
+ export const auditSourceEnum = pgEnum('audit_source', ['api', 'admin', 'worker'])
+ export const auditResultEnum = pgEnum('audit_result', ['succeeded', 'rejected', 'failed'])
+ export const outboxStateEnum = pgEnum('outbox_state', ['pending', 'delivered', 'failed'])
++export const ipSourceEnum = pgEnum('ip_source', ['platform', 'creator'])
++export const ipPublicStateEnum = pgEnum('ip_public_state', ['draft', 'approved', 'published', 'paused', 'unpublished'])
++export const postStateEnum = pgEnum('post_state', ['draft', 'published', 'withdrawn'])
++export const postSourceEnum = pgEnum('post_source', ['admin', 'worker'])
++export const mediaKindEnum = pgEnum('media_kind', ['image'])
++export const commentSourceEnum = pgEnum('comment_source', ['human', 'admin', 'worker'])
++export const commentStateEnum = pgEnum('comment_state', ['published', 'deleted'])
++export const notificationKindEnum = pgEnum('notification_kind', ['follow', 'post_like', 'comment', 'reply', 'comment_like'])
+ 
+ export const profiles = pgTable(
+   'profiles',
+   {
+     id: uuid().primaryKey(),
+     authSubject: text('auth_subject'),
+     accountKind: accountKindEnum('account_kind').notNull(),
+     username: text().notNull(),
+     displayName: text('display_name').notNull(),
+     bio: text(),
+@@ -99,10 +108,80 @@ export const auditEvents = pgTable('audit_events', {
+ }, (table) => [check('audit_events_action_check', sql`${table.action} ~ '[^[:space:]]'`), check('audit_events_entity_type_check', sql`${table.entityType} ~ '[^[:space:]]'`)])
+ export const businessEvents = pgTable('business_events', {
+   id: uuid().primaryKey(), eventName: text('event_name').notNull(), schemaVersion: smallint('schema_version').notNull(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), subjectEntityType: text('subject_entity_type').notNull(), subjectEntityId: uuid('subject_entity_id').notNull(), requestId: uuid('request_id'), environment: text().notNull(), properties: jsonb().notNull().default({}),
+ }, (table) => [check('business_events_event_name_check', sql`${table.eventName} ~ '^[a-z][a-z0-9_]*$'`), check('business_events_schema_version_check', sql`${table.schemaVersion} > 0`), check('business_events_subject_entity_type_check', sql`${table.subjectEntityType} ~ '[^[:space:]]'`), check('business_events_environment_check', sql`${table.environment} ~ '[^[:space:]]'`)])
+ export const workflowTransitions = pgTable('workflow_transitions', {
+   id: uuid().primaryKey(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), previousState: text('previous_state'), nextState: text('next_state').notNull(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), reasonCode: text('reason_code'), operatorNote: text('operator_note'), requestId: uuid('request_id'), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(),
+ }, (table) => [check('workflow_transitions_entity_type_check', sql`${table.entityType} ~ '[^[:space:]]'`), check('workflow_transitions_next_state_check', sql`${table.nextState} ~ '[^[:space:]]'`)])
+ export const analyticsOutbox = pgTable('analytics_outbox', {
+   id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull().unique().references(() => businessEvents.id), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
+ }, (table) => [check('analytics_outbox_payload_version_check', sql`${table.payloadVersion} > 0`), check('analytics_outbox_destination_check', sql`${table.destination} ~ '[^[:space:]]'`), check('analytics_outbox_attempt_count_check', sql`${table.attemptCount} >= 0`), check('analytics_outbox_delivery_state_check', sql`(${table.state} = 'delivered') = (${table.deliveredAt} IS NOT NULL)` )])
++
++export const ipProfiles = pgTable('ip_profiles', {
++  profileId: uuid('profile_id').primaryKey().references(() => profiles.id),
++  source: ipSourceEnum('source').notNull(),
++  creatorProfileId: uuid('creator_profile_id').references(() => profiles.id),
++  publicState: ipPublicStateEnum('public_state').notNull().default('draft'),
++  operationEnabled: boolean('operation_enabled').notNull().default(false),
++  identityLabel: text('identity_label').notNull().default('AI'),
++  currentIdentityRevisionId: uuid('current_identity_revision_id'),
++  feedWeight: integer('feed_weight').notNull().default(0),
++  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++  updatedAt: timestamp('updated_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [
++  check('ip_profiles_creator_source_check', sql`${table.creatorProfileId} IS NULL OR ${table.source} = 'creator'`),
++  check('ip_profiles_feed_weight_check', sql`${table.feedWeight} BETWEEN -1000 AND 1000`),
++])
++
++export const ipIdentityRevisions = pgTable('ip_identity_revisions', {
++  id: uuid().primaryKey(),
++  ipProfileId: uuid('ip_profile_id').notNull().references(() => ipProfiles.profileId),
++  version: integer().notNull(),
++  displayName: text('display_name').notNull(),
++  bio: text(),
++  avatarObjectKey: text('avatar_object_key'),
++  coverObjectKey: text('cover_object_key'),
++  languages: text().array().notNull().default(sql`'{}'::text[]`),
++  createdByProfileId: uuid('created_by_profile_id').references(() => profiles.id),
++  previousRevisionId: uuid('previous_revision_id').references((): AnyPgColumn => ipIdentityRevisions.id),
++  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [
++  unique('ip_identity_revisions_ip_profile_id_version_key').on(table.ipProfileId, table.version),
++  unique('ip_identity_revisions_id_ip_profile_id_key').on(table.id, table.ipProfileId),
++])
++
++export const posts = pgTable('posts', {
++  id: uuid().primaryKey(),
++  authorProfileId: uuid('author_profile_id').notNull().references(() => profiles.id),
++  actingOperatorProfileId: uuid('acting_operator_profile_id').references(() => profiles.id),
++  state: postStateEnum('state').notNull().default('draft'),
++  source: postSourceEnum('source').notNull(),
++  body: text().notNull().default(''),
++  languageCode: text('language_code'),
++  publishedAt: timestamp('published_at', {withTimezone: true}),
++  withdrawnAt: timestamp('withdrawn_at', {withTimezone: true}),
++  createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++  updatedAt: timestamp('updated_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [check('posts_body_length_check', sql`char_length(${table.body}) <= 5000`)])
++
++export const postMedia = pgTable('post_media', {
++  id: uuid().primaryKey(), postId: uuid('post_id').notNull().references(() => posts.id), position: smallint().notNull(), objectKey: text('object_key').notNull(), altText: text('alt_text'), contentType: text('content_type').notNull(), width: integer(), height: integer(), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [unique('post_media_post_id_position_key').on(table.postId, table.position), check('post_media_position_check', sql`${table.position} BETWEEN 1 AND 4`), check('post_media_content_type_check', sql`${table.contentType} LIKE 'image/%'`)])
++
++export const follows = pgTable('follows', {
++  followerProfileId: uuid('follower_profile_id').notNull().references(() => profiles.id), followedProfileId: uuid('followed_profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [primaryKey({columns: [table.followerProfileId, table.followedProfileId]}), check('follows_no_self_check', sql`${table.followerProfileId} <> ${table.followedProfileId}`)])
++export const postLikes = pgTable('post_likes', {
++  postId: uuid('post_id').notNull().references(() => posts.id), profileId: uuid('profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [primaryKey({columns: [table.postId, table.profileId]})])
++export const bookmarks = pgTable('bookmarks', {
++  postId: uuid('post_id').notNull().references(() => posts.id), profileId: uuid('profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [primaryKey({columns: [table.postId, table.profileId]})])
++export const comments = pgTable('comments', {
++  id: uuid().primaryKey(), postId: uuid('post_id').notNull().references(() => posts.id), parentCommentId: uuid('parent_comment_id').references((): AnyPgColumn => comments.id), authorProfileId: uuid('author_profile_id').notNull().references(() => profiles.id), actingOperatorProfileId: uuid('acting_operator_profile_id').references(() => profiles.id), source: commentSourceEnum('source').notNull(), body: text().notNull(), state: commentStateEnum('state').notNull().default('published'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(), deletedAt: timestamp('deleted_at', {withTimezone: true}),
++}, (table) => [check('comments_body_length_check', sql`char_length(${table.body}) BETWEEN 1 AND 2000 AND ${table.body} ~ '[^[:space:]]'`)])
++export const commentLikes = pgTable('comment_likes', {
++  commentId: uuid('comment_id').notNull().references(() => comments.id), profileId: uuid('profile_id').notNull().references(() => profiles.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [primaryKey({columns: [table.commentId, table.profileId]})])
++export const notifications = pgTable('notifications', {
++  id: uuid().primaryKey(), recipientProfileId: uuid('recipient_profile_id').notNull().references(() => profiles.id), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), kind: notificationKindEnum('kind').notNull(), postId: uuid('post_id').references(() => posts.id), commentId: uuid('comment_id').references(() => comments.id), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(), readAt: timestamp('read_at', {withTimezone: true}),
++})
+diff --git a/packages/db/tests/social-core-rls.test.ts b/packages/db/tests/social-core-rls.test.ts
+new file mode 100644
+index 0000000..210637a
+--- /dev/null
++++ b/packages/db/tests/social-core-rls.test.ts
+@@ -0,0 +1,202 @@
++import { randomUUID } from 'node:crypto'
++import { Pool, type PoolClient } from 'pg'
++import { afterAll, describe, expect, it } from 'vitest'
++
++const connectionString = process.env.DATABASE_URL ?? ''
++const describeIntegration = connectionString ? describe : describe.skip
++const pool = new Pool({ connectionString })
++
++type Human = { id: string; subject: string }
++type Ip = { id: string }
++
++async function transaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
++  const client = await pool.connect()
++  try {
++    await client.query('BEGIN')
++    return await callback(client)
++  } finally {
++    await client.query('ROLLBACK').catch(() => undefined)
++    client.release()
++  }
++}
++
++async function savepoint<T>(client: PoolClient, callback: () => Promise<T>): Promise<T> {
++  await client.query('SAVEPOINT expected_failure')
++  try {
++    const result = await callback()
++    await client.query('RELEASE SAVEPOINT expected_failure')
++    return result
++  } catch (error) {
++    await client.query('ROLLBACK TO SAVEPOINT expected_failure')
++    await client.query('RELEASE SAVEPOINT expected_failure')
++    throw error
++  }
++}
++
++async function human(client: PoolClient): Promise<Human> {
++  const id = randomUUID()
++  const subject = `auth-${randomUUID()}`
++  await client.query(
++    `INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name)
++     VALUES ($1, $2, 'human', $3, 'Human fixture')`,
++    [id, subject, `human_${id.replaceAll('-', '').slice(0, 20)}`],
++  )
++  return { id, subject }
++}
++
++async function ip(client: PoolClient, state: 'published' | 'draft' | 'paused' = 'published'): Promise<Ip> {
++  const id = randomUUID()
++  await client.query(
++    `INSERT INTO public.profiles (id, account_kind, username, display_name)
++     VALUES ($1, 'ip', $2, 'IP fixture')`,
++    [id, `ip_${id.replaceAll('-', '').slice(0, 20)}`],
++  )
++  await client.query(
++    `INSERT INTO public.ip_profiles (profile_id, source, operation_enabled)
++     VALUES ($1, 'platform', true)`,
++    [id],
++  )
++  const revisionId = randomUUID()
++  await client.query(`INSERT INTO public.ip_identity_revisions (id, ip_profile_id, version, display_name) VALUES ($1, $2, 1, 'IP fixture')`, [revisionId, id])
++  await client.query('UPDATE public.ip_profiles SET current_identity_revision_id = $1, public_state = $2 WHERE profile_id = $3', [revisionId, state, id])
++  return { id }
++}
++
++async function publishedPost(client: PoolClient, authorProfileId: string, body = 'A real text post'): Promise<string> {
++  const id = randomUUID()
++  await client.query(
++    `INSERT INTO public.posts (id, author_profile_id, source, state, body, published_at)
++     VALUES ($1, $2, 'worker', 'published', $3, clock_timestamp())`,
++    [id, authorProfileId, body],
++  )
++  return id
++}
++
++async function become(client: PoolClient, subject: string | null): Promise<void> {
++  await client.query('SET LOCAL ROLE aifans_authenticated')
++  await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify(subject ? { sub: subject } : {})])
++}
++
++async function insertTopLevelPostAsHuman(client: PoolClient, actor: Human, ipId: string) {
++  await become(client, actor.subject)
++  return client.query(
++    `INSERT INTO public.posts (id, author_profile_id, source, body)
++     VALUES ($1, $2, 'worker', 'not allowed')`,
++    [randomUUID(), ipId],
++  )
++}
++
++async function insertIpCommentAsHuman(client: PoolClient, actor: Human, ipId: string, postId: string) {
++  await become(client, actor.subject)
++  return client.query(
++    `INSERT INTO public.comments (id, post_id, author_profile_id, source, body)
++     VALUES ($1, $2, $3, 'worker', 'not allowed')`,
++    [randomUUID(), postId, ipId],
++  )
++}
++
++async function createOwnBookmark(client: PoolClient, actor: Human, postId: string) {
++  await become(client, actor.subject)
++  await client.query('INSERT INTO public.bookmarks (post_id, profile_id) VALUES ($1, $2)', [postId, actor.id])
++}
++
++async function readOtherBookmark(client: PoolClient, actor: Human, ownerId: string, postId: string) {
++  await become(client, actor.subject)
++  return (await client.query('SELECT * FROM public.bookmarks WHERE profile_id = $1 AND post_id = $2', [ownerId, postId])).rows
++}
++
++describeIntegration('social core authorization', () => {
++  afterAll(async () => pool.end())
++
++  it('prevents humans from authoring as IPs while retaining private own bookmarks', async () => {
++    await transaction(async (client) => {
++      const first = await human(client)
++      const second = await human(client)
++      const author = await ip(client)
++      const postId = await publishedPost(client, author.id)
++
++      await expect(savepoint(client, () => insertTopLevelPostAsHuman(client, first, author.id))).rejects.toThrow(/permission denied|row-level security/)
++      await expect(savepoint(client, () => insertIpCommentAsHuman(client, first, author.id, postId))).rejects.toThrow(/permission denied|row-level security/)
++      await expect(createOwnBookmark(client, first, postId)).resolves.toBeUndefined()
++      await expect(readOtherBookmark(client, second, first.id, postId)).resolves.toHaveLength(0)
++    })
++  })
++
++  it('limits human interactions to the current actor and published public content', async () => {
++    await transaction(async (client) => {
++      const first = await human(client)
++      const second = await human(client)
++      const author = await ip(client)
++      const postId = await publishedPost(client, author.id)
++      await become(client, first.subject)
++      await client.query('INSERT INTO public.follows (follower_profile_id, followed_profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [first.id, author.id])
++      await client.query('INSERT INTO public.post_likes (post_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [postId, first.id])
++      const comment = randomUUID()
++      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'A real comment')`, [comment, postId, first.id])
++      await expect(savepoint(client, () => client.query('DELETE FROM public.post_likes WHERE profile_id = $1', [second.id]))).resolves.toBeTruthy()
++      const count = await client.query('SELECT count(*)::int AS count FROM public.post_likes WHERE profile_id = $1', [second.id])
++      expect(count.rows[0]?.count).toBe(0)
++      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Reply')`, [randomUUID(), postId, comment, first.id]))).resolves.toBeTruthy()
++    })
++  })
++
++  it('exposes only published safe projections and permits text-only posts', async () => {
++    await transaction(async (client) => {
++      const visible = await ip(client, 'published')
++      const hidden = await ip(client, 'paused')
++      const postId = await publishedPost(client, visible.id, 'Text only is valid')
++      await client.query('SET LOCAL ROLE aifans_anon')
++      const publicIps = await client.query('SELECT profile_id FROM public.ip_profiles')
++      expect(publicIps.rows).toEqual([{ profile_id: visible.id }])
++      const posts = await client.query('SELECT id FROM public.posts')
++      expect(posts.rows).toEqual([{ id: postId }])
++      await expect(savepoint(client, () => client.query('SELECT auth_subject FROM public.profiles'))).rejects.toThrow(/permission denied/)
++      await expect(savepoint(client, () => client.query('SELECT acting_operator_profile_id FROM public.posts'))).rejects.toThrow(/permission denied/)
++      expect(hidden.id).toBeTruthy()
++    })
++  })
++
++  it('keeps comment attribution hidden and permits controlled post lifecycle transitions', async () => {
++    await transaction(async (client) => {
++      const author = await ip(client)
++      const postId = await publishedPost(client, author.id)
++      const commentId = randomUUID()
++      const reader = await human(client)
++      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Safe comment')`, [commentId, postId, reader.id])
++      const draftId = randomUUID()
++      await client.query(`INSERT INTO public.posts (id, author_profile_id, source, body) VALUES ($1, $2, 'worker', 'Draft')`, [draftId, author.id])
++      await expect(client.query(`UPDATE public.posts SET body = 'Edited draft' WHERE id = $1`, [draftId])).resolves.toMatchObject({rowCount: 1})
++      await expect(client.query(`UPDATE public.posts SET state = 'published', published_at = clock_timestamp() WHERE id = $1`, [draftId])).resolves.toMatchObject({rowCount: 1})
++      await client.query('SET LOCAL ROLE aifans_anon')
++      await expect(client.query('SELECT id, body FROM public.comments WHERE id = $1', [commentId])).resolves.toMatchObject({rowCount: 1})
++      await expect(savepoint(client, () => client.query('SELECT acting_operator_profile_id, source FROM public.comments'))).rejects.toThrow(/permission denied/)
++    })
++  })
++
++  it('enforces immutable identities, soft deletion, notification ownership, and IP identity lifecycle', async () => {
++    await transaction(async (client) => {
++      const first = await human(client)
++      const second = await human(client)
++      const author = await ip(client)
++      const postId = await publishedPost(client, author.id)
++      const revision = await client.query('SELECT current_identity_revision_id FROM public.ip_profiles WHERE profile_id = $1', [author.id])
++      const revisionId = revision.rows[0]?.current_identity_revision_id as string
++      await expect(savepoint(client, () => client.query('UPDATE public.ip_identity_revisions SET display_name = $1 WHERE id = $2', ['Changed', revisionId]))).rejects.toThrow(/immutable/)
++      await expect(savepoint(client, () => client.query('DELETE FROM public.ip_identity_revisions WHERE id = $1', [revisionId]))).rejects.toThrow(/immutable/)
++      const commentId = randomUUID()
++      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Delete me')`, [commentId, postId, first.id])
++      await expect(savepoint(client, () => client.query('DELETE FROM public.comments WHERE id = $1', [commentId]))).rejects.toThrow(/soft deleted/)
++      await client.query(`UPDATE public.comments SET state = 'deleted', deleted_at = clock_timestamp() WHERE id = $1`, [commentId])
++      expect((await client.query('SELECT state FROM public.comments WHERE id = $1', [commentId])).rows).toEqual([{state: 'deleted'}])
++      await expect(savepoint(client, () => client.query('DELETE FROM public.posts WHERE id = $1', [postId]))).rejects.toThrow(/cannot be deleted/)
++      const notificationId = randomUUID()
++      await client.query(`INSERT INTO public.notifications (id, recipient_profile_id, actor_profile_id, kind, post_id) VALUES ($1, $2, $3, 'post_like', $4)`, [notificationId, first.id, author.id, postId])
++      await become(client, second.subject)
++      expect((await client.query('SELECT id FROM public.notifications')).rows).toEqual([])
++      await expect(savepoint(client, () => client.query(`INSERT INTO public.notifications (id, recipient_profile_id, kind) VALUES ($1, $2, 'follow')`, [randomUUID(), second.id]))).rejects.toThrow(/permission denied/)
++      await become(client, first.subject)
++      await expect(client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])).resolves.toMatchObject({rowCount: 1})
++      await expect(client.query('UPDATE public.notifications SET read_at = clock_timestamp() WHERE id = $1', [notificationId])).resolves.toMatchObject({rowCount: 0})
++    })
++  })
++})

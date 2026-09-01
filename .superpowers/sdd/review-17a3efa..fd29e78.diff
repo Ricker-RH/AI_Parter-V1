@@ -1,0 +1,1235 @@
+# Review package: 17a3efa..fd29e78
+
+## Commits
+fd29e78 feat(web): add typed product analytics
+
+## Files changed
+ .env.example                                       |   2 +
+ apps/web/package.json                              |   1 +
+ apps/web/src/app/[locale]/layout.tsx               |   3 +-
+ apps/web/src/components/chat/ChatPanel.test.tsx    |  19 ++-
+ apps/web/src/components/chat/ChatPanel.tsx         |   5 +
+ apps/web/src/components/social/PostCard.tsx        |   7 +-
+ .../src/components/social/SocialContent.test.tsx   |  16 ++-
+ apps/web/src/lib/analytics/analytics.test.tsx      | 127 ++++++++++++++++++++
+ apps/web/src/lib/analytics/contracts.ts            | 130 +++++++++++++++++++++
+ apps/web/src/lib/analytics/events.ts               |  62 ++++++++++
+ apps/web/src/lib/analytics/provider.tsx            | 108 +++++++++++++++++
+ pnpm-lock.yaml                                     | 100 ++++++++++++++++
+ pnpm-workspace.yaml                                |   1 +
+ 13 files changed, 577 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/.env.example b/.env.example
+index 5b0aae1..da6024f 100644
+--- a/.env.example
++++ b/.env.example
+@@ -3,10 +3,12 @@ DATABASE_USER_URL
+ DATABASE_ADMIN_URL
+ DATABASE_PLATFORM_URL
+ NEON_AUTH_BASE_URL
+ NEON_AUTH_COOKIE_SECRET
+ R2_ACCOUNT_ID
+ R2_BUCKET
+ R2_ACCESS_KEY_ID
+ R2_SECRET_ACCESS_KEY
+ DIFY_API_URL=https://api.dify.ai/v1
+ DIFY_API_KEY
++NEXT_PUBLIC_POSTHOG_KEY
++NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 934be46..a0b4830 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -8,20 +8,21 @@
+     "lint": "next lint",
+     "typecheck": "tsc --noEmit",
+     "test": "vitest run --project web"
+   },
+   "dependencies": {
+     "@aifans/contracts": "workspace:*",
+     "@aifans/ui": "workspace:*",
+     "next": "16.3.3",
+     "next-intl": "4.14.1",
+     "next-themes": "0.4.6",
++    "posthog-js": "1.422.5",
+     "react": "19.2.8",
+     "react-dom": "19.2.8"
+   },
+   "devDependencies": {
+     "@testing-library/jest-dom": "6.9.1",
+     "@testing-library/react": "16.3.2",
+     "@types/node": "24.13.3",
+     "@types/react": "19.2.14",
+     "@types/react-dom": "19.2.3",
+     "jsdom": "29.0.1",
+diff --git a/apps/web/src/app/[locale]/layout.tsx b/apps/web/src/app/[locale]/layout.tsx
+index 9ac4003..b8d3a82 100644
+--- a/apps/web/src/app/[locale]/layout.tsx
++++ b/apps/web/src/app/[locale]/layout.tsx
+@@ -1,24 +1,25 @@
+ import type {Metadata} from 'next'
+ import {notFound} from 'next/navigation'
+ import '../globals.css'
+ import {AppShell} from '../../components/AppShell'
+ import {ThemeProvider} from '../../components/ThemeProvider'
+ import {getMessages, isLocale, locales} from '../../i18n/config'
++import {AnalyticsProvider} from '../../lib/analytics/provider'
+ 
+ export function generateStaticParams() {
+   return locales.map((locale) => ({locale}))
+ }
+ 
+ export async function generateMetadata({params}: {params: Promise<{locale: string}>}): Promise<Metadata> {
+   const {locale: candidate} = await params
+   if (!isLocale(candidate)) notFound()
+   const messages = await getMessages(candidate)
+   return {title: messages.metadataTitle, description: messages.metadataDescription}
+ }
+ 
+ export default async function LocaleLayout({children, params}: Readonly<{children: React.ReactNode; params: Promise<{locale: string}>}>) {
+   const {locale: candidate} = await params
+   if (!isLocale(candidate)) notFound()
+   const messages = await getMessages(candidate)
+-  return <html lang={candidate} suppressHydrationWarning><body><ThemeProvider><AppShell labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></body></html>
++  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><ThemeProvider><AppShell labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
+ }
+diff --git a/apps/web/src/components/chat/ChatPanel.test.tsx b/apps/web/src/components/chat/ChatPanel.test.tsx
+index ca0127e..09f80fe 100644
+--- a/apps/web/src/components/chat/ChatPanel.test.tsx
++++ b/apps/web/src/components/chat/ChatPanel.test.tsx
+@@ -1,43 +1,60 @@
+ import {fireEvent, render, screen, waitFor} from '@testing-library/react'
+ import {afterEach, describe, expect, it, vi} from 'vitest'
+ import {ChatPanel, type ChatLabels} from './ChatPanel.js'
+ 
++const analyticsCapture = vi.fn()
++vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture: analyticsCapture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()})}))
++
+ const ipProfileId = '11111111-1111-4111-8111-111111111111'
+ const conversationId = '22222222-2222-4222-8222-222222222222'
+ const secondConversationId = '44444444-4444-4444-8444-444444444444'
+ const labels: ChatLabels = {
+   title: 'Messages', eyebrow: 'AI/IP chat', description: 'Choose a public AI/IP ID to begin.', targetLabel: 'AI/IP public ID', targetHint: 'Enter the UUID of a public AI/IP profile.', targetRequired: 'Enter a valid AI/IP public ID before sending.', conversationLabel: 'Conversation ID', sessionNotice: 'This conversation is kept only on this page and may be empty after refresh.', emptyTitle: 'Start a conversation', emptyDescription: 'Choose an AI/IP and send a message.', messageLabel: 'Message', messagePlaceholder: 'Write a message…', send: 'Send', sending: 'Sending…', waiting: 'Waiting for a response…', you: 'You', ai: 'AI/IP', newConversation: 'New conversation', authRequired: 'Sign in to chat.', chatNotConfigured: 'Chat is not configured.', providerUnavailable: 'The chat provider is unavailable.', requestFailed: 'The message could not be sent.', invalidResponse: 'The chat service returned an invalid response.',
+ }
+ 
+ const response = {answer: 'Hello back', conversationId, messageId: '33333333-3333-4333-8333-333333333333', createdAt: '2026-09-01T01:00:00.000Z'}
+ 
+-afterEach(() => vi.unstubAllGlobals())
++afterEach(() => {
++  vi.unstubAllGlobals()
++  analyticsCapture.mockClear()
++})
+ 
+ function selectTarget() {
+   fireEvent.change(screen.getByLabelText('AI/IP public ID'), {target: {value: ipProfileId}})
+ }
+ 
+ describe('ChatPanel', () => {
+   it('requires a real target and starts without invented messages', async () => {
+     const fetcher = vi.fn()
+     vi.stubGlobal('fetch', fetcher)
+     render(<ChatPanel labels={labels} locale="en" />)
+     expect(screen.getByRole('heading', {name: 'Start a conversation'})).toBeVisible()
+     expect(screen.queryByRole('listitem')).toBeNull()
+     fireEvent.change(screen.getByLabelText('AI/IP public ID'), {target: {value: 'not-a-uuid'}})
+     fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'Hello'}})
+     fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid AI/IP public ID before sending.')
+     expect(fetcher).not.toHaveBeenCalled()
+   })
+ 
++  it('captures chat-open intent after target validation without copying the message body', async () => {
++    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(response, {status: 201})))
++    render(<ChatPanel labels={labels} locale="en" />)
++    selectTarget()
++    fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'This private message must not be tracked'}})
++    fireEvent.click(screen.getByRole('button', {name: 'Send'}))
++    await waitFor(() => expect(analyticsCapture).toHaveBeenCalledTimes(1))
++    expect(analyticsCapture).toHaveBeenCalledWith({name: 'chat_opened', properties: {event_version: 1, ip_profile_id: ipProfileId, locale: 'en'}})
++    expect(JSON.stringify(analyticsCapture.mock.calls)).not.toContain('This private message must not be tracked')
++  })
++
+   it('renders a real answer and reuses its conversation ID for continuation', async () => {
+     const fetcher = vi.fn()
+       .mockResolvedValueOnce(Response.json(response, {status: 201}))
+       .mockResolvedValueOnce(Response.json({...response, answer: 'Second answer', conversationId: secondConversationId}, {status: 200}))
+     vi.stubGlobal('fetch', fetcher)
+     render(<ChatPanel labels={labels} locale="zh-CN" />)
+     selectTarget()
+     fireEvent.change(screen.getByLabelText('Message'), {target: {value: ' First question '}})
+     fireEvent.submit(screen.getByLabelText('Message').closest('form')!)
+     expect(await screen.findByText('Hello back')).toBeVisible()
+diff --git a/apps/web/src/components/chat/ChatPanel.tsx b/apps/web/src/components/chat/ChatPanel.tsx
+index 2c9abc6..360314f 100644
+--- a/apps/web/src/components/chat/ChatPanel.tsx
++++ b/apps/web/src/components/chat/ChatPanel.tsx
+@@ -1,15 +1,17 @@
+ 'use client'
+ 
+ import {ChatMessageInputSchema, ChatMessageResponseSchema} from '@aifans/contracts'
+ import {useRef, useState, type FormEvent, type KeyboardEvent} from 'react'
+ import type {Locale} from '../../i18n/config'
++import {trackChatOpened} from '../../lib/analytics/events'
++import {useAnalytics} from '../../lib/analytics/provider'
+ 
+ export interface ChatLabels {
+   title: string
+   eyebrow: string
+   description: string
+   targetLabel: string
+   targetHint: string
+   targetRequired: string
+   conversationLabel: string
+   sessionNotice: string
+@@ -71,20 +73,21 @@ async function sendChat(ipProfileId: string, body: object) {
+     json = await response.json()
+   } catch {
+     throw new ChatRequestError('invalid-response')
+   }
+   const parsed = ChatMessageResponseSchema.safeParse(json)
+   if (!parsed.success) throw new ChatRequestError('invalid-response')
+   return parsed.data
+ }
+ 
+ export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}) {
++  const analytics = useAnalytics()
+   const [ipProfileId, setIpProfileId] = useState('')
+   const [conversationId, setConversationId] = useState<string | null>(null)
+   const [draft, setDraft] = useState('')
+   const [messages, setMessages] = useState<ChatMessage[]>([])
+   const [state, setState] = useState<ChatState>({kind: 'idle'})
+   const localId = useRef(0)
+ 
+   async function submit(event: FormEvent<HTMLFormElement>) {
+     event.preventDefault()
+     if (state.kind === 'pending') return
+@@ -92,20 +95,22 @@ export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}
+     if (!uuid.test(target)) {
+       setState({kind: 'error', message: labels.targetRequired})
+       return
+     }
+     const payload = ChatMessageInputSchema.safeParse({message: draft, ...(conversationId ? {conversationId} : {}), locale})
+     if (!payload.success) {
+       setState({kind: 'error', message: labels.requestFailed})
+       return
+     }
+ 
++    trackChatOpened(analytics, {ipProfileId: target, locale})
++
+     localId.current += 1
+     const userMessage: ChatMessage = {id: `local-${localId.current}`, role: 'user', text: payload.data.message}
+     setMessages((current) => [...current, userMessage])
+     setDraft('')
+     setState({kind: 'pending'})
+     try {
+       const response = await sendChat(target, payload.data)
+       setConversationId(response.conversationId)
+       setMessages((current) => [...current, {id: response.messageId, role: 'assistant', text: response.answer}])
+       setState({kind: 'idle'})
+diff --git a/apps/web/src/components/social/PostCard.tsx b/apps/web/src/components/social/PostCard.tsx
+index 1f3e5e8..14ef914 100644
+--- a/apps/web/src/components/social/PostCard.tsx
++++ b/apps/web/src/components/social/PostCard.tsx
+@@ -1,29 +1,34 @@
++'use client'
++
+ import type {FeedPost} from '@aifans/contracts'
+ import Link from 'next/link'
+ import type {Locale} from '../../i18n/config'
++import {trackPostViewed} from '../../lib/analytics/events'
++import {useAnalytics} from '../../lib/analytics/provider'
+ import type {SocialLabels} from './types'
+ import {PostActions} from './PostActions'
+ 
+ function publishedTime(value: string, locale: Locale) {
+   return new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(value))
+ }
+ 
+ export function PostCard({post, locale, labels, linked = true}: {post: FeedPost; locale: Locale; labels: SocialLabels; linked?: boolean}) {
++  const analytics = useAnalytics()
+   const body = <p className="post-body">{post.body}</p>
+   return <article className="post-card">
+     <header className="post-author">
+       <div className="avatar" aria-hidden="true">{post.author.displayName.slice(0, 1)}</div>
+       <div><strong>{post.author.displayName}</strong><span className="author-meta">@{post.author.username} · <span className="account-kind">{labels.aiAccount}</span></span></div>
+       <time dateTime={post.publishedAt}>{publishedTime(post.publishedAt, locale)}</time>
+     </header>
+-    {linked ? <Link aria-label={post.body || post.author.displayName} className="post-link" href={`/${locale}/posts/${post.id}`}>{body}</Link> : body}
++    {linked ? <Link aria-label={post.body || post.author.displayName} className="post-link" href={`/${locale}/posts/${post.id}`} onClick={() => trackPostViewed(analytics, {locale, postId: post.id})}>{body}</Link> : body}
+     <footer className="post-stats" aria-label={`${post.likeCount} ${labels.like}, ${post.commentCount} ${labels.comments}`}>
+       <span aria-label={post.viewerHasLiked ? labels.unlike : labels.like}>{post.likeCount} {labels.like}</span>
+       <span>{post.commentCount} {labels.comments}</span>
+       {post.viewerHasBookmarked === true ? <span>{labels.removeBookmark}</span> : null}
+       {post.viewerFollowsAuthor === true ? <span>{labels.followingAction}</span> : null}
+     </footer>
+     {post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined && post.viewerFollowsAuthor !== undefined
+       ? <PostActions authorId={post.author.id} bookmarked={post.viewerHasBookmarked} followsAuthor={post.viewerFollowsAuthor} labels={labels} liked={post.viewerHasLiked} postId={post.id} />
+       : null}
+   </article>
+diff --git a/apps/web/src/components/social/SocialContent.test.tsx b/apps/web/src/components/social/SocialContent.test.tsx
+index 9aea4a2..1c734d1 100644
+--- a/apps/web/src/components/social/SocialContent.test.tsx
++++ b/apps/web/src/components/social/SocialContent.test.tsx
+@@ -1,19 +1,26 @@
+-import {render, screen} from '@testing-library/react'
++import {fireEvent, render, screen} from '@testing-library/react'
++import type {AnchorHTMLAttributes, MouseEventHandler, ReactNode} from 'react'
+ import {describe, expect, it, vi} from 'vitest'
+ import type {FeedPost, Notification, PostDetail} from '@aifans/contracts'
+ import {FeedContent} from './FeedContent.js'
+ import {NotificationsContent} from './NotificationsContent.js'
+ import {PostDetailContent} from './PostDetailContent.js'
+ import type {SocialLabels} from './types.js'
+ 
+ vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
++vi.mock('next/link', () => ({
++  default: ({children, onClick, ...props}: AnchorHTMLAttributes<HTMLAnchorElement> & {children: ReactNode}) => <a {...props} onClick={(event) => { event.preventDefault(); (onClick as MouseEventHandler<HTMLAnchorElement> | undefined)?.(event) }}>{children}</a>,
++}))
++
++const analyticsCapture = vi.fn()
++vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture: analyticsCapture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()})}))
+ 
+ const labels: SocialLabels = {
+   aiAccount: 'AI/IP', authRequiredTitle: 'Sign in required', authRequiredDescription: 'Sign in to see this page.',
+   bookmark: 'Bookmark', bookmarksEmptyTitle: 'No bookmarks yet', bookmarksEmptyDescription: 'Save posts for later.',
+   commentCount: '{count} comments', comments: 'Comments', deletedComment: 'This comment was deleted.',
+   follow: 'Follow', followingAction: 'Following', homeEmptyTitle: 'Nothing here yet', homeEmptyDescription: 'New posts appear here.',
+   humanAccount: 'Human', like: 'Like', notificationComment: 'commented on your post', notificationCommentLike: 'liked your comment',
+   notificationFollow: 'followed you', notificationPostLike: 'liked your post', notificationReply: 'replied to your comment',
+   notificationsEmptyTitle: 'No notifications yet', notificationsEmptyDescription: 'Updates appear here.',
+   postNotFoundTitle: 'Post not found', postNotFoundDescription: 'It may have been removed.',
+@@ -28,20 +35,27 @@ describe('real social content', () => {
+   it('renders API post fields and preserves the locale in the detail URL', () => {
+     render(<FeedContent labels={labels} locale="zh-CN" moreHref="/zh-CN?cursor=opaque" result={{status: 'ok', data: {items: [post], nextCursor: 'opaque'}}} />)
+     expect(screen.getByRole('article')).toHaveTextContent('Luma')
+     expect(screen.getByRole('article')).toHaveTextContent('A real post')
+     expect(screen.getByRole('article')).toHaveTextContent('4')
+     expect(screen.getByRole('link', {name: /A real post/})).toHaveAttribute('href', `/zh-CN/posts/${post.id}`)
+     expect(screen.getByText('AI/IP')).toBeVisible()
+     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/zh-CN?cursor=opaque')
+   })
+ 
++  it('captures a post-view intent from the real feed link without its body', () => {
++    render(<FeedContent labels={labels} locale="en" result={{status: 'ok', data: {items: [post], nextCursor: null}}} />)
++    fireEvent.click(screen.getByRole('link', {name: /A real post/}))
++    expect(analyticsCapture).toHaveBeenCalledWith({name: 'post_viewed', properties: {event_version: 1, locale: 'en', post_id: post.id}})
++    expect(JSON.stringify(analyticsCapture.mock.calls)).not.toContain(post.body)
++  })
++
+   it('renders localized empty, authentication, and unavailable states without posts', () => {
+     const {rerender} = render(<FeedContent labels={labels} locale="en" result={{status: 'ok', data: {items: [], nextCursor: null}}} />)
+     expect(screen.getByRole('heading', {name: 'Nothing here yet'})).toBeVisible()
+     rerender(<FeedContent labels={labels} locale="en" result={{status: 'auth-required'}} />)
+     expect(screen.getByRole('heading', {name: 'Sign in required'})).toBeVisible()
+     rerender(<FeedContent labels={labels} locale="en" result={{status: 'unavailable'}} />)
+     expect(screen.getByRole('heading', {name: 'Unable to load'})).toBeVisible()
+     expect(screen.queryByRole('article')).toBeNull()
+   })
+ 
+diff --git a/apps/web/src/lib/analytics/analytics.test.tsx b/apps/web/src/lib/analytics/analytics.test.tsx
+new file mode 100644
+index 0000000..218a14a
+--- /dev/null
++++ b/apps/web/src/lib/analytics/analytics.test.tsx
+@@ -0,0 +1,127 @@
++import {fireEvent, render, screen} from '@testing-library/react'
++import {describe, expect, it, vi} from 'vitest'
++import {
++  ANALYTICS_EVENT_NAMES,
++  createAnalyticsEvent,
++  type AnalyticsClient,
++} from './contracts.js'
++import {trackChatOpened, trackFeedTabSelected} from './events.js'
++import {AnalyticsProvider, createPostHogAnalytics, routeNameForPath, useAnalytics, type PostHogSdk} from './provider.js'
++
++vi.mock('next/navigation', () => ({usePathname: () => '/en'}))
++
++const profileId = '11111111-1111-4111-8111-111111111111'
++const postId = '22222222-2222-4222-8222-222222222222'
++
++function flush() {
++  return new Promise((resolve) => setTimeout(resolve, 0))
++}
++
++describe('analytics event contract', () => {
++  it('has exactly the approved initial custom-event allow-list and event version', () => {
++    expect(ANALYTICS_EVENT_NAMES).toEqual([
++      'landing_viewed',
++      'sign_up_started',
++      'sign_in_started',
++      'feed_tab_selected',
++      'search_performed',
++      'ip_profile_viewed',
++      'post_viewed',
++      'creator_center_viewed',
++      'ip_creation_step_viewed',
++      'generation_requested',
++      'master_image_selected',
++      'submission_clicked',
++      'chat_opened',
++    ])
++    expect(createAnalyticsEvent('landing_viewed', {locale: 'en', route_name: '/[locale]'})).toEqual({
++      name: 'landing_viewed',
++      properties: {event_version: 1, locale: 'en', route_name: '/[locale]'},
++    })
++  })
++
++  it('rejects unknown event names and non-allow-listed or sensitive properties', () => {
++    expect(() => createAnalyticsEvent('not_approved' as never, {} as never)).toThrow('Unknown analytics event')
++    expect(() => createAnalyticsEvent('search_performed', {category: 'all', query_length: 3, query: 'raw query'} as never)).toThrow('not allowed')
++    expect(() => createAnalyticsEvent('chat_opened', {ip_profile_id: profileId, message: 'private message'} as never)).toThrow('not allowed')
++    expect(() => createAnalyticsEvent('post_viewed', {post_id: postId, post_body: 'private post'} as never)).toThrow('not allowed')
++    expect(() => createAnalyticsEvent('post_viewed', {post_id: postId, comment_body: 'private comment'} as never)).toThrow('not allowed')
++    expect(() => createAnalyticsEvent('generation_requested', {prompt: 'private prompt', visual_type: 'portrait'} as never)).toThrow('not allowed')
++    expect(() => createAnalyticsEvent('post_viewed', {locale: 'en'} as never)).toThrow('invalid')
++  })
++
++  it('emits only allow-listed chat and feed intent data', () => {
++    const capture = vi.fn()
++    const analytics: AnalyticsClient = {capture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()}
++    trackFeedTabSelected(analytics, {feed: 'following', locale: 'zh-CN'})
++    trackChatOpened(analytics, {ipProfileId: profileId, locale: 'en'})
++    expect(capture).toHaveBeenNthCalledWith(1, createAnalyticsEvent('feed_tab_selected', {feed: 'following', locale: 'zh-CN'}))
++    expect(capture).toHaveBeenNthCalledWith(2, createAnalyticsEvent('chat_opened', {ip_profile_id: profileId, locale: 'en'}))
++    expect(JSON.stringify(capture.mock.calls)).not.toMatch(/message|search|post_body|comment_body|prompt/i)
++  })
++})
++
++describe('PostHog browser adapter', () => {
++  it('is a complete no-op when its public project key is absent', async () => {
++    const load = vi.fn()
++    const analytics = createPostHogAnalytics({key: undefined, load})
++    await analytics.capture(createAnalyticsEvent('landing_viewed', {locale: 'en', route_name: '/[locale]'}))
++    await analytics.identify(profileId)
++    await analytics.reset()
++    await analytics.page({locale: 'en', route_name: '/[locale]'})
++    expect(load).not.toHaveBeenCalled()
++  })
++
++  it('initializes lazily with broad autocapture and automatic page views disabled', async () => {
++    const sdk: PostHogSdk = {capture: vi.fn(), identify: vi.fn(), init: vi.fn(), reset: vi.fn()}
++    const load = vi.fn(async () => sdk)
++    const analytics = createPostHogAnalytics({key: 'phc_public_key', host: 'https://eu.i.posthog.com', load})
++    await analytics.capture(createAnalyticsEvent('post_viewed', {locale: 'en', post_id: postId}))
++    expect(load).toHaveBeenCalledTimes(1)
++    expect(sdk.init).toHaveBeenCalledWith('phc_public_key', {
++      api_host: 'https://eu.i.posthog.com',
++      autocapture: false,
++      capture_pageleave: false,
++      capture_pageview: false,
++    })
++    expect(sdk.capture).toHaveBeenCalledWith('post_viewed', {event_version: 1, locale: 'en', post_id: postId})
++    await analytics.page({locale: 'en', route_name: '/[locale]/posts/[postId]'})
++    expect(sdk.capture).toHaveBeenLastCalledWith('$pageview', {locale: 'en', route_name: '/[locale]/posts/[postId]'})
++  })
++
++  it('identifies only a stable profile UUID and resets identity on logout', async () => {
++    const sdk: PostHogSdk = {capture: vi.fn(), identify: vi.fn(), init: vi.fn(), reset: vi.fn()}
++    const analytics = createPostHogAnalytics({key: 'phc_public_key', load: async () => sdk})
++    await analytics.identify('not-a-profile-id')
++    expect(sdk.identify).not.toHaveBeenCalled()
++    await analytics.identify(profileId)
++    await analytics.reset()
++    expect(sdk.identify).toHaveBeenCalledWith(profileId)
++    expect(sdk.reset).toHaveBeenCalledTimes(1)
++  })
++
++  it('isolates provider load and SDK failures from product interactions', async () => {
++    const analytics = createPostHogAnalytics({key: 'phc_public_key', load: async () => { throw new Error('provider unavailable') }})
++    await expect(analytics.capture(createAnalyticsEvent('landing_viewed', {locale: 'en', route_name: '/[locale]'}))).resolves.toBeUndefined()
++
++    const failing: AnalyticsClient = {
++      capture: () => { throw new Error('capture failed') },
++      identify: () => { throw new Error('identify failed') },
++      page: () => { throw new Error('page failed') },
++      reset: () => { throw new Error('reset failed') },
++    }
++    function Button() {
++      const client = useAnalytics()
++      return <button onClick={() => trackFeedTabSelected(client, {feed: 'for_you', locale: 'en'})}>Select feed</button>
++    }
++    render(<AnalyticsProvider analytics={failing} locale="en"><Button /></AnalyticsProvider>)
++    expect(() => fireEvent.click(screen.getByRole('button', {name: 'Select feed'}))).not.toThrow()
++    await flush()
++  })
++
++  it('uses route templates rather than entity IDs in explicit page-view properties', () => {
++    expect(routeNameForPath('/en')).toBe('/[locale]')
++    expect(routeNameForPath(`/zh-CN/posts/${postId}`)).toBe('/[locale]/posts/[postId]')
++    expect(routeNameForPath('/en/messages')).toBe('/[locale]/messages')
++  })
++})
+diff --git a/apps/web/src/lib/analytics/contracts.ts b/apps/web/src/lib/analytics/contracts.ts
+new file mode 100644
+index 0000000..525b85f
+--- /dev/null
++++ b/apps/web/src/lib/analytics/contracts.ts
+@@ -0,0 +1,130 @@
++import type {Locale} from '../../i18n/config'
++
++export const ANALYTICS_EVENT_NAMES = [
++  'landing_viewed',
++  'sign_up_started',
++  'sign_in_started',
++  'feed_tab_selected',
++  'search_performed',
++  'ip_profile_viewed',
++  'post_viewed',
++  'creator_center_viewed',
++  'ip_creation_step_viewed',
++  'generation_requested',
++  'master_image_selected',
++  'submission_clicked',
++  'chat_opened',
++] as const
++
++export type AnalyticsEventName = typeof ANALYTICS_EVENT_NAMES[number]
++
++type EventProperties = {
++  landing_viewed: {locale: Locale; route_name: string}
++  sign_up_started: {locale: Locale; action_source?: string}
++  sign_in_started: {locale: Locale; action_source?: string}
++  feed_tab_selected: {locale: Locale; feed: 'for_you' | 'following'}
++  search_performed: {locale: Locale; category: 'all' | 'ips' | 'posts'; query_length: number}
++  ip_profile_viewed: {locale: Locale; ip_profile_id: string}
++  post_viewed: {locale: Locale; post_id: string}
++  creator_center_viewed: {locale: Locale; route_name: string}
++  ip_creation_step_viewed: {locale: Locale; creation_step: string}
++  generation_requested: {locale: Locale; visual_type: string}
++  master_image_selected: {locale: Locale; visual_type: string}
++  submission_clicked: {locale: Locale; creation_step: string}
++  chat_opened: {locale: Locale; ip_profile_id: string}
++}
++
++export type AnalyticsEventProperties = EventProperties
++export type AnalyticsEvent<K extends AnalyticsEventName = AnalyticsEventName> = {
++  name: K
++  properties: EventProperties[K] & {event_version: 1}
++}
++export type AnalyticsPage = {locale: Locale; route_name: string}
++
++export interface AnalyticsClient {
++  page(page: AnalyticsPage): void | Promise<void>
++  identify(profileId: string): void | Promise<void>
++  reset(): void | Promise<void>
++  capture(event: AnalyticsEvent): void | Promise<void>
++}
++
++const propertyNames: {[K in AnalyticsEventName]: readonly (keyof EventProperties[K])[]} = {
++  landing_viewed: ['locale', 'route_name'],
++  sign_up_started: ['locale', 'action_source'],
++  sign_in_started: ['locale', 'action_source'],
++  feed_tab_selected: ['locale', 'feed'],
++  search_performed: ['locale', 'category', 'query_length'],
++  ip_profile_viewed: ['locale', 'ip_profile_id'],
++  post_viewed: ['locale', 'post_id'],
++  creator_center_viewed: ['locale', 'route_name'],
++  ip_creation_step_viewed: ['locale', 'creation_step'],
++  generation_requested: ['locale', 'visual_type'],
++  master_image_selected: ['locale', 'visual_type'],
++  submission_clicked: ['locale', 'creation_step'],
++  chat_opened: ['locale', 'ip_profile_id'],
++}
++
++const requiredPropertyNames: {[K in AnalyticsEventName]: readonly (keyof EventProperties[K])[]} = {
++  landing_viewed: ['locale', 'route_name'],
++  sign_up_started: ['locale'],
++  sign_in_started: ['locale'],
++  feed_tab_selected: ['locale', 'feed'],
++  search_performed: ['locale', 'category', 'query_length'],
++  ip_profile_viewed: ['locale', 'ip_profile_id'],
++  post_viewed: ['locale', 'post_id'],
++  creator_center_viewed: ['locale', 'route_name'],
++  ip_creation_step_viewed: ['locale', 'creation_step'],
++  generation_requested: ['locale', 'visual_type'],
++  master_image_selected: ['locale', 'visual_type'],
++  submission_clicked: ['locale', 'creation_step'],
++  chat_opened: ['locale', 'ip_profile_id'],
++}
++
++const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value)
++}
++
++function isEventName(value: string): value is AnalyticsEventName {
++  return (ANALYTICS_EVENT_NAMES as readonly string[]).includes(value)
++}
++
++function validProperties(name: AnalyticsEventName, properties: Record<string, unknown>) {
++  for (const key of Object.keys(properties)) {
++    if (!(propertyNames[name] as readonly string[]).includes(key)) throw new Error(`Analytics property "${key}" is not allowed for ${name}`)
++  }
++  for (const key of requiredPropertyNames[name] as readonly string[]) {
++    if (!(key in properties)) throw new Error(`Analytics property "${key}" is invalid for ${name}`)
++  }
++  if (properties.locale !== 'en' && properties.locale !== 'zh-CN') throw new Error(`Analytics property "locale" is invalid for ${name}`)
++  if ('route_name' in properties && (typeof properties.route_name !== 'string' || !properties.route_name.startsWith('/') || uuid.test(properties.route_name))) throw new Error(`Analytics property "route_name" is invalid for ${name}`)
++  if ('action_source' in properties && typeof properties.action_source !== 'string') throw new Error(`Analytics property "action_source" is invalid for ${name}`)
++  if ('feed' in properties && properties.feed !== 'for_you' && properties.feed !== 'following') throw new Error(`Analytics property "feed" is invalid for ${name}`)
++  if ('category' in properties && properties.category !== 'all' && properties.category !== 'ips' && properties.category !== 'posts') throw new Error(`Analytics property "category" is invalid for ${name}`)
++  if ('query_length' in properties && (!Number.isInteger(properties.query_length) || (properties.query_length as number) < 0)) throw new Error(`Analytics property "query_length" is invalid for ${name}`)
++  for (const key of ['ip_profile_id', 'post_id'] as const) {
++    if (key in properties && (typeof properties[key] !== 'string' || !uuid.test(properties[key]))) throw new Error(`Analytics property "${key}" is invalid for ${name}`)
++  }
++  for (const key of ['creation_step', 'visual_type'] as const) {
++    if (key in properties && (typeof properties[key] !== 'string' || properties[key].length === 0)) throw new Error(`Analytics property "${key}" is invalid for ${name}`)
++  }
++}
++
++export function createAnalyticsEvent<K extends AnalyticsEventName>(name: K, properties: EventProperties[K]): AnalyticsEvent<K> {
++  if (!isEventName(name)) throw new Error(`Unknown analytics event: ${name}`)
++  if (!isRecord(properties)) throw new Error(`Analytics properties are invalid for ${name}`)
++  validProperties(name, properties)
++  return {name, properties: {...properties, event_version: 1} as EventProperties[K] & {event_version: 1}}
++}
++
++export function isProfileUuid(value: string) {
++  return uuid.test(value)
++}
++
++export const noOpAnalytics: AnalyticsClient = {
++  page: () => undefined,
++  identify: () => undefined,
++  reset: () => undefined,
++  capture: () => undefined,
++}
+diff --git a/apps/web/src/lib/analytics/events.ts b/apps/web/src/lib/analytics/events.ts
+new file mode 100644
+index 0000000..d05573f
+--- /dev/null
++++ b/apps/web/src/lib/analytics/events.ts
+@@ -0,0 +1,62 @@
++import type {Locale} from '../../i18n/config'
++import {createAnalyticsEvent, type AnalyticsClient} from './contracts'
++
++function safelyCapture(analytics: AnalyticsClient, event: Parameters<AnalyticsClient['capture']>[0]) {
++  try {
++    void Promise.resolve(analytics.capture(event)).catch(() => undefined)
++  } catch {
++    // Analytics must never change the result of a product interaction.
++  }
++}
++
++export function trackLandingViewed(analytics: AnalyticsClient, properties: {locale: Locale; routeName: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('landing_viewed', {locale: properties.locale, route_name: properties.routeName}))
++}
++
++export function trackSignUpStarted(analytics: AnalyticsClient, properties: {locale: Locale; actionSource?: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('sign_up_started', {locale: properties.locale, ...(properties.actionSource ? {action_source: properties.actionSource} : {})}))
++}
++
++export function trackSignInStarted(analytics: AnalyticsClient, properties: {locale: Locale; actionSource?: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('sign_in_started', {locale: properties.locale, ...(properties.actionSource ? {action_source: properties.actionSource} : {})}))
++}
++
++export function trackFeedTabSelected(analytics: AnalyticsClient, properties: {locale: Locale; feed: 'for_you' | 'following'}) {
++  safelyCapture(analytics, createAnalyticsEvent('feed_tab_selected', {locale: properties.locale, feed: properties.feed}))
++}
++
++export function trackSearchPerformed(analytics: AnalyticsClient, properties: {locale: Locale; category: 'all' | 'ips' | 'posts'; queryLength: number}) {
++  safelyCapture(analytics, createAnalyticsEvent('search_performed', {locale: properties.locale, category: properties.category, query_length: properties.queryLength}))
++}
++
++export function trackIpProfileViewed(analytics: AnalyticsClient, properties: {locale: Locale; ipProfileId: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('ip_profile_viewed', {locale: properties.locale, ip_profile_id: properties.ipProfileId}))
++}
++
++export function trackPostViewed(analytics: AnalyticsClient, properties: {locale: Locale; postId: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('post_viewed', {locale: properties.locale, post_id: properties.postId}))
++}
++
++export function trackCreatorCenterViewed(analytics: AnalyticsClient, properties: {locale: Locale; routeName: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('creator_center_viewed', {locale: properties.locale, route_name: properties.routeName}))
++}
++
++export function trackIpCreationStepViewed(analytics: AnalyticsClient, properties: {locale: Locale; creationStep: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('ip_creation_step_viewed', {locale: properties.locale, creation_step: properties.creationStep}))
++}
++
++export function trackGenerationRequested(analytics: AnalyticsClient, properties: {locale: Locale; visualType: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('generation_requested', {locale: properties.locale, visual_type: properties.visualType}))
++}
++
++export function trackMasterImageSelected(analytics: AnalyticsClient, properties: {locale: Locale; visualType: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('master_image_selected', {locale: properties.locale, visual_type: properties.visualType}))
++}
++
++export function trackSubmissionClicked(analytics: AnalyticsClient, properties: {locale: Locale; creationStep: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('submission_clicked', {locale: properties.locale, creation_step: properties.creationStep}))
++}
++
++export function trackChatOpened(analytics: AnalyticsClient, properties: {locale: Locale; ipProfileId: string}) {
++  safelyCapture(analytics, createAnalyticsEvent('chat_opened', {locale: properties.locale, ip_profile_id: properties.ipProfileId}))
++}
+diff --git a/apps/web/src/lib/analytics/provider.tsx b/apps/web/src/lib/analytics/provider.tsx
+new file mode 100644
+index 0000000..4024aa8
+--- /dev/null
++++ b/apps/web/src/lib/analytics/provider.tsx
+@@ -0,0 +1,108 @@
++'use client'
++
++import {createContext, useContext, useEffect, useState} from 'react'
++import {usePathname} from 'next/navigation'
++import type {Locale} from '../../i18n/config'
++import {isProfileUuid, noOpAnalytics, type AnalyticsClient, type AnalyticsEvent, type AnalyticsPage} from './contracts'
++
++export interface PostHogSdk {
++  init(key: string, options: {api_host: string; autocapture: false; capture_pageleave: false; capture_pageview: false}): void
++  capture(name: string, properties: Record<string, unknown>): void
++  identify(profileId: string): void
++  reset(): void
++}
++
++type PostHogLoader = () => Promise<PostHogSdk>
++type AdapterOptions = {key?: string | undefined; host?: string | undefined; load?: PostHogLoader | undefined}
++
++async function loadPostHog(): Promise<PostHogSdk> {
++  const {default: posthog} = await import('posthog-js')
++  return posthog
++}
++
++export function createPostHogAnalytics({key, host = 'https://us.i.posthog.com', load = loadPostHog}: AdapterOptions): AnalyticsClient {
++  let sdk: Promise<PostHogSdk | null> | undefined
++  async function getSdk() {
++    if (!key || typeof window === 'undefined') return null
++    sdk ??= load().then((client) => {
++      client.init(key, {api_host: host, autocapture: false, capture_pageleave: false, capture_pageview: false})
++      return client
++    })
++    try {
++      return await sdk
++    } catch {
++      return null
++    }
++  }
++  async function run(action: (client: PostHogSdk) => void) {
++    try {
++      const client = await getSdk()
++      if (client) action(client)
++    } catch {
++      // Browser analytics failures are intentionally isolated from product behavior.
++    }
++  }
++  return {
++    capture: (event: AnalyticsEvent) => run((client) => client.capture(event.name, event.properties)),
++    identify: (profileId) => isProfileUuid(profileId) ? run((client) => client.identify(profileId)) : Promise.resolve(),
++    reset: () => run((client) => client.reset()),
++    page: (page: AnalyticsPage) => run((client) => client.capture('$pageview', page)),
++  }
++}
++
++export function createBrowserAnalytics(): AnalyticsClient {
++  return createPostHogAnalytics({
++    key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
++    host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
++  })
++}
++
++const knownRoutes: Record<string, string> = {
++  '': '/[locale]',
++  admin: '/[locale]/admin',
++  bookmarks: '/[locale]/bookmarks',
++  messages: '/[locale]/messages',
++  notifications: '/[locale]/notifications',
++  profile: '/[locale]/profile',
++  search: '/[locale]/search',
++  settings: '/[locale]/settings',
++}
++
++export function routeNameForPath(pathname: string) {
++  const [, , first, second] = pathname.split('/')
++  if (first === 'posts' && second) return '/[locale]/posts/[postId]'
++  if (first === 'profiles' && second) return '/[locale]/profiles/[profileId]'
++  return knownRoutes[first ?? ''] ?? '/[locale]/unknown'
++}
++
++function safely(analytics: AnalyticsClient): AnalyticsClient {
++  function run(operation: () => void | Promise<void>) {
++    try {
++      void Promise.resolve(operation()).catch(() => undefined)
++    } catch {
++      // The provider is also safe with a future analytics implementation.
++    }
++  }
++  return {
++    capture: (event) => run(() => analytics.capture(event)),
++    identify: (profileId) => run(() => analytics.identify(profileId)),
++    reset: () => run(() => analytics.reset()),
++    page: (page) => run(() => analytics.page(page)),
++  }
++}
++
++const AnalyticsContext = createContext<AnalyticsClient>(noOpAnalytics)
++
++export function AnalyticsProvider({analytics, children, locale}: {analytics?: AnalyticsClient; children: React.ReactNode; locale: Locale}) {
++  const pathname = usePathname()
++  const [client] = useState(() => safely(analytics ?? createBrowserAnalytics()))
++  const routeName = routeNameForPath(pathname)
++  useEffect(() => {
++    client.page({locale, route_name: routeName})
++  }, [client, locale, routeName])
++  return <AnalyticsContext.Provider value={client}>{children}</AnalyticsContext.Provider>
++}
++
++export function useAnalytics() {
++  return useContext(AnalyticsContext)
++}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 5950066..dcd7657 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -62,20 +62,23 @@ importers:
+         version: link:../../packages/ui
+       next:
+         specifier: 16.3.3
+         version: 16.3.3(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+       next-intl:
+         specifier: 4.14.1
+         version: 4.14.1(@swc/helpers@0.5.23)(next@16.3.3(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+       next-themes:
+         specifier: 0.4.6
+         version: 0.4.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
++      posthog-js:
++        specifier: 1.422.5
++        version: 1.422.5(@types/react@19.2.14)(react@19.2.8)
+       react:
+         specifier: 19.2.8
+         version: 19.2.8
+       react-dom:
+         specifier: 19.2.8
+         version: 19.2.8(react@19.2.8)
+     devDependencies:
+       '@testing-library/jest-dom':
+         specifier: 6.9.1
+         version: 6.9.1
+@@ -746,20 +749,29 @@ packages:
+ 
+   '@parcel/watcher@2.6.0':
+     resolution: {integrity: sha512-7FNeNl8NCE7aINx7WXiKQrPYZWC/hvrTsmk6zmxbI7LTXE7hVek/n8AfVgpe2y82zl3w0HvCHN0bVKMBoJcC0w==}
+     engines: {node: '>= 10.0.0'}
+ 
+   '@playwright/test@1.62.1':
+     resolution: {integrity: sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ==}
+     engines: {node: '>=20'}
+     hasBin: true
+ 
++  '@posthog/browser-common@0.7.0':
++    resolution: {integrity: sha512-Kr6j9sH7NisT3fC3w7jZlonYeCFjPXZrDwHl3usFpjNEdgbHUrxPAmekEkTt+zRAa2huldFPIAmibZ3KC4hXoQ==}
++
++  '@posthog/core@1.49.2':
++    resolution: {integrity: sha512-AXHDo/4nisUg7OPG1TQNgREK7n+chBQXLQyttp7bDTDsDg2k9lV06TmnpvuNbwJs53q9mP9hjezKEZu4fYadfg==}
++
++  '@posthog/types@1.407.1':
++    resolution: {integrity: sha512-WhbkXPC2rgylXqmxHqv70ffI3k+KxyR6s7DBIfr5NvIqHkxp6v0pk31D/jbz0DNVbzwkLjyll2pxr4FNbJiYzg==}
++
+   '@rolldown/binding-android-arm-eabi@1.2.6':
+     resolution: {integrity: sha512-b+jTcARdTiFLI6jB4a5XjTm0RWd6KcRfQj/I2356fxUZemiho9zQLxo0RtCuMDAyKcLo6cEltkgbQp6d1+sjjQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm]
+     os: [android]
+ 
+   '@rolldown/binding-android-arm64@1.2.6':
+     resolution: {integrity: sha512-lkWU8ZJaRk9q3CIEY1Tc7vIFALp3Xw5NfGJo2hQg5oIqNgxWi1zI+IiDEK3r70BF5Dzol1tcXsnzsRc8NLhG+Q==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+@@ -1026,20 +1038,23 @@ packages:
+     resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
+ 
+   '@types/react-dom@19.2.3':
+     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
+     peerDependencies:
+       '@types/react': ^19.2.0
+ 
+   '@types/react@19.2.14':
+     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
+ 
++  '@types/trusted-types@2.0.7':
++    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
++
+   '@typescript/typescript-aix-ppc64@7.0.2':
+     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
+     engines: {node: '>=16.20.0'}
+     cpu: [ppc64]
+     os: [aix]
+ 
+   '@typescript/typescript-darwin-arm64@7.0.2':
+     resolution: {integrity: sha512-gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA==}
+     engines: {node: '>=16.20.0'}
+     cpu: [arm64]
+@@ -1219,20 +1234,23 @@ packages:
+   client-only@0.0.1:
+     resolution: {integrity: sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA==}
+ 
+   content-type@2.1.0:
+     resolution: {integrity: sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==}
+     engines: {node: '>=18'}
+ 
+   convert-source-map@2.0.0:
+     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+ 
++  core-js@3.50.0:
++    resolution: {integrity: sha512-BRWgOLKkFeCgRudR6zrs8p9XJZcE14grzKMMssoYrk6krtuEZ7MTKPIY5RzOnqsEKIR9kst7wNzphttraT+Yqw==}
++
+   css-tree@3.2.1:
+     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
+     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
+ 
+   css.escape@1.5.1:
+     resolution: {integrity: sha512-YUifsXXuknHlUsmlgyY0PKzgPOr7/FjCePfHNt0jxm83wHZi44VDMQ7/fGNkjY3/jV1MC+1CmZbaHzugyeRtpg==}
+ 
+   cssstyle@5.3.7:
+     resolution: {integrity: sha512-7D2EPVltRrsTkhpQmksIu+LxeWAIEk6wRDMJ1qljlv+CKHJM+cJLlfhWIzNA44eAsHXSNe3+vO6DW1yCYx8SuQ==}
+     engines: {node: '>=20'}
+@@ -1267,20 +1285,23 @@ packages:
+   detect-libc@2.1.2:
+     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
+     engines: {node: '>=8'}
+ 
+   dom-accessibility-api@0.5.16:
+     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
+ 
+   dom-accessibility-api@0.6.3:
+     resolution: {integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==}
+ 
++  dompurify@3.4.14:
++    resolution: {integrity: sha512-dVoH9z+MY+C9IilgGCk3YfFqjLi3fChm2OiKJMzh6axrJ5qwxqWaZamgmHrpv22CN/KdbZJuGEGgfQoL00LTdg==}
++
+   drizzle-orm@0.45.2:
+     resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
+     peerDependencies:
+       '@aws-sdk/client-rds-data': '>=3'
+       '@cloudflare/workers-types': '>=4'
+       '@electric-sql/pglite': '>=0.2.0'
+       '@libsql/client': '>=0.10.0'
+       '@libsql/client-wasm': '>=0.10.0'
+       '@neondatabase/serverless': '>=0.10.0'
+       '@op-engineering/op-sqlite': '>=2'
+@@ -1387,20 +1408,23 @@ packages:
+ 
+   fdir@6.5.0:
+     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
+     engines: {node: '>=12.0.0'}
+     peerDependencies:
+       picomatch: ^3 || ^4
+     peerDependenciesMeta:
+       picomatch:
+         optional: true
+ 
++  fflate@0.4.9:
++    resolution: {integrity: sha512-zdxgIEddhfsyCaWpJ2SdXEP8ZMrKJ6+5jl4OupODcywU0IhRk6gdXuVGcPICyfx2H97hVK7xmJtRLPjkxAX8Vw==}
++
+   fsevents@2.3.2:
+     resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+     os: [darwin]
+ 
+   fsevents@2.3.3:
+     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
+     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+     os: [darwin]
+ 
+@@ -1691,33 +1715,55 @@ packages:
+     engines: {node: '>=0.10.0'}
+ 
+   postgres-date@1.0.7:
+     resolution: {integrity: sha512-suDmjLVQg78nMK2UZ454hAG+OAW+HQPZ6n++TNDUX+L0+uUlLywnoxJKDou51Zm+zTCjrCl0Nq6J9C5hP9vK/Q==}
+     engines: {node: '>=0.10.0'}
+ 
+   postgres-interval@1.2.0:
+     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
+     engines: {node: '>=0.10.0'}
+ 
++  posthog-js@1.422.5:
++    resolution: {integrity: sha512-p1CLXsGoHwNkdElxXtd1KzNP/df8sIrp8CRII+lAPRhaHdpi1HfNxrybqLSzWvJLw2w5Nou5vpXfGABUI5BVwA==}
++    peerDependencies:
++      '@types/react': '>=16.8.0'
++      react: '>=16.8.0'
++    peerDependenciesMeta:
++      '@types/react':
++        optional: true
++      react:
++        optional: true
++
++  preact@10.29.8:
++    resolution: {integrity: sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==}
++    peerDependencies:
++      preact-render-to-string: '>=5'
++    peerDependenciesMeta:
++      preact-render-to-string:
++        optional: true
++
+   prettier@3.9.6:
+     resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+     engines: {node: '>=14'}
+     hasBin: true
+ 
+   pretty-format@27.5.1:
+     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
+     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
+ 
+   punycode@2.3.1:
+     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
+     engines: {node: '>=6'}
+ 
++  query-selector-shadow-dom@1.0.1:
++    resolution: {integrity: sha512-lT5yCqEBgfoMYpf3F2xQRK7zEr1rhIIZuceDK6+xRkJQ4NMbHTwXqk4NkwDwQMNqXgG9r9fyHnzwNVs6zV5KRw==}
++
+   react-dom@19.2.8:
+     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
+     peerDependencies:
+       react: ^19.2.8
+ 
+   react-is@17.0.2:
+     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
+ 
+   react@19.2.8:
+     resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
+@@ -1934,20 +1980,26 @@ packages:
+         optional: true
+       happy-dom:
+         optional: true
+       jsdom:
+         optional: true
+ 
+   w3c-xmlserializer@5.0.0:
+     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
+     engines: {node: '>=18'}
+ 
++  web-vitals@5.3.0:
++    resolution: {integrity: sha512-q6LWsLatGYZp5VGBIOvbTj6JBV2nOmC8KvWztXBmwJcfFAzhwKwbOxhUH306XY3CcaZDUlSmSuNPBsCn0bFu+g==}
++
++  web-vitals@6.0.0:
++    resolution: {integrity: sha512-Guaibvy/+uNtL6Bsu4jmMJGzuSl91oeRH5iO9pPRbYftnFUr3yqT1TUNX/OE4o9HexuEMU3Kb/Wg7iKhlffZUA==}
++
+   webidl-conversions@8.0.1:
+     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
+     engines: {node: '>=20'}
+ 
+   whatwg-mimetype@4.0.0:
+     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}
+     engines: {node: '>=18'}
+ 
+   whatwg-mimetype@5.0.0:
+     resolution: {integrity: sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==}
+@@ -2372,20 +2424,31 @@ snapshots:
+       '@parcel/watcher-linux-arm64-musl': 2.6.0
+       '@parcel/watcher-linux-x64-glibc': 2.6.0
+       '@parcel/watcher-linux-x64-musl': 2.6.0
+       '@parcel/watcher-win32-arm64': 2.6.0
+       '@parcel/watcher-win32-x64': 2.6.0
+ 
+   '@playwright/test@1.62.1':
+     dependencies:
+       playwright: 1.62.1
+ 
++  '@posthog/browser-common@0.7.0':
++    dependencies:
++      '@posthog/core': 1.49.2
++      '@posthog/types': 1.407.1
++
++  '@posthog/core@1.49.2':
++    dependencies:
++      '@posthog/types': 1.407.1
++
++  '@posthog/types@1.407.1': {}
++
+   '@rolldown/binding-android-arm-eabi@1.2.6':
+     optional: true
+ 
+   '@rolldown/binding-android-arm64@1.2.6':
+     optional: true
+ 
+   '@rolldown/binding-darwin-arm64@1.2.6':
+     optional: true
+ 
+   '@rolldown/binding-darwin-x64@1.2.6':
+@@ -2565,20 +2628,23 @@ snapshots:
+       pg-types: 2.2.0
+ 
+   '@types/react-dom@19.2.3(@types/react@19.2.14)':
+     dependencies:
+       '@types/react': 19.2.14
+ 
+   '@types/react@19.2.14':
+     dependencies:
+       csstype: 3.2.3
+ 
++  '@types/trusted-types@2.0.7':
++    optional: true
++
+   '@typescript/typescript-aix-ppc64@7.0.2':
+     optional: true
+ 
+   '@typescript/typescript-darwin-arm64@7.0.2':
+     optional: true
+ 
+   '@typescript/typescript-darwin-x64@7.0.2':
+     optional: true
+ 
+   '@typescript/typescript-freebsd-arm64@7.0.2':
+@@ -2694,20 +2760,22 @@ snapshots:
+   caniuse-lite@1.0.30001810: {}
+ 
+   chai@6.2.2: {}
+ 
+   client-only@0.0.1: {}
+ 
+   content-type@2.1.0: {}
+ 
+   convert-source-map@2.0.0: {}
+ 
++  core-js@3.50.0: {}
++
+   css-tree@3.2.1:
+     dependencies:
+       mdn-data: 2.27.1
+       source-map-js: 1.2.1
+ 
+   css.escape@1.5.1: {}
+ 
+   cssstyle@5.3.7:
+     dependencies:
+       '@asamuzakjp/css-color': 4.1.2
+@@ -2736,20 +2804,24 @@ snapshots:
+   decimal.js@10.6.0: {}
+ 
+   dequal@2.0.3: {}
+ 
+   detect-libc@2.1.2: {}
+ 
+   dom-accessibility-api@0.5.16: {}
+ 
+   dom-accessibility-api@0.6.3: {}
+ 
++  dompurify@3.4.14:
++    optionalDependencies:
++      '@types/trusted-types': 2.0.7
++
+   drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(pg@8.23.0):
+     optionalDependencies:
+       '@neondatabase/serverless': 1.1.0
+       '@types/pg': 8.23.1
+       pg: 8.23.0
+ 
+   entities@8.0.0: {}
+ 
+   es-module-lexer@2.3.2: {}
+ 
+@@ -2785,20 +2857,22 @@ snapshots:
+   estree-walker@3.0.3:
+     dependencies:
+       '@types/estree': 1.0.9
+ 
+   expect-type@1.4.0: {}
+ 
+   fdir@6.5.0(picomatch@4.0.7):
+     optionalDependencies:
+       picomatch: 4.0.7
+ 
++  fflate@0.4.9: {}
++
+   fsevents@2.3.2:
+     optional: true
+ 
+   fsevents@2.3.3:
+     optional: true
+ 
+   hono@4.13.5: {}
+ 
+   html-encoding-sniffer@6.0.0:
+     dependencies:
+@@ -3092,30 +3166,52 @@ snapshots:
+   postgres-array@2.0.0: {}
+ 
+   postgres-bytea@1.0.1: {}
+ 
+   postgres-date@1.0.7: {}
+ 
+   postgres-interval@1.2.0:
+     dependencies:
+       xtend: 4.0.2
+ 
++  posthog-js@1.422.5(@types/react@19.2.14)(react@19.2.8):
++    dependencies:
++      '@posthog/browser-common': 0.7.0
++      '@posthog/core': 1.49.2
++      '@posthog/types': 1.407.1
++      core-js: 3.50.0
++      dompurify: 3.4.14
++      fflate: 0.4.9
++      preact: 10.29.8
++      query-selector-shadow-dom: 1.0.1
++      web-vitals: 5.3.0
++      web-vitals-soft-navs: web-vitals@6.0.0
++    optionalDependencies:
++      '@types/react': 19.2.14
++      react: 19.2.8
++    transitivePeerDependencies:
++      - preact-render-to-string
++
++  preact@10.29.8: {}
++
+   prettier@3.9.6: {}
+ 
+   pretty-format@27.5.1:
+     dependencies:
+       ansi-regex: 5.0.1
+       ansi-styles: 5.2.0
+       react-is: 17.0.2
+ 
+   punycode@2.3.1: {}
+ 
++  query-selector-shadow-dom@1.0.1: {}
++
+   react-dom@19.2.8(react@19.2.8):
+     dependencies:
+       react: 19.2.8
+       scheduler: 0.27.0
+ 
+   react-is@17.0.2: {}
+ 
+   react@19.2.8: {}
+ 
+   redent@3.0.0:
+@@ -3353,20 +3449,24 @@ snapshots:
+     optionalDependencies:
+       '@types/node': 24.13.3
+       jsdom: 29.0.1
+     transitivePeerDependencies:
+       - msw
+ 
+   w3c-xmlserializer@5.0.0:
+     dependencies:
+       xml-name-validator: 5.0.0
+ 
++  web-vitals@5.3.0: {}
++
++  web-vitals@6.0.0: {}
++
+   webidl-conversions@8.0.1: {}
+ 
+   whatwg-mimetype@4.0.0: {}
+ 
+   whatwg-mimetype@5.0.0: {}
+ 
+   whatwg-url@15.1.0:
+     dependencies:
+       tr46: 6.0.0
+       webidl-conversions: 8.0.1
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 7886039..e76a443 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -1,7 +1,8 @@
+ packages:
+   - apps/*
+   - packages/*
+ allowBuilds:
++  core-js: false
+   esbuild: true
+ minimumReleaseAgeExclude:
+   - lucide-react@1.38.0

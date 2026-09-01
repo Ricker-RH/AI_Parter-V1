@@ -1,0 +1,331 @@
+# Review package: e87a2e6..7977e5b
+
+## Commits
+7977e5b feat: add typed API shell
+
+## Files changed
+ .superpowers/sdd/neon-api-task-1-report.md | 24 +++++++++++++++++++++++
+ apps/api/package.json                      | 24 +++++++++++++++++++++++
+ apps/api/src/app.test.ts                   | 24 +++++++++++++++++++++++
+ apps/api/src/app.ts                        | 17 ++++++++++++++++
+ apps/api/src/errors.ts                     | 19 ++++++++++++++++++
+ apps/api/src/index.ts                      |  5 +++++
+ apps/api/src/middleware/request-id.ts      | 14 ++++++++++++++
+ apps/api/src/routes/health.ts              |  6 ++++++
+ apps/api/tsconfig.json                     | 12 ++++++++++++
+ apps/api/vitest.config.ts                  |  8 ++++++++
+ pnpm-lock.yaml                             | 31 ++++++++++++++++++++++++++++++
+ 11 files changed, 184 insertions(+)
+
+## Diff
+diff --git a/.superpowers/sdd/neon-api-task-1-report.md b/.superpowers/sdd/neon-api-task-1-report.md
+new file mode 100644
+index 0000000..0452f8b
+--- /dev/null
++++ b/.superpowers/sdd/neon-api-task-1-report.md
+@@ -0,0 +1,24 @@
++# Neon API Foundation — Task 1 Report
++
++## Status
++
++Complete. The API package provides a typed Hono application shell with per-request UUID correlation, a public health endpoint, typed safe API errors, a typed not-found response, and a safe internal-error handler.
++
++## TDD evidence
++
++- RED: `corepack pnpm --dir apps/api test -- app.test.ts` failed before the API package existed, with `ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND`.
++- GREEN: the same focused test passes with 2 tests after the implementation.
++
++## Verification
++
++- `corepack pnpm install` — passed; lockfile records the requested exact pins.
++- `corepack pnpm --dir apps/api test -- app.test.ts` — passed (2 tests).
++- `corepack pnpm --dir apps/api typecheck` — passed.
++- `corepack pnpm --dir apps/api build` — passed.
++- `corepack pnpm test` — passed (31 tests; 13 skipped).
++- `corepack pnpm license:check` — passed.
++- `git diff --check` — passed.
++
++## Review and concerns
++
++No auth, database, or provider-route behavior was added. Error responses are validated by `ApiErrorSchema` and do not include stack traces or error text. The API compiler config explicitly includes Node types because the correlation middleware uses `node:crypto`.
+diff --git a/apps/api/package.json b/apps/api/package.json
+new file mode 100644
+index 0000000..6077baf
+--- /dev/null
++++ b/apps/api/package.json
+@@ -0,0 +1,24 @@
++{
++  "name": "@aifans/api",
++  "version": "0.0.0",
++  "private": true,
++  "type": "module",
++  "exports": {".": "./dist/index.js"},
++  "scripts": {
++    "build": "tsc -p tsconfig.json",
++    "lint": "tsc -p tsconfig.json --noEmit",
++    "typecheck": "tsc -p tsconfig.json --noEmit",
++    "test": "vitest run"
++  },
++  "dependencies": {
++    "@aifans/contracts": "workspace:*",
++    "@aifans/db": "workspace:*",
++    "hono": "4.13.5",
++    "zod": "4.5.4"
++  },
++  "devDependencies": {
++    "@types/node": "24.13.3",
++    "typescript": "7.0.2",
++    "vitest": "4.1.11"
++  }
++}
+diff --git a/apps/api/src/app.test.ts b/apps/api/src/app.test.ts
+new file mode 100644
+index 0000000..9c8a25c
+--- /dev/null
++++ b/apps/api/src/app.test.ts
+@@ -0,0 +1,24 @@
++import {describe, expect, it} from 'vitest'
++import {ApiErrorSchema} from '@aifans/contracts'
++import {createApp} from './app.js'
++
++describe('AIFANS API shell', () => {
++  it('returns public health with a correlated request ID', async () => {
++    const response = await createApp().request('/health')
++
++    expect(response.status).toBe(200)
++    expect(response.headers.get('x-request-id')).toMatch(
++      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
++    )
++    expect(await response.json()).toEqual({status: 'ok', service: 'aifans-api'})
++  })
++
++  it('returns a typed not-found error with the same request ID', async () => {
++    const response = await createApp().request('/does-not-exist')
++    const requestId = response.headers.get('x-request-id')
++    const body = ApiErrorSchema.parse(await response.json())
++
++    expect(response.status).toBe(404)
++    expect(body).toMatchObject({code: 'NOT_FOUND', requestId})
++  })
++})
+diff --git a/apps/api/src/app.ts b/apps/api/src/app.ts
+new file mode 100644
+index 0000000..773144b
+--- /dev/null
++++ b/apps/api/src/app.ts
+@@ -0,0 +1,17 @@
++import {Hono} from 'hono'
++import {apiError} from './errors.js'
++import {requestIdMiddleware, type ApiVariables} from './middleware/request-id.js'
++import {registerHealthRoutes} from './routes/health.js'
++
++export type AppDependencies = object
++
++export const createApp = (_dependencies: AppDependencies = {}) => {
++  const app = new Hono<{Variables: ApiVariables}>()
++
++  app.use('*', requestIdMiddleware)
++  registerHealthRoutes(app)
++  app.notFound((c) => apiError(c, 404, 'NOT_FOUND', 'Route not found'))
++  app.onError((_error, c) => apiError(c, 500, 'INTERNAL_ERROR', 'Internal server error'))
++
++  return app
++}
+diff --git a/apps/api/src/errors.ts b/apps/api/src/errors.ts
+new file mode 100644
+index 0000000..0aa9bbc
+--- /dev/null
++++ b/apps/api/src/errors.ts
+@@ -0,0 +1,19 @@
++import {ApiErrorSchema} from '@aifans/contracts'
++import type {Context} from 'hono'
++import type {ContentfulStatusCode} from 'hono/utils/http-status'
++import type {ApiVariables} from './middleware/request-id.js'
++
++export const apiError = (
++  c: Context<{Variables: ApiVariables}>,
++  status: ContentfulStatusCode,
++  code: string,
++  message: string,
++) => {
++  const body = ApiErrorSchema.parse({
++    code,
++    message,
++    requestId: c.get('requestId'),
++  })
++
++  return c.json(body, status)
++}
+diff --git a/apps/api/src/index.ts b/apps/api/src/index.ts
+new file mode 100644
+index 0000000..21a69b4
+--- /dev/null
++++ b/apps/api/src/index.ts
+@@ -0,0 +1,5 @@
++export {createApp} from './app.js'
++export type {AppDependencies} from './app.js'
++export {apiError} from './errors.js'
++export {requestIdMiddleware} from './middleware/request-id.js'
++export type {ApiVariables} from './middleware/request-id.js'
+diff --git a/apps/api/src/middleware/request-id.ts b/apps/api/src/middleware/request-id.ts
+new file mode 100644
+index 0000000..27740aa
+--- /dev/null
++++ b/apps/api/src/middleware/request-id.ts
+@@ -0,0 +1,14 @@
++import {randomUUID} from 'node:crypto'
++import type {MiddlewareHandler} from 'hono'
++
++export type ApiVariables = {
++  requestId: string
++}
++
++export const requestIdMiddleware: MiddlewareHandler<{Variables: ApiVariables}> = async (c, next) => {
++  const requestId = randomUUID()
++
++  c.set('requestId', requestId)
++  await next()
++  c.header('x-request-id', requestId)
++}
+diff --git a/apps/api/src/routes/health.ts b/apps/api/src/routes/health.ts
+new file mode 100644
+index 0000000..d6be8cb
+--- /dev/null
++++ b/apps/api/src/routes/health.ts
+@@ -0,0 +1,6 @@
++import type {Hono} from 'hono'
++import type {ApiVariables} from '../middleware/request-id.js'
++
++export const registerHealthRoutes = (app: Hono<{Variables: ApiVariables}>) => {
++  app.get('/health', (c) => c.json({status: 'ok', service: 'aifans-api'}))
++}
+diff --git a/apps/api/tsconfig.json b/apps/api/tsconfig.json
+new file mode 100644
+index 0000000..82e2935
+--- /dev/null
++++ b/apps/api/tsconfig.json
+@@ -0,0 +1,12 @@
++{
++  "extends": "../../tsconfig.base.json",
++  "compilerOptions": {
++    "rootDir": "src",
++    "outDir": "dist",
++    "declaration": true,
++    "declarationMap": true,
++    "types": ["node"]
++  },
++  "include": ["src/**/*.ts"],
++  "exclude": ["src/**/*.test.ts"]
++}
+diff --git a/apps/api/vitest.config.ts b/apps/api/vitest.config.ts
+new file mode 100644
+index 0000000..bc24724
+--- /dev/null
++++ b/apps/api/vitest.config.ts
+@@ -0,0 +1,8 @@
++import {defineConfig} from 'vitest/config'
++
++export default defineConfig({
++  test: {
++    name: 'api',
++    include: ['src/**/*.test.ts'],
++  },
++})
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 4a0e8f1..f816e84 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -20,20 +20,45 @@ importers:
+       turbo:
+         specifier: 2.10.12
+         version: 2.10.12
+       typescript:
+         specifier: 7.0.2
+         version: 7.0.2
+       vitest:
+         specifier: 4.1.11
+         version: 4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13))
+ 
++  apps/api:
++    dependencies:
++      '@aifans/contracts':
++        specifier: workspace:*
++        version: link:../../packages/contracts
++      '@aifans/db':
++        specifier: workspace:*
++        version: link:../../packages/db
++      hono:
++        specifier: 4.13.5
++        version: 4.13.5
++      zod:
++        specifier: 4.5.4
++        version: 4.5.4
++    devDependencies:
++      '@types/node':
++        specifier: 24.13.3
++        version: 24.13.3
++      typescript:
++        specifier: 7.0.2
++        version: 7.0.2
++      vitest:
++        specifier: 4.1.11
++        version: 4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13))
++
+   packages/contracts:
+     dependencies:
+       zod:
+         specifier: 4.5.4
+         version: 4.5.4
+ 
+   packages/db:
+     dependencies:
+       '@aifans/contracts':
+         specifier: workspace:*
+@@ -866,20 +891,24 @@ packages:
+   fsevents@2.3.2:
+     resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+     os: [darwin]
+ 
+   fsevents@2.3.3:
+     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
+     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+     os: [darwin]
+ 
++  hono@4.13.5:
++    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
++    engines: {node: '>=16.9.0'}
++
+   html-encoding-sniffer@6.0.0:
+     resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
+     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+ 
+   http-proxy-agent@7.0.2:
+     resolution: {integrity: sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig==}
+     engines: {node: '>= 14'}
+ 
+   https-proxy-agent@7.0.6:
+     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
+@@ -1819,20 +1848,22 @@ snapshots:
+   fdir@6.5.0(picomatch@4.0.7):
+     optionalDependencies:
+       picomatch: 4.0.7
+ 
+   fsevents@2.3.2:
+     optional: true
+ 
+   fsevents@2.3.3:
+     optional: true
+ 
++  hono@4.13.5: {}
++
+   html-encoding-sniffer@6.0.0:
+     dependencies:
+       '@exodus/bytes': 1.15.1
+     transitivePeerDependencies:
+       - '@noble/hashes'
+ 
+   http-proxy-agent@7.0.2:
+     dependencies:
+       agent-base: 7.1.4
+       debug: 4.4.3

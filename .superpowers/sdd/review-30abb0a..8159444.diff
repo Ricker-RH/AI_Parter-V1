@@ -1,0 +1,469 @@
+# Review package: 30abb0a..HEAD
+
+## Commits
+8159444 fix: verify Neon migration runner
+b2558c1 Merge remote-tracking branch 'origin/codex/aifans-foundation' into codex/aifans-foundation
+44d712f docs: harden Neon authorization boundary
+f9e40b0 docs: design history and product analytics
+
+## Files changed
+ .../2026-08-31-aifans-neon-database-foundation.md  | 34 ++++++++-----
+ ...08-31-aifans-neon-vercel-architecture-design.md |  4 +-
+ .../2026-09-01-aifans-history-analytics-design.md  |  4 +-
+ packages/db/package.json                           |  2 +-
+ packages/db/src/migrate.ts                         | 12 ++++-
+ packages/db/tests/migrate.integration.test.ts      | 57 ++++++++++++++++++++++
+ packages/db/tests/migrate.test.ts                  | 17 ++++++-
+ pnpm-lock.yaml                                     |  2 +-
+ 8 files changed, 111 insertions(+), 21 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/plans/2026-08-31-aifans-neon-database-foundation.md b/docs/superpowers/plans/2026-08-31-aifans-neon-database-foundation.md
+index 4752b26..9c28f1d 100644
+--- a/docs/superpowers/plans/2026-08-31-aifans-neon-database-foundation.md
++++ b/docs/superpowers/plans/2026-08-31-aifans-neon-database-foundation.md
+@@ -6,20 +6,21 @@
+ 
+ **Architecture:** Keep schema and authorization in portable PostgreSQL. The API supplies a verified auth subject through transaction-local claims while a non-owner role remains subject to RLS; platform provisioning uses a separate privileged path. Drizzle provides typed queries, while a small checksum-validating runner applies reviewed SQL migrations locally and to isolated Neon branches.
+ 
+ **Tech Stack:** Node.js 24.19.0, pnpm 11.21.0, TypeScript 7.0.2, PostgreSQL 17, Docker Compose, Drizzle ORM 0.45.2, Neon Serverless Driver 1.1.0, pg 8.23.0, Vitest 4.1.11, Zod 4.5.4.
+ 
+ ## Global Constraints
+ 
+ - Humans cannot publish top-level posts or change their account kind to `ip`.
+ - Browser code never receives a database connection string or calls product tables directly.
+ - User-scoped queries run as a non-owner role with transaction-local verified claims and remain subject to RLS.
++- The API is the sole holder of user-scoped database credentials; browsers and arbitrary-SQL clients can never set trusted actor claims.
+ - Platform-only mutations use a separate privileged path and will be audited when the audit subsystem is introduced.
+ - Development, test, staging, and production contain no seeded mock product data.
+ - Tests may create ephemeral fixtures only in an isolated test database and must roll them back or delete them.
+ - Hosted Neon credentials are not required for local Tasks 1–3.
+ - Every dependency is pinned exactly and every behavior change follows RED → GREEN TDD.
+ 
+ ---
+ 
+ ## File map
+ 
+@@ -248,21 +249,25 @@ await expect(updateOwnDisplayName(owner, firstSubject, 'New name')).resolves.toB
+ await expect(updateOtherDisplayName(owner, firstSubject, secondId)).resolves.toBe(0)
+ await expect(changeOwnAccountKind(owner, firstSubject)).rejects.toThrow(/permission denied/)
+ await expect(insertProfileAsAuthenticated(owner, firstSubject)).rejects.toThrow(/permission denied/)
+ await expect(deleteOwnProfile(owner, firstSubject)).rejects.toThrow(/permission denied/)
+ await expect(readSettingsAsAnon(owner)).rejects.toThrow(/permission denied/)
+ await expect(readSettingsAsAuthenticated(owner, firstSubject)).resolves.toMatchObject({defaultIpQuota: 3})
+ await expect(readCurrentAccount(owner, firstSubject)).resolves.toMatchObject({id: firstId})
+ await expect(readCurrentAccount(owner, null)).resolves.toBeNull()
+ ```
+ 
+-Also assert that uppercase/invalid usernames, blank display names, human rows without `auth_subject`, IP rows with `auth_subject`, and a second `global` settings row are rejected by database constraints.
++Also assert that uppercase/invalid usernames, blank display names, human rows without `auth_subject`, IP rows with `auth_subject`, a negative quota, and a second `global` settings row are rejected by database constraints. Assert that quota `0` is accepted to match `AppSettingsSchema` and support administratively disabling new creator capacity.
++
++Add exact tests proving malformed claims (`''`, invalid JSON, JSON null, arrays, numbers, booleans, `{}`, blank `sub`) return no current account rather than throwing. The current-account JSON keys must be exactly `id`, `account_kind`, `username`, `display_name`, `preferred_locale`, and `creator_mode_enabled`; it must not expose `auth_subject`, bio, timestamps, or an R2 object key.
++
++Run owner-level trigger tests that attempt to change `id`, `auth_subject`, `account_kind`, and `created_at` and expect rejection, then prove an allowed owner update advances `updated_at`. Run constraint cases as owner so a privilege denial cannot masquerade as constraint enforcement.
+ 
+ - [ ] **Step 2: Start Docker, run migrations/tests, and verify RED**
+ 
+ Run:
+ 
+ ```bash
+ docker compose -f infra/postgres/compose.yaml down -v
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm db:start
+ DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm db:migrate
+ DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test -- foundation-rls.test.ts
+@@ -272,39 +277,39 @@ Expected: FAIL because the foundation migration and tables do not exist.
+ 
+ - [ ] **Step 3: Implement the reviewed foundation SQL migration**
+ 
+ The migration must create:
+ 
+ - NOLOGIN roles `aifans_anon` and `aifans_authenticated` when absent;
+ - enum `public.account_kind` with `human`, `ip`;
+ - enum `public.app_locale` with `en`, `zh-CN`;
+ - schema `app` with no public create privilege;
+ - `public.profiles` with UUID primary key, nullable unique `auth_subject`, immutable `account_kind`, username constrained by `^[a-z0-9_]{3,30}$` to match `AccountSchema`, display name constrained to 1–80 non-whitespace characters, bio limited to 500 characters, avatar object key limited to 512 characters, locale, creator-mode flag, and timestamps;
+-- `public.platform_settings` restricted to the literal key `global`, default approval flag `false`, and positive default IP quota `3`;
++- `public.platform_settings` restricted to the literal key `global`, default approval flag `false`, and non-negative default IP quota `3` bounded to the existing contract range `0..100`;
+ - exactly one required `global` configuration row;
+-- `app.current_auth_subject()` reading only transaction-local `request.jwt.claims.sub` and returning null for missing/invalid claims;
+-- a zero-argument `public.current_account()` returning the caller profile as JSONB;
++- `app.current_auth_subject()` defensively reading only transaction-local `request.jwt.claims.sub`; missing, empty, malformed, non-object, absent, non-string, or blank subjects return null without throwing;
++- a zero-argument, hardened security-definer `public.current_account()` returning only the six safe snake-case fields specified in Step 1 as JSONB, never `auth_subject` or unrestricted `to_jsonb(profiles)` output;
+ - a hardened trigger that manages `updated_at` while rejecting owner attempts to change immutable fields.
+ 
+-Use explicit revokes/grants. `aifans_anon` receives only profile `SELECT`. `aifans_authenticated` receives profile `SELECT`, settings `SELECT`, and `UPDATE` only on `username`, `display_name`, `bio`, `avatar_object_key`, `preferred_locale`, and `creator_mode_enabled`. Neither role receives profile insert/delete, settings mutation, or schema-create rights.
++Use explicit revokes/grants. `aifans_anon` and `aifans_authenticated` receive profile `SELECT` only on `id`, `account_kind`, `username`, `display_name`, `bio`, `avatar_object_key`, `preferred_locale`, `creator_mode_enabled`, `created_at`, and `updated_at`; neither can select `auth_subject`. `aifans_authenticated` additionally receives settings `SELECT`, `UPDATE` only on `username`, `display_name`, `bio`, `avatar_object_key`, `preferred_locale`, and `creator_mode_enabled`, and execute permission on `current_account()`. Neither role receives profile insert/delete, settings mutation, or schema-create rights.
+ 
+ Grant both NOLOGIN roles to the migration's `CURRENT_USER` so the server-side owner connection can enter a restricted role with `SET LOCAL ROLE`. Enable RLS on both tables; do not force RLS because the table owner is the explicitly privileged platform path. Policies must be exactly:
+ 
+ - `profiles_public_read` for anon/authenticated select;
+ - `profiles_owner_update` for authenticated update using and checking `auth_subject = app.current_auth_subject()`;
+ - `settings_authenticated_read` for authenticated select.
+ 
+-All security-definer functions use `SET search_path = ''`, fully qualified objects, and revoked public execution. The platform owner keeps the rights needed for provisioning and operations.
++All security-definer functions use `SET search_path = ''`, fully qualified objects, and revoked public execution before narrow grants. `current_account()` derives identity only from the defensive claim function and explicitly projects safe fields. The platform owner keeps the rights needed for provisioning and operations.
+ 
+ - [ ] **Step 4: Define a matching typed Drizzle schema**
+ 
+-`src/schema.ts` defines the exact database column names/types and exports the four symbols named in this task's Interfaces. It must repeat the SQL username, display-name, auth-subject/account-kind, settings-key, and positive-quota constraints with Drizzle `check(...)` declarations, plus the unique auth-subject and username constraints. SQL remains authoritative for grants, functions, triggers, and policies.
++`src/schema.ts` defines the exact database column names/types and exports the four symbols named in this task's Interfaces. It must repeat the SQL username, display-name, auth-subject/account-kind, settings-key, and quota `0..100` constraints with Drizzle `check(...)` declarations, plus the unique auth-subject and username constraints. SQL remains authoritative for grants, functions, triggers, and policies.
+ 
+ - [ ] **Step 5: Reset and verify GREEN**
+ 
+ Run the Task 2 Step 2 commands again from a fresh `docker compose down -v`, followed by:
+ 
+ ```bash
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db typecheck
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db build
+ ```
+@@ -318,23 +323,24 @@ git add packages/db
+ git commit -m "feat: add Neon profile authorization foundation"
+ ```
+ 
+ ### Task 3: Server-only profile provisioning and scoped sessions
+ 
+ **Files:**
+ - Create: `packages/db/src/session.ts`
+ - Create: `packages/db/src/profiles.ts`
+ - Create: `packages/db/tests/profiles.test.ts`
+ - Modify: `packages/db/src/index.ts`
++- Modify: `.env.example`
+ 
+ **Interfaces:**
+-- Consumes: verified external auth subject, optional email/name, `DATABASE_URL` for user-scoped queries, and `DATABASE_ADMIN_URL` for platform provisioning.
++- Consumes: verified external auth subject, optional email/name, `DATABASE_USER_URL` for non-owner user-scoped queries, and `DATABASE_ADMIN_URL` for platform provisioning.
+ - Produces: `withActor(actor, callback)`, `ensureHumanProfile(input)`, `getCurrentAccount(actor)`, `Actor`, and `CurrentAccount`.
+ 
+ - [ ] **Step 1: Write failing real-database repository tests**
+ 
+ ```ts
+ const first = await ensureHumanProfile({
+   authSubject: `auth_${crypto.randomUUID()}`,
+   email: 'luna@example.com',
+   displayName: null,
+ })
+@@ -345,61 +351,63 @@ const second = await ensureHumanProfile({
+ })
+ 
+ expect(second.id).toBe(first.id)
+ expect(first.accountKind).toBe('human')
+ expect(first.username).toMatch(/^user_[a-f0-9]{25}$/)
+ expect(first.displayName).toBe('luna')
+ expect(await getCurrentAccount({subject: first.authSubject})).toMatchObject({id: first.id})
+ expect(await getCurrentAccount(null)).toBeNull()
+ ```
+ 
+-Add a no-email case that safely falls back to `AIFANS User`. Add a test proving a user-scoped callback cannot update `account_kind` or another user's profile.
++Add a no-email case that safely falls back to `AIFANS User`. Add tests proving a user-scoped callback rejects blank subjects, cannot update `account_kind` or another user's profile, and leaves no role/claim state behind when the same injected test connection is reused.
+ 
+ - [ ] **Step 2: Run the focused test and verify RED**
+ 
+ Run:
+ 
+ ```bash
+-DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test -- profiles.test.ts
++DATABASE_USER_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test -- profiles.test.ts
+ ```
+ 
+ Expected: FAIL because the repository functions do not exist.
+ 
+ - [ ] **Step 3: Implement the scoped transaction boundary**
+ 
+ `Actor` is `{subject: string}`. `withActor` rejects blank subjects, opens a transaction, executes `SET LOCAL ROLE aifans_authenticated`, sets a JSON claim containing only the verified `sub`, executes the callback, and commits/rolls back. It never accepts arbitrary claim objects or role names from callers.
+ 
+-Production construction uses `@neondatabase/serverless` Pool with `DATABASE_URL`; tests may inject a `pg`-compatible pool. Do not export raw pools or privileged clients from the package root.
++Production construction uses `@neondatabase/serverless` Pool with `DATABASE_USER_URL`, whose login role is a member of `aifans_authenticated`, has no owner or `BYPASSRLS` privilege, and is held only by the API. Tests may inject a `pg`-compatible pool and use the local owner only to enter the restricted role. Do not export raw pools or privileged clients from the package root.
++
++Add the name `DATABASE_USER_URL` to `.env.example`. Keep `DATABASE_ADMIN_URL` separate; no runtime fallback from the user URL to the admin/owner URL is allowed.
+ 
+ - [ ] **Step 4: Implement idempotent profile provisioning and lookup**
+ 
+ `ensureHumanProfile` runs only on the admin connection. It first selects by auth subject, then inserts an immutable human row with `ON CONFLICT (auth_subject) DO NOTHING` and re-selects the existing row. A username candidate is `user_` plus 25 lowercase hexadecimal characters from a fresh UUID, which fits `AccountSchema`; retry up to five fresh candidates only when the username unique constraint collides. This avoids assumptions about Neon Auth's external ID format without letting a collision abort signup. Display name priority is non-blank supplied name, non-blank email local-part, then `AIFANS User`.
+ 
+ Normalize returned rows into the existing `AccountSchema` shape. `getCurrentAccount(null)` returns null without opening a database transaction; authenticated calls use `withActor` and `public.current_account()`.
+ 
+ - [ ] **Step 5: Verify the complete database package**
+ 
+ Run:
+ 
+ ```bash
+-DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test
++DATABASE_USER_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test DATABASE_ADMIN_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db test
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db typecheck
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db build
+ PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm license:check
+ ```
+ 
+ Expected: tests, typecheck, build, and license scan all exit 0.
+ 
+ - [ ] **Step 6: Commit**
+ 
+ ```bash
+-git add packages/db
++git add .env.example packages/db
+ git commit -m "feat: add authenticated profile repository"
+ ```
+ 
+ ## Completion gate
+ 
+ Before Task 5 API work starts:
+ 
+ 1. run the database package tests from a freshly recreated Docker volume;
+ 2. run root `pnpm test`, `pnpm typecheck`, `pnpm build`, and `pnpm license:check` under the pinned runtime;
+ 3. obtain an independent spec-compliance and security review;
+diff --git a/docs/superpowers/specs/2026-08-31-aifans-neon-vercel-architecture-design.md b/docs/superpowers/specs/2026-08-31-aifans-neon-vercel-architecture-design.md
+index d72266e..632e959 100644
+--- a/docs/superpowers/specs/2026-08-31-aifans-neon-vercel-architecture-design.md
++++ b/docs/superpowers/specs/2026-08-31-aifans-neon-vercel-architecture-design.md
+@@ -34,24 +34,24 @@ Clerk offers a mature authentication product and polished hosted components. It
+ This gives AIFANS the most control, but makes the team responsible for more authentication operations, security updates, and recovery behavior. That maintenance cost is not justified for V1.
+ 
+ ## 3. Application boundaries
+ 
+ Browser components never receive a database owner connection string and never query product tables directly. They call the AIFANS API through the shared typed domain client.
+ 
+ The Web and Admin applications use Neon Auth through an `AuthProvider` adapter. The API verifies the caller's session, derives a trusted actor context, and opens database work through a `DatabaseProvider` adapter. Page components do not import Neon, Drizzle, R2, or Stream SDKs.
+ 
+ The API has two explicit database execution paths:
+ 
+-1. **User-scoped path:** uses a non-owner PostgreSQL role, sets verified actor claims for the current transaction, and remains subject to RLS.
++1. **User-scoped path:** uses a dedicated non-owner PostgreSQL login held only by the API, sets verified actor claims for the current transaction, and remains subject to RLS. Browsers and arbitrary-SQL clients never receive this credential and therefore cannot forge the claims GUC.
+ 2. **Platform path:** used only by approved admin operations, webhooks, and AI workers through a separate privileged credential. Every privileged mutation records an audit event.
+ 
+-The privileged credential is server-only and cannot enter Web bundles, logs, browser responses, or preview artifacts.
++The privileged credential is server-only and cannot enter Web bundles, logs, browser responses, or preview artifacts. The Neon owner credential is reserved for reviewed migrations and platform provisioning and is never used as the fallback for user-scoped requests.
+ 
+ ## 4. Identity and authorization
+ 
+ Neon Auth owns credentials, OAuth linkage, sessions, recovery, and its internal auth schema. AIFANS owns a separate `profiles` row keyed by the immutable authenticated user identifier.
+ 
+ New identities receive one human profile through an idempotent server-side provisioning flow. The default account kind is always `human`. Public or owner-facing profile updates cannot change:
+ 
+ - profile ID;
+ - account kind;
+ - creator ownership relationships;
+diff --git a/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md b/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
+index b4b6162..bfd18cd 100644
+--- a/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
++++ b/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
+@@ -1,14 +1,14 @@
+ # AIFANS History and Product Analytics Design
+ 
+-**Date:** 2026-09-01  
+-**Status:** Pending written-spec review  
++**Date:** 2026-09-01
++**Status:** Pending written-spec review
+ **Scope:** Business history, auditability, server-side conversion events, and Web product analytics.
+ 
+ ## 1. Decision
+ 
+ AIFANS uses a hybrid analytics architecture:
+ 
+ - Neon PostgreSQL is the source of truth for business state, immutable revisions, workflow transitions, audit records, AI-operation records, and authoritative server-side conversion events.
+ - PostHog stores high-volume Web behavior such as page views, clicks, sessions, funnels, retention, and client-side product events.
+ - An AIFANS analytics adapter isolates PostHog from product components and allows the provider to be replaced later.
+ - A transactional outbox reliably forwards selected authoritative Neon events to PostHog without making a product transaction depend on PostHog availability.
+diff --git a/packages/db/package.json b/packages/db/package.json
+index 60d0e53..4e4b69a 100644
+--- a/packages/db/package.json
++++ b/packages/db/package.json
+@@ -12,17 +12,17 @@
+     "migrate": "tsx src/migrate.ts"
+   },
+   "dependencies": {
+     "@aifans/contracts": "workspace:*",
+     "@neondatabase/serverless": "1.1.0",
+     "drizzle-orm": "0.45.2",
+     "pg": "8.23.0",
+     "zod": "4.5.4"
+   },
+   "devDependencies": {
+-    "@types/node": "^24.0.0",
++    "@types/node": "24.13.3",
+     "@types/pg": "8.23.1",
+     "tsx": "4.23.13",
+     "typescript": "7.0.2",
+     "vitest": "4.1.11"
+   }
+ }
+diff --git a/packages/db/src/migrate.ts b/packages/db/src/migrate.ts
+index 8b9d600..8a36f0f 100644
+--- a/packages/db/src/migrate.ts
++++ b/packages/db/src/migrate.ts
+@@ -13,21 +13,31 @@ export type Migration = {
+   sql: string
+   checksum: string
+ }
+ 
+ export type MigrateOptions = {
+   connectionString: string
+   directory: string
+ }
+ 
+ export function discoverMigrations(directory: string): Migration[] {
+-  return readdirSync(directory)
++  let entries: string[]
++  try {
++    entries = readdirSync(directory)
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
++      return []
++    }
++    throw error
++  }
++
++  return entries
+     .filter((name) => migrationName.test(name))
+     .sort()
+     .map((name) => {
+       const sql = readFileSync(resolve(directory, name), 'utf8')
+       const checksum = createHash('sha256').update(sql).digest('hex')
+       return {name, sql, checksum}
+     })
+ }
+ 
+ export async function migrate({connectionString, directory}: MigrateOptions): Promise<string[]> {
+diff --git a/packages/db/tests/migrate.integration.test.ts b/packages/db/tests/migrate.integration.test.ts
+new file mode 100644
+index 0000000..ed9b86a
+--- /dev/null
++++ b/packages/db/tests/migrate.integration.test.ts
+@@ -0,0 +1,57 @@
++import {mkdtempSync, rmSync, writeFileSync} from 'node:fs'
++import {tmpdir} from 'node:os'
++import {join} from 'node:path'
++import {randomUUID} from 'node:crypto'
++import {Pool} from 'pg'
++import {afterEach, describe, expect, it} from 'vitest'
++import {migrate} from '../src/migrate.js'
++
++const connectionString = process.env.DATABASE_URL ?? ''
++const describeIntegration = connectionString ? describe : describe.skip
++
++describeIntegration('migration runner integration', () => {
++  const directory = mkdtempSync(join(tmpdir(), 'aifans-migration-integration-'))
++  const suffix = randomUUID().replaceAll('-', '')
++  const firstName = `209912310001_first_${suffix}.sql`
++  const secondName = `209912310002_second_${suffix}.sql`
++  const firstTable = `aifans_migration_first_${suffix}`
++  const secondTable = `aifans_migration_second_${suffix}`
++  const firstPath = join(directory, firstName)
++  const secondPath = join(directory, secondName)
++  const firstSql = `CREATE TABLE ${firstTable} (id integer PRIMARY KEY);\n`
++  const pool = new Pool({connectionString})
++
++  afterEach(async () => {
++    await pool.query(`DROP TABLE IF EXISTS ${firstTable}`)
++    await pool.query(`DROP TABLE IF EXISTS ${secondTable}`)
++    await pool.query(
++      'DELETE FROM app_migrations.schema_migrations WHERE name = ANY($1::text[])',
++      [[firstName, secondName]],
++    )
++    rmSync(directory, {recursive: true, force: true})
++    await pool.end()
++  })
++
++  it('applies safely, rejects changed checksums, rolls back failures, and releases resources', async () => {
++    writeFileSync(firstPath, firstSql)
++
++    await expect(migrate({connectionString, directory})).resolves.toEqual([firstName])
++    await expect(migrate({connectionString, directory})).resolves.toEqual([])
++
++    writeFileSync(firstPath, `CREATE TABLE ${firstTable} (id text PRIMARY KEY);\n`)
++    await expect(migrate({connectionString, directory})).rejects.toThrow('checksum mismatch')
++    writeFileSync(firstPath, firstSql)
++
++    writeFileSync(secondPath, `CREATE TABLE ${secondTable} (id integer PRIMARY KEY);\nINVALID SQL;\n`)
++    await expect(migrate({connectionString, directory})).rejects.toThrow()
++    await expect(
++      pool.query<{exists: string | null}>('SELECT to_regclass($1) AS exists', [secondTable]),
++    ).resolves.toMatchObject({rows: [{exists: null}]})
++    await expect(
++      pool.query('SELECT name FROM app_migrations.schema_migrations WHERE name = $1', [secondName]),
++    ).resolves.toMatchObject({rowCount: 0})
++
++    writeFileSync(secondPath, `CREATE TABLE ${secondTable} (id integer PRIMARY KEY);\n`)
++    await expect(migrate({connectionString, directory})).resolves.toEqual([secondName])
++  })
++})
+diff --git a/packages/db/tests/migrate.test.ts b/packages/db/tests/migrate.test.ts
+index 68e87e9..4874d43 100644
+--- a/packages/db/tests/migrate.test.ts
++++ b/packages/db/tests/migrate.test.ts
+@@ -1,11 +1,11 @@
+-import {mkdtempSync, writeFileSync} from 'node:fs'
++import {mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+ import {tmpdir} from 'node:os'
+ import {join} from 'node:path'
+ import {describe, expect, it} from 'vitest'
+ import {discoverMigrations} from '../src/migrate.js'
+ import {readDatabaseEnv} from '../src/env.js'
+ 
+ describe('database environment', () => {
+   it('requires a postgres URL and falls back to it for administration', () => {
+     const result = readDatabaseEnv({DATABASE_URL: 'postgresql://app@localhost/aifans'})
+     expect(result).toEqual({
+@@ -15,20 +15,35 @@ describe('database environment', () => {
+   })
+ 
+   it('rejects non-postgres URLs', () => {
+     expect(() => readDatabaseEnv({DATABASE_URL: 'https://example.com'})).toThrow(
+       'DATABASE_URL',
+     )
+   })
+ })
+ 
+ describe('migration discovery', () => {
++  it('returns no migrations when the directory is absent', () => {
++    const directory = mkdtempSync(join(tmpdir(), 'aifans-missing-migrations-'))
++    rmSync(directory, {recursive: true})
++
++    expect(discoverMigrations(directory)).toEqual([])
++  })
++
++  it('propagates filesystem errors other than a missing directory', () => {
++    const directory = mkdtempSync(join(tmpdir(), 'aifans-migration-file-'))
++    const file = join(directory, 'not-a-directory')
++    writeFileSync(file, '')
++
++    expect(() => discoverMigrations(file)).toThrow()
++  })
++
+   it('sorts SQL files and includes a stable SHA-256 checksum', () => {
+     const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
+     writeFileSync(join(directory, '202608310002_second.sql'), 'select 2;\n')
+     writeFileSync(join(directory, '202608310001_first.sql'), 'select 1;\n')
+ 
+     const migrations = discoverMigrations(directory)
+     expect(migrations.map(({name}) => name)).toEqual([
+       '202608310001_first.sql',
+       '202608310002_second.sql',
+     ])
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 4506eff..4a0e8f1 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -45,21 +45,21 @@ importers:
+         specifier: 0.45.2
+         version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(pg@8.23.0)
+       pg:
+         specifier: 8.23.0
+         version: 8.23.0
+       zod:
+         specifier: 4.5.4
+         version: 4.5.4
+     devDependencies:
+       '@types/node':
+-        specifier: ^24.0.0
++        specifier: 24.13.3
+         version: 24.13.3
+       '@types/pg':
+         specifier: 8.23.1
+         version: 8.23.1
+       tsx:
+         specifier: 4.23.13
+         version: 4.23.13
+       typescript:
+         specifier: 7.0.2
+         version: 7.0.2

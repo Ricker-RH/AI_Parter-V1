@@ -1,0 +1,322 @@
+# Review package: a70bb71..1c57242
+
+## Commits
+1c57242 feat: add authenticated API boundary
+
+## Files changed
+ apps/api/src/app.test.ts                | 143 +++++++++++++++++++++++++++++++-
+ apps/api/src/app.ts                     |  11 ++-
+ apps/api/src/index.ts                   |   3 +
+ apps/api/src/ports/auth.ts              |  14 ++++
+ apps/api/src/ports/profiles.database.ts |   7 ++
+ apps/api/src/ports/profiles.ts          |   7 ++
+ apps/api/src/routes/me.ts               |  39 +++++++++
+ 7 files changed, 221 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/apps/api/src/app.test.ts b/apps/api/src/app.test.ts
+index 9c8a25c..d541dab 100644
+--- a/apps/api/src/app.test.ts
++++ b/apps/api/src/app.test.ts
+@@ -1,13 +1,15 @@
+ import {describe, expect, it} from 'vitest'
+-import {ApiErrorSchema} from '@aifans/contracts'
++import {AccountSchema, ApiErrorSchema} from '@aifans/contracts'
+ import {createApp} from './app.js'
++import type {AuthVerifier} from './ports/auth.js'
++import type {ProfilePort} from './ports/profiles.js'
+ 
+ describe('AIFANS API shell', () => {
+   it('returns public health with a correlated request ID', async () => {
+     const response = await createApp().request('/health')
+ 
+     expect(response.status).toBe(200)
+     expect(response.headers.get('x-request-id')).toMatch(
+       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+     )
+     expect(await response.json()).toEqual({status: 'ok', service: 'aifans-api'})
+@@ -15,10 +17,149 @@ describe('AIFANS API shell', () => {
+ 
+   it('returns a typed not-found error with the same request ID', async () => {
+     const response = await createApp().request('/does-not-exist')
+     const requestId = response.headers.get('x-request-id')
+     const body = ApiErrorSchema.parse(await response.json())
+ 
+     expect(response.status).toBe(404)
+     expect(body).toMatchObject({code: 'NOT_FOUND', requestId})
+   })
+ })
++
++describe('GET /v1/me', () => {
++  const missingAuth = {verify: async () => ({status: 'missing'} as const)} satisfies AuthVerifier
++  const invalidAuth = {verify: async () => ({status: 'invalid'} as const)} satisfies AuthVerifier
++  const identity = {
++    subject: 'neon_auth_subject',
++    email: 'luna@example.com',
++    displayName: 'Luna',
++  }
++  const validAuth = {verify: async () => ({status: 'authenticated', identity} as const)} satisfies AuthVerifier
++  const account = AccountSchema.parse({
++    id: '245652a3-c5d8-4b60-b94d-c1556db030ff',
++    kind: 'human',
++    username: 'luna',
++    displayName: 'Luna',
++    preferredLocale: 'en',
++    creatorModeEnabled: false,
++  })
++
++  function profiles(currentAccount: typeof account | null = account): ProfilePort {
++    return {
++      ensureHumanProfile: async (_input: unknown) => undefined,
++      getCurrentAccount: async (_actor: unknown) => currentAccount,
++    }
++  }
++
++  async function expectError(
++    response: Response,
++    status: number,
++    code: string,
++  ) {
++    const requestId = response.headers.get('x-request-id')
++    const body = ApiErrorSchema.parse(await response.json())
++
++    expect(response.status).toBe(status)
++    expect(body).toMatchObject({code, requestId})
++  }
++
++  it('returns AUTH_REQUIRED when no credential is provided', async () => {
++    await expectError(
++      await createApp({auth: missingAuth, profiles: profiles()}).request('/v1/me'),
++      401,
++      'AUTH_REQUIRED',
++    )
++  })
++
++  it('returns AUTH_NOT_CONFIGURED when no auth adapter is configured', async () => {
++    await expectError(
++      await createApp({profiles: profiles()}).request('/v1/me'),
++      503,
++      'AUTH_NOT_CONFIGURED',
++    )
++  })
++
++  it('returns AUTH_INVALID when the credential is invalid', async () => {
++    await expectError(
++      await createApp({auth: invalidAuth, profiles: profiles()}).request('/v1/me'),
++      401,
++      'AUTH_INVALID',
++    )
++  })
++
++  it('provisions the verified identity once before loading the current account', async () => {
++    const calls: unknown[] = []
++    const testProfiles = {
++      ensureHumanProfile: async (input: unknown) => {
++        calls.push(input)
++      },
++      getCurrentAccount: async (_actor: unknown) => account,
++    } satisfies ProfilePort
++
++    const response = await createApp({auth: validAuth, profiles: testProfiles}).request('/v1/me')
++
++    expect(response.status).toBe(200)
++    expect(calls).toEqual([{
++      authSubject: identity.subject,
++      email: identity.email,
++      displayName: identity.displayName,
++    }])
++  })
++
++  it('loads the current account using only the verified subject', async () => {
++    const calls: unknown[] = []
++    const testProfiles = {
++      ensureHumanProfile: async (_input: unknown) => undefined,
++      getCurrentAccount: async (actor: unknown) => {
++        calls.push(actor)
++        return account
++      },
++    } satisfies ProfilePort
++
++    const response = await createApp({auth: validAuth, profiles: testProfiles}).request('/v1/me')
++
++    expect(response.status).toBe(200)
++    expect(calls).toEqual([{subject: identity.subject}])
++  })
++
++  it('returns the contract account object', async () => {
++    const response = await createApp({auth: validAuth, profiles: profiles()}).request('/v1/me')
++
++    expect(response.status).toBe(200)
++    expect(AccountSchema.parse(await response.json())).toEqual(account)
++  })
++
++  it('returns PROFILE_NOT_AVAILABLE when no current account exists', async () => {
++    await expectError(
++      await createApp({auth: validAuth, profiles: profiles(null)}).request('/v1/me'),
++      500,
++      'PROFILE_NOT_AVAILABLE',
++    )
++  })
++
++  it('redacts unexpected collaborator errors', async () => {
++    const response = await createApp({
++      auth: validAuth,
++      profiles: {
++        ensureHumanProfile: async () => {
++          throw new Error('database password leaked')
++        },
++        getCurrentAccount: async () => account,
++      } satisfies ProfilePort,
++    }).request('/v1/me')
++
++    const responseBody = await response.clone().text()
++    await expectError(response, 500, 'INTERNAL_ERROR')
++    expect(responseBody).not.toContain('database password leaked')
++  })
++
++  it('returns AUTH_INVALID for an authenticated identity with a blank subject', async () => {
++    await expectError(
++      await createApp({
++        auth: {verify: async () => ({status: 'authenticated', identity: {...identity, subject: '  '}} as const)} satisfies AuthVerifier,
++        profiles: profiles(),
++      }).request('/v1/me'),
++      401,
++      'AUTH_INVALID',
++    )
++  })
++})
+diff --git a/apps/api/src/app.ts b/apps/api/src/app.ts
+index 773144b..544715d 100644
+--- a/apps/api/src/app.ts
++++ b/apps/api/src/app.ts
+@@ -1,17 +1,24 @@
+ import {Hono} from 'hono'
+ import {apiError} from './errors.js'
+ import {requestIdMiddleware, type ApiVariables} from './middleware/request-id.js'
+ import {registerHealthRoutes} from './routes/health.js'
++import {registerMeRoutes} from './routes/me.js'
++import type {AuthVerifier} from './ports/auth.js'
++import type {ProfilePort} from './ports/profiles.js'
+ 
+-export type AppDependencies = object
++export type AppDependencies = {
++  auth?: AuthVerifier
++  profiles?: ProfilePort
++}
+ 
+-export const createApp = (_dependencies: AppDependencies = {}) => {
++export const createApp = (dependencies: AppDependencies = {}) => {
+   const app = new Hono<{Variables: ApiVariables}>()
+ 
+   app.use('*', requestIdMiddleware)
+   registerHealthRoutes(app)
++  registerMeRoutes(app, dependencies)
+   app.notFound((c) => apiError(c, 404, 'NOT_FOUND', 'Route not found'))
+   app.onError((_error, c) => apiError(c, 500, 'INTERNAL_ERROR', 'Internal server error'))
+ 
+   return app
+ }
+diff --git a/apps/api/src/index.ts b/apps/api/src/index.ts
+index 21a69b4..91d8f34 100644
+--- a/apps/api/src/index.ts
++++ b/apps/api/src/index.ts
+@@ -1,5 +1,8 @@
+ export {createApp} from './app.js'
+ export type {AppDependencies} from './app.js'
+ export {apiError} from './errors.js'
+ export {requestIdMiddleware} from './middleware/request-id.js'
+ export type {ApiVariables} from './middleware/request-id.js'
++export {databaseProfilePort} from './ports/profiles.database.js'
++export type {AuthResult, AuthVerifier, VerifiedIdentity} from './ports/auth.js'
++export type {ProfilePort} from './ports/profiles.js'
+diff --git a/apps/api/src/ports/auth.ts b/apps/api/src/ports/auth.ts
+new file mode 100644
+index 0000000..509104f
+--- /dev/null
++++ b/apps/api/src/ports/auth.ts
+@@ -0,0 +1,14 @@
++export type VerifiedIdentity = {
++  subject: string
++  email?: string | null
++  displayName?: string | null
++}
++
++export type AuthResult =
++  | {status: 'missing'}
++  | {status: 'invalid'}
++  | {status: 'authenticated'; identity: VerifiedIdentity}
++
++export type AuthVerifier = {
++  verify(request: Request): Promise<AuthResult>
++}
+diff --git a/apps/api/src/ports/profiles.database.ts b/apps/api/src/ports/profiles.database.ts
+new file mode 100644
+index 0000000..0208b0b
+--- /dev/null
++++ b/apps/api/src/ports/profiles.database.ts
+@@ -0,0 +1,7 @@
++import {ensureHumanProfile, getCurrentAccount} from '@aifans/db'
++import type {ProfilePort} from './profiles.js'
++
++export const databaseProfilePort: ProfilePort = {
++  ensureHumanProfile,
++  getCurrentAccount,
++}
+diff --git a/apps/api/src/ports/profiles.ts b/apps/api/src/ports/profiles.ts
+new file mode 100644
+index 0000000..fec15c7
+--- /dev/null
++++ b/apps/api/src/ports/profiles.ts
+@@ -0,0 +1,7 @@
++import type {Account} from '@aifans/contracts'
++import type {Actor, EnsureHumanProfileInput} from '@aifans/db'
++
++export type ProfilePort = {
++  ensureHumanProfile(input: EnsureHumanProfileInput): Promise<unknown>
++  getCurrentAccount(actor: Actor | null): Promise<Account | null>
++}
+diff --git a/apps/api/src/routes/me.ts b/apps/api/src/routes/me.ts
+new file mode 100644
+index 0000000..4dd1667
+--- /dev/null
++++ b/apps/api/src/routes/me.ts
+@@ -0,0 +1,39 @@
++import {AccountSchema} from '@aifans/contracts'
++import type {Hono} from 'hono'
++import {apiError} from '../errors.js'
++import type {ApiVariables} from '../middleware/request-id.js'
++import type {AuthVerifier} from '../ports/auth.js'
++import type {ProfilePort} from '../ports/profiles.js'
++
++type MeDependencies = {
++  auth?: AuthVerifier
++  profiles?: ProfilePort
++}
++
++export function registerMeRoutes(
++  app: Hono<{Variables: ApiVariables}>,
++  {auth, profiles}: MeDependencies,
++) {
++  app.get('/v1/me', async (c) => {
++    if (!auth) return apiError(c, 503, 'AUTH_NOT_CONFIGURED', 'Authentication is not configured')
++    if (!profiles) return apiError(c, 503, 'PROFILE_NOT_CONFIGURED', 'Profiles are not configured')
++
++    const result = await auth.verify(c.req.raw)
++    if (result.status === 'missing') return apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required')
++    if (result.status === 'invalid' || !result.identity.subject.trim()) {
++      return apiError(c, 401, 'AUTH_INVALID', 'Authentication is invalid')
++    }
++
++    await profiles.ensureHumanProfile({
++      authSubject: result.identity.subject,
++      ...(result.identity.email === undefined ? {} : {email: result.identity.email}),
++      ...(result.identity.displayName === undefined ? {} : {displayName: result.identity.displayName}),
++    })
++    const account = await profiles.getCurrentAccount({subject: result.identity.subject})
++    if (account === null) {
++      return apiError(c, 500, 'PROFILE_NOT_AVAILABLE', 'Profile is not available')
++    }
++
++    return c.json(AccountSchema.parse(account), 200)
++  })
++}

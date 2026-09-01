@@ -1,0 +1,700 @@
+# Review package: 8159444..afd90cb
+
+## Commits
+afd90cb feat: add Neon profile authorization foundation
+
+## Files changed
+ packages/db/migrations/202608310001_foundation.sql | 174 +++++++++
+ packages/db/src/index.ts                           |   6 +
+ packages/db/src/schema.ts                          |  83 +++++
+ packages/db/tests/foundation-rls.test.ts           | 399 +++++++++++++++++++++
+ 4 files changed, 662 insertions(+)
+
+## Diff
+diff --git a/packages/db/migrations/202608310001_foundation.sql b/packages/db/migrations/202608310001_foundation.sql
+new file mode 100644
+index 0000000..d7b0c86
+--- /dev/null
++++ b/packages/db/migrations/202608310001_foundation.sql
+@@ -0,0 +1,174 @@
++DO $$
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aifans_anon') THEN
++    CREATE ROLE aifans_anon NOLOGIN;
++  END IF;
++  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'aifans_authenticated') THEN
++    CREATE ROLE aifans_authenticated NOLOGIN;
++  END IF;
++END
++$$;
++
++GRANT aifans_anon, aifans_authenticated TO CURRENT_USER;
++
++CREATE TYPE public.account_kind AS ENUM ('human', 'ip');
++CREATE TYPE public.app_locale AS ENUM ('en', 'zh-CN');
++
++CREATE SCHEMA app;
++REVOKE ALL ON SCHEMA public FROM PUBLIC;
++REVOKE ALL ON SCHEMA app FROM PUBLIC;
++GRANT USAGE ON SCHEMA public, app TO aifans_anon, aifans_authenticated;
++
++CREATE TABLE public.profiles (
++  id uuid PRIMARY KEY,
++  auth_subject text,
++  account_kind public.account_kind NOT NULL,
++  username text NOT NULL,
++  display_name text NOT NULL,
++  bio text,
++  avatar_object_key text,
++  preferred_locale public.app_locale NOT NULL DEFAULT 'en',
++  creator_mode_enabled boolean NOT NULL DEFAULT false,
++  created_at timestamptz NOT NULL DEFAULT now(),
++  updated_at timestamptz NOT NULL DEFAULT now(),
++  CONSTRAINT profiles_account_kind_auth_subject_check CHECK (
++    (account_kind = 'human' AND auth_subject IS NOT NULL AND btrim(auth_subject) <> '')
++    OR (account_kind = 'ip' AND auth_subject IS NULL)
++  ),
++  CONSTRAINT profiles_auth_subject_unique UNIQUE (auth_subject),
++  CONSTRAINT profiles_username_unique UNIQUE (username),
++  CONSTRAINT profiles_username_check CHECK (username ~ '^[a-z0-9_]{3,30}$'),
++  CONSTRAINT profiles_display_name_check CHECK (
++    char_length(display_name) BETWEEN 1 AND 80 AND display_name ~ '[^[:space:]]'
++  ),
++  CONSTRAINT profiles_bio_length_check CHECK (bio IS NULL OR char_length(bio) <= 500),
++  CONSTRAINT profiles_avatar_object_key_length_check CHECK (
++    avatar_object_key IS NULL OR char_length(avatar_object_key) <= 512
++  )
++);
++
++CREATE TABLE public.platform_settings (
++  setting_key text PRIMARY KEY,
++  creator_ip_requires_approval boolean NOT NULL DEFAULT false,
++  default_ip_quota integer NOT NULL DEFAULT 3,
++  CONSTRAINT platform_settings_global_key_check CHECK (setting_key = 'global'),
++  CONSTRAINT platform_settings_default_ip_quota_check CHECK (default_ip_quota BETWEEN 0 AND 100)
++);
++
++INSERT INTO public.platform_settings (setting_key) VALUES ('global');
++
++CREATE FUNCTION app.current_auth_subject()
++RETURNS text
++LANGUAGE plpgsql
++STABLE
++SET search_path = ''
++AS $$
++DECLARE
++  claims_text text;
++  claims jsonb;
++  subject jsonb;
++BEGIN
++  claims_text := current_setting('request.jwt.claims', true);
++  IF claims_text IS NULL OR btrim(claims_text) = '' THEN
++    RETURN NULL;
++  END IF;
++
++  BEGIN
++    claims := claims_text::jsonb;
++  EXCEPTION WHEN others THEN
++    RETURN NULL;
++  END;
++
++  IF jsonb_typeof(claims) <> 'object' THEN
++    RETURN NULL;
++  END IF;
++
++  subject := claims -> 'sub';
++  IF jsonb_typeof(subject) <> 'string' OR btrim(subject #>> '{}') = '' THEN
++    RETURN NULL;
++  END IF;
++
++  RETURN subject #>> '{}';
++END;
++$$;
++
++CREATE FUNCTION public.current_account()
++RETURNS jsonb
++LANGUAGE sql
++STABLE
++SECURITY DEFINER
++SET search_path = ''
++AS $$
++  SELECT jsonb_build_object(
++    'id', p.id,
++    'account_kind', p.account_kind,
++    'username', p.username,
++    'display_name', p.display_name,
++    'preferred_locale', p.preferred_locale,
++    'creator_mode_enabled', p.creator_mode_enabled
++  )
++  FROM public.profiles AS p
++  WHERE p.auth_subject = app.current_auth_subject()
++$$;
++
++CREATE FUNCTION public.profiles_set_updated_at()
++RETURNS trigger
++LANGUAGE plpgsql
++SET search_path = ''
++AS $$
++BEGIN
++  IF OLD.id IS DISTINCT FROM NEW.id
++    OR OLD.auth_subject IS DISTINCT FROM NEW.auth_subject
++    OR OLD.account_kind IS DISTINCT FROM NEW.account_kind
++    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
++    RAISE EXCEPTION 'profile immutable fields cannot be changed';
++  END IF;
++  NEW.updated_at := clock_timestamp();
++  RETURN NEW;
++END;
++$$;
++
++CREATE TRIGGER profiles_set_updated_at
++BEFORE UPDATE ON public.profiles
++FOR EACH ROW
++EXECUTE FUNCTION public.profiles_set_updated_at();
++
++ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.platform_settings ENABLE ROW LEVEL SECURITY;
++
++CREATE POLICY profiles_public_read
++ON public.profiles
++FOR SELECT
++TO aifans_anon, aifans_authenticated
++USING (true);
++
++CREATE POLICY profiles_owner_update
++ON public.profiles
++FOR UPDATE
++TO aifans_authenticated
++USING (auth_subject = app.current_auth_subject())
++WITH CHECK (auth_subject = app.current_auth_subject());
++
++CREATE POLICY settings_authenticated_read
++ON public.platform_settings
++FOR SELECT
++TO aifans_authenticated
++USING (true);
++
++REVOKE ALL ON TABLE public.profiles, public.platform_settings FROM PUBLIC;
++REVOKE ALL ON TYPE public.account_kind, public.app_locale FROM PUBLIC;
++REVOKE ALL ON FUNCTION app.current_auth_subject() FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.current_account() FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.profiles_set_updated_at() FROM PUBLIC;
++
++GRANT SELECT (
++  id, account_kind, username, display_name, bio, avatar_object_key, preferred_locale,
++  creator_mode_enabled, created_at, updated_at
++) ON public.profiles TO aifans_anon, aifans_authenticated;
++GRANT UPDATE (
++  username, display_name, bio, avatar_object_key, preferred_locale, creator_mode_enabled
++) ON public.profiles TO aifans_authenticated;
++GRANT SELECT ON public.platform_settings TO aifans_authenticated;
++GRANT USAGE ON TYPE public.account_kind, public.app_locale TO aifans_anon, aifans_authenticated;
++GRANT EXECUTE ON FUNCTION app.current_auth_subject() TO aifans_authenticated;
++GRANT EXECUTE ON FUNCTION public.current_account() TO aifans_authenticated;
+diff --git a/packages/db/src/index.ts b/packages/db/src/index.ts
+index 0063e48..9a89b57 100644
+--- a/packages/db/src/index.ts
++++ b/packages/db/src/index.ts
+@@ -1,2 +1,8 @@
+ export {readDatabaseEnv} from './env.js'
+ export {migrate} from './migrate.js'
++export {
++  accountKindEnum,
++  appLocaleEnum,
++  platformSettings,
++  profiles,
++} from './schema.js'
+diff --git a/packages/db/src/schema.ts b/packages/db/src/schema.ts
+new file mode 100644
+index 0000000..8dd0b45
+--- /dev/null
++++ b/packages/db/src/schema.ts
+@@ -0,0 +1,83 @@
++import {
++  check,
++  pgEnum,
++  pgTable,
++  text,
++  boolean,
++  integer,
++  timestamp,
++  uuid,
++  unique,
++} from 'drizzle-orm/pg-core'
++import { sql } from 'drizzle-orm'
++
++export const accountKindEnum = pgEnum('account_kind', ['human', 'ip'])
++export const appLocaleEnum = pgEnum('app_locale', ['en', 'zh-CN'])
++
++export const profiles = pgTable(
++  'profiles',
++  {
++    id: uuid().primaryKey(),
++    authSubject: text('auth_subject'),
++    accountKind: accountKindEnum('account_kind').notNull(),
++    username: text().notNull(),
++    displayName: text('display_name').notNull(),
++    bio: text(),
++    avatarObjectKey: text('avatar_object_key'),
++    preferredLocale: appLocaleEnum('preferred_locale').notNull().default('en'),
++    creatorModeEnabled: boolean('creator_mode_enabled')
++      .notNull()
++      .default(false),
++    createdAt: timestamp('created_at', { withTimezone: true })
++      .notNull()
++      .defaultNow(),
++    updatedAt: timestamp('updated_at', { withTimezone: true })
++      .notNull()
++      .defaultNow(),
++  },
++  (table) => [
++    unique('profiles_auth_subject_unique').on(table.authSubject),
++    unique('profiles_username_unique').on(table.username),
++    check(
++      'profiles_account_kind_auth_subject_check',
++      sql`(${table.accountKind} = 'human' AND ${table.authSubject} IS NOT NULL AND btrim(${table.authSubject}) <> '') OR (${table.accountKind} = 'ip' AND ${table.authSubject} IS NULL)`,
++    ),
++    check(
++      'profiles_username_check',
++      sql`${table.username} ~ '^[a-z0-9_]{3,30}$'`,
++    ),
++    check(
++      'profiles_display_name_check',
++      sql`char_length(${table.displayName}) BETWEEN 1 AND 80 AND ${table.displayName} ~ '[^[:space:]]'`,
++    ),
++    check(
++      'profiles_bio_length_check',
++      sql`${table.bio} IS NULL OR char_length(${table.bio}) <= 500`,
++    ),
++    check(
++      'profiles_avatar_object_key_length_check',
++      sql`${table.avatarObjectKey} IS NULL OR char_length(${table.avatarObjectKey}) <= 512`,
++    ),
++  ],
++)
++
++export const platformSettings = pgTable(
++  'platform_settings',
++  {
++    settingKey: text('setting_key').primaryKey(),
++    creatorIpRequiresApproval: boolean('creator_ip_requires_approval')
++      .notNull()
++      .default(false),
++    defaultIpQuota: integer('default_ip_quota').notNull().default(3),
++  },
++  (table) => [
++    check(
++      'platform_settings_global_key_check',
++      sql`${table.settingKey} = 'global'`,
++    ),
++    check(
++      'platform_settings_default_ip_quota_check',
++      sql`${table.defaultIpQuota} BETWEEN 0 AND 100`,
++    ),
++  ],
++)
+diff --git a/packages/db/tests/foundation-rls.test.ts b/packages/db/tests/foundation-rls.test.ts
+new file mode 100644
+index 0000000..dbbf50c
+--- /dev/null
++++ b/packages/db/tests/foundation-rls.test.ts
+@@ -0,0 +1,399 @@
++import { randomUUID } from 'node:crypto'
++import { Pool, type PoolClient } from 'pg'
++import { afterAll, describe, expect, it } from 'vitest'
++
++const connectionString = process.env.DATABASE_URL ?? ''
++const describeIntegration = connectionString ? describe : describe.skip
++const pool = new Pool({ connectionString })
++
++type Fixture = { id: string; subject: string }
++
++async function inTransaction<T>(
++  callback: (client: PoolClient) => Promise<T>,
++): Promise<T> {
++  const client = await pool.connect()
++  try {
++    await client.query('BEGIN')
++    return await callback(client)
++  } finally {
++    await client.query('ROLLBACK').catch(() => undefined)
++    client.release()
++  }
++}
++
++async function rejectedQuery<T>(
++  client: PoolClient,
++  query: () => Promise<T>,
++): Promise<T> {
++  await client.query('SAVEPOINT expected_failure')
++  try {
++    const result = await query()
++    await client.query('ROLLBACK TO SAVEPOINT expected_failure')
++    await client.query('RELEASE SAVEPOINT expected_failure')
++    void result
++  } catch (error) {
++    await client.query('ROLLBACK TO SAVEPOINT expected_failure')
++    await client.query('RELEASE SAVEPOINT expected_failure')
++    throw error
++  }
++  throw new Error('Expected query to fail')
++}
++
++async function insertHuman(
++  client: PoolClient,
++  suffix = randomUUID().replaceAll('-', ''),
++): Promise<Fixture> {
++  const id = randomUUID()
++  const subject = `auth-${suffix}`
++  await client.query(
++    `INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name)
++     VALUES ($1, $2, 'human', $3, 'Display name')`,
++    [id, subject, `human_${suffix.slice(0, 20)}`],
++  )
++  return { id, subject }
++}
++
++async function become(
++  client: PoolClient,
++  role: 'aifans_anon' | 'aifans_authenticated',
++  claims: unknown,
++): Promise<void> {
++  await client.query(`SET LOCAL ROLE ${role}`)
++  await client.query(`SELECT set_config('request.jwt.claims', $1, true)`, [
++    typeof claims === 'string' ? claims : JSON.stringify(claims),
++  ])
++}
++
++async function readPublicProfileAsAnon(client: PoolClient, id: string) {
++  await become(client, 'aifans_anon', {})
++  const result = await client.query(
++    'SELECT id, account_kind, username, display_name FROM public.profiles WHERE id = $1',
++    [id],
++  )
++  return result.rows[0]
++}
++
++async function updateOwnDisplayName(
++  client: PoolClient,
++  subject: string,
++  displayName: string,
++) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  const result = await client.query(
++    'UPDATE public.profiles SET display_name = $1',
++    [displayName],
++  )
++  return result.rowCount
++}
++
++async function updateOtherDisplayName(
++  client: PoolClient,
++  subject: string,
++  otherId: string,
++) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  const result = await client.query(
++    'UPDATE public.profiles SET display_name = $1 WHERE id = $2',
++    ['Not allowed', otherId],
++  )
++  return result.rowCount
++}
++
++async function changeOwnAccountKind(client: PoolClient, subject: string) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  return client.query("UPDATE public.profiles SET account_kind = 'ip'")
++}
++
++async function changeOwnAuthSubject(client: PoolClient, subject: string) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  return client.query("UPDATE public.profiles SET auth_subject = 'not-allowed'")
++}
++
++async function updateAllAllowedProfileFields(
++  client: PoolClient,
++  subject: string,
++) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  const result = await client.query(
++    `UPDATE public.profiles
++     SET username = 'updated_human', display_name = 'Updated human', bio = 'Allowed bio',
++         avatar_object_key = 'avatars/updated.png', preferred_locale = 'zh-CN',
++         creator_mode_enabled = true`,
++  )
++  return result.rowCount
++}
++
++async function insertProfileAsAuthenticated(
++  client: PoolClient,
++  subject: string,
++) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  return client.query(
++    "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, $2, 'human', 'new_human', 'New human')",
++    [randomUUID(), `another-${subject}`],
++  )
++}
++
++async function deleteOwnProfile(client: PoolClient, subject: string) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  return client.query('DELETE FROM public.profiles')
++}
++
++async function readSettingsAsAnon(client: PoolClient) {
++  await become(client, 'aifans_anon', {})
++  return client.query('SELECT * FROM public.platform_settings')
++}
++
++async function readSettingsAsAuthenticated(
++  client: PoolClient,
++  subject: string,
++) {
++  await become(client, 'aifans_authenticated', { sub: subject })
++  const result = await client.query(
++    'SELECT default_ip_quota AS "defaultIpQuota" FROM public.platform_settings',
++  )
++  return result.rows[0]
++}
++
++async function readCurrentAccount(client: PoolClient, subject: string | null) {
++  await become(
++    client,
++    'aifans_authenticated',
++    subject === null ? {} : { sub: subject },
++  )
++  const result = await client.query<{ current_account: unknown }>(
++    'SELECT public.current_account()',
++  )
++  return result.rows[0]?.current_account ?? null
++}
++
++describeIntegration('profiles and settings authorization foundation', () => {
++  afterAll(async () => {
++    await pool.end()
++  })
++
++  it('allows anonymous callers to read the safe public profile projection', async () => {
++    await inTransaction(async (owner) => {
++      const first = await insertHuman(owner)
++      expect(await readPublicProfileAsAnon(owner, first.id)).toMatchObject({
++        id: first.id,
++      })
++    })
++  })
++
++  it('permits an authenticated human to update only its own allowed profile fields', async () => {
++    await inTransaction(async (owner) => {
++      const first = await insertHuman(owner)
++      const second = await insertHuman(owner)
++      await expect(
++        updateOwnDisplayName(owner, first.subject, 'New name'),
++      ).resolves.toBe(1)
++      await expect(
++        updateAllAllowedProfileFields(owner, first.subject),
++      ).resolves.toBe(1)
++      await expect(
++        updateOtherDisplayName(owner, first.subject, second.id),
++      ).resolves.toBe(0)
++      await expect(
++        rejectedQuery(owner, () => changeOwnAccountKind(owner, first.subject)),
++      ).rejects.toThrow(/permission denied/)
++      await expect(
++        rejectedQuery(owner, () => changeOwnAuthSubject(owner, first.subject)),
++      ).rejects.toThrow(/permission denied/)
++      await expect(
++        rejectedQuery(owner, () =>
++          insertProfileAsAuthenticated(owner, first.subject),
++        ),
++      ).rejects.toThrow(/permission denied/)
++      await expect(
++        rejectedQuery(owner, () => deleteOwnProfile(owner, first.subject)),
++      ).rejects.toThrow(/permission denied/)
++    })
++  })
++
++  it('keeps settings unavailable to anonymous callers and readable to authenticated callers', async () => {
++    await inTransaction(async (owner) => {
++      const first = await insertHuman(owner)
++      await expect(
++        rejectedQuery(owner, () => readSettingsAsAnon(owner)),
++      ).rejects.toThrow(/permission denied/)
++      await expect(
++        readSettingsAsAuthenticated(owner, first.subject),
++      ).resolves.toMatchObject({ defaultIpQuota: 3 })
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            'UPDATE public.platform_settings SET default_ip_quota = 4',
++          ),
++        ),
++      ).rejects.toThrow(/permission denied/)
++    })
++  })
++
++  it('returns only the current account safe projection', async () => {
++    await inTransaction(async (owner) => {
++      const first = await insertHuman(owner)
++      const account = await readCurrentAccount(owner, first.subject)
++      expect(account).toMatchObject({ id: first.id })
++      expect(await readCurrentAccount(owner, null)).toBeNull()
++      expect(Object.keys(account as object).sort()).toEqual([
++        'account_kind',
++        'creator_mode_enabled',
++        'display_name',
++        'id',
++        'preferred_locale',
++        'username',
++      ])
++    })
++  })
++
++  it('treats malformed claims as no current account', async () => {
++    await inTransaction(async (owner) => {
++      await insertHuman(owner)
++      for (const claims of [
++        '',
++        '{bad',
++        'null',
++        '[]',
++        '1',
++        'true',
++        '{}',
++        '{"sub":"   "}',
++      ]) {
++        await become(owner, 'aifans_authenticated', claims)
++        const result = await owner.query<{ current_account: unknown }>(
++          'SELECT public.current_account()',
++        )
++        expect(result.rows[0]?.current_account ?? null).toBeNull()
++      }
++    })
++  })
++
++  it('enforces profile and settings constraints for owner writes', async () => {
++    await inTransaction(async (owner) => {
++      const id = randomUUID()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, 'subject', 'human', 'UPPER', 'Name')",
++            [id],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, 'subject-invalid', 'human', 'invalid-name', 'Name')",
++            [randomUUID()],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, 'subject', 'human', 'valid_name', '   ')",
++            [randomUUID()],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.profiles (id, account_kind, username, display_name) VALUES ($1, 'human', 'human_missing_subject', 'Name')",
++            [randomUUID()],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, '  ', 'human', 'human_blank_subject', 'Name')",
++            [randomUUID()],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, 'subject', 'ip', 'ip_has_subject', 'Name')",
++            [randomUUID()],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            'UPDATE public.platform_settings SET default_ip_quota = -1',
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        owner.query('UPDATE public.platform_settings SET default_ip_quota = 0'),
++      ).resolves.toMatchObject({ rowCount: 1 })
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "INSERT INTO public.platform_settings (setting_key) VALUES ('global')",
++          ),
++        ),
++      ).rejects.toThrow()
++    })
++  })
++
++  it('rejects owner changes to immutable profile fields and maintains updated_at', async () => {
++    await inTransaction(async (owner) => {
++      const first = await insertHuman(owner)
++      const original = await owner.query<{
++        created_at: Date
++        updated_at: Date
++      }>('SELECT created_at, updated_at FROM public.profiles WHERE id = $1', [
++        first.id,
++      ])
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query('UPDATE public.profiles SET id = $1 WHERE id = $2', [
++            randomUUID(),
++            first.id,
++          ]),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "UPDATE public.profiles SET auth_subject = 'changed' WHERE id = $1",
++            [first.id],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "UPDATE public.profiles SET account_kind = 'ip' WHERE id = $1",
++            [first.id],
++          ),
++        ),
++      ).rejects.toThrow()
++      await expect(
++        rejectedQuery(owner, () =>
++          owner.query(
++            "UPDATE public.profiles SET created_at = created_at + interval '1 microsecond' WHERE id = $1",
++            [first.id],
++          ),
++        ),
++      ).rejects.toThrow()
++      await new Promise((resolve) => setTimeout(resolve, 5))
++      await owner.query(
++        "UPDATE public.profiles SET bio = 'Allowed' WHERE id = $1",
++        [first.id],
++      )
++      const updated = await owner.query<{ created_at: Date; updated_at: Date }>(
++        'SELECT created_at, updated_at FROM public.profiles WHERE id = $1',
++        [first.id],
++      )
++      expect(updated.rows[0]?.created_at).toEqual(original.rows[0]?.created_at)
++      expect(updated.rows[0]?.updated_at.getTime()).toBeGreaterThan(
++        original.rows[0]?.updated_at.getTime() ?? 0,
++      )
++    })
++  })
++})

@@ -1,0 +1,1600 @@
+# Review package: cc5a1bc..30abb0a
+
+## Commits
+30abb0a docs: design history and product analytics
+3b7e3e4 build: add Neon database workspace
+
+## Files changed
+ .env.example                                       |  13 +-
+ .gitignore                                         |   4 -
+ .../2026-09-01-aifans-history-analytics-design.md  | 196 ++++++++
+ infra/postgres/compose.yaml                        |  19 +
+ package.json                                       |   6 +-
+ packages/db/package.json                           |  28 ++
+ packages/db/src/env.ts                             |  29 ++
+ packages/db/src/index.ts                           |   2 +
+ packages/db/src/migrate.ts                         |  99 ++++
+ packages/db/tests/migrate.test.ts                  |  44 ++
+ packages/db/tsconfig.json                          |  11 +
+ packages/db/vitest.config.ts                       |   9 +
+ pnpm-lock.yaml                                     | 549 ++++++++++++++++++++-
+ pnpm-workspace.yaml                                |   2 +
+ 14 files changed, 994 insertions(+), 17 deletions(-)
+
+## Diff
+diff --git a/.env.example b/.env.example
+index 6e6e427..d5934c5 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,5 +1,8 @@
+-NEXT_PUBLIC_SUPABASE_URL
+-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+-SUPABASE_SERVICE_ROLE_KEY
+-API_ORIGIN
+-WEB_ORIGIN
++DATABASE_URL
++DATABASE_ADMIN_URL
++NEON_AUTH_BASE_URL
++NEON_AUTH_COOKIE_SECRET
++R2_ACCOUNT_ID
++R2_BUCKET
++R2_ACCESS_KEY_ID
++R2_SECRET_ACCESS_KEY
+diff --git a/.gitignore b/.gitignore
+index 09300c6..10cec75 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,12 +1,8 @@
+-.worktrees/
+-.superpowers/
+ .env*
+ !.env.example
+ node_modules/
+ .next/
+ dist/
+ coverage/
+ playwright-report/
+ test-results/
+-supabase/.temp/
+-supabase/.branches/
+diff --git a/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md b/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
+new file mode 100644
+index 0000000..b4b6162
+--- /dev/null
++++ b/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
+@@ -0,0 +1,196 @@
++# AIFANS History and Product Analytics Design
++
++**Date:** 2026-09-01  
++**Status:** Pending written-spec review  
++**Scope:** Business history, auditability, server-side conversion events, and Web product analytics.
++
++## 1. Decision
++
++AIFANS uses a hybrid analytics architecture:
++
++- Neon PostgreSQL is the source of truth for business state, immutable revisions, workflow transitions, audit records, AI-operation records, and authoritative server-side conversion events.
++- PostHog stores high-volume Web behavior such as page views, clicks, sessions, funnels, retention, and client-side product events.
++- An AIFANS analytics adapter isolates PostHog from product components and allows the provider to be replaced later.
++- A transactional outbox reliably forwards selected authoritative Neon events to PostHog without making a product transaction depend on PostHog availability.
++
++PostHog data is analytical evidence, not authorization state and not the source of truth for counts, ownership, approvals, publishing, or billing-like records.
++
++## 2. Data classes
++
++### 2.1 Current business state
++
++Normalized product tables hold the current state used by the application: profiles, IPs, posts, comments, relationships, requests, settings, and AI jobs. Product reads do not reconstruct ordinary current state from analytics events.
++
++### 2.2 Immutable revisions
++
++Mutable business objects that require later comparison use immutable revision rows. V1 requires revision history for:
++
++- IP identity cards and persona definitions;
++- IP appearance definitions and selected reference-image sets;
++- creator change requests and their proposed revisions;
++- platform operation rules, model configuration, and schedules;
++- published post content when edited, withdrawn, or regenerated.
++
++Each revision stores an entity ID, monotonically increasing version, immutable payload or normalized revision fields, creator/actor, creation time, and optional previous-revision ID. The live entity points to its approved/current revision. Historical revisions are never overwritten.
++
++### 2.3 Workflow transitions
++
++`workflow_transitions` records state-machine movement for IP submissions, change requests, unpublish/delete requests, posts, reports, and AI jobs. Each row records:
++
++- entity type and ID;
++- previous and next state;
++- actor profile ID or system actor;
++- reason code and optional operator note;
++- request ID and occurrence time.
++
++The application writes the state change and transition record in one database transaction.
++
++### 2.4 Audit events
++
++`audit_events` is append-only and records security- and operations-relevant actions. It contains event ID, occurred time, actor type/ID, action, entity type/ID, request ID, source application, result, and a redacted JSON change summary.
++
++Audit payloads never contain passwords, tokens, cookies, database URLs, raw private messages, model-provider secrets, or signed object URLs. Ordinary application roles cannot update or delete audit rows.
++
++### 2.5 Authoritative business events
++
++`business_events` records completed server-side facts used for conversion and operational analysis. It uses a unique UUID event ID, event name, schema version, occurred time, actor/profile ID, subject entity IDs, request ID, deployment environment, and allow-listed JSON properties.
++
++Examples include:
++
++- `account_registered`;
++- `onboarding_completed`;
++- `creator_mode_enabled`;
++- `ip_draft_created`;
++- `ip_generation_completed` and `ip_generation_failed`;
++- `ip_submission_completed`;
++- `ip_approved` and `ip_published`;
++- `follow_created`;
++- `comment_created`;
++- `conversation_started`;
++- `ai_reply_completed` and `ai_reply_failed`.
++
++Only the server emits authoritative completion events. A button click is not treated as a completed business outcome.
++
++## 3. Transactional outbox
++
++When a transaction produces a business event that PostHog should receive, it also inserts `analytics_outbox` in the same transaction. The row contains event ID, destination, payload version, redacted payload, creation time, attempt count, next-attempt time, delivered time, and last error code.
++
++The worker:
++
++1. claims a bounded batch using row locking with skip-locked semantics;
++2. sends each event with the stable event UUID for deduplication;
++3. marks success only after PostHog acknowledges ingestion;
++4. retries transient failures with bounded exponential backoff and jitter;
++5. moves permanently invalid payloads to a failed state for operator inspection.
++
++Product requests never wait for PostHog. Replaying the outbox is idempotent. Delivery metadata may be compacted later, but the authoritative `business_events` row remains.
++
++## 4. Web analytics
++
++The Web app exposes a typed `AnalyticsProvider` with `page`, `identify`, `reset`, and `capture` operations. Feature components call domain-specific analytics functions rather than importing the PostHog SDK directly.
++
++V1 enables PostHog page-view/session collection and a deliberately small set of custom events. Broad autocapture is not used as a substitute for the tracking plan. Sensitive input values and private content are excluded from capture.
++
++Initial client events are:
++
++- `landing_viewed`;
++- `sign_up_started`;
++- `sign_in_started`;
++- `feed_tab_selected`;
++- `search_performed` with query length/category, never raw query text;
++- `ip_profile_viewed`;
++- `post_viewed`;
++- `creator_center_viewed`;
++- `ip_creation_step_viewed`;
++- `generation_requested`;
++- `master_image_selected`;
++- `submission_clicked`;
++- `chat_opened`.
++
++Client attempt events and server completion events remain distinct. For example, `submission_clicked` measures interface intent while `ip_submission_completed` is the authoritative conversion.
++
++## 5. Event contract
++
++Event names use lowercase snake case and describe one stable fact. Every custom event includes `event_version: 1`. A compatible property addition does not change the version; a semantic breaking change increments it.
++
++Common allow-listed properties are:
++
++- `event_id` for server/outbox events;
++- `profile_id` after authentication;
++- PostHog anonymous distinct ID before authentication;
++- `session_id`;
++- `request_id` for server-correlated events;
++- `route_name`, using a route template rather than a URL containing IDs;
++- `locale` (`en` or `zh-CN`);
++- `app_version` and `deployment_environment`;
++- `referrer_category` and campaign identifiers;
++- coarse device/viewport category;
++- relevant entity IDs, action source, creation step, visual type, and result code.
++
++Events never contain raw passwords, email addresses, access tokens, cookies, database credentials, private-message bodies, comments or post text, full search queries, private persona prompts, generated-image prompts, or unrestricted model input/output.
++
++## 6. Identity and sessions
++
++Anonymous visitors use PostHog's generated anonymous distinct ID. After successful authentication, the Web adapter identifies the user with the stable AIFANS profile UUID, not the provider auth subject or email. On logout it resets the client identity so the next visitor does not inherit the previous session.
++
++Server events use the AIFANS profile UUID and stable event UUID. The database keeps request IDs so an operator can correlate a UI attempt, API request, business event, audit event, and outbox delivery without copying sensitive payloads between systems.
++
++AI/IP profiles are event subjects, not browser identities. Platform automation uses a system actor and identifies the affected IP separately.
++
++## 7. Initial analysis model
++
++The first dashboards and queries measure:
++
++- acquisition: landing visits → sign-up starts → completed accounts;
++- activation: account registration → onboarding → first follow/comment/chat;
++- creator funnel: Creator Center → draft → generation → master selection → submission → approval → publication;
++- content engagement: real profile/post views → follows, likes, bookmarks, comments, and chats;
++- retention: returning activated humans by weekly cohort;
++- IP performance: followers, unique viewers, engagement rate, chat starts, and AI-reply success;
++- AI operations: job success, retry rate, latency, provider/model cost, and failure codes.
++
++Metrics derived from business facts use Neon as the authoritative numerator/denominator. PostHog is used for behavioral funnels, sessions, paths, and retention; discrepancies are reconciled using event/request IDs.
++
++## 8. Reliability and retention
++
++- Client analytics failure never blocks product interaction.
++- The client SDK batches and flushes through its supported transport; feature code implements no custom reconnect loop.
++- Duplicate client events are tolerated analytically; server business events deduplicate by event UUID.
++- Neon business revisions, workflow transitions, audit events, and business events are retained indefinitely in V1.
++- Delivered outbox rows may be archived after 90 days while the matching business event remains.
++- PostHog behavior retention follows the selected account plan; no critical business history exists only in PostHog.
++
++High-growth tables use time-oriented indexes from V1 and gain time partitioning only after measured volume justifies it. The initial design avoids premature partition-management complexity.
++
++## 9. Access and security
++
++Public and ordinary authenticated database roles cannot read raw audit, outbox, or private revision data. Creator analytics APIs expose aggregates for only the creator's own IPs; creators do not receive raw viewer identities, private chats, prompts, or internal model configuration.
++
++PostHog project keys safe for browser ingestion may be public. Personal API keys, server ingestion secrets, export credentials, and administrative keys are server-only. Production and preview projects/environments remain distinguishable through event properties and provider configuration.
++
++## 10. Verification
++
++Automated tests must prove:
++
++- state changes and their workflow/audit/business records commit or roll back together;
++- immutable revisions cannot be updated by application roles;
++- audit and outbox rows cannot be mutated by public/user roles;
++- outbox retries are idempotent and permanent failures are inspectable;
++- typed event helpers reject unknown names, versions, and non-allow-listed properties;
++- logout resets analytics identity;
++- sensitive form fields, messages, search text, prompts, and secrets never enter analytics payloads;
++- server completion events are emitted only after their business transaction succeeds;
++- analytics provider failure does not fail the user action.
++
++Tests use isolated ephemeral fixtures and contain no seeded product activity.
++
++## 11. Delivery order
++
++1. Complete the current Neon profile/settings foundation.
++2. Add shared event contracts and audit/business-event/outbox tables before feature tables begin producing events.
++3. Add revision and transition tables alongside the IP/creator workflows they protect.
++4. Add the PostHog adapter with the Web shell and auth lifecycle.
++5. Instrument each product slice only when its server behavior exists.
++6. Add dashboards after real internal activity is available; do not populate them with fabricated events.
++
++No PostHog account credentials are required until Step 4. The provided Neon owner credential is used only for reviewed migrations after local tests pass.
+diff --git a/infra/postgres/compose.yaml b/infra/postgres/compose.yaml
+new file mode 100644
+index 0000000..f7958db
+--- /dev/null
++++ b/infra/postgres/compose.yaml
+@@ -0,0 +1,19 @@
++services:
++  postgres:
++    image: postgres:17-alpine
++    environment:
++      POSTGRES_DB: aifans_test
++      POSTGRES_USER: aifans_owner
++      POSTGRES_PASSWORD: local_only_aifans
++    ports:
++      - "127.0.0.1:55432:5432"
++    healthcheck:
++      test: ["CMD-SHELL", "pg_isready -U aifans_owner -d aifans_test"]
++      interval: 2s
++      timeout: 3s
++      retries: 30
++    volumes:
++      - aifans-postgres-data:/var/lib/postgresql/data
++
++volumes:
++  aifans-postgres-data:
+diff --git a/package.json b/package.json
+index ea84801..f878b4b 100644
+--- a/package.json
++++ b/package.json
+@@ -4,21 +4,25 @@
+   "type": "module",
+   "packageManager": "pnpm@11.21.0",
+   "engines": {"node": ">=24.19.0"},
+   "scripts": {
+     "build": "turbo run build",
+     "dev": "turbo run dev --parallel",
+     "lint": "pnpm license:check && turbo run lint",
+     "license:check": "node scripts/check-forbidden-assets.mjs .",
+     "typecheck": "turbo run typecheck",
+     "test": "vitest run",
+-    "test:e2e": "playwright test"
++    "test:e2e": "playwright test",
++    "db:start": "docker compose -f infra/postgres/compose.yaml up -d --wait",
++    "db:stop": "docker compose -f infra/postgres/compose.yaml down",
++    "db:migrate": "pnpm --dir packages/db migrate",
++    "db:test": "pnpm db:start && DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test pnpm db:migrate && DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test pnpm --dir packages/db test"
+   },
+   "devDependencies": {
+     "@playwright/test": "1.62.1",
+     "@types/node": "^24.0.0",
+     "prettier": "3.9.6",
+     "turbo": "2.10.12",
+     "typescript": "7.0.2",
+     "vitest": "4.1.11"
+   }
+ }
+diff --git a/packages/db/package.json b/packages/db/package.json
+new file mode 100644
+index 0000000..60d0e53
+--- /dev/null
++++ b/packages/db/package.json
+@@ -0,0 +1,28 @@
++{
++  "name": "@aifans/db",
++  "version": "0.0.0",
++  "private": true,
++  "type": "module",
++  "exports": {".": "./dist/index.js"},
++  "scripts": {
++    "build": "tsc -p tsconfig.json",
++    "lint": "tsc -p tsconfig.json --noEmit",
++    "typecheck": "tsc -p tsconfig.json --noEmit",
++    "test": "vitest run",
++    "migrate": "tsx src/migrate.ts"
++  },
++  "dependencies": {
++    "@aifans/contracts": "workspace:*",
++    "@neondatabase/serverless": "1.1.0",
++    "drizzle-orm": "0.45.2",
++    "pg": "8.23.0",
++    "zod": "4.5.4"
++  },
++  "devDependencies": {
++    "@types/node": "^24.0.0",
++    "@types/pg": "8.23.1",
++    "tsx": "4.23.13",
++    "typescript": "7.0.2",
++    "vitest": "4.1.11"
++  }
++}
+diff --git a/packages/db/src/env.ts b/packages/db/src/env.ts
+new file mode 100644
+index 0000000..8639d3b
+--- /dev/null
++++ b/packages/db/src/env.ts
+@@ -0,0 +1,29 @@
++import {z} from 'zod'
++
++const postgresUrl = z.string().refine((value) => {
++  try {
++    const {protocol} = new URL(value)
++    return protocol === 'postgres:' || protocol === 'postgresql:'
++  } catch {
++    return false
++  }
++})
++
++export type DatabaseEnv = {
++  databaseUrl: string
++  adminUrl: string
++}
++
++export function readDatabaseEnv(env: Record<string, string | undefined>): DatabaseEnv {
++  const databaseUrl = postgresUrl.safeParse(env.DATABASE_URL)
++  if (!databaseUrl.success) {
++    throw new Error('DATABASE_URL must be a valid postgres URL')
++  }
++
++  const adminUrl = env.DATABASE_ADMIN_URL ?? databaseUrl.data
++  if (!postgresUrl.safeParse(adminUrl).success) {
++    throw new Error('DATABASE_ADMIN_URL must be a valid postgres URL')
++  }
++
++  return {databaseUrl: databaseUrl.data, adminUrl}
++}
+diff --git a/packages/db/src/index.ts b/packages/db/src/index.ts
+new file mode 100644
+index 0000000..0063e48
+--- /dev/null
++++ b/packages/db/src/index.ts
+@@ -0,0 +1,2 @@
++export {readDatabaseEnv} from './env.js'
++export {migrate} from './migrate.js'
+diff --git a/packages/db/src/migrate.ts b/packages/db/src/migrate.ts
+new file mode 100644
+index 0000000..8b9d600
+--- /dev/null
++++ b/packages/db/src/migrate.ts
+@@ -0,0 +1,99 @@
++import {createHash} from 'node:crypto'
++import {readFileSync, readdirSync} from 'node:fs'
++import {dirname, resolve} from 'node:path'
++import {fileURLToPath} from 'node:url'
++import {Pool, type PoolClient} from 'pg'
++import {readDatabaseEnv} from './env.js'
++
++const advisoryLockId = 947361204
++const migrationName = /^\d{12}_[a-z0-9_]+\.sql$/
++
++export type Migration = {
++  name: string
++  sql: string
++  checksum: string
++}
++
++export type MigrateOptions = {
++  connectionString: string
++  directory: string
++}
++
++export function discoverMigrations(directory: string): Migration[] {
++  return readdirSync(directory)
++    .filter((name) => migrationName.test(name))
++    .sort()
++    .map((name) => {
++      const sql = readFileSync(resolve(directory, name), 'utf8')
++      const checksum = createHash('sha256').update(sql).digest('hex')
++      return {name, sql, checksum}
++    })
++}
++
++export async function migrate({connectionString, directory}: MigrateOptions): Promise<string[]> {
++  const pool = new Pool({connectionString})
++
++  try {
++    const client: PoolClient = await pool.connect()
++    try {
++      await client.query('SELECT pg_advisory_lock($1)', [advisoryLockId])
++      await client.query(
++        'CREATE SCHEMA IF NOT EXISTS app_migrations; CREATE TABLE IF NOT EXISTS app_migrations.schema_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())',
++      )
++
++      const migrations = discoverMigrations(directory)
++      const applied = await client.query<{name: string; checksum: string}>(
++        'SELECT name, checksum FROM app_migrations.schema_migrations',
++      )
++      const appliedByName = new Map(applied.rows.map((row) => [row.name, row.checksum]))
++      const newMigrationNames: string[] = []
++
++      for (const migration of migrations) {
++        const existingChecksum = appliedByName.get(migration.name)
++        if (existingChecksum !== undefined) {
++          if (existingChecksum !== migration.checksum) {
++            throw new Error(`Migration checksum mismatch for ${migration.name}`)
++          }
++          continue
++        }
++
++        await client.query('BEGIN')
++        try {
++          await client.query(migration.sql)
++          await client.query(
++            'INSERT INTO app_migrations.schema_migrations (name, checksum) VALUES ($1, $2)',
++            [migration.name, migration.checksum],
++          )
++          await client.query('COMMIT')
++          newMigrationNames.push(migration.name)
++        } catch (error) {
++          await client.query('ROLLBACK')
++          throw error
++        }
++      }
++
++      return newMigrationNames
++    } finally {
++      await client.query('SELECT pg_advisory_unlock($1)', [advisoryLockId]).catch(() => undefined)
++      client.release()
++    }
++  } finally {
++    await pool.end()
++  }
++}
++
++async function main(): Promise<void> {
++  const {adminUrl} = readDatabaseEnv(process.env)
++  const directory = resolve(dirname(fileURLToPath(import.meta.url)), '../migrations')
++  const migrations = await migrate({connectionString: adminUrl, directory})
++  for (const name of migrations) {
++    console.log(name)
++  }
++}
++
++if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
++  main().catch(() => {
++    console.error('Migration failed.')
++    process.exitCode = 1
++  })
++}
+diff --git a/packages/db/tests/migrate.test.ts b/packages/db/tests/migrate.test.ts
+new file mode 100644
+index 0000000..68e87e9
+--- /dev/null
++++ b/packages/db/tests/migrate.test.ts
+@@ -0,0 +1,44 @@
++import {mkdtempSync, writeFileSync} from 'node:fs'
++import {tmpdir} from 'node:os'
++import {join} from 'node:path'
++import {describe, expect, it} from 'vitest'
++import {discoverMigrations} from '../src/migrate.js'
++import {readDatabaseEnv} from '../src/env.js'
++
++describe('database environment', () => {
++  it('requires a postgres URL and falls back to it for administration', () => {
++    const result = readDatabaseEnv({DATABASE_URL: 'postgresql://app@localhost/aifans'})
++    expect(result).toEqual({
++      databaseUrl: 'postgresql://app@localhost/aifans',
++      adminUrl: 'postgresql://app@localhost/aifans',
++    })
++  })
++
++  it('rejects non-postgres URLs', () => {
++    expect(() => readDatabaseEnv({DATABASE_URL: 'https://example.com'})).toThrow(
++      'DATABASE_URL',
++    )
++  })
++})
++
++describe('migration discovery', () => {
++  it('sorts SQL files and includes a stable SHA-256 checksum', () => {
++    const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
++    writeFileSync(join(directory, '202608310002_second.sql'), 'select 2;\n')
++    writeFileSync(join(directory, '202608310001_first.sql'), 'select 1;\n')
++
++    const migrations = discoverMigrations(directory)
++    expect(migrations.map(({name}) => name)).toEqual([
++      '202608310001_first.sql',
++      '202608310002_second.sql',
++    ])
++    expect(migrations[0]?.checksum).toMatch(/^[a-f0-9]{64}$/)
++  })
++
++  it('ignores filenames without a twelve-digit prefix', () => {
++    const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
++    writeFileSync(join(directory, '001_legacy.sql'), 'select 1;\n')
++
++    expect(discoverMigrations(directory)).toEqual([])
++  })
++})
+diff --git a/packages/db/tsconfig.json b/packages/db/tsconfig.json
+new file mode 100644
+index 0000000..e5a6323
+--- /dev/null
++++ b/packages/db/tsconfig.json
+@@ -0,0 +1,11 @@
++{
++  "extends": "../../tsconfig.base.json",
++  "compilerOptions": {
++    "rootDir": "src",
++    "outDir": "dist",
++    "declaration": true,
++    "declarationMap": true
++  },
++  "include": ["src/**/*.ts"],
++  "exclude": ["src/**/*.test.ts"]
++}
+diff --git a/packages/db/vitest.config.ts b/packages/db/vitest.config.ts
+new file mode 100644
+index 0000000..6871111
+--- /dev/null
++++ b/packages/db/vitest.config.ts
+@@ -0,0 +1,9 @@
++import {defineConfig} from 'vitest/config'
++
++export default defineConfig({
++  test: {
++    name: 'db',
++    include: ['tests/**/*.test.ts'],
++    testTimeout: 15_000,
++  },
++})
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index ccedcb6..4506eff 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -18,28 +18,62 @@ importers:
+         specifier: 3.9.6
+         version: 3.9.6
+       turbo:
+         specifier: 2.10.12
+         version: 2.10.12
+       typescript:
+         specifier: 7.0.2
+         version: 7.0.2
+       vitest:
+         specifier: 4.1.11
+-        version: 4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3))
++        version: 4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13))
+ 
+   packages/contracts:
+     dependencies:
+       zod:
+         specifier: 4.5.4
+         version: 4.5.4
+ 
++  packages/db:
++    dependencies:
++      '@aifans/contracts':
++        specifier: workspace:*
++        version: link:../contracts
++      '@neondatabase/serverless':
++        specifier: 1.1.0
++        version: 1.1.0
++      drizzle-orm:
++        specifier: 0.45.2
++        version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(pg@8.23.0)
++      pg:
++        specifier: 8.23.0
++        version: 8.23.0
++      zod:
++        specifier: 4.5.4
++        version: 4.5.4
++    devDependencies:
++      '@types/node':
++        specifier: ^24.0.0
++        version: 24.13.3
++      '@types/pg':
++        specifier: 8.23.1
++        version: 8.23.1
++      tsx:
++        specifier: 4.23.13
++        version: 4.23.13
++      typescript:
++        specifier: 7.0.2
++        version: 7.0.2
++      vitest:
++        specifier: 4.1.11
++        version: 4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13))
++
+   packages/ui:
+     dependencies:
+       lucide-react:
+         specifier: 1.38.0
+         version: 1.38.0(react@19.2.4)
+       react:
+         specifier: 19.2.4
+         version: 19.2.4
+     devDependencies:
+       '@testing-library/jest-dom':
+@@ -119,32 +153,192 @@ packages:
+     peerDependencies:
+       css-tree: ^3.2.1
+     peerDependenciesMeta:
+       css-tree:
+         optional: true
+ 
+   '@csstools/css-tokenizer@4.0.0':
+     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
+     engines: {node: '>=20.19.0'}
+ 
++  '@esbuild/aix-ppc64@0.28.2':
++    resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
++    engines: {node: '>=18'}
++    cpu: [ppc64]
++    os: [aix]
++
++  '@esbuild/android-arm64@0.28.2':
++    resolution: {integrity: sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [android]
++
++  '@esbuild/android-arm@0.28.2':
++    resolution: {integrity: sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg==}
++    engines: {node: '>=18'}
++    cpu: [arm]
++    os: [android]
++
++  '@esbuild/android-x64@0.28.2':
++    resolution: {integrity: sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [android]
++
++  '@esbuild/darwin-arm64@0.28.2':
++    resolution: {integrity: sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [darwin]
++
++  '@esbuild/darwin-x64@0.28.2':
++    resolution: {integrity: sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [darwin]
++
++  '@esbuild/freebsd-arm64@0.28.2':
++    resolution: {integrity: sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [freebsd]
++
++  '@esbuild/freebsd-x64@0.28.2':
++    resolution: {integrity: sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [freebsd]
++
++  '@esbuild/linux-arm64@0.28.2':
++    resolution: {integrity: sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [linux]
++
++  '@esbuild/linux-arm@0.28.2':
++    resolution: {integrity: sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w==}
++    engines: {node: '>=18'}
++    cpu: [arm]
++    os: [linux]
++
++  '@esbuild/linux-ia32@0.28.2':
++    resolution: {integrity: sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ==}
++    engines: {node: '>=18'}
++    cpu: [ia32]
++    os: [linux]
++
++  '@esbuild/linux-loong64@0.28.2':
++    resolution: {integrity: sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ==}
++    engines: {node: '>=18'}
++    cpu: [loong64]
++    os: [linux]
++
++  '@esbuild/linux-mips64el@0.28.2':
++    resolution: {integrity: sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA==}
++    engines: {node: '>=18'}
++    cpu: [mips64el]
++    os: [linux]
++
++  '@esbuild/linux-ppc64@0.28.2':
++    resolution: {integrity: sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ==}
++    engines: {node: '>=18'}
++    cpu: [ppc64]
++    os: [linux]
++
++  '@esbuild/linux-riscv64@0.28.2':
++    resolution: {integrity: sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA==}
++    engines: {node: '>=18'}
++    cpu: [riscv64]
++    os: [linux]
++
++  '@esbuild/linux-s390x@0.28.2':
++    resolution: {integrity: sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg==}
++    engines: {node: '>=18'}
++    cpu: [s390x]
++    os: [linux]
++
++  '@esbuild/linux-x64@0.28.2':
++    resolution: {integrity: sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [linux]
++
++  '@esbuild/netbsd-arm64@0.28.2':
++    resolution: {integrity: sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [netbsd]
++
++  '@esbuild/netbsd-x64@0.28.2':
++    resolution: {integrity: sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [netbsd]
++
++  '@esbuild/openbsd-arm64@0.28.2':
++    resolution: {integrity: sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [openbsd]
++
++  '@esbuild/openbsd-x64@0.28.2':
++    resolution: {integrity: sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [openbsd]
++
++  '@esbuild/openharmony-arm64@0.28.2':
++    resolution: {integrity: sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [openharmony]
++
++  '@esbuild/sunos-x64@0.28.2':
++    resolution: {integrity: sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [sunos]
++
++  '@esbuild/win32-arm64@0.28.2':
++    resolution: {integrity: sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==}
++    engines: {node: '>=18'}
++    cpu: [arm64]
++    os: [win32]
++
++  '@esbuild/win32-ia32@0.28.2':
++    resolution: {integrity: sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA==}
++    engines: {node: '>=18'}
++    cpu: [ia32]
++    os: [win32]
++
++  '@esbuild/win32-x64@0.28.2':
++    resolution: {integrity: sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==}
++    engines: {node: '>=18'}
++    cpu: [x64]
++    os: [win32]
++
+   '@exodus/bytes@1.15.1':
+     resolution: {integrity: sha512-S6mL0yNB/Abt9Ei4tq8gDhcczc4S3+vQ4ra7vxnAf+YHC02srtqxKKZghx2Dq6p0e66THKwR6r8N6P95wEty7Q==}
+     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+     peerDependencies:
+       '@noble/hashes': ^1.8.0 || ^2.0.0
+     peerDependenciesMeta:
+       '@noble/hashes':
+         optional: true
+ 
+   '@jridgewell/sourcemap-codec@1.6.0':
+     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
+ 
++  '@neondatabase/serverless@1.1.0':
++    resolution: {integrity: sha512-r3ZZhRjEcfEdKIZnoB1RusNgvHuaBRqfCzV4Gi+5A9yUX0S4HTws/ASWqt13wL4y4I+0rqsWGdA2w7EQXHi3+Q==}
++    engines: {node: '>=19.0.0'}
++
+   '@oxc-project/types@0.147.0':
+     resolution: {integrity: sha512-IJ3s6ltHLp45S0bh7phkX+gJO7A1Wuz2EaqpAhb8WjqDwbzMiWKHhyyT42tskaWjEYXtHtVCPpnBJVT9+dcRLg==}
+ 
+   '@playwright/test@1.62.1':
+     resolution: {integrity: sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ==}
+     engines: {node: '>=20'}
+     hasBin: true
+ 
+   '@rolldown/binding-android-arm-eabi@1.2.6':
+     resolution: {integrity: sha512-b+jTcARdTiFLI6jB4a5XjTm0RWd6KcRfQj/I2356fxUZemiho9zQLxo0RtCuMDAyKcLo6cEltkgbQp6d1+sjjQ==}
+@@ -309,20 +503,23 @@ packages:
+ 
+   '@types/deep-eql@4.0.2':
+     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
+ 
+   '@types/estree@1.0.9':
+     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+ 
+   '@types/node@24.13.3':
+     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
+ 
++  '@types/pg@8.23.1':
++    resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
++
+   '@types/react-dom@19.2.3':
+     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
+     peerDependencies:
+       '@types/react': ^19.2.0
+ 
+   '@types/react@19.2.14':
+     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
+ 
+   '@typescript/typescript-aix-ppc64@7.0.2':
+     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
+@@ -539,27 +736,124 @@ packages:
+   detect-libc@2.1.2:
+     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
+     engines: {node: '>=8'}
+ 
+   dom-accessibility-api@0.5.16:
+     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
+ 
+   dom-accessibility-api@0.6.3:
+     resolution: {integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==}
+ 
++  drizzle-orm@0.45.2:
++    resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
++    peerDependencies:
++      '@aws-sdk/client-rds-data': '>=3'
++      '@cloudflare/workers-types': '>=4'
++      '@electric-sql/pglite': '>=0.2.0'
++      '@libsql/client': '>=0.10.0'
++      '@libsql/client-wasm': '>=0.10.0'
++      '@neondatabase/serverless': '>=0.10.0'
++      '@op-engineering/op-sqlite': '>=2'
++      '@opentelemetry/api': ^1.4.1
++      '@planetscale/database': '>=1.13'
++      '@prisma/client': '*'
++      '@tidbcloud/serverless': '*'
++      '@types/better-sqlite3': '*'
++      '@types/pg': '*'
++      '@types/sql.js': '*'
++      '@upstash/redis': '>=1.34.7'
++      '@vercel/postgres': '>=0.8.0'
++      '@xata.io/client': '*'
++      better-sqlite3: '>=7'
++      bun-types: '*'
++      expo-sqlite: '>=14.0.0'
++      gel: '>=2'
++      knex: '*'
++      kysely: '*'
++      mysql2: '>=2'
++      pg: '>=8'
++      postgres: '>=3'
++      prisma: '*'
++      sql.js: '>=1'
++      sqlite3: '>=5'
++    peerDependenciesMeta:
++      '@aws-sdk/client-rds-data':
++        optional: true
++      '@cloudflare/workers-types':
++        optional: true
++      '@electric-sql/pglite':
++        optional: true
++      '@libsql/client':
++        optional: true
++      '@libsql/client-wasm':
++        optional: true
++      '@neondatabase/serverless':
++        optional: true
++      '@op-engineering/op-sqlite':
++        optional: true
++      '@opentelemetry/api':
++        optional: true
++      '@planetscale/database':
++        optional: true
++      '@prisma/client':
++        optional: true
++      '@tidbcloud/serverless':
++        optional: true
++      '@types/better-sqlite3':
++        optional: true
++      '@types/pg':
++        optional: true
++      '@types/sql.js':
++        optional: true
++      '@upstash/redis':
++        optional: true
++      '@vercel/postgres':
++        optional: true
++      '@xata.io/client':
++        optional: true
++      better-sqlite3:
++        optional: true
++      bun-types:
++        optional: true
++      expo-sqlite:
++        optional: true
++      gel:
++        optional: true
++      knex:
++        optional: true
++      kysely:
++        optional: true
++      mysql2:
++        optional: true
++      pg:
++        optional: true
++      postgres:
++        optional: true
++      prisma:
++        optional: true
++      sql.js:
++        optional: true
++      sqlite3:
++        optional: true
++
+   entities@8.0.0:
+     resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
+     engines: {node: '>=20.19.0'}
+ 
+   es-module-lexer@2.3.2:
+     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
+ 
++  esbuild@0.28.2:
++    resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
++    engines: {node: '>=18'}
++    hasBin: true
++
+   estree-walker@3.0.3:
+     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
+ 
+   expect-type@1.4.0:
+     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
+     engines: {node: '>=12.0.0'}
+ 
+   fdir@6.5.0:
+     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
+     engines: {node: '>=12.0.0'}
+@@ -718,20 +1012,54 @@ packages:
+   obug@2.1.4:
+     resolution: {integrity: sha512-4a+OsYv9UktOJKE+l1A4OufDgdRF9PifWj+tJnHURo/P+WOxpG4GzUFL9qCalmWauao6ogiG+QvnCovwPoyAWA==}
+     engines: {node: '>=12.20.0'}
+ 
+   parse5@8.0.1:
+     resolution: {integrity: sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==}
+ 
+   pathe@2.0.3:
+     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
+ 
++  pg-cloudflare@1.4.0:
++    resolution: {integrity: sha512-Vo7z/6rrQYxpNRylp4Tlob2elzbh+N/MOQbxFVWCxS7oEx6jF53GTJFxK2WWpKuBRkmiin4Mt+xofFDjx09R0A==}
++
++  pg-connection-string@2.14.0:
++    resolution: {integrity: sha512-XwWDGcLRGCXAR8F/AM5bG7Q+A3Wm2s6QeEjlOKZLlH3UYcguiqCWKyWXVag5TLTIjR7oOJUY8kcADaZgWPyLeg==}
++
++  pg-int8@1.0.1:
++    resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
++    engines: {node: '>=4.0.0'}
++
++  pg-pool@3.14.0:
++    resolution: {integrity: sha512-gKtPkFdQPU3DksooVLi9LsjZxrsBUZIpa+7aVx+LV5pNh0KzP4Zleud2po+ConrxbuXGBJ6Hfer6hdgpIBpBaw==}
++    peerDependencies:
++      pg: '>=8.0'
++
++  pg-protocol@1.16.0:
++    resolution: {integrity: sha512-sILXutLVjCLjcDuOmvhX5e2Z4cS5qG/6Bu3VkpFwdf/633ElGLpEh9bgmuI5I4sqKqkifQiGyiCcx1HdtrK7tg==}
++
++  pg-types@2.2.0:
++    resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
++    engines: {node: '>=4'}
++
++  pg@8.23.0:
++    resolution: {integrity: sha512-Ip2EQCngowJLGOfCwkFhPXU7/ljlhn6Rxlmy4XYfL2Y+vyRM59+8uR2xqRWKdYmbXmxCFOAmKxBuSUCdF34qLg==}
++    engines: {node: '>= 16.0.0'}
++    peerDependencies:
++      pg-native: '>=3.0.1'
++    peerDependenciesMeta:
++      pg-native:
++        optional: true
++
++  pgpass@1.0.5:
++    resolution: {integrity: sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==}
++
+   picocolors@1.1.1:
+     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
+ 
+   picomatch@4.0.7:
+     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
+     engines: {node: '>=12'}
+ 
+   playwright-core@1.62.1:
+     resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+     engines: {node: '>=20'}
+@@ -739,20 +1067,36 @@ packages:
+ 
+   playwright@1.62.1:
+     resolution: {integrity: sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==}
+     engines: {node: '>=20'}
+     hasBin: true
+ 
+   postcss@8.5.26:
+     resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
+     engines: {node: ^10 || ^12 || >=14}
+ 
++  postgres-array@2.0.0:
++    resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
++    engines: {node: '>=4'}
++
++  postgres-bytea@1.0.1:
++    resolution: {integrity: sha512-5+5HqXnsZPE65IJZSMkZtURARZelel2oXUEO8rH83VS/hxH5vv1uHquPg5wZs8yMAfdv971IU+kcPUczi7NVBQ==}
++    engines: {node: '>=0.10.0'}
++
++  postgres-date@1.0.7:
++    resolution: {integrity: sha512-suDmjLVQg78nMK2UZ454hAG+OAW+HQPZ6n++TNDUX+L0+uUlLywnoxJKDou51Zm+zTCjrCl0Nq6J9C5hP9vK/Q==}
++    engines: {node: '>=0.10.0'}
++
++  postgres-interval@1.2.0:
++    resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
++    engines: {node: '>=0.10.0'}
++
+   prettier@3.9.6:
+     resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+     engines: {node: '>=14'}
+     hasBin: true
+ 
+   pretty-format@27.5.1:
+     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
+     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
+ 
+   punycode@2.3.1:
+@@ -791,20 +1135,24 @@ packages:
+   scheduler@0.27.0:
+     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
+ 
+   siginfo@2.0.0:
+     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
+ 
+   source-map-js@1.2.1:
+     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+     engines: {node: '>=0.10.0'}
+ 
++  split2@4.2.0:
++    resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
++    engines: {node: '>= 10.x'}
++
+   stackback@0.0.2:
+     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
+ 
+   std-env@4.2.0:
+     resolution: {integrity: sha512-oCUKSupKTHX53EyjDtuZQ64pjLJ6yYCtpmEw0goYxtjG9KpbRe8KAsl2tBUGU9DyMcJ0RwJ8GqJAFzMXcXW1Rw==}
+ 
+   strip-indent@3.0.0:
+     resolution: {integrity: sha512-laJTa3Jb+VQpaC6DseHhF7dXVqHTfJPCRDaEbid/drOhgitgYku/letMUqOXFoWV0zIIUbjpdH2t+tYj4bQMRQ==}
+     engines: {node: '>=8'}
+ 
+@@ -834,20 +1182,25 @@ packages:
+     hasBin: true
+ 
+   tough-cookie@6.0.2:
+     resolution: {integrity: sha512-exgYmnmL/sJpR3upZfXG5PoatXQii55xAiXGXzY+sROLZ/Y+SLcp9PgJNI9Vz37HpQ74WvDcLT8eqm+kV3FzrA==}
+     engines: {node: '>=16'}
+ 
+   tr46@6.0.0:
+     resolution: {integrity: sha512-bLVMLPtstlZ4iMQHpFHTR7GAGj2jxi8Dg0s2h2MafAE4uSWF98FC/3MomU51iQAMf8/qDUbKWf5GxuvvVcXEhw==}
+     engines: {node: '>=20'}
+ 
++  tsx@4.23.13:
++    resolution: {integrity: sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==}
++    engines: {node: '>=18.0.0'}
++    hasBin: true
++
+   turbo@2.10.12:
+     resolution: {integrity: sha512-AswgMPnpOoaVZHrrSBejETzEbuIA69OVGwfkHwfrY0A23VjWXBANzgq9+OymWOHAIArB7D1+1z498WY8fGg1Jw==}
+     hasBin: true
+ 
+   typescript@7.0.2:
+     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
+     engines: {node: '>=16.20.0'}
+     hasBin: true
+ 
+   undici-types@7.18.2:
+@@ -974,20 +1327,24 @@ packages:
+       utf-8-validate:
+         optional: true
+ 
+   xml-name-validator@5.0.0:
+     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
+     engines: {node: '>=18'}
+ 
+   xmlchars@2.2.0:
+     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
+ 
++  xtend@4.0.2:
++    resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
++    engines: {node: '>=0.4'}
++
+   zod@4.5.4:
+     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
+ 
+ snapshots:
+ 
+   '@acemir/cssom@0.9.31': {}
+ 
+   '@adobe/css-tools@4.5.0': {}
+ 
+   '@asamuzakjp/css-color@4.1.2':
+@@ -1035,24 +1392,104 @@ snapshots:
+   '@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0)':
+     dependencies:
+       '@csstools/css-tokenizer': 4.0.0
+ 
+   '@csstools/css-syntax-patches-for-csstree@1.1.9(css-tree@3.2.1)':
+     optionalDependencies:
+       css-tree: 3.2.1
+ 
+   '@csstools/css-tokenizer@4.0.0': {}
+ 
++  '@esbuild/aix-ppc64@0.28.2':
++    optional: true
++
++  '@esbuild/android-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/android-arm@0.28.2':
++    optional: true
++
++  '@esbuild/android-x64@0.28.2':
++    optional: true
++
++  '@esbuild/darwin-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/darwin-x64@0.28.2':
++    optional: true
++
++  '@esbuild/freebsd-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/freebsd-x64@0.28.2':
++    optional: true
++
++  '@esbuild/linux-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/linux-arm@0.28.2':
++    optional: true
++
++  '@esbuild/linux-ia32@0.28.2':
++    optional: true
++
++  '@esbuild/linux-loong64@0.28.2':
++    optional: true
++
++  '@esbuild/linux-mips64el@0.28.2':
++    optional: true
++
++  '@esbuild/linux-ppc64@0.28.2':
++    optional: true
++
++  '@esbuild/linux-riscv64@0.28.2':
++    optional: true
++
++  '@esbuild/linux-s390x@0.28.2':
++    optional: true
++
++  '@esbuild/linux-x64@0.28.2':
++    optional: true
++
++  '@esbuild/netbsd-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/netbsd-x64@0.28.2':
++    optional: true
++
++  '@esbuild/openbsd-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/openbsd-x64@0.28.2':
++    optional: true
++
++  '@esbuild/openharmony-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/sunos-x64@0.28.2':
++    optional: true
++
++  '@esbuild/win32-arm64@0.28.2':
++    optional: true
++
++  '@esbuild/win32-ia32@0.28.2':
++    optional: true
++
++  '@esbuild/win32-x64@0.28.2':
++    optional: true
++
+   '@exodus/bytes@1.15.1': {}
+ 
+   '@jridgewell/sourcemap-codec@1.6.0': {}
+ 
++  '@neondatabase/serverless@1.1.0': {}
++
+   '@oxc-project/types@0.147.0': {}
+ 
+   '@playwright/test@1.62.1':
+     dependencies:
+       playwright: 1.62.1
+ 
+   '@rolldown/binding-android-arm-eabi@1.2.6':
+     optional: true
+ 
+   '@rolldown/binding-android-arm64@1.2.6':
+@@ -1157,20 +1594,26 @@ snapshots:
+       assertion-error: 2.0.1
+ 
+   '@types/deep-eql@4.0.2': {}
+ 
+   '@types/estree@1.0.9': {}
+ 
+   '@types/node@24.13.3':
+     dependencies:
+       undici-types: 7.18.2
+ 
++  '@types/pg@8.23.1':
++    dependencies:
++      '@types/node': 24.13.3
++      pg-protocol: 1.16.0
++      pg-types: 2.2.0
++
+   '@types/react-dom@19.2.3(@types/react@19.2.14)':
+     dependencies:
+       '@types/react': 19.2.14
+ 
+   '@types/react@19.2.14':
+     dependencies:
+       csstype: 3.2.3
+ 
+   '@typescript/typescript-aix-ppc64@7.0.2':
+     optional: true
+@@ -1234,27 +1677,27 @@ snapshots:
+ 
+   '@vitest/expect@4.1.11':
+     dependencies:
+       '@standard-schema/spec': 1.1.0
+       '@types/chai': 5.2.3
+       '@vitest/spy': 4.1.11
+       '@vitest/utils': 4.1.11
+       chai: 6.2.2
+       tinyrainbow: 3.1.1
+ 
+-  '@vitest/mocker@4.1.11(vite@8.2.2(@types/node@24.13.3))':
++  '@vitest/mocker@4.1.11(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13))':
+     dependencies:
+       '@vitest/spy': 4.1.11
+       estree-walker: 3.0.3
+       magic-string: 0.30.21
+     optionalDependencies:
+-      vite: 8.2.2(@types/node@24.13.3)
++      vite: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)
+ 
+   '@vitest/pretty-format@4.1.11':
+     dependencies:
+       tinyrainbow: 3.1.1
+ 
+   '@vitest/runner@4.1.11':
+     dependencies:
+       '@vitest/utils': 4.1.11
+       pathe: 2.0.3
+ 
+@@ -1321,24 +1764,59 @@ snapshots:
+   decimal.js@10.6.0: {}
+ 
+   dequal@2.0.3: {}
+ 
+   detect-libc@2.1.2: {}
+ 
+   dom-accessibility-api@0.5.16: {}
+ 
+   dom-accessibility-api@0.6.3: {}
+ 
++  drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(pg@8.23.0):
++    optionalDependencies:
++      '@neondatabase/serverless': 1.1.0
++      '@types/pg': 8.23.1
++      pg: 8.23.0
++
+   entities@8.0.0: {}
+ 
+   es-module-lexer@2.3.2: {}
+ 
++  esbuild@0.28.2:
++    optionalDependencies:
++      '@esbuild/aix-ppc64': 0.28.2
++      '@esbuild/android-arm': 0.28.2
++      '@esbuild/android-arm64': 0.28.2
++      '@esbuild/android-x64': 0.28.2
++      '@esbuild/darwin-arm64': 0.28.2
++      '@esbuild/darwin-x64': 0.28.2
++      '@esbuild/freebsd-arm64': 0.28.2
++      '@esbuild/freebsd-x64': 0.28.2
++      '@esbuild/linux-arm': 0.28.2
++      '@esbuild/linux-arm64': 0.28.2
++      '@esbuild/linux-ia32': 0.28.2
++      '@esbuild/linux-loong64': 0.28.2
++      '@esbuild/linux-mips64el': 0.28.2
++      '@esbuild/linux-ppc64': 0.28.2
++      '@esbuild/linux-riscv64': 0.28.2
++      '@esbuild/linux-s390x': 0.28.2
++      '@esbuild/linux-x64': 0.28.2
++      '@esbuild/netbsd-arm64': 0.28.2
++      '@esbuild/netbsd-x64': 0.28.2
++      '@esbuild/openbsd-arm64': 0.28.2
++      '@esbuild/openbsd-x64': 0.28.2
++      '@esbuild/openharmony-arm64': 0.28.2
++      '@esbuild/sunos-x64': 0.28.2
++      '@esbuild/win32-arm64': 0.28.2
++      '@esbuild/win32-ia32': 0.28.2
++      '@esbuild/win32-x64': 0.28.2
++
+   estree-walker@3.0.3:
+     dependencies:
+       '@types/estree': 1.0.9
+ 
+   expect-type@1.4.0: {}
+ 
+   fdir@6.5.0(picomatch@4.0.7):
+     optionalDependencies:
+       picomatch: 4.0.7
+ 
+@@ -1472,38 +1950,83 @@ snapshots:
+   nanoid@3.3.18: {}
+ 
+   obug@2.1.4: {}
+ 
+   parse5@8.0.1:
+     dependencies:
+       entities: 8.0.0
+ 
+   pathe@2.0.3: {}
+ 
++  pg-cloudflare@1.4.0:
++    optional: true
++
++  pg-connection-string@2.14.0: {}
++
++  pg-int8@1.0.1: {}
++
++  pg-pool@3.14.0(pg@8.23.0):
++    dependencies:
++      pg: 8.23.0
++
++  pg-protocol@1.16.0: {}
++
++  pg-types@2.2.0:
++    dependencies:
++      pg-int8: 1.0.1
++      postgres-array: 2.0.0
++      postgres-bytea: 1.0.1
++      postgres-date: 1.0.7
++      postgres-interval: 1.2.0
++
++  pg@8.23.0:
++    dependencies:
++      pg-connection-string: 2.14.0
++      pg-pool: 3.14.0(pg@8.23.0)
++      pg-protocol: 1.16.0
++      pg-types: 2.2.0
++      pgpass: 1.0.5
++    optionalDependencies:
++      pg-cloudflare: 1.4.0
++
++  pgpass@1.0.5:
++    dependencies:
++      split2: 4.2.0
++
+   picocolors@1.1.1: {}
+ 
+   picomatch@4.0.7: {}
+ 
+   playwright-core@1.62.1: {}
+ 
+   playwright@1.62.1:
+     dependencies:
+       playwright-core: 1.62.1
+     optionalDependencies:
+       fsevents: 2.3.2
+ 
+   postcss@8.5.26:
+     dependencies:
+       nanoid: 3.3.18
+       picocolors: 1.1.1
+       source-map-js: 1.2.1
+ 
++  postgres-array@2.0.0: {}
++
++  postgres-bytea@1.0.1: {}
++
++  postgres-date@1.0.7: {}
++
++  postgres-interval@1.2.0:
++    dependencies:
++      xtend: 4.0.2
++
+   prettier@3.9.6: {}
+ 
+   pretty-format@27.5.1:
+     dependencies:
+       ansi-regex: 5.0.1
+       ansi-styles: 5.2.0
+       react-is: 17.0.2
+ 
+   punycode@2.3.1: {}
+ 
+@@ -1547,20 +2070,22 @@ snapshots:
+   saxes@6.0.0:
+     dependencies:
+       xmlchars: 2.2.0
+ 
+   scheduler@0.27.0: {}
+ 
+   siginfo@2.0.0: {}
+ 
+   source-map-js@1.2.1: {}
+ 
++  split2@4.2.0: {}
++
+   stackback@0.0.2: {}
+ 
+   std-env@4.2.0: {}
+ 
+   strip-indent@3.0.0:
+     dependencies:
+       min-indent: 1.0.1
+ 
+   symbol-tree@3.2.4: {}
+ 
+@@ -1582,20 +2107,26 @@ snapshots:
+       tldts-core: 7.4.11
+ 
+   tough-cookie@6.0.2:
+     dependencies:
+       tldts: 7.4.11
+ 
+   tr46@6.0.0:
+     dependencies:
+       punycode: 2.3.1
+ 
++  tsx@4.23.13:
++    dependencies:
++      esbuild: 0.28.2
++    optionalDependencies:
++      fsevents: 2.3.3
++
+   turbo@2.10.12:
+     optionalDependencies:
+       '@turbo/darwin-64': 2.10.12
+       '@turbo/darwin-arm64': 2.10.12
+       '@turbo/linux-64': 2.10.12
+       '@turbo/linux-arm64': 2.10.12
+       '@turbo/windows-64': 2.10.12
+       '@turbo/windows-arm64': 2.10.12
+ 
+   typescript@7.0.2:
+@@ -1616,52 +2147,54 @@ snapshots:
+       '@typescript/typescript-netbsd-arm64': 7.0.2
+       '@typescript/typescript-netbsd-x64': 7.0.2
+       '@typescript/typescript-openbsd-arm64': 7.0.2
+       '@typescript/typescript-openbsd-x64': 7.0.2
+       '@typescript/typescript-sunos-x64': 7.0.2
+       '@typescript/typescript-win32-arm64': 7.0.2
+       '@typescript/typescript-win32-x64': 7.0.2
+ 
+   undici-types@7.18.2: {}
+ 
+-  vite@8.2.2(@types/node@24.13.3):
++  vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13):
+     dependencies:
+       lightningcss: 1.33.0
+       picomatch: 4.0.7
+       postcss: 8.5.26
+       rolldown: 1.2.6
+       tinyglobby: 0.2.17
+     optionalDependencies:
+       '@types/node': 24.13.3
++      esbuild: 0.28.2
+       fsevents: 2.3.3
++      tsx: 4.23.13
+ 
+-  vitest@4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3)):
++  vitest@4.1.11(@types/node@24.13.3)(jsdom@27.4.0)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)):
+     dependencies:
+       '@vitest/expect': 4.1.11
+-      '@vitest/mocker': 4.1.11(vite@8.2.2(@types/node@24.13.3))
++      '@vitest/mocker': 4.1.11(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13))
+       '@vitest/pretty-format': 4.1.11
+       '@vitest/runner': 4.1.11
+       '@vitest/snapshot': 4.1.11
+       '@vitest/spy': 4.1.11
+       '@vitest/utils': 4.1.11
+       es-module-lexer: 2.3.2
+       expect-type: 1.4.0
+       magic-string: 0.30.21
+       obug: 2.1.4
+       pathe: 2.0.3
+       picomatch: 4.0.7
+       std-env: 4.2.0
+       tinybench: 2.9.0
+       tinyexec: 1.3.0
+       tinyglobby: 0.2.17
+       tinyrainbow: 3.1.1
+-      vite: 8.2.2(@types/node@24.13.3)
++      vite: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)
+       why-is-node-running: 2.3.0
+     optionalDependencies:
+       '@types/node': 24.13.3
+       jsdom: 27.4.0
+     transitivePeerDependencies:
+       - msw
+ 
+   w3c-xmlserializer@5.0.0:
+     dependencies:
+       xml-name-validator: 5.0.0
+@@ -1681,11 +2214,13 @@ snapshots:
+     dependencies:
+       siginfo: 2.0.0
+       stackback: 0.0.2
+ 
+   ws@8.21.3: {}
+ 
+   xml-name-validator@5.0.0: {}
+ 
+   xmlchars@2.2.0: {}
+ 
++  xtend@4.0.2: {}
++
+   zod@4.5.4: {}
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 1736e30..7886039 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -1,5 +1,7 @@
+ packages:
+   - apps/*
+   - packages/*
++allowBuilds:
++  esbuild: true
+ minimumReleaseAgeExclude:
+   - lucide-react@1.38.0

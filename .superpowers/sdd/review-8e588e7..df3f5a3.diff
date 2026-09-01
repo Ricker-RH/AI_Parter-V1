@@ -1,0 +1,829 @@
+# Review package: 8e588e7..df3f5a3
+
+## Commits
+df3f5a3 fix: harden social history contracts
+b857319 docs: plan secure social schema
+1e32163 feat: add social authority and history foundation
+
+## Files changed
+ .env.example                                       |   1 +
+ .../plans/2026-09-01-aifans-social-schema.md       | 108 ++++++++++++
+ .../migrations/202609010002_authority_history.sql  | 194 +++++++++++++++++++++
+ packages/db/src/authority.ts                       |  64 +++++++
+ packages/db/src/history.ts                         |  70 ++++++++
+ packages/db/src/index.ts                           |  12 ++
+ packages/db/src/schema.ts                          |  25 +++
+ packages/db/src/session.ts                         |  12 +-
+ packages/db/tests/authority-history.test.ts        | 184 +++++++++++++++++++
+ 9 files changed, 667 insertions(+), 3 deletions(-)
+
+## Diff
+diff --git a/.env.example b/.env.example
+index fd3788e..c9d7bf0 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,9 +1,10 @@
+ DATABASE_URL
+ DATABASE_USER_URL
+ DATABASE_ADMIN_URL
++DATABASE_PLATFORM_URL
+ NEON_AUTH_BASE_URL
+ NEON_AUTH_COOKIE_SECRET
+ R2_ACCOUNT_ID
+ R2_BUCKET
+ R2_ACCESS_KEY_ID
+ R2_SECRET_ACCESS_KEY
+diff --git a/docs/superpowers/plans/2026-09-01-aifans-social-schema.md b/docs/superpowers/plans/2026-09-01-aifans-social-schema.md
+new file mode 100644
+index 0000000..45b5caa
+--- /dev/null
++++ b/docs/superpowers/plans/2026-09-01-aifans-social-schema.md
+@@ -0,0 +1,108 @@
++# AIFANS Social Schema Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
++
++**Goal:** Add the secure AI/IP, post, interaction, comment, and notification data model that powers the first real social feed.
++
++**Architecture:** Portable PostgreSQL remains authoritative. Public reads see only published AI/IP identities and content; human sessions can create only follows, reactions, private bookmarks, and human comments under transaction-local actor claims. Top-level posts and AI/IP comments have no ordinary-user write grant and attach later to the audited platform command path.
++
++**Tech Stack:** PostgreSQL 17, Neon PostgreSQL, Drizzle ORM 0.45.2, Node.js 24.19.0, TypeScript 7.0.2, Vitest 4.1.11.
++
++## Global Constraints
++
++- Human accounts cannot create, edit, publish, withdraw, or delete top-level posts.
++- Human sessions cannot author comments as an AI/IP or supply an acting operator identity.
++- Public reads expose only published AI/IP profiles, current approved identity revisions, published posts/media, and non-deleted comments.
++- Bookmarks are private to their owner and expose no public count.
++- Operator/source attribution, authority tables, audit/history, auth subjects, and unpublished data never appear in public projections.
++- Post media are platform-owned R2 object keys; browser-provided arbitrary URLs are never stored.
++- Published posts may contain text, one to four images, or both; they are not required to contain an image.
++- Production environments receive no seeded profiles, IPs, posts, comments, engagement, or notifications.
++- All dependencies remain pinned and behavior follows RED to GREEN TDD.
++
++---
++
++### Task 1: Social tables, constraints, RLS, and typed schema
++
++**Files:**
++- Create: `packages/db/migrations/202609010003_social_core.sql`
++- Create: `packages/db/tests/social-core-rls.test.ts`
++- Modify: `packages/db/src/schema.ts`
++- Modify: `packages/db/src/index.ts`
++
++**Interfaces:**
++- Consumes: `profiles`, `profile_roles`, existing restricted roles, actor claims, and append-only history tables.
++- Produces: typed tables/enums for AI/IP profiles, identity revisions, posts/media, follows, likes, bookmarks, comments/replies, comment likes, and notifications.
++
++- [ ] **Step 1: Write failing real-PostgreSQL authorization tests**
++
++Create disposable human/operator/IP fixtures inside transactions. Assert all of the following before implementation:
++
++```ts
++await expect(insertTopLevelPostAsHuman(humanActor, ipId)).rejects.toThrow(/permission denied|row-level security/)
++await expect(insertIpCommentAsHuman(humanActor, ipId, postId)).rejects.toThrow(/permission denied|row-level security/)
++await expect(createOwnBookmark(humanActor, postId)).resolves.toBeUndefined()
++await expect(readOtherBookmark(secondHumanActor, humanProfileId, postId)).resolves.toHaveLength(0)
++```
++
++Also prove: public cannot see draft/paused IPs, non-current revisions, draft/withdrawn posts, deleted comments, bookmarks, notifications, operator IDs, or auth subjects; humans can follow/unfollow public profiles, like/unlike published posts/comments, bookmark/unbookmark published posts, create a nonblank comment/reply as themselves, and mark only their own notification read; cross-user mutation fails; duplicate relationships are idempotent at the repository boundary; parent comments must belong to the same post and replies are limited to one nested reply level; published posts require nonblank text or at least one verified media row and accept zero to four images; IP identity revisions cannot update/delete; post withdrawal preserves rows and history references.
++
++- [ ] **Step 2: Run focused tests and verify RED**
++
++Run:
++
++```bash
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm db:start
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" DATABASE_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" corepack pnpm db:migrate
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" DATABASE_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" DATABASE_USER_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" DATABASE_ADMIN_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" corepack pnpm --dir packages/db test -- social-core-rls.test.ts
++```
++
++Expected: FAIL because the social tables do not exist.
++
++- [ ] **Step 3: Add AI/IP identity and content tables**
++
++Implement the exact schema and index proposal under `.superpowers/sdd/social-core-preflight.md`, with these binding refinements:
++
++- `ip_profiles` references an `account_kind='ip'` profile, records `platform|creator` source, optional human creator, public lifecycle, operation flag, feed weight, and the current immutable identity revision.
++- `ip_identity_revisions` store versioned public identity fields and are update/delete protected. Only the revision referenced by a published IP is publicly readable.
++- `posts` use `draft|published|withdrawn` and `admin|worker`; author must be IP; operator identity is required for `admin`; published rows have `published_at`; withdrawn rows retain original publication time and add `withdrawn_at`.
++- `post_media` positions are unique and limited to 1..4, accept only `image/*`, and store platform object keys rather than URLs. A deferred publish constraint accepts nonblank text, media, or both; zero-media text posts are valid.
++- Platform tables have no ordinary-user insert/update/delete grants. Public/authenticated read policies return only published-safe rows and exclude operator/source internals through safe projections/functions rather than unrestricted `SELECT *`.
++
++- [ ] **Step 4: Add human interaction, comment, and notification tables**
++
++Implement `follows`, `post_likes`, `bookmarks`, `comments`, `comment_likes`, and `notifications` with the indexes and relationships from `.superpowers/sdd/social-core-preflight.md`. Enforce:
++
++- owner-only insert/delete for follows, likes, bookmarks, and comment likes;
++- bookmark owner-only select and no public bookmark aggregate;
++- human comment route rows require current human author, `source='human'`, no operator ID, published target post, 1..2000 non-whitespace characters, same-post parent, and at most one reply level;
++- `admin|worker` comments require an IP author and operator/system attribution and have no ordinary-user write path;
++- comment deletion is soft and preserves thread/notification references;
++- notification insert/delete is platform/database-service only; recipient can select and change only their own `read_at` from null to a timestamp.
++
++- [ ] **Step 5: Mirror SQL types in Drizzle without weakening SQL authority**
++
++Export the new enums and tables from `schema.ts` and the package root. Repeat column checks, unique keys, and foreign-key relationships that Drizzle can represent. SQL remains authoritative for RLS, grants, triggers, safe projections, deferred content validation, immutable revisions, and append-only behavior. Do not export database pools or generic privileged mutation helpers.
++
++- [ ] **Step 6: Verify migration, authorization, and workspace**
++
++Run:
++
++```bash
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" DATABASE_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" corepack pnpm db:migrate
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" DATABASE_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" DATABASE_USER_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" DATABASE_ADMIN_URL="postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test" corepack pnpm --dir packages/db test -- social-core-rls.test.ts
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db typecheck
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm --dir packages/db build
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm test
++PATH="/Users/luoruihao/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" corepack pnpm license:check
++git diff --check
++```
++
++Expected: migration is idempotently recorded, focused and root tests pass, build/type/license/diff checks exit 0, and no hosted Neon mutation occurs.
++
++- [ ] **Step 7: Commit**
++
++```bash
++git add packages/db
++git commit -m "feat: add secure social core schema"
++```
+diff --git a/packages/db/migrations/202609010002_authority_history.sql b/packages/db/migrations/202609010002_authority_history.sql
+new file mode 100644
+index 0000000..1efcb84
+--- /dev/null
++++ b/packages/db/migrations/202609010002_authority_history.sql
+@@ -0,0 +1,194 @@
++CREATE TYPE public.app_role AS ENUM ('operator');
++CREATE TYPE public.audit_actor_type AS ENUM ('human', 'operator', 'system');
++CREATE TYPE public.audit_source AS ENUM ('api', 'admin', 'worker');
++CREATE TYPE public.audit_result AS ENUM ('succeeded', 'rejected', 'failed');
++CREATE TYPE public.outbox_state AS ENUM ('pending', 'delivered', 'failed');
++
++CREATE TABLE public.profile_roles (
++  profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  role public.app_role NOT NULL,
++  granted_by_profile_id uuid NOT NULL REFERENCES public.profiles(id),
++  granted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
++  revoked_at timestamptz,
++  PRIMARY KEY (profile_id, role)
++);
++
++CREATE TABLE public.audit_events (
++  id uuid PRIMARY KEY,
++  occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
++  actor_type public.audit_actor_type NOT NULL,
++  actor_profile_id uuid REFERENCES public.profiles(id),
++  action text NOT NULL CHECK (action ~ '[^[:space:]]'),
++  entity_type text NOT NULL CHECK (entity_type ~ '[^[:space:]]'),
++  entity_id uuid NOT NULL,
++  request_id uuid,
++  source_app public.audit_source NOT NULL,
++  result public.audit_result NOT NULL,
++  change_summary jsonb NOT NULL DEFAULT '{}'::jsonb
++);
++
++CREATE TABLE public.business_events (
++  id uuid PRIMARY KEY,
++  event_name text NOT NULL CHECK (event_name ~ '^[a-z][a-z0-9_]*$'),
++  schema_version smallint NOT NULL CHECK (schema_version > 0),
++  occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
++  actor_profile_id uuid REFERENCES public.profiles(id),
++  subject_entity_type text NOT NULL CHECK (subject_entity_type ~ '[^[:space:]]'),
++  subject_entity_id uuid NOT NULL,
++  request_id uuid,
++  environment text NOT NULL CHECK (environment ~ '[^[:space:]]'),
++  properties jsonb NOT NULL DEFAULT '{}'::jsonb
++);
++
++CREATE TABLE public.workflow_transitions (
++  id uuid PRIMARY KEY,
++  entity_type text NOT NULL CHECK (entity_type ~ '[^[:space:]]'),
++  entity_id uuid NOT NULL,
++  previous_state text,
++  next_state text NOT NULL CHECK (next_state ~ '[^[:space:]]'),
++  actor_profile_id uuid REFERENCES public.profiles(id),
++  reason_code text,
++  operator_note text,
++  request_id uuid,
++  occurred_at timestamptz NOT NULL DEFAULT clock_timestamp()
++);
++
++CREATE TABLE public.analytics_outbox (
++  id uuid PRIMARY KEY,
++  business_event_id uuid NOT NULL UNIQUE REFERENCES public.business_events(id),
++  destination text NOT NULL CHECK (destination ~ '[^[:space:]]'),
++  payload_version smallint NOT NULL CHECK (payload_version > 0),
++  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
++  state public.outbox_state NOT NULL DEFAULT 'pending',
++  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
++  next_attempt_at timestamptz NOT NULL DEFAULT clock_timestamp(),
++  delivered_at timestamptz,
++  last_error_code text,
++  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
++  CHECK ((state = 'delivered') = (delivered_at IS NOT NULL))
++);
++
++CREATE INDEX audit_events_entity_occurred_at_idx ON public.audit_events (entity_type, entity_id, occurred_at DESC);
++CREATE INDEX audit_events_actor_occurred_at_idx ON public.audit_events (actor_profile_id, occurred_at DESC);
++CREATE INDEX audit_events_request_id_idx ON public.audit_events (request_id) WHERE request_id IS NOT NULL;
++CREATE INDEX business_events_name_occurred_at_idx ON public.business_events (event_name, occurred_at DESC);
++CREATE INDEX business_events_actor_occurred_at_idx ON public.business_events (actor_profile_id, occurred_at DESC);
++CREATE INDEX workflow_transitions_entity_occurred_at_idx ON public.workflow_transitions (entity_type, entity_id, occurred_at DESC);
++CREATE INDEX analytics_outbox_pending_idx ON public.analytics_outbox (next_attempt_at, created_at) WHERE state = 'pending';
++
++CREATE FUNCTION public.profile_roles_require_humans()
++RETURNS trigger
++LANGUAGE plpgsql
++SET search_path = ''
++AS $$
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.profile_id AND account_kind = 'human')
++    OR NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.granted_by_profile_id AND account_kind = 'human') THEN
++    RAISE EXCEPTION 'operator roles require human profiles';
++  END IF;
++  RETURN NEW;
++END;
++$$;
++
++CREATE FUNCTION public.reject_history_mutation()
++RETURNS trigger
++LANGUAGE plpgsql
++SET search_path = ''
++AS $$
++BEGIN
++  RAISE EXCEPTION '% is append-only', TG_TABLE_NAME;
++END;
++$$;
++
++CREATE FUNCTION public.guard_analytics_outbox_mutation()
++RETURNS trigger
++LANGUAGE plpgsql
++SET search_path = ''
++AS $$
++BEGIN
++  IF TG_OP = 'DELETE' THEN
++    RAISE EXCEPTION 'analytics_outbox is append-only';
++  END IF;
++
++  IF OLD.id IS DISTINCT FROM NEW.id
++    OR OLD.business_event_id IS DISTINCT FROM NEW.business_event_id
++    OR OLD.destination IS DISTINCT FROM NEW.destination
++    OR OLD.payload_version IS DISTINCT FROM NEW.payload_version
++    OR OLD.payload IS DISTINCT FROM NEW.payload
++    OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
++    RAISE EXCEPTION 'analytics_outbox immutable fields cannot be changed';
++  END IF;
++
++  IF OLD.state <> 'pending' THEN
++    RAISE EXCEPTION 'analytics_outbox terminal rows cannot be changed';
++  END IF;
++
++  IF NEW.state = 'pending' THEN
++    IF NEW.attempt_count <> OLD.attempt_count + 1
++      OR NEW.next_attempt_at = OLD.next_attempt_at
++      OR NEW.last_error_code IS NULL
++      OR NEW.last_error_code !~ '[^[:space:]]'
++      OR NEW.delivered_at IS NOT NULL THEN
++      RAISE EXCEPTION 'analytics_outbox retry must advance attempt scheduling with an error code';
++    END IF;
++  ELSIF NEW.state = 'delivered' THEN
++    IF NEW.attempt_count NOT IN (OLD.attempt_count, OLD.attempt_count + 1)
++      OR NEW.delivered_at IS NULL
++      OR NEW.last_error_code IS NOT NULL THEN
++      RAISE EXCEPTION 'analytics_outbox delivery must record one successful attempt';
++    END IF;
++  ELSIF NEW.state = 'failed' THEN
++    IF NEW.attempt_count NOT IN (OLD.attempt_count, OLD.attempt_count + 1)
++      OR NEW.delivered_at IS NOT NULL
++      OR NEW.last_error_code IS NULL
++      OR NEW.last_error_code !~ '[^[:space:]]' THEN
++      RAISE EXCEPTION 'analytics_outbox failure must record one permanent error';
++    END IF;
++  ELSE
++    RAISE EXCEPTION 'analytics_outbox invalid state transition';
++  END IF;
++  RETURN NEW;
++END;
++$$;
++
++CREATE TRIGGER profile_roles_require_humans
++BEFORE INSERT OR UPDATE ON public.profile_roles
++FOR EACH ROW EXECUTE FUNCTION public.profile_roles_require_humans();
++
++CREATE TRIGGER audit_events_append_only BEFORE UPDATE OR DELETE ON public.audit_events
++FOR EACH ROW EXECUTE FUNCTION public.reject_history_mutation();
++CREATE TRIGGER business_events_append_only BEFORE UPDATE OR DELETE ON public.business_events
++FOR EACH ROW EXECUTE FUNCTION public.reject_history_mutation();
++CREATE TRIGGER workflow_transitions_append_only BEFORE UPDATE OR DELETE ON public.workflow_transitions
++FOR EACH ROW EXECUTE FUNCTION public.reject_history_mutation();
++CREATE TRIGGER analytics_outbox_guard BEFORE UPDATE OR DELETE ON public.analytics_outbox
++FOR EACH ROW EXECUTE FUNCTION public.guard_analytics_outbox_mutation();
++
++CREATE FUNCTION public.current_operator()
++RETURNS boolean
++LANGUAGE sql
++STABLE
++SECURITY DEFINER
++SET search_path = ''
++AS $$
++  SELECT EXISTS (
++    SELECT 1
++    FROM public.profile_roles AS pr
++    JOIN public.profiles AS p ON p.id = pr.profile_id
++    WHERE pr.role = 'operator'
++      AND pr.revoked_at IS NULL
++      AND p.account_kind = 'human'
++      AND p.auth_subject = app.current_auth_subject()
++  )
++$$;
++
++ALTER TABLE public.profile_roles ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.business_events ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.workflow_transitions ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.analytics_outbox ENABLE ROW LEVEL SECURITY;
++
++REVOKE ALL ON TABLE public.profile_roles, public.audit_events, public.business_events, public.workflow_transitions, public.analytics_outbox FROM PUBLIC, aifans_anon, aifans_authenticated;
++REVOKE ALL ON TYPE public.app_role, public.audit_actor_type, public.audit_source, public.audit_result, public.outbox_state FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.profile_roles_require_humans(), public.reject_history_mutation(), public.guard_analytics_outbox_mutation(), public.current_operator() FROM PUBLIC;
++GRANT EXECUTE ON FUNCTION public.current_operator() TO aifans_authenticated;
+diff --git a/packages/db/src/authority.ts b/packages/db/src/authority.ts
+new file mode 100644
+index 0000000..76da491
+--- /dev/null
++++ b/packages/db/src/authority.ts
+@@ -0,0 +1,64 @@
++import {Pool} from '@neondatabase/serverless'
++import {withActor, type Actor, type QueryPool, type WithActor} from './session.js'
++import {createHistoryRepository} from './history.js'
++
++export type GrantOperatorInput = {authSubject: string; grantedByAuthSubject: string}
++export type AuthorityRepository = {grantOperator(input: GrantOperatorInput): Promise<void>; isCurrentActorOperator(actor: Actor): Promise<boolean>}
++
++function nonBlank(value: string, field: string): string {
++  const trimmed = value.trim()
++  if (!trimmed) throw new Error(`${field} must not be blank`)
++  return trimmed
++}
++
++async function humanProfileId(client: Awaited<ReturnType<QueryPool['connect']>>, subject: string): Promise<string> {
++  const result = await client.query<{id: string}>(`SELECT id FROM public.profiles WHERE auth_subject = $1 AND account_kind = 'human'`, [subject])
++  if (!result.rows[0]) throw new Error('Operator grants require an existing human profile')
++  return result.rows[0].id
++}
++
++export function createAuthorityRepository({adminPool, withActor: runWithActor = withActor}: {adminPool: QueryPool; withActor?: WithActor}): AuthorityRepository {
++  return {
++    async isCurrentActorOperator(actor: Actor): Promise<boolean> {
++      return runWithActor(actor, async (client) => {
++        const result = await client.query<{current_operator: boolean}>('SELECT public.current_operator() AS current_operator')
++        return result.rows[0]?.current_operator === true
++      })
++    },
++    async grantOperator(input: GrantOperatorInput): Promise<void> {
++      const subject = nonBlank(input.authSubject, 'Auth subject')
++      const grantedBySubject = nonBlank(input.grantedByAuthSubject, 'Granting auth subject')
++      const client = await adminPool.connect()
++      const transaction = await client.query<{txid: string | null}>('SELECT txid_current_if_assigned() AS txid')
++      const ownsTransaction = transaction.rows[0]?.txid === null
++      try {
++        await client.query(ownsTransaction ? 'BEGIN' : 'SAVEPOINT operator_grant')
++        const profileId = await humanProfileId(client, subject)
++        const grantedByProfileId = await humanProfileId(client, grantedBySubject)
++        const membership = await client.query<{profile_id: string}>(`INSERT INTO public.profile_roles (profile_id, role, granted_by_profile_id) VALUES ($1, 'operator', $2) ON CONFLICT (profile_id, role) DO UPDATE SET revoked_at = NULL WHERE public.profile_roles.revoked_at IS NOT NULL RETURNING profile_id`, [profileId, grantedByProfileId])
++        if (membership.rows[0]) {
++          await createHistoryRepository().recordAudit(client, {actorProfileId: grantedByProfileId, actorType: 'operator', action: 'operator_granted', entityType: 'profile', entityId: profileId, sourceApp: 'admin'})
++        }
++        await client.query(ownsTransaction ? 'COMMIT' : 'RELEASE SAVEPOINT operator_grant')
++      } catch (error) {
++        await client.query(ownsTransaction ? 'ROLLBACK' : 'ROLLBACK TO SAVEPOINT operator_grant').catch(() => undefined)
++        if (!ownsTransaction) await client.query('RELEASE SAVEPOINT operator_grant').catch(() => undefined)
++        throw error
++      } finally { client.release() }
++    },
++  }
++}
++
++let adminPool: Pool | undefined
++function getAdminPool(): Pool {
++  adminPool ??= new Pool({connectionString: process.env.DATABASE_ADMIN_URL})
++  return adminPool
++}
++
++export async function grantOperator(input: GrantOperatorInput): Promise<void> {
++  return createAuthorityRepository({adminPool: getAdminPool()}).grantOperator(input)
++}
++
++export async function isCurrentActorOperator(actor: Actor): Promise<boolean> {
++  return createAuthorityRepository({adminPool: getAdminPool()}).isCurrentActorOperator(actor)
++}
+diff --git a/packages/db/src/history.ts b/packages/db/src/history.ts
+new file mode 100644
+index 0000000..0d57043
+--- /dev/null
++++ b/packages/db/src/history.ts
+@@ -0,0 +1,70 @@
++import {randomUUID} from 'node:crypto'
++import {z} from 'zod'
++import type {QueryClient} from './session.js'
++
++const sensitiveKey = /^(email|token|password|body|prompt|message)$/i
++const scalar = z.union([z.string(), z.number(), z.boolean(), z.null()])
++const safeObject = z.record(z.string(), scalar).superRefine((value, context) => {
++  for (const key of Object.keys(value)) if (sensitiveKey.test(key)) context.addIssue({code: 'custom', message: `Sensitive history property: ${key}`})
++})
++const uuid = z.string().uuid()
++const auditInput = z.object({actorProfileId: uuid.optional(), action: z.enum(['operator_granted']), entityType: z.enum(['profile']), entityId: uuid, sourceApp: z.enum(['api', 'admin', 'worker']), result: z.enum(['succeeded', 'rejected', 'failed']).optional(), actorType: z.enum(['human', 'operator', 'system']).optional(), requestId: uuid.optional(), changeSummary: safeObject.optional()}).strict()
++const businessInput = z.object({eventName: z.enum(['account_registered', 'onboarding_completed', 'creator_mode_enabled', 'ip_draft_created', 'ip_generation_completed', 'ip_generation_failed', 'ip_submission_completed', 'ip_approved', 'ip_published', 'follow_created', 'comment_created', 'conversation_started', 'ai_reply_completed', 'ai_reply_failed']), actorProfileId: uuid.optional(), subjectEntityType: z.enum(['profile', 'ip', 'post', 'comment', 'conversation', 'ai_job']), subjectEntityId: uuid, environment: z.string().regex(/[^\s]/), properties: safeObject, requestId: uuid.optional(), schemaVersion: z.literal(1).optional()}).strict()
++const transitionInput = z.object({entityType: z.string().regex(/[^\s]/), entityId: uuid, nextState: z.string().regex(/[^\s]/), previousState: z.string().optional(), actorProfileId: uuid.optional(), reasonCode: z.string().optional(), operatorNote: z.string().optional(), requestId: uuid.optional()}).strict()
++const outboxInput = z.object({destination: z.literal('posthog'), payloadVersion: z.literal(1), payload: safeObject}).strict()
++
++type AuditInput = z.infer<typeof auditInput>
++type BusinessInput = z.infer<typeof businessInput>
++type TransitionInput = z.infer<typeof transitionInput>
++type OutboxInput = z.infer<typeof outboxInput>
++
++function json(value: unknown): string { return JSON.stringify(value) }
++
++export function createHistoryRepository() {
++  return {
++    async withAtomic<T>(client: QueryClient, callback: (client: QueryClient) => Promise<T>): Promise<T> {
++      await client.query('SAVEPOINT history_atomic')
++      try {
++        const result = await callback(client)
++        await client.query('RELEASE SAVEPOINT history_atomic')
++        return result
++      } catch (error) {
++        await client.query('ROLLBACK TO SAVEPOINT history_atomic').catch(() => undefined)
++        await client.query('RELEASE SAVEPOINT history_atomic').catch(() => undefined)
++        throw error
++      }
++    },
++    async recordAudit(client: QueryClient, input: AuditInput): Promise<string> {
++      input = auditInput.parse(input)
++      const id = randomUUID()
++      await client.query(`INSERT INTO public.audit_events (id, actor_type, actor_profile_id, action, entity_type, entity_id, request_id, source_app, result, change_summary) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`, [id, input.actorType ?? (input.actorProfileId ? 'human' : 'system'), input.actorProfileId ?? null, input.action, input.entityType, input.entityId, input.requestId ?? null, input.sourceApp, input.result ?? 'succeeded', json(input.changeSummary ?? {})])
++      return id
++    },
++    async recordBusinessEvent(client: QueryClient, input: BusinessInput): Promise<string> {
++      input = businessInput.parse(input)
++      const id = randomUUID()
++      await client.query(`INSERT INTO public.business_events (id,event_name,schema_version,actor_profile_id,subject_entity_type,subject_entity_id,request_id,environment,properties) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`, [id, input.eventName, input.schemaVersion ?? 1, input.actorProfileId ?? null, input.subjectEntityType, input.subjectEntityId, input.requestId ?? null, input.environment, json(input.properties)])
++      return id
++    },
++    async recordTransition(client: QueryClient, input: TransitionInput): Promise<string> {
++      input = transitionInput.parse(input)
++      const id = randomUUID()
++      await client.query(`INSERT INTO public.workflow_transitions (id,entity_type,entity_id,previous_state,next_state,actor_profile_id,reason_code,operator_note,request_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [id,input.entityType,input.entityId,input.previousState ?? null,input.nextState,input.actorProfileId ?? null,input.reasonCode ?? null,input.operatorNote ?? null,input.requestId ?? null])
++      return id
++    },
++    async recordOutbox(client: QueryClient, businessEventId: string, input: OutboxInput): Promise<string> {
++      uuid.parse(businessEventId)
++      input = outboxInput.parse(input)
++      const id = randomUUID()
++      await client.query(`INSERT INTO public.analytics_outbox (id,business_event_id,destination,payload_version,payload) VALUES ($1,$2,$3,$4,$5::jsonb)`, [id,businessEventId,input.destination,input.payloadVersion,json(input.payload)])
++      return id
++    },
++    async record(client: QueryClient, input: {audit: AuditInput; business: BusinessInput; transition: TransitionInput; outbox: OutboxInput}) {
++      const audit_events = await this.recordAudit(client, input.audit)
++      const business_events = await this.recordBusinessEvent(client, input.business)
++      const workflow_transitions = await this.recordTransition(client, input.transition)
++      const analytics_outbox = await this.recordOutbox(client, business_events, input.outbox)
++      return {audit_events, business_events, workflow_transitions, analytics_outbox}
++    },
++  }
++}
+diff --git a/packages/db/src/index.ts b/packages/db/src/index.ts
+index c9e40ac..4c1f754 100644
+--- a/packages/db/src/index.ts
++++ b/packages/db/src/index.ts
+@@ -2,15 +2,27 @@ export {readDatabaseEnv} from './env.js'
+ export {migrate} from './migrate.js'
+ export {getCurrentAccount, ensureHumanProfile} from './profiles.js'
+ export type {
+   CurrentAccount,
+   EnsureHumanProfileInput,
+   HumanProfile,
+ } from './profiles.js'
+ export {
+   accountKindEnum,
+   appLocaleEnum,
++  appRoleEnum,
++  auditActorTypeEnum,
++  auditSourceEnum,
++  auditResultEnum,
++  outboxStateEnum,
++  profileRoles,
++  auditEvents,
++  businessEvents,
++  workflowTransitions,
++  analyticsOutbox,
+   platformSettings,
+   profiles,
+ } from './schema.js'
+ export {withActor} from './session.js'
+ export type {Actor} from './session.js'
++export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'
++export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
+diff --git a/packages/db/src/schema.ts b/packages/db/src/schema.ts
+index 932b607..3e12e76 100644
+--- a/packages/db/src/schema.ts
++++ b/packages/db/src/schema.ts
+@@ -1,25 +1,33 @@
+ import {
+   check,
+   pgEnum,
+   pgTable,
+   text,
+   boolean,
+   integer,
++  jsonb,
++  smallint,
+   timestamp,
+   uuid,
+   unique,
++  primaryKey,
+ } from 'drizzle-orm/pg-core'
+ import { sql } from 'drizzle-orm'
+ 
+ export const accountKindEnum = pgEnum('account_kind', ['human', 'ip'])
+ export const appLocaleEnum = pgEnum('app_locale', ['en', 'zh-CN'])
++export const appRoleEnum = pgEnum('app_role', ['operator'])
++export const auditActorTypeEnum = pgEnum('audit_actor_type', ['human', 'operator', 'system'])
++export const auditSourceEnum = pgEnum('audit_source', ['api', 'admin', 'worker'])
++export const auditResultEnum = pgEnum('audit_result', ['succeeded', 'rejected', 'failed'])
++export const outboxStateEnum = pgEnum('outbox_state', ['pending', 'delivered', 'failed'])
+ 
+ export const profiles = pgTable(
+   'profiles',
+   {
+     id: uuid().primaryKey(),
+     authSubject: text('auth_subject'),
+     accountKind: accountKindEnum('account_kind').notNull(),
+     username: text().notNull(),
+     displayName: text('display_name').notNull(),
+     bio: text(),
+@@ -74,10 +82,27 @@ export const platformSettings = pgTable(
+     check(
+       'platform_settings_global_key_check',
+       sql`${table.settingKey} = 'global'`,
+     ),
+     check(
+       'platform_settings_default_ip_quota_check',
+       sql`${table.defaultIpQuota} BETWEEN 0 AND 100`,
+     ),
+   ],
+ )
++
++export const profileRoles = pgTable('profile_roles', {
++  profileId: uuid('profile_id').notNull().references(() => profiles.id), role: appRoleEnum('role').notNull(), grantedByProfileId: uuid('granted_by_profile_id').notNull().references(() => profiles.id), grantedAt: timestamp('granted_at', {withTimezone: true}).notNull().defaultNow(), revokedAt: timestamp('revoked_at', {withTimezone: true}),
++}, (table) => [primaryKey({columns: [table.profileId, table.role]})])
++
++export const auditEvents = pgTable('audit_events', {
++  id: uuid().primaryKey(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorType: auditActorTypeEnum('actor_type').notNull(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), action: text().notNull(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), requestId: uuid('request_id'), sourceApp: auditSourceEnum('source_app').notNull(), result: auditResultEnum('result').notNull(), changeSummary: jsonb('change_summary').notNull().default({}),
++}, (table) => [check('audit_events_action_check', sql`${table.action} ~ '[^[:space:]]'`), check('audit_events_entity_type_check', sql`${table.entityType} ~ '[^[:space:]]'`)])
++export const businessEvents = pgTable('business_events', {
++  id: uuid().primaryKey(), eventName: text('event_name').notNull(), schemaVersion: smallint('schema_version').notNull(), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), subjectEntityType: text('subject_entity_type').notNull(), subjectEntityId: uuid('subject_entity_id').notNull(), requestId: uuid('request_id'), environment: text().notNull(), properties: jsonb().notNull().default({}),
++}, (table) => [check('business_events_event_name_check', sql`${table.eventName} ~ '^[a-z][a-z0-9_]*$'`), check('business_events_schema_version_check', sql`${table.schemaVersion} > 0`), check('business_events_subject_entity_type_check', sql`${table.subjectEntityType} ~ '[^[:space:]]'`), check('business_events_environment_check', sql`${table.environment} ~ '[^[:space:]]'`)])
++export const workflowTransitions = pgTable('workflow_transitions', {
++  id: uuid().primaryKey(), entityType: text('entity_type').notNull(), entityId: uuid('entity_id').notNull(), previousState: text('previous_state'), nextState: text('next_state').notNull(), actorProfileId: uuid('actor_profile_id').references(() => profiles.id), reasonCode: text('reason_code'), operatorNote: text('operator_note'), requestId: uuid('request_id'), occurredAt: timestamp('occurred_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [check('workflow_transitions_entity_type_check', sql`${table.entityType} ~ '[^[:space:]]'`), check('workflow_transitions_next_state_check', sql`${table.nextState} ~ '[^[:space:]]'`)])
++export const analyticsOutbox = pgTable('analytics_outbox', {
++  id: uuid().primaryKey(), businessEventId: uuid('business_event_id').notNull().unique().references(() => businessEvents.id), destination: text().notNull(), payloadVersion: smallint('payload_version').notNull(), payload: jsonb().notNull().default({}), state: outboxStateEnum('state').notNull().default('pending'), attemptCount: integer('attempt_count').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}).notNull().defaultNow(), deliveredAt: timestamp('delivered_at', {withTimezone: true}), lastErrorCode: text('last_error_code'), createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
++}, (table) => [check('analytics_outbox_payload_version_check', sql`${table.payloadVersion} > 0`), check('analytics_outbox_destination_check', sql`${table.destination} ~ '[^[:space:]]'`), check('analytics_outbox_attempt_count_check', sql`${table.attemptCount} >= 0`), check('analytics_outbox_delivery_state_check', sql`(${table.state} = 'delivered') = (${table.deliveredAt} IS NOT NULL)` )])
+diff --git a/packages/db/src/session.ts b/packages/db/src/session.ts
+index f8a1e28..743912d 100644
+--- a/packages/db/src/session.ts
++++ b/packages/db/src/session.ts
+@@ -36,32 +36,38 @@ function requirePostgresUrl(name: 'DATABASE_USER_URL' | 'DATABASE_ADMIN_URL'): s
+ }
+ 
+ export function createActorSession(pool: QueryPool): {withActor: WithActor} {
+   return {
+     async withActor<T>(actor: Actor, callback: (client: QueryClient) => Promise<T>): Promise<T> {
+       if (!actor.subject.trim()) {
+         throw new Error('Actor subject must not be blank')
+       }
+ 
+       const client = await pool.connect()
++      const transaction = await client.query<{txid: string | null}>(
++        'SELECT txid_current_if_assigned() AS txid',
++      )
++      const ownsTransaction = transaction.rows[0]?.txid === null
+       try {
+-        await client.query('BEGIN')
++        await client.query(ownsTransaction ? 'BEGIN' : 'SAVEPOINT actor_session')
+         try {
+           await client.query('SET LOCAL ROLE aifans_authenticated')
+           await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+             JSON.stringify({sub: actor.subject}),
+           ])
+           const result = await callback(client)
+-          await client.query('COMMIT')
++          await client.query(ownsTransaction ? 'COMMIT' : 'RELEASE SAVEPOINT actor_session')
++          if (!ownsTransaction) await client.query('SET LOCAL ROLE NONE')
+           return result
+         } catch (error) {
+-          await client.query('ROLLBACK').catch(() => undefined)
++          await client.query(ownsTransaction ? 'ROLLBACK' : 'ROLLBACK TO SAVEPOINT actor_session').catch(() => undefined)
++          if (!ownsTransaction) await client.query('RELEASE SAVEPOINT actor_session').catch(() => undefined)
+           throw error
+         }
+       } finally {
+         client.release()
+       }
+     },
+   }
+ }
+ 
+ let userPool: Pool | undefined
+diff --git a/packages/db/tests/authority-history.test.ts b/packages/db/tests/authority-history.test.ts
+new file mode 100644
+index 0000000..bc8bc0b
+--- /dev/null
++++ b/packages/db/tests/authority-history.test.ts
+@@ -0,0 +1,184 @@
++import { randomUUID } from 'node:crypto'
++import { Pool, type PoolClient } from 'pg'
++import { afterAll, describe, expect, it } from 'vitest'
++import {
++  createAuthorityRepository,
++} from '../src/index.js'
++import {createHistoryRepository} from '../src/history.js'
++import {createActorSession} from '../src/session.js'
++
++const connectionString = process.env.DATABASE_URL ?? ''
++const describeIntegration = connectionString ? describe : describe.skip
++const pool = new Pool({ connectionString })
++
++type Fixture = { id: string; subject: string }
++
++async function transaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
++  const client = await pool.connect()
++  try {
++    await client.query('BEGIN')
++    const result = await callback(client)
++    await client.query('ROLLBACK')
++    return result
++  } catch (error) {
++    await client.query('ROLLBACK').catch(() => undefined)
++    throw error
++  } finally {
++    client.release()
++  }
++}
++
++async function insertHuman(client: PoolClient): Promise<Fixture> {
++  const id = randomUUID()
++  const subject = `auth-${randomUUID()}`
++  await client.query(
++    `INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name)
++     VALUES ($1, $2, 'human', $3, 'Operator fixture')`,
++    [id, subject, `human_${id.replaceAll('-', '').slice(0, 20)}`],
++  )
++  return { id, subject }
++}
++
++async function expectPermissionDenied(client: PoolClient, sql: string): Promise<void> {
++  await client.query('SAVEPOINT permission_denied')
++  await expect(client.query(sql)).rejects.toThrow(/permission denied/)
++  await client.query('ROLLBACK TO SAVEPOINT permission_denied')
++  await client.query('RELEASE SAVEPOINT permission_denied')
++}
++
++async function expectAppendOnly(client: PoolClient, sql: string): Promise<void> {
++  return expectRejected(client, sql, /append-only/)
++}
++
++async function expectRejected(client: PoolClient, sql: string, error: RegExp): Promise<void> {
++  await client.query('SAVEPOINT append_only')
++  await expect(client.query(sql)).rejects.toThrow(error)
++  await client.query('ROLLBACK TO SAVEPOINT append_only')
++  await client.query('RELEASE SAVEPOINT append_only')
++}
++
++async function restricted(client: PoolClient, role: 'aifans_anon' | 'aifans_authenticated', claims: unknown) {
++  await client.query(`SET LOCAL ROLE ${role}`)
++  await client.query("SELECT set_config('request.jwt.claims', $1, true)", [JSON.stringify(claims)])
++}
++
++describeIntegration('operator authority and append-only history', () => {
++  afterAll(async () => pool.end())
++
++  it('authorizes only an explicitly granted current human operator', async () => {
++    await transaction(async (client) => {
++      const transactionPool = {connect: async () => ({query: client.query.bind(client), release: () => undefined})}
++      const ordinary = await insertHuman(client)
++      const operator = await insertHuman(client)
++      const authority = createAuthorityRepository({ adminPool: transactionPool, withActor: createActorSession(transactionPool).withActor })
++      expect(await authority.isCurrentActorOperator({ subject: ordinary.subject })).toBe(false)
++      await authority.grantOperator({
++        authSubject: operator.subject,
++        grantedByAuthSubject: operator.subject,
++      })
++      await authority.grantOperator({
++        authSubject: operator.subject,
++        grantedByAuthSubject: operator.subject,
++      })
++      expect(await authority.isCurrentActorOperator({ subject: operator.subject })).toBe(true)
++
++      await client.query('SET LOCAL ROLE NONE')
++
++      const memberships = await client.query(
++        "SELECT * FROM public.profile_roles WHERE profile_id = $1 AND role = 'operator' AND revoked_at IS NULL",
++        [operator.id],
++      )
++      expect(memberships.rowCount).toBe(1)
++      await expect(authority.grantOperator({ authSubject: 'missing', grantedByAuthSubject: operator.subject })).rejects.toThrow(/human profile/)
++    })
++  })
++
++  it('returns false for malformed or blank current claims', async () => {
++    await transaction(async (client) => {
++      await restricted(client, 'aifans_authenticated', { sub: '   ' })
++      await expect(client.query('SELECT public.current_operator() AS value')).resolves.toMatchObject({ rows: [{ value: false }] })
++    })
++    await transaction(async (client) => {
++      await client.query('SET LOCAL ROLE aifans_authenticated')
++      await client.query("SELECT set_config('request.jwt.claims', '{not json', true)")
++      await expect(client.query('SELECT public.current_operator() AS value')).resolves.toMatchObject({ rows: [{ value: false }] })
++    })
++  })
++
++  it('denies every restricted role all direct access to authority and history tables', async () => {
++    const tables = ['profile_roles', 'audit_events', 'business_events', 'workflow_transitions', 'analytics_outbox']
++    for (const role of ['aifans_anon', 'aifans_authenticated'] as const) {
++      await transaction(async (client) => {
++        await restricted(client, role, {})
++        for (const table of tables) {
++          await expectPermissionDenied(client, `SELECT * FROM public.${table}`)
++          await expectPermissionDenied(client, `INSERT INTO public.${table} DEFAULT VALUES`)
++          await expectPermissionDenied(client, `UPDATE public.${table} SET ${table === 'profile_roles' ? 'profile_id = profile_id' : 'id = id'}`)
++          await expectPermissionDenied(client, `DELETE FROM public.${table}`)
++        }
++      })
++    }
++  })
++
++  it('keeps history rows append-only and rolls back atomic writes', async () => {
++    await transaction(async (client) => {
++      const actor = await insertHuman(client)
++      const history = createHistoryRepository()
++      const ids = await history.record(client, {
++        audit: { actorProfileId: actor.id, action: 'operator_granted', entityType: 'profile', entityId: actor.id, sourceApp: 'admin' },
++        business: { eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: { event_id: 'fixture' } },
++        transition: { entityType: 'profile', entityId: actor.id, nextState: 'active', actorProfileId: actor.id },
++        outbox: { destination: 'posthog', payloadVersion: 1, payload: { event_id: 'fixture' } },
++      })
++      for (const [table, id] of Object.entries(ids).filter(([table]) => table !== 'analytics_outbox')) {
++        await expectAppendOnly(client, `UPDATE public.${table} SET id = id WHERE id = '${id}'`)
++        await expectAppendOnly(client, `DELETE FROM public.${table} WHERE id = '${id}'`)
++      }
++
++      await expect(history.withAtomic(client, async (tx) => {
++        await tx.query("INSERT INTO public.platform_settings (setting_key) VALUES ('global') ON CONFLICT DO NOTHING")
++        await history.recordTransition(tx, { entityType: 'profile', entityId: actor.id, nextState: 'failed' })
++        throw new Error('force rollback')
++      })).rejects.toThrow('force rollback')
++      await expect(client.query("SELECT * FROM public.workflow_transitions WHERE next_state = 'failed'")).resolves.toMatchObject({ rowCount: 0 })
++    })
++  })
++
++  it('allows a pending outbox row to retry, deliver, or fail once but protects its event payload', async () => {
++    await transaction(async (client) => {
++      const actor = await insertHuman(client)
++      const history = createHistoryRepository()
++      const eventId = await history.recordBusinessEvent(client, {
++        eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: {event_id: 'fixture'},
++      })
++      const retryId = await history.recordOutbox(client, eventId, {destination: 'posthog', payloadVersion: 1, payload: {event_id: 'fixture'}})
++      await expect(client.query(`UPDATE public.analytics_outbox SET attempt_count = 1, next_attempt_at = clock_timestamp() + interval '1 minute', last_error_code = 'timeout' WHERE id = $1`, [retryId])).resolves.toMatchObject({rowCount: 1})
++      await expect(client.query(`UPDATE public.analytics_outbox SET state = 'delivered', delivered_at = clock_timestamp(), last_error_code = NULL WHERE id = $1`, [retryId])).resolves.toMatchObject({rowCount: 1})
++      await expectRejected(client, `UPDATE public.analytics_outbox SET attempt_count = 2 WHERE id = '${retryId}'`, /terminal/)
++      await expectRejected(client, `UPDATE public.analytics_outbox SET payload = '{}'::jsonb WHERE id = '${retryId}'`, /immutable/)
++      await expectAppendOnly(client, `DELETE FROM public.analytics_outbox WHERE id = '${retryId}'`)
++
++      const failedEventId = await history.recordBusinessEvent(client, {
++        eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: {event_id: 'failed'},
++      })
++      const failedId = await history.recordOutbox(client, failedEventId, {destination: 'posthog', payloadVersion: 1, payload: {event_id: 'failed'}})
++      await expect(client.query(`UPDATE public.analytics_outbox SET state = 'failed', last_error_code = 'invalid_payload' WHERE id = $1`, [failedId])).resolves.toMatchObject({rowCount: 1})
++      await expectRejected(client, `UPDATE public.analytics_outbox SET state = 'pending' WHERE id = '${failedId}'`, /terminal/)
++    })
++  })
++
++  it('rejects unknown or sensitive history contract fields before they persist', async () => {
++    await transaction(async (client) => {
++      const actor = await insertHuman(client)
++      const history = createHistoryRepository()
++      await expect(history.recordAudit(client, {
++        actorProfileId: actor.id, action: 'operator_granted', entityType: 'profile', entityId: actor.id, sourceApp: 'admin', changeSummary: {email: 'private@example.com'},
++      })).rejects.toThrow(/sensitive|unknown/i)
++      await expect(history.recordBusinessEvent(client, {
++        eventName: 'account_registered', actorProfileId: actor.id, subjectEntityType: 'profile', subjectEntityId: actor.id, environment: 'test', properties: {email: 'private@example.com'} as never,
++      })).rejects.toThrow(/sensitive|unknown/i)
++      await expect(history.recordOutbox(client, randomUUID(), {destination: 'other', payloadVersion: 99, payload: {event_id: 'fixture'}})).rejects.toThrow(/destination|version/i)
++      await expect(client.query('SELECT * FROM public.audit_events WHERE actor_profile_id = $1', [actor.id])).resolves.toMatchObject({rowCount: 0})
++    })
++  })
++})

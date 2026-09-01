@@ -1,0 +1,347 @@
+# Review package: 63bce1b..f5a9ddb
+
+## Commits
+f5a9ddb feat: add social repository
+
+## Files changed
+ packages/contracts/src/index.ts                    |  1 +
+ packages/contracts/src/social.test.ts              | 36 +++++++++
+ packages/contracts/src/social.ts                   | 71 +++++++++++++++++
+ .../db/migrations/202609010004_social_commands.sql | 71 +++++++++++++++++
+ packages/db/src/index.ts                           |  2 +
+ packages/db/src/social.ts                          | 88 ++++++++++++++++++++++
+ packages/db/tests/social-repository.test.ts        |  8 ++
+ 7 files changed, 277 insertions(+)
+
+## Diff
+diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
+index 3214a97..eb34106 100644
+--- a/packages/contracts/src/index.ts
++++ b/packages/contracts/src/index.ts
+@@ -1,2 +1,3 @@
+ export * from './account.js'
+ export * from './settings.js'
++export * from './social.js'
+diff --git a/packages/contracts/src/social.test.ts b/packages/contracts/src/social.test.ts
+new file mode 100644
+index 0000000..5055961
+--- /dev/null
++++ b/packages/contracts/src/social.test.ts
+@@ -0,0 +1,36 @@
++import {describe, expect, it} from 'vitest'
++import {
++  CursorSchema,
++  decodeCursor,
++  encodeCursor,
++  FeedQuerySchema,
++  PublicCommentSchema,
++  PublicIpSchema,
++  FeedPostSchema,
++  NotificationSchema,
++} from './social.js'
++
++const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
++const timestamp = '2026-09-01T12:00:00.000Z'
++
++describe('social contracts', () => {
++  it('strictly parses only safe public records', () => {
++    const ip = {id, username: 'aifans_ip', displayName: 'AIFANS IP', languages: ['en']}
++    expect(PublicIpSchema.parse(ip)).toEqual(ip)
++    expect(() => PublicIpSchema.parse({...ip, authSubject: 'never-public'})).toThrow()
++    expect(FeedPostSchema.parse({id, body: 'Hello', languageCode: 'en', publishedAt: timestamp, author: ip, likeCount: 0, commentCount: 0})).toMatchObject({id})
++    expect(PublicCommentSchema.parse({id, postId: id, parentCommentId: null, author: ip, state: 'deleted', createdAt: timestamp})).toMatchObject({state: 'deleted'})
++    expect(NotificationSchema.parse({id, kind: 'follow', actor: ip, postId: null, commentId: null, createdAt: timestamp, readAt: null})).toMatchObject({id})
++  })
++
++  it('round trips cursors and rejects invalid query inputs', () => {
++    const cursor = {v: 1 as const, kind: 'for_you' as const, score: 12.5, publishedAt: timestamp, id}
++    expect(decodeCursor(encodeCursor(cursor), 'for_you')).toEqual(cursor)
++    expect(() => decodeCursor('%%%bad', 'for_you')).toThrow()
++    expect(() => decodeCursor(Buffer.from('{"v":2}', 'utf8').toString('base64url'), 'for_you')).toThrow()
++    expect(() => decodeCursor(encodeCursor({v: 1, kind: 'chronological', publishedAt: timestamp, id}), 'for_you')).toThrow()
++    expect(() => FeedQuerySchema.parse({kind: 'for_you', limit: '51'})).toThrow()
++    expect(() => FeedQuerySchema.parse({kind: 'for_you', unexpected: 'value'})).toThrow()
++    expect(CursorSchema.parse(cursor)).toEqual(cursor)
++  })
++})
+diff --git a/packages/contracts/src/social.ts b/packages/contracts/src/social.ts
+new file mode 100644
+index 0000000..c012740
+--- /dev/null
++++ b/packages/contracts/src/social.ts
+@@ -0,0 +1,71 @@
++import {z} from 'zod'
++import {LocaleSchema} from './account.js'
++
++const uuid = z.uuid()
++const dateTime = z.iso.datetime()
++const trimmed = (max: number) => z.string().trim().min(1).max(max)
++
++export const FeedKindSchema = z.enum(['for_you', 'following'])
++export const PageQuerySchema = z.strictObject({
++  limit: z.coerce.number().int().min(1).max(50).default(25),
++  cursor: z.string().min(1).optional(),
++})
++export const FeedQuerySchema = z.strictObject({
++  kind: FeedKindSchema,
++  locale: LocaleSchema.optional(),
++  limit: z.coerce.number().int().min(1).max(50).default(25),
++  cursor: z.string().min(1).optional(),
++})
++export const ChronologicalCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('chronological'), publishedAt: dateTime, id: uuid})
++export const ForYouCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('for_you'), score: z.number().finite(), publishedAt: dateTime, id: uuid})
++export const CursorSchema = z.discriminatedUnion('kind', [ChronologicalCursorSchema, ForYouCursorSchema])
++export const CommentCursorSchema = z.strictObject({v: z.literal(1), kind: z.literal('comments'), createdAt: dateTime, id: uuid})
++
++export type FeedKind = z.infer<typeof FeedKindSchema>
++export type PageQuery = z.infer<typeof PageQuerySchema>
++export type FeedQuery = z.infer<typeof FeedQuerySchema>
++export type Cursor = z.infer<typeof CursorSchema>
++export type CommentCursor = z.infer<typeof CommentCursorSchema>
++export type Locale = z.infer<typeof LocaleSchema>
++
++const base64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
++function base64urlEncode(value: string): string {
++  let output = ''
++  for (let index = 0; index < value.length; index += 3) { const a = value.charCodeAt(index); const b = value.charCodeAt(index + 1); const c = value.charCodeAt(index + 2); output += base64[a >> 2]! + base64[((a & 3) << 4) | ((b || 0) >> 4)]! + (Number.isNaN(b) ? '' : base64[((b & 15) << 2) | ((c || 0) >> 6)]!) + (Number.isNaN(c) ? '' : base64[c & 63]!) }
++  return output.replaceAll('+', '-').replaceAll('/', '_')
++}
++function base64urlDecode(value: string): string {
++  const normalized = value.replaceAll('-', '+').replaceAll('_', '/')
++  let output = ''
++  for (let index = 0; index < normalized.length; index += 4) { const a = base64.indexOf(normalized[index]!); const b = base64.indexOf(normalized[index + 1]!); const c = normalized[index + 2] ? base64.indexOf(normalized[index + 2]!) : 0; const d = normalized[index + 3] ? base64.indexOf(normalized[index + 3]!) : 0; if (a < 0 || b < 0 || c < 0 || d < 0) throw new Error('invalid base64url'); output += String.fromCharCode((a << 2) | (b >> 4), ((b & 15) << 4) | (c >> 2), ((c & 3) << 6) | d) }
++  return output.replace(/\0+$/, '')
++}
++export function encodeCursor(cursor: Cursor): string { return base64urlEncode(JSON.stringify(CursorSchema.parse(cursor))) }
++export function decodeCursor(value: string, expectedKind?: FeedKind): Cursor {
++  let decoded: unknown
++  try {
++    if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('invalid base64url')
++    decoded = JSON.parse(base64urlDecode(value))
++  } catch { throw new Error('INVALID_CURSOR') }
++  const cursor = CursorSchema.safeParse(decoded)
++  if (!cursor.success || (expectedKind && cursor.data.kind !== (expectedKind === 'following' ? 'chronological' : 'for_you'))) throw new Error('INVALID_CURSOR')
++  return cursor.data
++}
++
++export const PublicIpSchema = z.strictObject({id: uuid, username: z.string().min(3).max(30), displayName: z.string().min(1).max(80), bio: z.string().max(500).nullable().optional(), languages: z.array(LocaleSchema)})
++export const FeedPostSchema = z.strictObject({id: uuid, body: z.string().max(5000), languageCode: z.string().nullable(), publishedAt: dateTime, author: PublicIpSchema, likeCount: z.number().int().nonnegative(), commentCount: z.number().int().nonnegative(), viewerHasLiked: z.boolean().optional(), viewerHasBookmarked: z.boolean().optional(), viewerFollowsAuthor: z.boolean().optional()})
++export const PublicCommentSchema = z.strictObject({id: uuid, postId: uuid, parentCommentId: uuid.nullable(), author: PublicIpSchema, state: z.enum(['published', 'deleted']), body: z.string().min(1).max(2000).optional(), createdAt: dateTime}).superRefine((value, context) => { if (value.state === 'published' && !value.body) context.addIssue({code: 'custom', message: 'Published comments require body'}) })
++export const NotificationSchema = z.strictObject({id: uuid, kind: z.enum(['follow', 'post_like', 'comment', 'reply', 'comment_like']), actor: PublicIpSchema.nullable(), postId: uuid.nullable(), commentId: uuid.nullable(), createdAt: dateTime, readAt: dateTime.nullable()})
++export const FeedPageSchema = z.strictObject({items: z.array(FeedPostSchema), nextCursor: z.string().nullable()})
++export const CommentPageSchema = z.strictObject({items: z.array(PublicCommentSchema), nextCursor: z.string().nullable()})
++export const PostDetailSchema = FeedPostSchema.extend({comments: CommentPageSchema}).strict()
++export const NotificationPageSchema = z.strictObject({items: z.array(NotificationSchema), nextCursor: z.string().nullable()})
++export const CreateHumanCommentSchema = z.strictObject({body: trimmed(2000), parentCommentId: uuid.optional()})
++export type PublicIp = z.infer<typeof PublicIpSchema>
++export type FeedPost = z.infer<typeof FeedPostSchema>
++export type PublicComment = z.infer<typeof PublicCommentSchema>
++export type Notification = z.infer<typeof NotificationSchema>
++export type FeedPage = z.infer<typeof FeedPageSchema>
++export type PostDetail = z.infer<typeof PostDetailSchema>
++export type NotificationPage = z.infer<typeof NotificationPageSchema>
++export type CreateHumanComment = z.infer<typeof CreateHumanCommentSchema>
+diff --git a/packages/db/migrations/202609010004_social_commands.sql b/packages/db/migrations/202609010004_social_commands.sql
+new file mode 100644
+index 0000000..9ffbec6
+--- /dev/null
++++ b/packages/db/migrations/202609010004_social_commands.sql
+@@ -0,0 +1,71 @@
++-- Bounded authenticated commands.  The caller identity is derived exclusively
++-- from app.current_auth_subject(); no actor, source, operator, or JSON payload crosses this boundary.
++CREATE FUNCTION public.social_current_human_profile_id()
++RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
++  SELECT p.id FROM public.profiles p
++  WHERE p.auth_subject = app.current_auth_subject() AND p.account_kind = 'human'
++$$;
++
++CREATE FUNCTION public.follow_profile(target_profile_id uuid, event_id uuid, request_id uuid, environment text)
++RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
++DECLARE actor_id uuid; did_create boolean := false; event_row uuid;
++BEGIN
++  actor_id := public.social_current_human_profile_id();
++  IF actor_id IS NULL THEN RAISE EXCEPTION 'authenticated human required' USING ERRCODE = '42501'; END IF;
++  IF environment !~ '[^[:space:]]' THEN RAISE EXCEPTION 'environment required'; END IF;
++  INSERT INTO public.follows (follower_profile_id, followed_profile_id) VALUES (actor_id, target_profile_id)
++  ON CONFLICT DO NOTHING RETURNING true INTO did_create;
++  IF did_create THEN
++    INSERT INTO public.business_events (id,event_name,schema_version,actor_profile_id,subject_entity_type,subject_entity_id,request_id,environment,properties)
++    VALUES (event_id,'follow_created',1,actor_id,'profile',target_profile_id,request_id,environment,jsonb_build_object('event_id',event_id,'profile_id',target_profile_id,'request_id',request_id)) RETURNING id INTO event_row;
++    INSERT INTO public.analytics_outbox (id,business_event_id,destination,payload_version,payload)
++    VALUES (gen_random_uuid(),event_row,'posthog',1,jsonb_build_object('event_id',event_id,'event_name','follow_created','event_version',1,'profile_id',target_profile_id,'request_id',request_id));
++    IF target_profile_id <> actor_id THEN
++      INSERT INTO public.notifications (id,recipient_profile_id,actor_profile_id,kind) VALUES (gen_random_uuid(),target_profile_id,actor_id,'follow');
++    END IF;
++  END IF;
++  RETURN COALESCE(did_create,false);
++END $$;
++
++CREATE FUNCTION public.like_post(target_post_id uuid, event_id uuid, request_id uuid, environment text)
++RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
++DECLARE actor_id uuid; did_create boolean := false; owner_id uuid; event_row uuid;
++BEGIN
++  actor_id := public.social_current_human_profile_id();
++  IF actor_id IS NULL THEN RAISE EXCEPTION 'authenticated human required' USING ERRCODE = '42501'; END IF;
++  IF environment !~ '[^[:space:]]' THEN RAISE EXCEPTION 'environment required'; END IF;
++  SELECT author_profile_id INTO owner_id FROM public.posts WHERE id=target_post_id AND state='published';
++  IF owner_id IS NULL THEN RAISE EXCEPTION 'published post not found' USING ERRCODE = 'P0002'; END IF;
++  INSERT INTO public.post_likes (post_id, profile_id) VALUES (target_post_id, actor_id) ON CONFLICT DO NOTHING RETURNING true INTO did_create;
++  IF did_create THEN
++    INSERT INTO public.business_events (id,event_name,schema_version,actor_profile_id,subject_entity_type,subject_entity_id,request_id,environment,properties)
++    VALUES (event_id,'post_liked',1,actor_id,'post',target_post_id,request_id,environment,jsonb_build_object('event_id',event_id,'request_id',request_id)) RETURNING id INTO event_row;
++    INSERT INTO public.analytics_outbox (id,business_event_id,destination,payload_version,payload)
++    VALUES (gen_random_uuid(),event_row,'posthog',1,jsonb_build_object('event_id',event_id,'event_name','post_liked','event_version',1,'request_id',request_id));
++    IF owner_id <> actor_id THEN INSERT INTO public.notifications (id,recipient_profile_id,actor_profile_id,kind,post_id) VALUES (gen_random_uuid(),owner_id,actor_id,'post_like',target_post_id); END IF;
++  END IF;
++  RETURN COALESCE(did_create,false);
++END $$;
++
++CREATE FUNCTION public.create_human_comment(comment_id uuid, target_post_id uuid, parent_id uuid, comment_body text, event_id uuid, request_id uuid, environment text)
++RETURNS TABLE(id uuid, created_at timestamptz) LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
++DECLARE actor_id uuid; owner_id uuid; event_row uuid;
++BEGIN
++  actor_id := public.social_current_human_profile_id();
++  IF actor_id IS NULL THEN RAISE EXCEPTION 'authenticated human required' USING ERRCODE = '42501'; END IF;
++  IF environment !~ '[^[:space:]]' THEN RAISE EXCEPTION 'environment required'; END IF;
++  INSERT INTO public.comments (id,post_id,parent_comment_id,author_profile_id,source,body) VALUES (comment_id,target_post_id,parent_id,actor_id,'human',comment_body) RETURNING comments.created_at INTO created_at;
++  SELECT p.author_profile_id INTO owner_id FROM public.posts p WHERE p.id=target_post_id;
++  INSERT INTO public.business_events (id,event_name,schema_version,actor_profile_id,subject_entity_type,subject_entity_id,request_id,environment,properties)
++  VALUES (event_id,'comment_created',1,actor_id,'comment',comment_id,request_id,environment,jsonb_build_object('event_id',event_id,'request_id',request_id)) RETURNING business_events.id INTO event_row;
++  INSERT INTO public.analytics_outbox (id,business_event_id,destination,payload_version,payload)
++  VALUES (gen_random_uuid(),event_row,'posthog',1,jsonb_build_object('event_id',event_id,'event_name','comment_created','event_version',1,'request_id',request_id));
++  IF owner_id IS NOT NULL AND owner_id <> actor_id THEN INSERT INTO public.notifications (id,recipient_profile_id,actor_profile_id,kind,post_id,comment_id) VALUES (gen_random_uuid(),owner_id,actor_id,CASE WHEN parent_id IS NULL THEN 'comment'::public.notification_kind ELSE 'reply'::public.notification_kind END,target_post_id,comment_id); END IF;
++  RETURN NEXT;
++END $$;
++
++REVOKE ALL ON FUNCTION public.social_current_human_profile_id() FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.follow_profile(uuid,uuid,uuid,text) FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.like_post(uuid,uuid,uuid,text) FROM PUBLIC;
++REVOKE ALL ON FUNCTION public.create_human_comment(uuid,uuid,uuid,text,uuid,uuid,text) FROM PUBLIC;
++GRANT EXECUTE ON FUNCTION public.follow_profile(uuid,uuid,uuid,text), public.like_post(uuid,uuid,uuid,text), public.create_human_comment(uuid,uuid,uuid,text,uuid,uuid,text) TO aifans_authenticated;
+diff --git a/packages/db/src/index.ts b/packages/db/src/index.ts
+index 664ff6a..edb9423 100644
+--- a/packages/db/src/index.ts
++++ b/packages/db/src/index.ts
+@@ -35,12 +35,14 @@ export {
+   postMedia,
+   follows,
+   postLikes,
+   bookmarks,
+   comments,
+   commentLikes,
+   notifications,
+ } from './schema.js'
+ export {withActor} from './session.js'
+ export type {Actor} from './session.js'
++export {createSocialRepository} from './social.js'
++export type {SocialRepository} from './social.js'
+ export {createAuthorityRepository, grantOperator, isCurrentActorOperator} from './authority.js'
+ export type {AuthorityRepository, GrantOperatorInput} from './authority.js'
+diff --git a/packages/db/src/social.ts b/packages/db/src/social.ts
+new file mode 100644
+index 0000000..3b5252b
+--- /dev/null
++++ b/packages/db/src/social.ts
+@@ -0,0 +1,88 @@
++import {randomUUID} from 'node:crypto'
++import {Pool} from '@neondatabase/serverless'
++import {
++  type CommentCursor, type CreateHumanComment, CreateHumanCommentSchema, type Cursor,
++  type FeedKind, type FeedPage, FeedPageSchema, type FeedPost, type Locale,
++  type NotificationPage, NotificationPageSchema, type PageQuery, type PostDetail,
++  type PublicComment, type PublicIp, decodeCursor, type Cursor as SocialCursor,
++} from '@aifans/contracts'
++import {type Actor, type QueryClient, type QueryPool, type WithActor, withActor} from './session.js'
++
++export type SocialRepository = {
++  listFeed(input: {viewer: Actor | null; kind: FeedKind; locale?: Locale; limit: number; after: Cursor | null}): Promise<FeedPage>
++  getPost(input: {viewer: Actor | null; postId: string; commentLimit: number; commentAfter: CommentCursor | null}): Promise<PostDetail | null>
++  follow(actor: Actor, targetProfileId: string): Promise<{created: boolean}>
++  unfollow(actor: Actor, targetProfileId: string): Promise<{deleted: boolean}>
++  likePost(actor: Actor, postId: string): Promise<{created: boolean}>
++  unlikePost(actor: Actor, postId: string): Promise<{deleted: boolean}>
++  bookmarkPost(actor: Actor, postId: string): Promise<{created: boolean}>
++  unbookmarkPost(actor: Actor, postId: string): Promise<{deleted: boolean}>
++  listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>
++  createHumanComment(actor: Actor, postId: string, input: CreateHumanComment): Promise<PublicComment>
++  listNotifications(actor: Actor, page: PageQuery): Promise<NotificationPage>
++  markNotificationRead(actor: Actor, notificationId: string): Promise<{readAt: string} | null>
++}
++
++type PublicSession = <T>(callback: (client: QueryClient) => Promise<T>) => Promise<T>
++type PublicIpRow = {id: string; username: string; display_name: string; bio: string | null; languages: string[]}
++type PostRow = PublicIpRow & {post_id: string; body: string; language_code: string | null; published_at: Date | string; like_count: number | string; comment_count: number | string; viewer_has_liked?: boolean; viewer_has_bookmarked?: boolean; viewer_follows_author?: boolean; score?: number | string}
++const publicPostSql = `SELECT p.id AS post_id, p.body, p.language_code, p.published_at,
++  profile.id, profile.username, revision.display_name, revision.bio, revision.languages,
++  (SELECT count(*)::int FROM public.post_likes likes WHERE likes.post_id = p.id) AS like_count,
++  (SELECT count(*)::int FROM public.comments comments WHERE comments.post_id = p.id AND comments.state = 'published') AS comment_count
++  FROM public.posts p
++  JOIN public.profiles profile ON profile.id = p.author_profile_id
++  JOIN public.ip_profiles ip ON ip.profile_id = p.author_profile_id
++  JOIN public.ip_identity_revisions revision ON revision.id = ip.current_identity_revision_id`
++
++function iso(value: Date | string): string { return new Date(value).toISOString() }
++function publicIp(row: PublicIpRow): PublicIp { return {id: row.id, username: row.username, displayName: row.display_name, bio: row.bio, languages: row.languages as Locale[]} }
++function post(row: PostRow): FeedPost { return {id: row.post_id, body: row.body, languageCode: row.language_code, publishedAt: iso(row.published_at), author: publicIp(row), likeCount: Number(row.like_count), commentCount: Number(row.comment_count), ...(row.viewer_has_liked === undefined ? {} : {viewerHasLiked: row.viewer_has_liked, viewerHasBookmarked: row.viewer_has_bookmarked ?? false, viewerFollowsAuthor: row.viewer_follows_author ?? false})} }
++
++function defaultPublicSession(pool: QueryPool): PublicSession {
++  return async (callback) => { const client = await pool.connect(); try { await client.query('BEGIN'); await client.query('SET LOCAL ROLE aifans_anon'); const result = await callback(client); await client.query('COMMIT'); return result } catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error } finally { client.release() } }
++}
++
++let pool: Pool | undefined
++function defaultPool(): Pool { pool ??= new Pool({connectionString: process.env.DATABASE_USER_URL}); return pool }
++function actorId(client: QueryClient): Promise<string> { return client.query<{id: string}>('SELECT public.current_profile_id() AS id').then((result) => { if (!result.rows[0]?.id) throw new Error('FORBIDDEN'); return result.rows[0].id }) }
++
++export function createSocialRepository({withActor: runWithActor = withActor, withPublic = defaultPublicSession(defaultPool())}: {withActor?: WithActor; withPublic?: PublicSession} = {}): SocialRepository {
++  async function read<T>(viewer: Actor | null, callback: (client: QueryClient) => Promise<T>): Promise<T> { return viewer ? runWithActor(viewer, callback) : withPublic(callback) }
++  async function feed(client: QueryClient, input: {kind: FeedKind; locale?: Locale; limit: number; after: Cursor | null}, bookmarkedOnly = false): Promise<FeedPage> {
++    const after = input.after
++    const params: unknown[] = []
++    const filters = ["p.state = 'published'"]
++    if (input.kind === 'following' && !bookmarkedOnly) filters.push('EXISTS (SELECT 1 FROM public.follows following WHERE following.follower_profile_id = public.current_profile_id() AND following.followed_profile_id = p.author_profile_id)')
++    if (bookmarkedOnly) filters.push('EXISTS (SELECT 1 FROM public.bookmarks saved WHERE saved.profile_id = public.current_profile_id() AND saved.post_id = p.id)')
++    if (after?.kind === 'chronological') { params.push(after.publishedAt, after.id); filters.push(`(p.published_at, p.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`) }
++    // Stable public score: IP weight + locale match + actual likes/comments. Published time and id break ties.
++    const score = `(ip.feed_weight + CASE WHEN $${params.length + 1}::text IS NOT NULL AND p.language_code = $${params.length + 1} THEN 10 ELSE 0 END + (SELECT count(*) FROM public.post_likes l WHERE l.post_id = p.id) + (SELECT count(*) FROM public.comments c WHERE c.post_id = p.id AND c.state = 'published'))`
++    params.push(input.locale ?? null)
++    if (after?.kind === 'for_you') { params.push(after.score, after.publishedAt, after.id); filters.push(`(${score}, p.published_at, p.id) < ($${params.length - 2}, $${params.length - 1}::timestamptz, $${params.length}::uuid)`) }
++    params.push(input.limit + 1)
++    const order = input.kind === 'for_you' ? `${score} DESC, p.published_at DESC, p.id DESC` : 'p.published_at DESC, p.id DESC'
++    const result = await client.query<PostRow>(`${publicPostSql.replace(' FROM public.posts p', `, ${score} AS score FROM public.posts p`)} WHERE ${filters.join(' AND ')} ORDER BY ${order} LIMIT $${params.length}`, params)
++    const rows = result.rows.slice(0, input.limit)
++    const last = rows.at(-1)
++    const nextCursor = result.rows.length > input.limit && last ? Buffer.from(JSON.stringify(input.kind === 'for_you' ? {v: 1, kind: 'for_you', score: Number(last.score ?? 0), publishedAt: iso(last.published_at), id: last.post_id} : {v: 1, kind: 'chronological', publishedAt: iso(last.published_at), id: last.post_id}), 'utf8').toString('base64url') : null
++    return FeedPageSchema.parse({items: rows.map(post), nextCursor})
++  }
++  async function mutation(actor: Actor, text: string, values: unknown[]): Promise<boolean> { return runWithActor(actor, async (client) => (await client.query(text, values)).rowCount === 1) }
++  return {
++    listFeed: (input) => { if (input.kind === 'following' && input.viewer === null) return Promise.reject(new Error('AUTH_REQUIRED')); return read(input.viewer, (client) => feed(client, input)) },
++    async getPost(input) { return read(input.viewer, async (client) => { const result = await client.query<PostRow>(`${publicPostSql} WHERE p.id = $1 AND p.state = 'published'`, [input.postId]); const base = result.rows[0]; if (!base) return null; const comments = await client.query<{id: string; post_id: string; parent_comment_id: string | null; author_profile_id: string; body: string; state: 'published' | 'deleted'; created_at: Date | string; username: string; display_name: string; bio: string | null; languages: string[]}>(`SELECT c.id,c.post_id,c.parent_comment_id,c.author_profile_id,c.body,c.state,c.created_at,p.id AS author_id,p.username,r.display_name,r.bio,r.languages FROM public.comments c JOIN public.profiles p ON p.id=c.author_profile_id LEFT JOIN public.ip_profiles ip ON ip.profile_id=p.id LEFT JOIN public.ip_identity_revisions r ON r.id=ip.current_identity_revision_id WHERE c.post_id=$1 ORDER BY c.created_at,c.id LIMIT $2`, [input.postId, input.commentLimit]); return {...post(base), comments: {items: comments.rows.map((row) => ({id: row.id, postId: row.post_id, parentCommentId: row.parent_comment_id, author: {id: row.author_profile_id, username: row.username, displayName: row.display_name, bio: row.bio, languages: row.languages as Locale[]}, state: row.state, ...(row.state === 'published' ? {body: row.body} : {}), createdAt: iso(row.created_at)})), nextCursor: null}} }) },
++    follow: (actor, targetProfileId) => runWithActor(actor, async (client) => ({created: (await client.query<{created: boolean}>('SELECT public.follow_profile($1,$2,$3,$4) AS created', [targetProfileId, randomUUID(), randomUUID(), 'api'])).rows[0]?.created === true})),
++    unfollow: (actor, targetProfileId) => mutation(actor, 'DELETE FROM public.follows WHERE follower_profile_id=public.current_profile_id() AND followed_profile_id=$1 RETURNING follower_profile_id', [targetProfileId]).then((deleted) => ({deleted})),
++    likePost: (actor, postId) => runWithActor(actor, async (client) => ({created: (await client.query<{created: boolean}>('SELECT public.like_post($1,$2,$3,$4) AS created', [postId, randomUUID(), randomUUID(), 'api'])).rows[0]?.created === true})),
++    unlikePost: (actor, postId) => mutation(actor, 'DELETE FROM public.post_likes WHERE post_id=$1 AND profile_id=public.current_profile_id() RETURNING post_id', [postId]).then((deleted) => ({deleted})),
++    bookmarkPost: (actor, postId) => mutation(actor, 'INSERT INTO public.bookmarks (post_id,profile_id) VALUES ($1,public.current_profile_id()) ON CONFLICT DO NOTHING RETURNING post_id', [postId]).then((created) => ({created})),
++    unbookmarkPost: (actor, postId) => mutation(actor, 'DELETE FROM public.bookmarks WHERE post_id=$1 AND profile_id=public.current_profile_id() RETURNING post_id', [postId]).then((deleted) => ({deleted})),
++    listBookmarks: (actor, page) => runWithActor(actor, (client) => feed(client, {kind: 'following', limit: page.limit, after: page.cursor ? decodeCursor(page.cursor, 'following') : null}, true)),
++    async createHumanComment(actor, postId, input) { const value = CreateHumanCommentSchema.parse(input); return runWithActor(actor, async (client) => { const authorId = await actorId(client); const id = randomUUID(); const inserted = await client.query<{id: string; created_at: Date | string}>('SELECT id,created_at FROM public.create_human_comment($1,$2,$3,$4,$5,$6,$7)', [id, postId, value.parentCommentId ?? null, value.body, randomUUID(), randomUUID(), 'api']); if (!inserted.rows[0]) throw new Error('COMMENT_INVALID'); const me = await client.query<PublicIpRow>('SELECT id,username,display_name,bio,ARRAY[]::text[] AS languages FROM public.profiles WHERE id=$1', [authorId]); return {id, postId, parentCommentId: value.parentCommentId ?? null, author: publicIp(me.rows[0]!), state: 'published', body: value.body, createdAt: iso(inserted.rows[0].created_at)} }) },
++    async listNotifications(actor, page) { return runWithActor(actor, async (client) => { const result = await client.query<{id: string; kind: 'follow' | 'post_like' | 'comment' | 'reply' | 'comment_like'; post_id: string | null; comment_id: string | null; created_at: Date | string; read_at: Date | string | null; actor_id: string | null; username: string | null; display_name: string | null; bio: string | null; languages: string[] | null}>(`SELECT n.id,n.kind,n.post_id,n.comment_id,n.created_at,n.read_at,p.id AS actor_id,p.username,r.display_name,r.bio,r.languages FROM public.notifications n LEFT JOIN public.profiles p ON p.id=n.actor_profile_id LEFT JOIN public.ip_profiles ip ON ip.profile_id=p.id LEFT JOIN public.ip_identity_revisions r ON r.id=ip.current_identity_revision_id ORDER BY n.created_at DESC,n.id DESC LIMIT $1`, [page.limit]); return NotificationPageSchema.parse({items: result.rows.map((row) => ({id: row.id, kind: row.kind, actor: row.actor_id && row.username && row.display_name ? {id: row.actor_id, username: row.username, displayName: row.display_name, bio: row.bio, languages: (row.languages ?? []) as Locale[]} : null, postId: row.post_id, commentId: row.comment_id, createdAt: iso(row.created_at), readAt: row.read_at ? iso(row.read_at) : null})), nextCursor: null}) }) },
++    async markNotificationRead(actor, notificationId) { return runWithActor(actor, async (client) => { const result = await client.query<{read_at: Date | string}>('UPDATE public.notifications SET read_at=clock_timestamp() WHERE id=$1 AND read_at IS NULL RETURNING read_at', [notificationId]); return result.rows[0] ? {readAt: iso(result.rows[0].read_at)} : null }) },
++  }
++}
++
++export type {SocialCursor}
+diff --git a/packages/db/tests/social-repository.test.ts b/packages/db/tests/social-repository.test.ts
+new file mode 100644
+index 0000000..325c381
+--- /dev/null
++++ b/packages/db/tests/social-repository.test.ts
+@@ -0,0 +1,8 @@
++import {describe, expect, it} from 'vitest'
++import {createSocialRepository} from '../src/social.js'
++
++describe('social repository', () => {
++  it('exposes the human social repository seam', () => {
++    expect(createSocialRepository).toBeTypeOf('function')
++  })
++})

@@ -1,0 +1,239 @@
+# Review package: b2558c1..8159444
+
+## Commits
+8159444 fix: verify Neon migration runner
+
+## Files changed
+ .../2026-09-01-aifans-history-analytics-design.md  |  4 +-
+ packages/db/package.json                           |  2 +-
+ packages/db/src/migrate.ts                         | 12 ++++-
+ packages/db/tests/migrate.integration.test.ts      | 57 ++++++++++++++++++++++
+ packages/db/tests/migrate.test.ts                  | 17 ++++++-
+ pnpm-lock.yaml                                     |  2 +-
+ 6 files changed, 88 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md b/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
+index b4b6162..bfd18cd 100644
+--- a/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
++++ b/docs/superpowers/specs/2026-09-01-aifans-history-analytics-design.md
+@@ -1,14 +1,14 @@
+ # AIFANS History and Product Analytics Design
+ 
+-**Date:** 2026-09-01  
+-**Status:** Pending written-spec review  
++**Date:** 2026-09-01
++**Status:** Pending written-spec review
+ **Scope:** Business history, auditability, server-side conversion events, and Web product analytics.
+ 
+ ## 1. Decision
+ 
+ AIFANS uses a hybrid analytics architecture:
+ 
+ - Neon PostgreSQL is the source of truth for business state, immutable revisions, workflow transitions, audit records, AI-operation records, and authoritative server-side conversion events.
+ - PostHog stores high-volume Web behavior such as page views, clicks, sessions, funnels, retention, and client-side product events.
+ - An AIFANS analytics adapter isolates PostHog from product components and allows the provider to be replaced later.
+ - A transactional outbox reliably forwards selected authoritative Neon events to PostHog without making a product transaction depend on PostHog availability.
+diff --git a/packages/db/package.json b/packages/db/package.json
+index 60d0e53..4e4b69a 100644
+--- a/packages/db/package.json
++++ b/packages/db/package.json
+@@ -12,17 +12,17 @@
+     "migrate": "tsx src/migrate.ts"
+   },
+   "dependencies": {
+     "@aifans/contracts": "workspace:*",
+     "@neondatabase/serverless": "1.1.0",
+     "drizzle-orm": "0.45.2",
+     "pg": "8.23.0",
+     "zod": "4.5.4"
+   },
+   "devDependencies": {
+-    "@types/node": "^24.0.0",
++    "@types/node": "24.13.3",
+     "@types/pg": "8.23.1",
+     "tsx": "4.23.13",
+     "typescript": "7.0.2",
+     "vitest": "4.1.11"
+   }
+ }
+diff --git a/packages/db/src/migrate.ts b/packages/db/src/migrate.ts
+index 8b9d600..8a36f0f 100644
+--- a/packages/db/src/migrate.ts
++++ b/packages/db/src/migrate.ts
+@@ -13,21 +13,31 @@ export type Migration = {
+   sql: string
+   checksum: string
+ }
+ 
+ export type MigrateOptions = {
+   connectionString: string
+   directory: string
+ }
+ 
+ export function discoverMigrations(directory: string): Migration[] {
+-  return readdirSync(directory)
++  let entries: string[]
++  try {
++    entries = readdirSync(directory)
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
++      return []
++    }
++    throw error
++  }
++
++  return entries
+     .filter((name) => migrationName.test(name))
+     .sort()
+     .map((name) => {
+       const sql = readFileSync(resolve(directory, name), 'utf8')
+       const checksum = createHash('sha256').update(sql).digest('hex')
+       return {name, sql, checksum}
+     })
+ }
+ 
+ export async function migrate({connectionString, directory}: MigrateOptions): Promise<string[]> {
+diff --git a/packages/db/tests/migrate.integration.test.ts b/packages/db/tests/migrate.integration.test.ts
+new file mode 100644
+index 0000000..ed9b86a
+--- /dev/null
++++ b/packages/db/tests/migrate.integration.test.ts
+@@ -0,0 +1,57 @@
++import {mkdtempSync, rmSync, writeFileSync} from 'node:fs'
++import {tmpdir} from 'node:os'
++import {join} from 'node:path'
++import {randomUUID} from 'node:crypto'
++import {Pool} from 'pg'
++import {afterEach, describe, expect, it} from 'vitest'
++import {migrate} from '../src/migrate.js'
++
++const connectionString = process.env.DATABASE_URL ?? ''
++const describeIntegration = connectionString ? describe : describe.skip
++
++describeIntegration('migration runner integration', () => {
++  const directory = mkdtempSync(join(tmpdir(), 'aifans-migration-integration-'))
++  const suffix = randomUUID().replaceAll('-', '')
++  const firstName = `209912310001_first_${suffix}.sql`
++  const secondName = `209912310002_second_${suffix}.sql`
++  const firstTable = `aifans_migration_first_${suffix}`
++  const secondTable = `aifans_migration_second_${suffix}`
++  const firstPath = join(directory, firstName)
++  const secondPath = join(directory, secondName)
++  const firstSql = `CREATE TABLE ${firstTable} (id integer PRIMARY KEY);\n`
++  const pool = new Pool({connectionString})
++
++  afterEach(async () => {
++    await pool.query(`DROP TABLE IF EXISTS ${firstTable}`)
++    await pool.query(`DROP TABLE IF EXISTS ${secondTable}`)
++    await pool.query(
++      'DELETE FROM app_migrations.schema_migrations WHERE name = ANY($1::text[])',
++      [[firstName, secondName]],
++    )
++    rmSync(directory, {recursive: true, force: true})
++    await pool.end()
++  })
++
++  it('applies safely, rejects changed checksums, rolls back failures, and releases resources', async () => {
++    writeFileSync(firstPath, firstSql)
++
++    await expect(migrate({connectionString, directory})).resolves.toEqual([firstName])
++    await expect(migrate({connectionString, directory})).resolves.toEqual([])
++
++    writeFileSync(firstPath, `CREATE TABLE ${firstTable} (id text PRIMARY KEY);\n`)
++    await expect(migrate({connectionString, directory})).rejects.toThrow('checksum mismatch')
++    writeFileSync(firstPath, firstSql)
++
++    writeFileSync(secondPath, `CREATE TABLE ${secondTable} (id integer PRIMARY KEY);\nINVALID SQL;\n`)
++    await expect(migrate({connectionString, directory})).rejects.toThrow()
++    await expect(
++      pool.query<{exists: string | null}>('SELECT to_regclass($1) AS exists', [secondTable]),
++    ).resolves.toMatchObject({rows: [{exists: null}]})
++    await expect(
++      pool.query('SELECT name FROM app_migrations.schema_migrations WHERE name = $1', [secondName]),
++    ).resolves.toMatchObject({rowCount: 0})
++
++    writeFileSync(secondPath, `CREATE TABLE ${secondTable} (id integer PRIMARY KEY);\n`)
++    await expect(migrate({connectionString, directory})).resolves.toEqual([secondName])
++  })
++})
+diff --git a/packages/db/tests/migrate.test.ts b/packages/db/tests/migrate.test.ts
+index 68e87e9..4874d43 100644
+--- a/packages/db/tests/migrate.test.ts
++++ b/packages/db/tests/migrate.test.ts
+@@ -1,11 +1,11 @@
+-import {mkdtempSync, writeFileSync} from 'node:fs'
++import {mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+ import {tmpdir} from 'node:os'
+ import {join} from 'node:path'
+ import {describe, expect, it} from 'vitest'
+ import {discoverMigrations} from '../src/migrate.js'
+ import {readDatabaseEnv} from '../src/env.js'
+ 
+ describe('database environment', () => {
+   it('requires a postgres URL and falls back to it for administration', () => {
+     const result = readDatabaseEnv({DATABASE_URL: 'postgresql://app@localhost/aifans'})
+     expect(result).toEqual({
+@@ -15,20 +15,35 @@ describe('database environment', () => {
+   })
+ 
+   it('rejects non-postgres URLs', () => {
+     expect(() => readDatabaseEnv({DATABASE_URL: 'https://example.com'})).toThrow(
+       'DATABASE_URL',
+     )
+   })
+ })
+ 
+ describe('migration discovery', () => {
++  it('returns no migrations when the directory is absent', () => {
++    const directory = mkdtempSync(join(tmpdir(), 'aifans-missing-migrations-'))
++    rmSync(directory, {recursive: true})
++
++    expect(discoverMigrations(directory)).toEqual([])
++  })
++
++  it('propagates filesystem errors other than a missing directory', () => {
++    const directory = mkdtempSync(join(tmpdir(), 'aifans-migration-file-'))
++    const file = join(directory, 'not-a-directory')
++    writeFileSync(file, '')
++
++    expect(() => discoverMigrations(file)).toThrow()
++  })
++
+   it('sorts SQL files and includes a stable SHA-256 checksum', () => {
+     const directory = mkdtempSync(join(tmpdir(), 'aifans-migrations-'))
+     writeFileSync(join(directory, '202608310002_second.sql'), 'select 2;\n')
+     writeFileSync(join(directory, '202608310001_first.sql'), 'select 1;\n')
+ 
+     const migrations = discoverMigrations(directory)
+     expect(migrations.map(({name}) => name)).toEqual([
+       '202608310001_first.sql',
+       '202608310002_second.sql',
+     ])
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 4506eff..4a0e8f1 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -45,21 +45,21 @@ importers:
+         specifier: 0.45.2
+         version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.23.1)(pg@8.23.0)
+       pg:
+         specifier: 8.23.0
+         version: 8.23.0
+       zod:
+         specifier: 4.5.4
+         version: 4.5.4
+     devDependencies:
+       '@types/node':
+-        specifier: ^24.0.0
++        specifier: 24.13.3
+         version: 24.13.3
+       '@types/pg':
+         specifier: 8.23.1
+         version: 8.23.1
+       tsx:
+         specifier: 4.23.13
+         version: 4.23.13
+       typescript:
+         specifier: 7.0.2
+         version: 7.0.2

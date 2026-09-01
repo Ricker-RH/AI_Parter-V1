@@ -1,0 +1,215 @@
+# Review package: afd90cb..99e0392
+
+## Commits
+99e0392 fix: reject whitespace-only auth subjects
+
+## Files changed
+ packages/db/migrations/202608310001_foundation.sql |  6 ++--
+ packages/db/src/schema.ts                          |  2 +-
+ packages/db/tests/foundation-rls.test.ts           | 40 ++++++++++++++++++++--
+ 3 files changed, 42 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/packages/db/migrations/202608310001_foundation.sql b/packages/db/migrations/202608310001_foundation.sql
+index d7b0c86..a223372 100644
+--- a/packages/db/migrations/202608310001_foundation.sql
++++ b/packages/db/migrations/202608310001_foundation.sql
+@@ -25,21 +25,21 @@ CREATE TABLE public.profiles (
+   account_kind public.account_kind NOT NULL,
+   username text NOT NULL,
+   display_name text NOT NULL,
+   bio text,
+   avatar_object_key text,
+   preferred_locale public.app_locale NOT NULL DEFAULT 'en',
+   creator_mode_enabled boolean NOT NULL DEFAULT false,
+   created_at timestamptz NOT NULL DEFAULT now(),
+   updated_at timestamptz NOT NULL DEFAULT now(),
+   CONSTRAINT profiles_account_kind_auth_subject_check CHECK (
+-    (account_kind = 'human' AND auth_subject IS NOT NULL AND btrim(auth_subject) <> '')
++    (account_kind = 'human' AND auth_subject IS NOT NULL AND auth_subject ~ '[^[:space:]]')
+     OR (account_kind = 'ip' AND auth_subject IS NULL)
+   ),
+   CONSTRAINT profiles_auth_subject_unique UNIQUE (auth_subject),
+   CONSTRAINT profiles_username_unique UNIQUE (username),
+   CONSTRAINT profiles_username_check CHECK (username ~ '^[a-z0-9_]{3,30}$'),
+   CONSTRAINT profiles_display_name_check CHECK (
+     char_length(display_name) BETWEEN 1 AND 80 AND display_name ~ '[^[:space:]]'
+   ),
+   CONSTRAINT profiles_bio_length_check CHECK (bio IS NULL OR char_length(bio) <= 500),
+   CONSTRAINT profiles_avatar_object_key_length_check CHECK (
+@@ -62,36 +62,36 @@ RETURNS text
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path = ''
+ AS $$
+ DECLARE
+   claims_text text;
+   claims jsonb;
+   subject jsonb;
+ BEGIN
+   claims_text := current_setting('request.jwt.claims', true);
+-  IF claims_text IS NULL OR btrim(claims_text) = '' THEN
++  IF claims_text IS NULL OR claims_text !~ '[^[:space:]]' THEN
+     RETURN NULL;
+   END IF;
+ 
+   BEGIN
+     claims := claims_text::jsonb;
+   EXCEPTION WHEN others THEN
+     RETURN NULL;
+   END;
+ 
+   IF jsonb_typeof(claims) <> 'object' THEN
+     RETURN NULL;
+   END IF;
+ 
+   subject := claims -> 'sub';
+-  IF jsonb_typeof(subject) <> 'string' OR btrim(subject #>> '{}') = '' THEN
++  IF jsonb_typeof(subject) <> 'string' OR (subject #>> '{}') !~ '[^[:space:]]' THEN
+     RETURN NULL;
+   END IF;
+ 
+   RETURN subject #>> '{}';
+ END;
+ $$;
+ 
+ CREATE FUNCTION public.current_account()
+ RETURNS jsonb
+ LANGUAGE sql
+diff --git a/packages/db/src/schema.ts b/packages/db/src/schema.ts
+index 8dd0b45..932b607 100644
+--- a/packages/db/src/schema.ts
++++ b/packages/db/src/schema.ts
+@@ -33,21 +33,21 @@ export const profiles = pgTable(
+       .defaultNow(),
+     updatedAt: timestamp('updated_at', { withTimezone: true })
+       .notNull()
+       .defaultNow(),
+   },
+   (table) => [
+     unique('profiles_auth_subject_unique').on(table.authSubject),
+     unique('profiles_username_unique').on(table.username),
+     check(
+       'profiles_account_kind_auth_subject_check',
+-      sql`(${table.accountKind} = 'human' AND ${table.authSubject} IS NOT NULL AND btrim(${table.authSubject}) <> '') OR (${table.accountKind} = 'ip' AND ${table.authSubject} IS NULL)`,
++      sql`(${table.accountKind} = 'human' AND ${table.authSubject} IS NOT NULL AND ${table.authSubject} ~ '[^[:space:]]') OR (${table.accountKind} = 'ip' AND ${table.authSubject} IS NULL)`,
+     ),
+     check(
+       'profiles_username_check',
+       sql`${table.username} ~ '^[a-z0-9_]{3,30}$'`,
+     ),
+     check(
+       'profiles_display_name_check',
+       sql`char_length(${table.displayName}) BETWEEN 1 AND 80 AND ${table.displayName} ~ '[^[:space:]]'`,
+     ),
+     check(
+diff --git a/packages/db/tests/foundation-rls.test.ts b/packages/db/tests/foundation-rls.test.ts
+index dbbf50c..e9255b7 100644
+--- a/packages/db/tests/foundation-rls.test.ts
++++ b/packages/db/tests/foundation-rls.test.ts
+@@ -32,20 +32,37 @@ async function rejectedQuery<T>(
+     await client.query('RELEASE SAVEPOINT expected_failure')
+     void result
+   } catch (error) {
+     await client.query('ROLLBACK TO SAVEPOINT expected_failure')
+     await client.query('RELEASE SAVEPOINT expected_failure')
+     throw error
+   }
+   throw new Error('Expected query to fail')
+ }
+ 
++async function queryErrorCode<T>(
++  client: PoolClient,
++  query: () => Promise<T>,
++): Promise<string | undefined> {
++  await client.query('SAVEPOINT expected_failure')
++  try {
++    await query()
++  } catch (error) {
++    await client.query('ROLLBACK TO SAVEPOINT expected_failure')
++    await client.query('RELEASE SAVEPOINT expected_failure')
++    return (error as { code?: string }).code
++  }
++  await client.query('ROLLBACK TO SAVEPOINT expected_failure')
++  await client.query('RELEASE SAVEPOINT expected_failure')
++  return undefined
++}
++
+ async function insertHuman(
+   client: PoolClient,
+   suffix = randomUUID().replaceAll('-', ''),
+ ): Promise<Fixture> {
+   const id = randomUUID()
+   const subject = `auth-${suffix}`
+   await client.query(
+     `INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name)
+      VALUES ($1, $2, 'human', $3, 'Display name')`,
+     [id, subject, `human_${suffix.slice(0, 20)}`],
+@@ -252,25 +269,31 @@ describeIntegration('profiles and settings authorization foundation', () => {
+       await insertHuman(owner)
+       for (const claims of [
+         '',
+         '{bad',
+         'null',
+         '[]',
+         '1',
+         'true',
+         '{}',
+         '{"sub":"   "}',
++        '{"sub":"\\t"}',
++        '{"sub":"\\n"}',
+       ]) {
+         await become(owner, 'aifans_authenticated', claims)
+-        const result = await owner.query<{ current_account: unknown }>(
+-          'SELECT public.current_account()',
++        const result = await owner.query<{
++          current_account: unknown
++          subject: string | null
++        }>(
++          'SELECT app.current_auth_subject() AS subject, public.current_account()',
+         )
++        expect(result.rows[0]?.subject ?? null).toBeNull()
+         expect(result.rows[0]?.current_account ?? null).toBeNull()
+       }
+     })
+   })
+ 
+   it('enforces profile and settings constraints for owner writes', async () => {
+     await inTransaction(async (owner) => {
+       const id = randomUUID()
+       await expect(
+         rejectedQuery(owner, () =>
+@@ -305,20 +328,33 @@ describeIntegration('profiles and settings authorization foundation', () => {
+         ),
+       ).rejects.toThrow()
+       await expect(
+         rejectedQuery(owner, () =>
+           owner.query(
+             "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, '  ', 'human', 'human_blank_subject', 'Name')",
+             [randomUUID()],
+           ),
+         ),
+       ).rejects.toThrow()
++      for (const [authSubject, username] of [
++        ['\t', 'human_tab_subject'],
++        ['\n', 'human_newline_subject'],
++      ]) {
++        await expect(
++          queryErrorCode(owner, () =>
++            owner.query(
++              "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, $2, 'human', $3, 'Name')",
++              [randomUUID(), authSubject, username],
++            ),
++          ),
++        ).resolves.toBe('23514')
++      }
+       await expect(
+         rejectedQuery(owner, () =>
+           owner.query(
+             "INSERT INTO public.profiles (id, auth_subject, account_kind, username, display_name) VALUES ($1, 'subject', 'ip', 'ip_has_subject', 'Name')",
+             [randomUUID()],
+           ),
+         ),
+       ).rejects.toThrow()
+       await expect(
+         rejectedQuery(owner, () =>

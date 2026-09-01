@@ -1,0 +1,211 @@
+# Review package: 5112b13..7204c5e
+
+## Commits
+7204c5e feat: define AIFANS foundation contracts
+
+## Files changed
+ packages/contracts/package.json        | 17 +++++++++++++++++
+ packages/contracts/src/account.test.ts | 18 ++++++++++++++++++
+ packages/contracts/src/account.ts      | 15 +++++++++++++++
+ packages/contracts/src/index.ts        |  2 ++
+ packages/contracts/src/settings.ts     | 14 ++++++++++++++
+ packages/contracts/tsconfig.json       | 11 +++++++++++
+ packages/contracts/vitest.config.ts    |  7 +++++++
+ pnpm-lock.yaml                         | 11 +++++++++++
+ 8 files changed, 95 insertions(+)
+
+## Diff
+diff --git a/packages/contracts/package.json b/packages/contracts/package.json
+new file mode 100644
+index 0000000..90e9fd4
+--- /dev/null
++++ b/packages/contracts/package.json
+@@ -0,0 +1,17 @@
++{
++  "name": "@aifans/contracts",
++  "version": "0.0.0",
++  "private": true,
++  "type": "module",
++  "exports": "./dist/index.js",
++  "types": "./dist/index.d.ts",
++  "files": ["dist"],
++  "scripts": {
++    "build": "tsc -p tsconfig.json",
++    "typecheck": "tsc -p tsconfig.json --noEmit",
++    "test": "vitest run"
++  },
++  "dependencies": {
++    "zod": "4.5.4"
++  }
++}
+diff --git a/packages/contracts/src/account.test.ts b/packages/contracts/src/account.test.ts
+new file mode 100644
+index 0000000..cebc6a0
+--- /dev/null
++++ b/packages/contracts/src/account.test.ts
+@@ -0,0 +1,18 @@
++import {describe, expect, it} from 'vitest'
++import {AccountSchema, AppSettingsSchema} from './index.js'
++
++describe('AIFANS contracts', () => {
++  it('accepts a human account without publishing capability', () => {
++    const account = AccountSchema.parse({
++      id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30',
++      kind: 'human', username: 'rui', displayName: 'Rui',
++      preferredLocale: 'zh-CN', creatorModeEnabled: false,
++    })
++    expect(account.kind).toBe('human')
++  })
++
++  it('requires an explicit IP approval switch', () => {
++    expect(AppSettingsSchema.parse({creatorIpRequiresApproval: false, defaultIpQuota: 3}))
++      .toEqual({creatorIpRequiresApproval: false, defaultIpQuota: 3})
++  })
++})
+diff --git a/packages/contracts/src/account.ts b/packages/contracts/src/account.ts
+new file mode 100644
+index 0000000..66d42ab
+--- /dev/null
++++ b/packages/contracts/src/account.ts
+@@ -0,0 +1,15 @@
++import {z} from 'zod'
++
++export const LocaleSchema = z.enum(['en', 'zh-CN'])
++
++export const AccountSchema = z.object({
++  id: z.uuid(),
++  kind: z.enum(['human', 'ip']),
++  username: z.string().min(3).max(30).regex(/^[a-z0-9_]+$/),
++  displayName: z.string().min(1).max(80),
++  avatarUrl: z.url().nullable().optional(),
++  preferredLocale: LocaleSchema,
++  creatorModeEnabled: z.boolean(),
++})
++
++export type Account = z.infer<typeof AccountSchema>
+diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
+new file mode 100644
+index 0000000..3214a97
+--- /dev/null
++++ b/packages/contracts/src/index.ts
+@@ -0,0 +1,2 @@
++export * from './account.js'
++export * from './settings.js'
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+new file mode 100644
+index 0000000..4c0a958
+--- /dev/null
++++ b/packages/contracts/src/settings.ts
+@@ -0,0 +1,14 @@
++import {z} from 'zod'
++
++export const AppSettingsSchema = z.object({
++  creatorIpRequiresApproval: z.boolean(),
++  defaultIpQuota: z.int().min(0).max(100),
++})
++
++export type AppSettings = z.infer<typeof AppSettingsSchema>
++
++export const ApiErrorSchema = z.object({
++  code: z.string(),
++  message: z.string(),
++  requestId: z.string(),
++})
+diff --git a/packages/contracts/tsconfig.json b/packages/contracts/tsconfig.json
+new file mode 100644
+index 0000000..e5a6323
+--- /dev/null
++++ b/packages/contracts/tsconfig.json
+@@ -0,0 +1,11 @@
++{
++  "extends": "../../tsconfig.base.json",
++  "compilerOptions": {
++    "rootDir": "src",
++    "outDir": "dist",
++    "declaration": true,
++    "declarationMap": true
++  },
++  "include": ["src/**/*.ts"],
++  "exclude": ["src/**/*.test.ts"]
++}
+diff --git a/packages/contracts/vitest.config.ts b/packages/contracts/vitest.config.ts
+new file mode 100644
+index 0000000..893dcec
+--- /dev/null
++++ b/packages/contracts/vitest.config.ts
+@@ -0,0 +1,7 @@
++import {defineConfig} from 'vitest/config'
++
++export default defineConfig({
++  test: {
++    include: ['src/**/*.test.ts'],
++  },
++})
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 712a556..8c3172c 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -20,20 +20,26 @@ importers:
+       turbo:
+         specifier: 2.10.12
+         version: 2.10.12
+       typescript:
+         specifier: 7.0.2
+         version: 7.0.2
+       vitest:
+         specifier: 4.1.11
+         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3))
+ 
++  packages/contracts:
++    dependencies:
++      zod:
++        specifier: 4.5.4
++        version: 4.5.4
++
+ packages:
+ 
+   '@jridgewell/sourcemap-codec@1.6.0':
+     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
+ 
+   '@oxc-project/types@0.147.0':
+     resolution: {integrity: sha512-IJ3s6ltHLp45S0bh7phkX+gJO7A1Wuz2EaqpAhb8WjqDwbzMiWKHhyyT42tskaWjEYXtHtVCPpnBJVT9+dcRLg==}
+ 
+   '@playwright/test@1.62.1':
+     resolution: {integrity: sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ==}
+@@ -619,20 +625,23 @@ packages:
+       happy-dom:
+         optional: true
+       jsdom:
+         optional: true
+ 
+   why-is-node-running@2.3.0:
+     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
+     engines: {node: '>=8'}
+     hasBin: true
+ 
++  zod@4.5.4:
++    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
++
+ snapshots:
+ 
+   '@jridgewell/sourcemap-codec@1.6.0': {}
+ 
+   '@oxc-project/types@0.147.0': {}
+ 
+   '@playwright/test@1.62.1':
+     dependencies:
+       playwright: 1.62.1
+ 
+@@ -1031,10 +1040,12 @@ snapshots:
+       why-is-node-running: 2.3.0
+     optionalDependencies:
+       '@types/node': 24.13.3
+     transitivePeerDependencies:
+       - msw
+ 
+   why-is-node-running@2.3.0:
+     dependencies:
+       siginfo: 2.0.0
+       stackback: 0.0.2
++
++  zod@4.5.4: {}

@@ -1,0 +1,3 @@
+# Preserve generated SDD evidence byte-for-byte. Historical patch artifacts can
+# contain whitespace from their source commits and should not fail current diffs.
+.superpowers/sdd/** -whitespace
