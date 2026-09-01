@@ -1,21 +1,30 @@
-import type {ChatMessageResponse, Locale} from '@aifans/contracts'
+import type {Locale} from '@aifans/contracts'
+
+export type ProviderChatDelta = {type: 'delta'; delta: string}
+
+export type ProviderChatResult = {
+  answer: string
+  providerConversationId: string
+  providerMessageId: string
+}
 
 export type SendChatMessageInput = {
   humanProfileId: string
   ipProfileId: string
   message: string
-  conversationId?: string
+  providerConversationId?: string
   locale: Locale
   requestId: string
+  signal?: AbortSignal
 }
 
 export type ChatPort = {
-  sendMessage(input: SendChatMessageInput): Promise<ChatMessageResponse>
+  streamMessage(input: SendChatMessageInput): AsyncGenerator<ProviderChatDelta, ProviderChatResult>
 }
 
 export class ChatProviderError extends Error {
-  constructor(cause?: unknown) {
-    super('Chat provider request failed', {cause})
+  constructor(_cause?: unknown) {
+    super('Chat provider request failed')
     this.name = 'ChatProviderError'
   }
 }
