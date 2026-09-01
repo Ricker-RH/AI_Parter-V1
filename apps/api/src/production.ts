@@ -77,6 +77,9 @@ export function createProductionDependencies(
     ...(env.rateLimit?{rateLimit:factories.createRateLimit(env.rateLimit.databaseUrl),rateLimitHmacSecret:env.rateLimit.hmacSecret}:{}),
     readiness:{check:async()=>Boolean(env.rateLimit)&&await readiness.check()},
     logger:jsonConsoleLogger,
+    onUnhandledError(diagnostic) {
+      console.error(JSON.stringify({event: 'unhandled_error', ...diagnostic}))
+    },
     ...(assets ? { assets } : {}),
     ...(env.postMedia
       ? { postMediaAssets: createR2PostMediaPort(env.postMedia) }

@@ -137,11 +137,14 @@ describe('GET /v1/me', () => {
   })
 
   it('redacts unexpected collaborator errors', async () => {
+    const diagnostics: Array<{name: string; code?: string}> = []
+    const databaseError = Object.assign(new Error('database password leaked'), {code: '28P01'})
     const response = await createApp({
       auth: validAuth,
+      onUnhandledError: (diagnostic) => diagnostics.push(diagnostic),
       profiles: {
         ensureHumanProfile: async () => {
-          throw new Error('database password leaked')
+          throw databaseError
         },
         getCurrentAccount: async () => account,
       } satisfies ProfilePort,
@@ -150,6 +153,7 @@ describe('GET /v1/me', () => {
     const responseBody = await response.clone().text()
     await expectError(response, 500, 'INTERNAL_ERROR')
     expect(responseBody).not.toContain('database password leaked')
+    expect(diagnostics).toEqual([{name: 'Error', code: '28P01'}])
   })
 
   it('returns AUTH_INVALID for an authenticated identity with a blank subject', async () => {

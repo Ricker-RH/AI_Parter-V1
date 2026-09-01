@@ -50,7 +50,17 @@ export type AppDependencies = {
   requireRateLimit?:boolean;
   readiness?:ReadinessPort;
   logger?:StructuredLogger;
+  onUnhandledError?: (diagnostic: {name: string; code?: string}) => void;
 };
+
+function unhandledErrorDiagnostic(error: unknown): {name: string; code?: string} {
+  if (typeof error !== 'object' || error === null) return {name: 'Unknown'}
+  const candidate = error as {name?: unknown; code?: unknown}
+  return {
+    name: typeof candidate.name === 'string' ? candidate.name : 'Error',
+    ...(typeof candidate.code === 'string' ? {code: candidate.code} : {}),
+  }
+}
 
 export const createApp = (dependencies: AppDependencies = {}) => {
   const app = new Hono<{ Variables: ApiVariables }>();
@@ -69,9 +79,10 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerCreatorRoutes(app, dependencies);
   registerAdminCreatorRoutes(app, dependencies);
   app.notFound((c) => apiError(c, 404, "NOT_FOUND", "Route not found"));
-  app.onError((_error, c) =>
-    apiError(c, 500, "INTERNAL_ERROR", "Internal server error"),
-  );
+  app.onError((error, c) => {
+    dependencies.onUnhandledError?.(unhandledErrorDiagnostic(error));
+    return apiError(c, 500, "INTERNAL_ERROR", "Internal server error");
+  });
 
   return app;
 };
