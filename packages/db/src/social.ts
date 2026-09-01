@@ -8,7 +8,6 @@ import {
   type FeedPage,
   FeedPageSchema,
   type FeedPost,
-  type FeedVisualType,
   type Locale,
   type LikedCursor,
   type NotificationPage,
@@ -57,7 +56,6 @@ export type SocialRepository = {
   listFeed(input: {
     viewer: Actor | null;
     kind: FeedKind;
-    visualType?: FeedVisualType;
     locale?: Locale;
     limit: number;
     after: Cursor | null;
@@ -351,7 +349,6 @@ export function createSocialRepository({
     client: QueryClient,
     input: {
       kind: FeedKind;
-      visualType?: FeedVisualType;
       locale?: Locale;
       limit: number;
       after: Cursor | LikedCursor | null;
@@ -363,13 +360,6 @@ export function createSocialRepository({
     const after = input.after;
     const params: unknown[] = [input.locale ?? null];
     const filters = ["TRUE"];
-    const visualType = input.visualType ?? "all";
-    if (visualType !== "all") {
-      params.push(visualType);
-      filters.push(
-        `p.visual_type = $${params.length}::public.creator_visual_type`,
-      );
-    }
     if (
       input.kind === "following" &&
       !bookmarkedOnly &&
@@ -558,7 +548,6 @@ export function createSocialRepository({
         if (!row) return null;
         const posts = await feed(client, {
           kind: "following",
-          visualType: "all",
           limit: input.limit,
           after: input.after,
           authorProfileId: input.profileId,
@@ -701,7 +690,6 @@ export function createSocialRepository({
           client,
           {
             kind: "following",
-            visualType: "all",
             limit: page.limit,
             after: page.cursor ? decodeCursor(page.cursor, "following") : null,
           },
@@ -714,7 +702,6 @@ export function createSocialRepository({
           client,
           {
             kind: "following",
-            visualType: "all",
             limit: page.limit,
             after: page.cursor ? decodeLikedCursor(page.cursor) : null,
           },

@@ -16,6 +16,6 @@ describe('social database credential boundary', () => {
     delete process.env.DATABASE_USER_URL
     process.env.DATABASE_URL = 'postgresql://owner:secret@db.example/aifans'
     const repository = createSocialRepository()
-    await expect(repository.listFeed({viewer: null, kind: 'for_you', visualType: 'all', limit: 1, after: null})).rejects.toThrow('DATABASE_USER_URL must be a valid postgres URL')
+    await expect(repository.listFeed({viewer: null, kind: 'for_you', limit: 1, after: null})).rejects.toThrow('DATABASE_USER_URL must be a valid postgres URL')
   })
 })

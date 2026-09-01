@@ -125,17 +125,17 @@ integration('creator public projection', () => {
     expect(privileges.rows[0]).toEqual({drafts: false, revisions: false})
   }))
 
-  it('defaults to mixed/all and filters all three visual types without leaking other types', async () => tx(async (client) => {
+  it('returns a mixed feed regardless of a legacy visual type input', async () => tx(async (client) => {
     const realistic = await creatorIp(client, 'realistic')
     const anime = await creatorIp(client, 'anime')
     const social = repository(client)
 
-    const mixed = await social.listFeed({viewer: null, kind: 'for_you', visualType: 'all', limit: 10, after: null})
+    const mixed = await social.listFeed({viewer: null, kind: 'for_you', limit: 10, after: null})
     expect(mixed.items.map((item) => item.id)).toEqual(expect.arrayContaining([realistic.postId, anime.postId]))
-    const filtered = await social.listFeed({viewer: null, kind: 'for_you', visualType: 'anime', limit: 10, after: null})
-    expect(filtered.items.map((item) => item.id)).toContain(anime.postId)
-    expect(filtered.items.map((item) => item.id)).not.toContain(realistic.postId)
-    expect(filtered.items.find((item) => item.id === anime.postId)?.author).toMatchObject({
+    const legacyInput = {viewer: null, kind: 'for_you' as const, visualType: 'anime', limit: 10, after: null}
+    const legacyFiltered = await social.listFeed(legacyInput)
+    expect(legacyFiltered.items.map((item) => item.id)).toEqual(expect.arrayContaining([realistic.postId, anime.postId]))
+    expect(legacyFiltered.items.find((item) => item.id === anime.postId)?.author).toMatchObject({
       visualType: 'anime',
       creator: {id: anime.creatorId, username: anime.creatorUsername, displayName: 'Safe Creator'},
     })

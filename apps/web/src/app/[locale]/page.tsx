@@ -5,8 +5,6 @@ import {FeedTabs} from '../../components/social/FeedTabs'
 import {fetchFeed} from '../../lib/social-api'
 import {getOptionalPageAccess, redirectToUserSignIn, requireAuthenticatedPage} from '../../lib/auth/access-policy'
 
-const visualTypes = new Set(['realistic', 'anime'])
-
 type HomeSearchParams = Record<string, string | string[] | undefined>
 
 function currentQueryString(values: HomeSearchParams) {
@@ -24,14 +22,17 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   const messages = await getMessages(candidate)
   const query = await searchParams
   const following = query.feed === 'following'
-  const visualType: 'all' | 'realistic' | 'anime' = typeof query.visualType === 'string' && visualTypes.has(query.visualType) ? query.visualType as 'realistic' | 'anime' : 'all'
   const cursor = typeof query.cursor === 'string' ? query.cursor : undefined
-  const currentQuery = currentQueryString(query)
+  const currentQueryParams = new URLSearchParams(currentQueryString(query))
+  currentQueryParams.delete('cursor')
+  currentQueryParams.delete('visualType')
+  const currentQuery = currentQueryParams.toString()
+  const returnTo = following ? `/${candidate}?feed=following` : `/${candidate}`
   let token: string | undefined
   let canMutate = false
   if (following) {
-    const access = await requireAuthenticatedPage({locale: candidate, returnTo: `/${candidate}?${currentQuery}`})
-    if (access.status === 'unavailable') return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate} visualType={visualType}/></header><FeedContent currentQuery={currentQuery} feedKind="following" labels={messages} locale={candidate} result={{status: 'unavailable'}} visualType={visualType} /></main>
+    const access = await requireAuthenticatedPage({locale: candidate, returnTo})
+    if (access.status === 'unavailable') return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent labels={messages} locale={candidate} result={{status: 'unavailable'}} /></main>
     token = access.token
     canMutate = true
   } else {
@@ -41,13 +42,12 @@ export default async function HomePage({params, searchParams}: {params: Promise<
       canMutate = true
     }
   }
-  const result = await fetchFeed({kind: following ? 'following' : 'for_you', locale: candidate, visualType, cursor, ...(token ? {token} : {})})
-  if (result.status === 'auth-required' && canMutate) redirectToUserSignIn({locale: candidate, returnTo: following ? `/${candidate}?${currentQuery}` : `/${candidate}`})
+  const result = await fetchFeed({kind: following ? 'following' : 'for_you', locale: candidate, ...(cursor ? {cursor} : {}), ...(token ? {token} : {})})
+  if (result.status === 'auth-required' && canMutate) redirectToUserSignIn({locale: candidate, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const pageQuery = new URLSearchParams()
   if (following) pageQuery.set('feed', 'following')
-  if (visualType !== 'all') pageQuery.set('visualType', visualType)
   if (nextCursor) pageQuery.set('cursor', nextCursor)
   const moreHref = nextCursor ? `/${candidate}?${pageQuery}` : undefined
-  return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate} visualType={visualType}/></header><FeedContent canMutate={canMutate} currentQuery={currentQuery} feedKind={following ? 'following' : 'for_you'} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={`/${candidate}${currentQuery ? `?${currentQuery}` : ''}`} visualType={visualType} /></main>
+  return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent canMutate={canMutate} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
 }

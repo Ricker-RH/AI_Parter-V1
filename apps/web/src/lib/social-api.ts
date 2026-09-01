@@ -8,7 +8,6 @@ import {
   type SearchCategory,
   type SearchPage,
   type FeedPage,
-  type FeedVisualType,
   type NotificationPage,
   type PostDetail,
   type PublicIpProfile,
@@ -47,9 +46,8 @@ async function request<T>(path: string, schema: Schema<T>, token?: string): Prom
   }
 }
 
-export function fetchFeed({kind, locale, cookie, cursor, token, visualType = 'all'}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined; visualType?: FeedVisualType}) {
+export function fetchFeed({kind, locale, cookie, cursor, token}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined}) {
   const query = new URLSearchParams({kind, locale})
-  if (visualType !== 'all') query.set('visualType', visualType)
   if (cursor) query.set('cursor', cursor)
   return request(`/v1/feed?${query}`, FeedPageSchema, token)
 }

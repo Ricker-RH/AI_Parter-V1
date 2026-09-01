@@ -143,7 +143,7 @@ describe('social read routes', () => {
     await expectError(await createApp().request('/v1/feed?kind=for_you'), 503, 'SOCIAL_NOT_CONFIGURED')
   })
 
-  it('allows an anonymous For You feed and strictly parses its query', async () => {
+  it('allows an anonymous For You feed and ignores legacy visual type filters', async () => {
     const calls: unknown[] = []
     const social = socialPort({
       listFeed: async (input) => {
@@ -156,7 +156,7 @@ describe('social read routes', () => {
 
     expect(response.status).toBe(200)
     expect(FeedPageSchema.parse(await response.json())).toEqual(page)
-    expect(calls).toEqual([{viewer: null, kind: 'for_you', locale: 'en', visualType: 'anime', limit: 10, after: null}])
+    expect(calls).toEqual([{viewer: null, kind: 'for_you', locale: 'en', limit: 10, after: null}])
     await expectError(
       await createApp({social}).request('/v1/feed?kind=for_you&actor=forged'),
       400,
@@ -167,11 +167,9 @@ describe('social read routes', () => {
       400,
       'INVALID_REQUEST',
     )
-    await expectError(
-      await createApp({social}).request('/v1/feed?kind=for_you&visualType=portrait'),
-      400,
-      'INVALID_REQUEST',
-    )
+    const legacyResponse = await createApp({social}).request('/v1/feed?kind=for_you&visualType=portrait')
+    expect(legacyResponse.status, await legacyResponse.text()).toBe(200)
+    expect(calls).toContainEqual({viewer: null, kind: 'for_you', limit: 25, after: null})
   })
 
   it('rejects malformed and kind-mismatched feed cursors', async () => {
@@ -219,7 +217,7 @@ describe('social read routes', () => {
         displayName: identity.displayName,
       }],
       ['get', {subject: identity.subject}],
-      ['feed', {viewer: {subject: identity.subject}, kind: 'following', visualType: 'all', limit: 25, after: null}],
+      ['feed', {viewer: {subject: identity.subject}, kind: 'following', limit: 25, after: null}],
     ])
   })
 

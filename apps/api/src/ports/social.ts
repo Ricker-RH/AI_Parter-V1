@@ -3,7 +3,6 @@ import type {
   CreateHumanComment,
   Cursor,
   FeedKind,
-  FeedVisualType,
   FeedPage,
   Locale,
   NotificationPage,
@@ -23,7 +22,6 @@ export type SocialPort = {
   listFeed(input: {
     viewer: Actor | null
     kind: FeedKind
-    visualType: FeedVisualType
     locale?: Locale
     limit: number
     after: Cursor | null

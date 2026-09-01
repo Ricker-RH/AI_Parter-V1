@@ -39,8 +39,7 @@ describe('user auth return target', () => {
   })
   it.each([
     ['en', '/en/messages'],
-    ['en', '/en?feed=following&visualType=anime'],
-    ['en', '/en?visualType=anime'],
+    ['en', '/en?feed=following'],
     ['zh-CN', '/zh-CN/bookmarks'],
     ['zh-CN', '/zh-CN/posts/123'],
     ['en', '/en/search?q=luna%20moon&category=posts&cursor=abc_DEF-123'],
@@ -55,6 +54,8 @@ describe('user auth return target', () => {
     ['en', ['/en/messages']],
     ['en', '/en'],
     ['en', '/en?feed=for_you'],
+    ['en', '/en?feed=following&visualType=anime'],
+    ['en', '/en?visualType=anime'],
     ['en', '/en/admin'],
     ['en', '/en/not-allowed'],
     ['en', '/en/messages#fragment'],

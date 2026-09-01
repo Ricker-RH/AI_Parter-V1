@@ -32,15 +32,20 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.route-error-actions a, \.route-error-actions button, \.unavailable-retry \{[^}]*border-radius: 999px/)
   })
 
-  it('uses the compact mobile Home hierarchy with equal-width feed selectors', () => {
+  it('uses the compact mobile Home hierarchy with two equal-width feed tabs', () => {
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-header \{[^}]*display: block/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-title \{[^}]*clip:/)
-    expect(stylesheet).toMatch(/\.mobile-feed-selector \{[^}]*flex: 1/)
-    expect(stylesheet).toMatch(/\.mobile-feed-selector > \.tab \{[^}]*width: 100%/)
+    expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*flex: 1[^}]*width: 50%/)
+    expect(stylesheet).not.toContain('.mobile-feed-menu')
     expect(stylesheet).toMatch(/\.mobile-top-bar \{[^}]*height: 60px/)
     expect(stylesheet).toMatch(/\.post-card \{[^}]*padding: 12px/)
     expect(stylesheet).toMatch(/\.post-action \{[^}]*min-height: 36px/)
     expect(stylesheet).toMatch(/\.mobile-nav \{[^}]*height: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
     expect(stylesheet).toMatch(/\.mobile-link span \{[^}]*clip:/)
+  })
+
+  it('gives search profile results their own compact row instead of a post-card layout', () => {
+    expect(stylesheet).toMatch(/\.profile-result \{[^}]*display: grid[^}]*grid-template-columns: 44px minmax\(0, 1fr\)/)
+    expect(stylesheet).toMatch(/\.profile-result-avatar \{[^}]*height: 44px[^}]*width: 44px/)
   })
 })

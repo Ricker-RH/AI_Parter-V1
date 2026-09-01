@@ -1,58 +1,39 @@
 import {fireEvent, render, screen} from '@testing-library/react'
-import type {MouseEventHandler, ReactNode} from 'react'
+import type {AnchorHTMLAttributes, MouseEventHandler, ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
 import {FeedTabs} from './FeedTabs.js'
 
 const capture = vi.fn()
 vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()})}))
-vi.mock('next/link', () => ({default: ({children, onClick, ...props}: {children: ReactNode; onClick: MouseEventHandler<HTMLAnchorElement>; [key: string]: unknown}) => <a {...props} onClick={(event) => { event.preventDefault(); onClick(event) }}>{children}</a>}))
+vi.mock('next/link', () => ({default: ({children, onClick, ...props}: AnchorHTMLAttributes<HTMLAnchorElement> & {children: ReactNode}) => <a {...props} onClick={(event) => { event.preventDefault(); (onClick as MouseEventHandler<HTMLAnchorElement> | undefined)?.(event) }}>{children}</a>}))
 
 describe('FeedTabs', () => {
-  it('uses combined mobile labels and removes stale cursors without replacing the other feed filter', () => {
-    render(<FeedTabs currentQuery="visualType=anime&campaign=launch&cursor=stale" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="anime" />)
-    expect(screen.getByRole('button', {name: 'For you · Anime'})).toHaveAttribute('aria-haspopup', 'menu')
-    fireEvent.click(screen.getByRole('button', {name: 'Following · All'}))
-    expect(screen.getByRole('menuitem', {name: 'Anime'})).toHaveAttribute('href', '/en?campaign=launch&feed=following&visualType=anime')
-    fireEvent.click(screen.getByRole('menuitem', {name: 'Anime'}))
-    expect(capture).toHaveBeenCalledWith({name: 'feed_tab_selected', properties: {event_version: 1, feed: 'following', locale: 'en'}})
-    expect(JSON.stringify(capture.mock.calls)).not.toContain('cursor')
-  })
+  it('renders only For you and Following without visual-type controls', () => {
+    render(<FeedTabs currentQuery="visualType=anime&campaign=launch&cursor=stale" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home'}} locale="en" />)
 
-  it('preserves the inactive selection over a page rerender without encoding it in the URL', () => {
-    const {rerender} = render(<FeedTabs currentQuery="visualType=anime" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="anime" />)
-    rerender(<FeedTabs currentQuery="feed=following" following labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="all" />)
-    expect(screen.getByRole('button', {name: 'For you · Anime'})).toBeVisible()
-  })
-
-  it('uses distinct menu ids and moves focus from trigger through the filter menu', () => {
-    render(<FeedTabs currentQuery="" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" />)
-    const forYou = screen.getByRole('button', {name: 'For you · All'})
-    const following = screen.getByRole('button', {name: 'Following · All'})
-    expect(forYou.getAttribute('aria-controls')).not.toBe(following.getAttribute('aria-controls'))
-    fireEvent.keyDown(forYou, {key: 'ArrowDown'})
-    expect(screen.getByRole('menuitem', {name: 'All'})).toHaveFocus()
-    fireEvent.keyDown(screen.getByRole('menuitem', {name: 'All'}), {key: 'End'})
-    expect(screen.getByRole('menuitem', {name: 'Anime'})).toHaveFocus()
-    fireEvent.keyDown(screen.getByRole('menuitem', {name: 'Anime'}), {key: 'Escape'})
-    expect(forYou).toHaveFocus()
-  })
-
-  it('uses a roving tab stop and lets Tab leave an open menu without focus restoration', () => {
-    render(<><FeedTabs currentQuery="" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en"/><button type="button">After filters</button></>)
-    const forYou = screen.getByRole('button', {name: 'For you · All'})
-    const following = screen.getByRole('button', {name: 'Following · All'})
-    expect(forYou).toHaveAttribute('tabindex', '0')
-    expect(following).toHaveAttribute('tabindex', '-1')
-    fireEvent.click(forYou)
-    fireEvent.keyDown(forYou, {key: 'Tab'})
-    fireEvent.blur(forYou, {relatedTarget: screen.getByRole('button', {name: 'After filters'})})
+    expect(screen.getAllByRole('link')).toHaveLength(2)
+    expect(screen.getByRole('link', {name: 'For you'})).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?campaign=launch&feed=following')
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(screen.queryByText('Anime')).toBeNull()
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(screen.getByRole('button', {name: 'After filters'})).not.toHaveFocus()
   })
 
-  it('makes Following the initial tab stop when a Following feed loads directly', () => {
-    render(<FeedTabs currentQuery="feed=following" following labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" />)
-    expect(screen.getByRole('button', {name: 'For you · All'})).toHaveAttribute('tabindex', '-1')
-    expect(screen.getByRole('button', {name: 'Following · All'})).toHaveAttribute('tabindex', '0')
+  it('preserves unrelated query values and removes stale feed state', () => {
+    render(<FeedTabs currentQuery="feed=following&visualType=realistic&campaign=launch&campaign=return&cursor=stale" following labels={{forYou: 'For you', following: 'Following', home: 'Home'}} locale="en" />)
+
+    expect(screen.getByRole('link', {name: 'For you'})).toHaveAttribute('href', '/en?campaign=launch&campaign=return')
+    expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?campaign=launch&campaign=return&feed=following')
+  })
+
+  it('tracks feed selection without leaking query values', () => {
+    capture.mockClear()
+    render(<FeedTabs currentQuery="visualType=anime&cursor=private" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home'}} locale="en" />)
+
+    fireEvent.click(screen.getByRole('link', {name: 'Following'}))
+
+    expect(capture).toHaveBeenCalledWith({name: 'feed_tab_selected', properties: {event_version: 1, feed: 'following', locale: 'en'}})
+    expect(JSON.stringify(capture.mock.calls)).not.toContain('visualType')
+    expect(JSON.stringify(capture.mock.calls)).not.toContain('cursor')
   })
 })

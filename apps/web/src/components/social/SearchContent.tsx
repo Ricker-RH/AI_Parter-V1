@@ -8,6 +8,7 @@ import {PostCard} from './PostCard'
 import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
 import {SearchAnalytics} from './SearchAnalytics'
+import {ProfileResult} from './ProfileResult'
 
 const categories: ReadonlyArray<{key: SearchCategory; label: 'searchAll' | 'searchIps' | 'searchPosts'}> = [
   {key: 'all', label: 'searchAll'},
@@ -46,7 +47,7 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
       : <section aria-labelledby="search-results-title" className="search-results"><h2 className="section-title" id="search-results-title">{labels.searchResults ?? labels.search}</h2><div className="feed-list">
         {result.data.items.map((item) => item.type === 'post'
           ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} returnTo={returnTo} />
-          : <article className="post-card" key={`profile-${item.profile.id}`}><h3><Link href={profileHref(item.profile.id)}>{item.profile.displayName}</Link></h3><p className="author-meta">@{item.profile.username} · {labels[item.profile.visualType] ?? item.profile.visualType}</p>{item.profile.bio ? <p>{item.profile.bio}</p> : null}</article>)}
+          : <ProfileResult href={profileHref(item.profile.id)} key={`profile-${item.profile.id}`} labels={labels} profile={item.profile}/>)}
         {result.data.nextCursor ? <Link className="load-more" href={searchHref(locale, normalized, category, result.data.nextCursor)}>{labels.loadMore}</Link> : <p className="search-end">{labels.searchEnd ?? labels.loadMore}</p>}
       </div></section>}
   </>

@@ -36,11 +36,6 @@ export interface SocialLabels {
   unavailableDescription: string
   unavailableRetry: string
   unavailableRetrying: string
-  visualTypeFilter: string
-  allTypes: string
-  realistic: string
-  anime: string
-  hybrid: string
   createdBy: string
   commentPlaceholder: string
   commentSubmit: string

@@ -199,7 +199,8 @@ button {
   padding: 0 1px 11px;
 }
 .tab[aria-selected="true"],
-.tab[aria-pressed="true"] {
+.tab[aria-pressed="true"],
+.tab[aria-current="page"] {
   border-color: currentColor;
   font-weight: 700;
 }
@@ -430,6 +431,12 @@ button {
 .search-form-field:focus-within { background: var(--shell-surface); border-color: var(--shell-text); }
 .search-form input { background: transparent; border: 0; color: inherit; flex: 1; min-width: 0; outline: 0; padding: 0; }
 .search-form button { align-self: stretch; background: var(--shell-text); border: 0; border-radius: 999px; color: var(--shell-surface); cursor: pointer; font-weight: 650; min-width: 44px; padding: 0 16px; }
+.profile-result { border-bottom: 1px solid var(--shell-border); display: grid; gap: 12px; grid-template-columns: 44px minmax(0, 1fr); padding: 14px 20px; }
+.profile-result-avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; font-weight: 700; height: 44px; justify-content: center; width: 44px; }
+.profile-result-content { min-width: 0; }
+.profile-result-heading { align-items: center; display: flex; gap: 8px; }
+.profile-result-heading h3 { font-size: 15px; margin: 0; }
+.profile-result-bio { display: -webkit-box; font-size: 14px; line-height: 1.4; margin: 5px 0 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .comment-composer textarea {
   background: transparent;
   border: 1px solid var(--shell-border);
@@ -1943,10 +1950,7 @@ button {
   .home-header { display: block; min-height: 0 !important; padding: 0 !important; }
   .home-title { height: 1px; margin: -1px !important; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .mobile-feed-tabs { border-bottom: 1px solid var(--shell-border); gap: 0; overflow: visible; width: 100%; }
-  .mobile-feed-selector { flex: 1; min-width: 0; position: relative; }
-  .mobile-feed-selector > .tab { font-size: 15px; min-height: 48px; padding: 0 8px; text-align: center; width: 100%; }
-  .mobile-feed-menu { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 8px; box-shadow: var(--aifans-elevation-2); display: grid; left: 0; min-width: 132px; padding: 6px; position: absolute; top: 44px; z-index: 20; }
-  .mobile-feed-menu a { min-height: 44px; padding: 10px; }
+  .mobile-feed-tabs > .tab { flex: 1; font-size: 15px; min-height: 48px; padding: 0 8px; text-align: center; width: 50%; }
   .visual-filter { display: none; }
   .activity-tabs { padding-inline: 20px; }
   .post-card { padding: 12px; }

@@ -1,4 +1,4 @@
-import {render, screen} from '@testing-library/react'
+import {render, screen, within} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const {access, optionalAccess, authRedirect, fetchFeed} = vi.hoisted(() => ({access: vi.fn(), optionalAccess: vi.fn(), authRedirect: vi.fn(), fetchFeed: vi.fn(async () => ({status: 'ok', data: {items: [], nextCursor: null}}))}))
@@ -17,7 +17,7 @@ describe('home feed query navigation', () => {
     authRedirect.mockReset()
     fetchFeed.mockClear()
   })
-  it('preserves repeated parameters and removes the stale cursor from tab links', async () => {
+  it('preserves repeated parameters and removes legacy visual filters and stale cursors from tab links', async () => {
     render(await HomePage({
       params: Promise.resolve({locale: 'en'}),
       searchParams: Promise.resolve({
@@ -27,21 +27,20 @@ describe('home feed query navigation', () => {
       }),
     }))
 
-    expect(screen.getByRole('button', {name: 'Following · All'})).toBeVisible()
-    expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute(
-      'href',
-      '/en?campaign=launch&campaign=return&visualType=realistic',
-    )
-    expect(screen.getAllByRole('tab').every((tab) => !tab.getAttribute('href')?.includes('cursor='))).toBe(true)
+    const feedNavigation = screen.getByRole('navigation', {name: 'Home'})
+    expect(within(feedNavigation).getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?campaign=launch&campaign=return&feed=following')
+    expect(screen.queryByText('Anime')).toBeNull()
+    expect(within(feedNavigation).getAllByRole('link').every((link) => !link.getAttribute('href')?.includes('cursor='))).toBe(true)
+    expect(within(feedNavigation).getAllByRole('link').every((link) => !link.getAttribute('href')?.includes('visualType='))).toBe(true)
   })
 
-  it('normalizes a legacy hybrid home filter to All before it fetches', async () => {
+  it('ignores a legacy visualType query and fetches the unfiltered feed', async () => {
     await HomePage({
       params: Promise.resolve({locale: 'en'}),
       searchParams: Promise.resolve({visualType: 'hybrid'}),
     })
 
-    expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({visualType: 'all'}))
+    expect(fetchFeed).toHaveBeenCalledWith({kind: 'for_you', locale: 'en'})
   })
 
   it('guards Following before it requests a personalized feed', async () => {
@@ -52,7 +51,7 @@ describe('home feed query navigation', () => {
       searchParams: Promise.resolve({feed: 'following', visualType: 'anime'}),
     })
 
-    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en?feed=following&visualType=anime'})
+    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en?feed=following'})
     expect(fetchFeed).not.toHaveBeenCalled()
   })
 

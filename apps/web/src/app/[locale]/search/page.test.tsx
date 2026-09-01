@@ -40,6 +40,9 @@ describe('public search page', () => {
     }))
     expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({q: 'luna', category: 'ips'}))
     expect(screen.getByText('Luna')).toBeVisible()
+    expect(screen.getByText('Luna').closest('article')).toHaveClass('profile-result')
+    expect(screen.getByText('@luna_ip')).toBeVisible()
+    expect(screen.queryByText('Anime')).toBeNull()
     expect(screen.queryByRole('button', {name: 'Follow'})).toBeNull()
   })
 
@@ -80,7 +83,7 @@ describe('public search page', () => {
   it('links anonymous profile results to sign in while authenticated users can open the profile', async () => {
     fetchSearch.mockResolvedValue({status: 'ok', data: {items: [{type: 'profile', profile}], nextCursor: null}})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna'})}))
-    expect(screen.getByRole('link', {name: 'Luna'})).toHaveAttribute('href', '/en/auth/sign-in?next=%2Fen%2Fprofiles%2F5b8ba43c-0a9e-43ec-87be-448a9e1ebf30')
+    expect(screen.getAllByRole('link', {name: 'Luna'}).every((link) => link.getAttribute('href') === '/en/auth/sign-in?next=%2Fen%2Fprofiles%2F5b8ba43c-0a9e-43ec-87be-448a9e1ebf30')).toBe(true)
 
     optionalAccess.mockResolvedValue({status: 'authenticated', token: 'token'})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna'})}))

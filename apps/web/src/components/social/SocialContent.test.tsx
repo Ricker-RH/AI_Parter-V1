@@ -72,11 +72,6 @@ const labels: SocialLabels = {
   interactionError: "Action failed. Try again.",
   loadMore: "Load more",
   aifansActor: "AIFANS",
-  visualTypeFilter: "IP style",
-  allTypes: "All",
-  realistic: "Realistic",
-  anime: "Anime",
-  hybrid: "Hybrid",
   createdBy: "Created by",
   commentPlaceholder: "Write a comment",
   commentSubmit: "Comment",
@@ -122,12 +117,10 @@ describe("real social content", () => {
   it("renders API post fields and preserves the locale in the detail URL", () => {
     render(
       <FeedContent
-        feedKind="for_you"
         labels={labels}
         locale="zh-CN"
-        moreHref="/zh-CN?visualType=anime&cursor=opaque"
+        moreHref="/zh-CN?cursor=opaque"
         result={{ status: "ok", data: { items: [post], nextCursor: "opaque" } }}
-        visualType="anime"
       />,
     );
     expect(screen.getByRole("article")).toHaveTextContent("Luma");
@@ -141,17 +134,11 @@ describe("real social content", () => {
     expect(
       screen.getAllByText("Created by @luma_creator").length,
     ).toBeGreaterThan(0);
-    expect(screen.getByRole("tab", { name: "Anime" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "Realistic" })).toHaveAttribute(
-      "href",
-      "/zh-CN?visualType=realistic",
-    );
+    expect(screen.queryByText("Anime")).toBeNull();
+    expect(screen.queryByText("Realistic")).toBeNull();
     expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute(
       "href",
-      "/zh-CN?visualType=anime&cursor=opaque",
+      "/zh-CN?cursor=opaque",
     );
   });
 
@@ -290,25 +277,16 @@ describe("real social content", () => {
     expect(routerRefresh).toHaveBeenCalledTimes(2);
   });
 
-  it("normalizes legacy hybrid to All and keeps only the ordinary home filter values", () => {
+  it("does not render ordinary-user visual type filters", () => {
     render(
       <FeedContent
-        currentQuery="feed=following&visualType=hybrid&campaign=launch&cursor=stale"
-        feedKind="following"
         labels={labels}
         locale="zh-CN"
         result={{ status: "ok", data: { items: [], nextCursor: null } }}
-        visualType="all"
       />,
     );
-    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
-      "href",
-      "/zh-CN?feed=following&campaign=launch",
-    );
-    expect(screen.getByRole("tab", { name: "Realistic" })).toHaveAttribute(
-      "href",
-      "/zh-CN?feed=following&visualType=realistic&campaign=launch",
-    );
+    expect(screen.queryByRole("tab", { name: "All" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Realistic" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Hybrid" })).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Nothing here yet" }),
@@ -498,6 +476,7 @@ describe("real social content", () => {
       screen.getAllByText("Created by @luma_creator").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("12 followers")).toBeVisible();
+    expect(screen.queryByText("Anime")).toBeNull();
     expect(container.textContent).not.toContain("operationEnabled");
   });
 });

@@ -27,7 +27,7 @@ const labels: SocialLabels = {
   notificationsEmptyTitle: "No notifications yet", notificationsEmptyDescription: "Updates appear here.", postNotFoundTitle: "Post not found",
   postNotFoundDescription: "It may have been removed.", removeBookmark: "Remove bookmark", unlike: "Unlike", unavailableTitle: "Unable to load",
   unavailableDescription: "Try again later.", unavailableRetry: "Retry", unavailableRetrying: "Retrying", interactionError: "Action failed. Try again.", loadMore: "Load more", aifansActor: "AIFANS",
-  visualTypeFilter: "IP style", allTypes: "All", realistic: "Realistic", anime: "Anime", hybrid: "Hybrid", createdBy: "Created by",
+  createdBy: "Created by",
   commentPlaceholder: "Write a comment", commentSubmit: "Comment", commentSending: "Posting", commentSuccess: "Posted", reply: "Reply",
   signInToComment: "Sign in to comment", markRead: "Mark as read", markingRead: "Marking", profileNotFoundTitle: "Profile not found",
   profileNotFoundDescription: "Not public", followers: "followers", posts: "Posts", signInToInteract: "Sign in to like, save, or follow",
@@ -139,12 +139,12 @@ describe("PostCard media geometry", () => {
 
 describe("PostCard public interaction hierarchy", () => {
   it("shows the same icon action row to guests and gates only protected actions", () => {
-    render(<PostCard labels={labels} locale="en" post={post} returnTo="/en?visualType=anime" />);
+    render(<PostCard labels={labels} locale="en" post={post} returnTo="/en" />);
 
     expect(screen.queryByText(labels.signInToInteract)).toBeNull();
-    expect(screen.getByRole("link", {name: labels.like})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen%3FvisualType%3Danime");
+    expect(screen.getByRole("link", {name: labels.like})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
     expect(screen.getByRole("link", {name: labels.comments})).toHaveAttribute("href", `/en/posts/${post.id}`);
-    expect(screen.getByRole("link", {name: labels.bookmark})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen%3FvisualType%3Danime");
+    expect(screen.getByRole("link", {name: labels.bookmark})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
     expect(screen.getByRole("button", {name: labels.share!})).toBeVisible();
     expect(document.querySelectorAll(".post-action svg")).toHaveLength(4);
   });

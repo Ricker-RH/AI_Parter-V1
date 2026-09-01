@@ -239,15 +239,12 @@ describe("social contracts", () => {
     expect(() =>
       FeedQuerySchema.parse({ kind: "for_you", unexpected: "value" }),
     ).toThrow();
-    expect(FeedQuerySchema.parse({ kind: "for_you" })).toMatchObject({
-      visualType: "all",
-    });
     expect(
       FeedQuerySchema.parse({ kind: "for_you", visualType: "anime" }),
-    ).toMatchObject({ visualType: "anime" });
-    expect(() =>
+    ).toEqual({ kind: "for_you", limit: 25 });
+    expect(
       FeedQuerySchema.parse({ kind: "for_you", visualType: "portrait" }),
-    ).toThrow();
+    ).toEqual({ kind: "for_you", limit: 25 });
     expect(CursorSchema.parse(cursor)).toEqual(cursor);
   });
 

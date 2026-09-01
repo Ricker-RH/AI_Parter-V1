@@ -8,21 +8,25 @@ const trimmed = (max: number) => z.string().trim().min(1).max(max);
 export const POST_MEDIA_MAX_BYTES = 10_485_760;
 
 export const FeedKindSchema = z.enum(["for_you", "following"]);
-export const FeedVisualTypeSchema = z.union([
-  z.literal("all"),
-  CreatorVisualTypeSchema,
-]);
 export const PageQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(50).default(25),
   cursor: z.string().min(1).optional(),
 });
-export const FeedQuerySchema = z.strictObject({
+const FeedQueryInputSchema = z.strictObject({
   kind: FeedKindSchema,
   locale: LocaleSchema.optional(),
-  visualType: FeedVisualTypeSchema.default("all"),
   limit: z.coerce.number().int().min(1).max(50).default(25),
   cursor: z.string().min(1).optional(),
 });
+export const FeedQuerySchema = z.preprocess((value) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return value;
+  const { visualType: _legacyVisualType, ...query } = value as Record<
+    string,
+    unknown
+  >;
+  return query;
+}, FeedQueryInputSchema);
 const searchText = z
   .string()
   .trim()
@@ -90,7 +94,6 @@ export const SearchCursorSchema = z.discriminatedUnion("resultType", [
 ]);
 
 export type FeedKind = z.infer<typeof FeedKindSchema>;
-export type FeedVisualType = z.infer<typeof FeedVisualTypeSchema>;
 export type PageQuery = z.infer<typeof PageQuerySchema>;
 export type FeedQuery = z.infer<typeof FeedQuerySchema>;
 export type SearchCategory = z.infer<typeof SearchCategorySchema>;

@@ -47,9 +47,8 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
   if (pathname === base) {
     if (!queryIsWellFormed(query)) return undefined
     const params = new URLSearchParams(query)
-    if ([...params.keys()].some((key) => !['feed', 'visualType'].includes(key))) return undefined
+    if ([...params.keys()].some((key) => key !== 'feed')) return undefined
     if (params.getAll('feed').length > 1 || (params.get('feed') !== null && params.get('feed') !== 'following')) return undefined
-    if (params.getAll('visualType').length > 1 || (params.get('visualType') !== null && !['realistic', 'anime'].includes(params.get('visualType')!))) return undefined
     return params.size > 0 ? value : undefined
   }
 
