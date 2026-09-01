@@ -11,6 +11,7 @@ import {MessagesShell} from './shell/MessagesShell'
 import {PublicShell} from './shell/PublicShell'
 import {resolveShellKind} from './shell/route-shell'
 import {NavigationFeedback} from './NavigationFeedback'
+import {RouteReadySignal} from './RouteReadySignal'
 
 export function AppShell({authConfigured=false, creatorModeEnabled=true, locale, labels, children, release='local'}: {authConfigured?: boolean; creatorModeEnabled?: boolean; locale: Locale; labels: ShellLabels; children: ReactNode; release?: string}) {
   const pathname = usePathname()
@@ -22,5 +23,5 @@ export function AppShell({authConfigured=false, creatorModeEnabled=true, locale,
     case 'creator': shell = <CreatorShell>{children}</CreatorShell>; break
     default: shell = <PublicShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</PublicShell>
   }
-  return <>{shell}<NavigationFeedback locale={locale} release={release}/></>
+  return <>{shell}<RouteReadySignal content={children}/><NavigationFeedback locale={locale} release={release}/></>
 }

@@ -8,7 +8,8 @@ import {routeNameForPath, useAnalytics} from '../lib/analytics/provider'
 import {deviceType, trackPerformanceMeasured} from '../lib/analytics/performance'
 import type {AnalyticsPerformanceMetric, AnalyticsPerformanceRating} from '../lib/analytics/contracts'
 
-type PendingNavigation = {id: number; sourceMain: HTMLElement | null; sourceMarkup: string | null; startedAt: number; targetPathname: string; targetRoute: string}
+type PendingNavigation = {id: number; readyGeneration: number; startedAt: number; targetPathname: string; targetRoute: string}
+type RouteReady = {generation: number; route: string}
 
 function rating(metric: AnalyticsPerformanceMetric, value: number): AnalyticsPerformanceRating {
   const budget = metric === 'interaction' ? 100 : metric === 'skeleton' ? 150 : 800
@@ -35,7 +36,9 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
   const searchParams = useSearchParams()
   const currentRoute = `${pathname}${searchParams.size ? `?${searchParams}` : ''}`
   const sequence = useRef(0)
+  const latestReadyGeneration = useRef(0)
   const [pending, setPending] = useState<PendingNavigation | null>(null)
+  const [routeReady, setRouteReady] = useState<RouteReady | null>(null)
 
   const measure = useCallback((metric: AnalyticsPerformanceMetric, active: PendingNavigation) => {
     const routeName = routeNameForPath(active.targetPathname)
@@ -54,11 +57,22 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
   }, [analytics, locale, release])
 
   useEffect(() => {
+    function onRouteReady(event: Event) {
+      if (!(event instanceof CustomEvent)) return
+      const detail = event.detail as Partial<RouteReady> | null
+      if (!detail || typeof detail.generation !== 'number' || typeof detail.route !== 'string') return
+      latestReadyGeneration.current = Math.max(latestReadyGeneration.current, detail.generation)
+      setRouteReady({generation: detail.generation, route: detail.route})
+    }
+    document.addEventListener('aifans:route-ready', onRouteReady)
+    return () => document.removeEventListener('aifans:route-ready', onRouteReady)
+  }, [])
+
+  useEffect(() => {
     function start(target: EventTarget | null) {
       const destination = destinationFrom(target)
       if (!destination) return
-      const sourceMain = document.querySelector<HTMLElement>('main:not(.route-skeleton)')
-      const active = {id: ++sequence.current, sourceMain, sourceMarkup: sourceMain?.outerHTML ?? null, startedAt: performance.now(), ...destination}
+      const active = {id: ++sequence.current, readyGeneration: latestReadyGeneration.current, startedAt: performance.now(), ...destination}
       flushSync(() => setPending(active))
       measure('interaction', active)
     }
@@ -91,7 +105,7 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     const targetReadyMain = () => {
       const main = document.querySelector<HTMLElement>('main:not(.route-skeleton)')
       if (!main || document.querySelector('.route-skeleton')) return null
-      if (main === pending.sourceMain && main.outerHTML === pending.sourceMarkup) return null
+      if (!routeReady || routeReady.route !== pending.targetRoute || routeReady.generation <= pending.readyGeneration) return null
       main.setAttribute('data-route-ready', pending.targetRoute)
       return main.getAttribute('data-route-ready') === pending.targetRoute ? main : null
     }
@@ -113,7 +127,7 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
       window.clearTimeout(timeout)
       observer.disconnect()
     }
-  }, [currentRoute, measure, pending])
+  }, [currentRoute, measure, pending, routeReady])
 
   return pending ? <div aria-atomic="true" aria-live="polite" className="navigation-feedback" data-navigation-pending="true" role="status"><span className="navigation-feedback__indicator" aria-hidden="true"/><span className="sr-only">{pendingLabel(locale)}</span></div> : null
 }

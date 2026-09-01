@@ -45,6 +45,7 @@ describe('NavigationFeedback', () => {
     expect(screen.getByRole('status')).toBeInTheDocument()
     search = 'feed=following'
     view.rerender(<><NavigationFeedback locale="en" release="test"/><a href="/en?feed=following">Following</a><main>Following</main></>)
+    act(() => { document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 1, route: '/en?feed=following'}})) })
     act(() => { frames.forEach((frame) => frame(performance.now())) })
     expect(screen.queryByRole('status')).toBeNull()
     vi.unstubAllGlobals()
@@ -80,6 +81,7 @@ describe('NavigationFeedback', () => {
     expect(screen.getByRole('status')).toBeInTheDocument()
     pathname = '/en/messages'
     view.rerender(<><NavigationFeedback locale="en" release="test"/><a href="/en/messages">Messages</a><main>Messages</main></>)
+    act(() => { document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 1, route: '/en/messages'}})) })
     act(() => { frames.forEach((frame) => frame(performance.now())) })
 
     expect(screen.queryByRole('status')).toBeNull()
@@ -100,6 +102,31 @@ describe('NavigationFeedback', () => {
     act(() => { frames.forEach((frame) => frame(performance.now())) })
 
     expect(screen.getByRole('status')).toBeInTheDocument()
+    vi.unstubAllGlobals()
+    pathname = '/en'
+  })
+
+  it('does not treat an updated previous main as ready after the destination skeleton disappears', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    pathname = '/en'
+    const view = render(<><NavigationFeedback locale="en" release="test"/><a href="/en/messages">Messages</a><main>Home</main></>)
+
+    fireEvent.pointerDown(screen.getByRole('link', {name: 'Messages'}), {button: 0})
+    pathname = '/en/messages'
+    view.rerender(<><NavigationFeedback locale="en" release="test"/><a href="/en/messages">Messages</a><main>Home updated in place</main></>)
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+
+    expect(screen.getByRole('status')).toBeInTheDocument()
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 1, route: '/en/messages'}}))
+    })
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByRole('main')).toHaveAttribute('data-route-ready', '/en/messages')
     vi.unstubAllGlobals()
     pathname = '/en'
   })
