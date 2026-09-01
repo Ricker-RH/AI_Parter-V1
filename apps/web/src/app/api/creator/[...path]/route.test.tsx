@@ -4,7 +4,7 @@ import * as route from './route.js'
 
 const id = '11111111-1111-4111-8111-111111111111'
 
-afterEach(() => { vi.unstubAllGlobals(); delete process.env.AIFANS_API_URL; delete process.env.CREATOR_MODE_ENABLED })
+afterEach(() => { vi.unstubAllGlobals(); delete process.env.AIFANS_API_URL; delete process.env.CREATOR_MODE_ENABLED; delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET })
 
 function request(path: string, method: string, body?: object) {
   return new Request(`https://web.example/api/creator/${path}`, {
@@ -56,6 +56,17 @@ describe('same-origin creator proxy', () => {
     expect((await route.POST(duplicate,{params:Promise.resolve({path:['drafts']})})).status).toBe(422)
     const large=request('drafts','POST',{}); large.headers.set('content-length','70000'); expect((await route.POST(large,{params:Promise.resolve({path:['drafts']})})).status).toBe(413)
     expect(upstream).not.toHaveBeenCalled()
+  })
+
+  it('creates a trusted identity for mutations without forwarding browser credentials or forged identity headers', async () => {
+    process.env.AIFANS_API_URL='https://api.internal'; process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET='s'.repeat(32)
+    const upstream=vi.fn().mockResolvedValue(Response.json({ok:true})); vi.stubGlobal('fetch',upstream)
+    const input=request('drafts','POST',{}); input.headers.set('authorization','Bearer forged'); input.headers.set('x-aifans-rate-limit-identity','forged'); input.headers.set('x-vercel-forwarded-for','203.0.113.7, 10.0.0.1')
+    await route.POST(input,{params:Promise.resolve({path:['drafts']})})
+    const headers=new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers)
+    expect(headers.get('x-aifans-rate-limit-identity')).toMatch(/^v1\.\d+\.[a-f0-9]{64}\.[a-f0-9]{64}$/)
+    expect(headers.get('authorization')).toBe('Bearer creator-jwt')
+    for(const name of ['cookie','x-vercel-forwarded-for'])expect(headers.has(name)).toBe(false)
   })
 
   it('rejects nested duplicate JSON keys at every object depth',async()=>{

@@ -69,6 +69,6 @@ describe('authenticated server API transport', () => {
     expect(headers.get('authorization')).toBe('Bearer signed-jwt')
     expect(headers.get('content-type')).toBe('application/json')
     expect(headers.get('x-request-id')).toBe('request-1')
-    for (const name of ['cookie', 'x-forwarded-for']) expect(headers.has(name)).toBe(false)
+    for (const name of ['cookie', 'x-forwarded-for', 'x-vercel-forwarded-for']) expect(headers.has(name)).toBe(false)
   })
 })

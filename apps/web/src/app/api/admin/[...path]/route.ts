@@ -69,6 +69,7 @@ export async function POST(request: Request, context: RouteContext) {
         headers: request.headers,
         method: "POST",
       },
+      trustedClientHeaders: request.headers,
     });
     const responseHeaders: Record<string, string> = {
       "content-type":

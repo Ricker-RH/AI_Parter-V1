@@ -10,6 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.AIFANS_API_URL;
   delete process.env.NEXT_PUBLIC_AIFANS_API_URL;
+  delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET;
 });
 
 function request(path: string, body: object = { body: "Hello" }) {
@@ -106,6 +107,22 @@ describe("same-origin operator proxy", () => {
     expect(upstream).not.toHaveBeenCalled();
     expect("PUT" in route).toBe(false);
     expect("DELETE" in route).toBe(false);
+  });
+
+  it('creates a trusted identity without forwarding browser credentials or forged identity headers', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example';
+    process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32);
+    const upstream = vi.fn().mockResolvedValue(Response.json({id: postId}));
+    vi.stubGlobal('fetch', upstream);
+    const input = request('ips');
+    input.headers.set('authorization', 'Bearer forged');
+    input.headers.set('x-aifans-rate-limit-identity', 'forged');
+    input.headers.set('x-vercel-forwarded-for', '203.0.113.7, 10.0.0.1');
+    await route.POST(input, {params: Promise.resolve({path: ['ips']})});
+    const headers = new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers);
+    expect(headers.get('x-aifans-rate-limit-identity')).toMatch(/^v1\.\d+\.[a-f0-9]{64}\.[a-f0-9]{64}$/);
+    expect(headers.get('authorization')).toBe('Bearer signed-jwt');
+    for (const name of ['cookie', 'x-vercel-forwarded-for']) expect(headers.has(name)).toBe(false);
   });
 
   it("fails safely without server configuration or when the upstream is unreachable", async () => {

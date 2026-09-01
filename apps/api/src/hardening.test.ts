@@ -36,8 +36,12 @@ describe('API production hardening', () => {
     const valid = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now),'x-forwarded-for':'203.0.113.7'},body:'{}'})
     const missing = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-forwarded-for':'203.0.113.7'},body:'{}'})
     const expired = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now - 2)},body:'{}'})
-    const tampered = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':`${identity(now).slice(0, -1)}0`},body:'{}'})
+    const previous = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now - 1)},body:'{}'})
+    const signed = identity(now)
+    const replacement = signed.endsWith('0') ? '1' : '0'
+    const tampered = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':`${signed.slice(0, -1)}${replacement}`},body:'{}'})
     expect(valid.status).not.toBe(503)
+    expect(previous.status).not.toBe(503)
     expect((await missing.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect((await expired.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect((await tampered.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')

@@ -6,6 +6,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   delete process.env.AIFANS_API_URL
   delete process.env.NEXT_PUBLIC_AIFANS_API_URL
+  delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET
 })
 
 describe('same-origin social mutation proxy', () => {
@@ -20,6 +21,19 @@ describe('same-origin social mutation proxy', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({created: true})
     expect(upstream).toHaveBeenCalledWith('https://internal-api.example/v1/posts/22222222-2222-4222-8222-222222222222/like', expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer signed-jwt'}, method: 'PUT'}))
+  })
+
+  it('creates a trusted identity without forwarding browser credentials or forged identity headers', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
+    const upstream = vi.fn().mockResolvedValue(Response.json({created: true}))
+    vi.stubGlobal('fetch', upstream)
+    const request = new Request('https://web.example/api/social/posts/22222222-2222-4222-8222-222222222222/like', {method: 'PUT', headers: {origin:'https://web.example', cookie:'session=real', authorization:'Bearer forged', 'x-aifans-rate-limit-identity':'forged', 'x-vercel-forwarded-for':'203.0.113.7, 10.0.0.1'}})
+    await PUT(request, {params: Promise.resolve({path: ['posts', '22222222-2222-4222-8222-222222222222', 'like']})})
+    const headers = new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers)
+    expect(headers.get('x-aifans-rate-limit-identity')).toMatch(/^v1\.\d+\.[a-f0-9]{64}\.[a-f0-9]{64}$/)
+    expect(headers.get('authorization')).toBe('Bearer signed-jwt')
+    for (const name of ['cookie', 'x-vercel-forwarded-for']) expect(headers.has(name)).toBe(false)
   })
 
   it('rejects paths outside like, bookmark, and follow without contacting the API', async () => {

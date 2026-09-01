@@ -63,7 +63,7 @@ async function proxy(request: Request, context: RouteContext, method: 'POST' | '
       try{body=await readCommentBody(request)}catch{return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})}
       if (!body.trim() || duplicateTopLevelKey(body)) return Response.json({code:'COMMENT_INVALID'},{status:422})
     }
-    const upstream = await fetchAifansApi(`/v1/${path}`, {requestInit: {method, headers: request.headers, ...(body===undefined?{}:{body})}})
+    const upstream = await fetchAifansApi(`/v1/${path}`, {requestInit: {method, headers: request.headers, ...(body===undefined?{}:{body})}, trustedClientHeaders: request.headers})
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'},
