@@ -1,6 +1,17 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
-import {AuthPanel, type AuthActions} from './AuthPanel.js'
+const provider = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  signIn: {email: vi.fn(), social: vi.fn()},
+  signUp: {email: vi.fn()},
+  signOut: vi.fn(),
+  requestPasswordReset: vi.fn(),
+  resetPassword: vi.fn(),
+}))
+
+vi.mock('@neondatabase/auth/next', () => ({createAuthClient: () => provider}))
+
+import {AuthPanel, createBrowserAuthActions, type AuthActions} from './AuthPanel.js'
 
 const actions = (): AuthActions => ({
   getSession: vi.fn().mockResolvedValue({user: null}),
@@ -13,6 +24,22 @@ const actions = (): AuthActions => ({
 })
 
 describe('AIFANS auth panel', () => {
+  it('hands the safe admin callback to the auth provider with the credential request', async () => {
+    provider.signIn.email.mockResolvedValue({error: {message: 'test stop'}})
+    provider.signUp.email.mockResolvedValue({error: {message: 'test stop'}})
+    const client = await createBrowserAuthActions('en')
+
+    await client.signInEmail('luna@example.com', 'strong-password', '/en/admin')
+    await client.signUpEmail('Luna', 'luna@example.com', 'strong-password', '/en/admin')
+
+    expect(provider.signIn.email).toHaveBeenCalledWith({
+      email: 'luna@example.com', password: 'strong-password', callbackURL: '/en/admin',
+    })
+    expect(provider.signUp.email).toHaveBeenCalledWith({
+      name: 'Luna', email: 'luna@example.com', password: 'strong-password', callbackURL: '/en/admin',
+    })
+  })
+
   it('renders a bilingual-safe configuration state without fake session data', () => {
     render(<AuthPanel configured={false} locale="zh-CN" mode="sign-in" />)
     expect(screen.getByRole('heading', {name: '登录 AIFANS'})).toBeVisible()

@@ -105,8 +105,8 @@ export async function createBrowserAuthActions(locale: Locale): Promise<AuthActi
   }
   return {
     async getSession() { const {data} = await client.getSession(); return data ?? null },
-    async signInEmail(email, password, returnTo) { const {error} = await client.signIn.email({email, password}); return finish(error, returnTo) },
-    async signUpEmail(name, email, password, returnTo) { const {error} = await client.signUp.email({name, email, password}); return finish(error, returnTo) },
+    async signInEmail(email, password, returnTo) { const callbackURL=returnTo??`/${locale}`;const {error} = await client.signIn.email({email, password, callbackURL}); return finish(error, callbackURL) },
+    async signUpEmail(name, email, password, returnTo) { const callbackURL=returnTo??`/${locale}`;const {error} = await client.signUp.email({name, email, password, callbackURL}); return finish(error, callbackURL) },
     async signInGoogle(returnTo) { const {error} = await client.signIn.social({provider: 'google', callbackURL: returnTo ?? `/${locale}`}); return error ? finish(error, returnTo) : null },
     async signOut() { const {error} = await client.signOut(); return finish(error) },
     async requestPasswordReset(email, redirectTo) {
