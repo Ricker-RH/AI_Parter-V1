@@ -90,7 +90,7 @@ export function createPostHogInitOptions(host: string): PostHogInitOptions {
 }
 
 const productPropertyKeys = [
-  'event_version', 'locale', 'route_name', 'action_source', 'feed', 'category', 'query_length', 'ip_profile_id', 'post_id', 'creation_step', 'visual_type',
+  'event_version', 'locale', 'route_name', 'action_source', 'feed', 'category', 'query_length', 'ip_profile_id', 'post_id', 'creation_step', 'visual_type', 'metric', 'metric_id', 'value', 'rating', 'device_type', 'release',
 ] as const
 const safeId = /^[a-zA-Z0-9_-]{1,128}$/
 const safeDeviceTypes = new Set(['Desktop', 'Mobile', 'Tablet'])

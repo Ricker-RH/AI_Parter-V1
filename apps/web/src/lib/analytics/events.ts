@@ -1,5 +1,5 @@
 import type {Locale} from '../../i18n/config'
-import {createAnalyticsEvent, type AnalyticsActionSource, type AnalyticsClient, type AnalyticsCreationStep, type AnalyticsRouteName, type AnalyticsVisualType} from './contracts'
+import {createAnalyticsEvent, type AnalyticsActionSource, type AnalyticsClient, type AnalyticsCreationStep, type AnalyticsDeviceType, type AnalyticsPerformanceMetric, type AnalyticsPerformanceRating, type AnalyticsRouteName, type AnalyticsVisualType} from './contracts'
 
 function safelyCapture(analytics: AnalyticsClient, event: Parameters<AnalyticsClient['capture']>[0]) {
   try {
@@ -59,4 +59,8 @@ export function trackSubmissionClicked(analytics: AnalyticsClient, properties: {
 
 export function trackChatOpened(analytics: AnalyticsClient, properties: {locale: Locale; ipProfileId: string}) {
   safelyCapture(analytics, createAnalyticsEvent('chat_opened', {locale: properties.locale, ip_profile_id: properties.ipProfileId}))
+}
+
+export function trackPerformanceMeasured(analytics: AnalyticsClient, properties: {locale: Locale; route_name: AnalyticsRouteName; metric: AnalyticsPerformanceMetric; metric_id: string; value: number; rating: AnalyticsPerformanceRating; device_type: AnalyticsDeviceType; release: string}) {
+  safelyCapture(analytics, createAnalyticsEvent('performance_measured', properties))
 }

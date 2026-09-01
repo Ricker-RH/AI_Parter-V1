@@ -2,6 +2,7 @@ import type {Metadata} from 'next'
 import {notFound} from 'next/navigation'
 import '../globals.css'
 import {AppShell} from '../../components/AppShell'
+import {PerformanceReporter} from '../../components/PerformanceReporter'
 import {ThemeProvider} from '../../components/ThemeProvider'
 import {getMessages, isLocale, locales} from '../../i18n/config'
 import {AnalyticsProvider} from '../../lib/analytics/provider'
@@ -24,5 +25,5 @@ export default async function LocaleLayout({children, params}: Readonly<{childre
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
   const authConfigured = readWebAuthEnv(process.env).status === 'configured'
-  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={isCreatorModeEnabled()} labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
+  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><PerformanceReporter locale={candidate} /><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={isCreatorModeEnabled()} labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
 }

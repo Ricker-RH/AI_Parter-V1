@@ -37,6 +37,7 @@ describe('analytics event contract', () => {
       'master_image_selected',
       'submission_clicked',
       'chat_opened',
+      'performance_measured',
     ])
     expect(createAnalyticsEvent('landing_viewed', {locale: 'en', route_name: '/[locale]'})).toEqual({
       name: 'landing_viewed',
