@@ -120,7 +120,11 @@ The shell changes at measured layout thresholds rather than arbitrary device lab
 - mobile post horizontal padding is `12px`;
 - post avatars are approximately `36px` with an approximately `12px` content gap.
 
+Between architecture thresholds, shell geometry is fluid rather than a set of fixed snapshots. The desktop rail stays anchored to the left edge, the primary column continuously centers or contracts within the remaining space up to its `640px` maximum, and gaps use bounded fluid values. A recommendation rail is optional secondary content: it appears only when the viewport can hold the navigation, primary column, bounded gaps, and recommendation width without compressing the primary experience; otherwise the whole recommendation rail exits. It never leaves a reserved blank column or causes horizontal overflow. Messages keep the compact rail at every non-mobile width, while all other ordinary-user pages expand labels only in the full-sidebar range. Only the below-`700px` architecture replaces the left rail with the mobile top and bottom navigation.
+
 Required browser widths are `375`, `430`, `699`, `700`, `768`, `1024`, `1149`, `1150`, and `1440` pixels. Layouts must also remain usable between those exact checks.
+
+Responsive acceptance also includes continuous viewport dragging across `699↔700`, the compact/full-sidebar transition, and the recommendation-rail exit threshold. The primary column, rail, borders, menus, and fixed controls must not jump, overlap, oscillate between modes, or expose temporary empty gutters during these transitions.
 
 ### Desktop at 1150px and above
 
@@ -176,8 +180,10 @@ Anonymous users may:
 - enter the locale Home route;
 - browse the public For You feed on Home;
 - switch the For You visual-type filter;
+- open Search, submit a query, and inspect public search results;
+- open a published post detail route and read its public post and comment content.
 
-Protected destinations and mutations include Following, Search, post detail, AI/IP profile detail, Messages, Notifications, Liked, Saved, My Profile, Creator Center, like, save, follow, comment, report, and chat. They all use one centralized protection policy rather than page-specific ad hoc handling.
+Protected destinations and mutations include Following, AI/IP profile detail, Messages, Notifications, Liked, Saved, My Profile, Creator Center, like, save, follow, comment, report, and chat. Search and post detail are public read surfaces only: any mutation exposed from them enters full-page Auth with a safe return path. All protection uses one centralized capability policy rather than page-specific ad hoc handling.
 
 A protected navigation or action goes to the locale-matched full-page sign-in route with a sanitized same-origin return path. Successful authentication returns to the intended route or safe action context. Invalid or external return paths fall back to locale Home.
 
