@@ -1,13 +1,9 @@
 import {fireEvent, render, screen} from '@testing-library/react'
 import {describe, expect, it} from 'vitest'
 import {MobileNav} from './MobileNav.js'
+import en from '../../messages/en.json'
 
-const labels = {
-  primary: 'Primary', home: 'Home', search: 'Search',
-  messages: 'Messages', bookmarks: 'Bookmarks', profile: 'My Profile', settings: 'Settings',
-  creatorNav: 'Creator Center', notifications: 'Activity',
-  recommendations: 'Recommendations', recommendationsEmpty: 'No recommendations yet', more: 'More',
-}
+const labels = en
 
 describe('MobileNav', () => {
   it('uses the strict five-destination mobile order', () => {
@@ -15,5 +11,10 @@ describe('MobileNav', () => {
 
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label')))
       .toEqual(['Home', 'Messages', 'Creator Center', 'Activity', 'My Profile'])
+  })
+
+  it('does not show Creator when creator mode is disabled', () => {
+    render(<MobileNav creatorModeEnabled={false} labels={labels} locale="en" />)
+    expect(screen.queryByRole('link', {name: en.creatorCenter})).toBeNull()
   })
 })

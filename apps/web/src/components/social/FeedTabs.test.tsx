@@ -17,4 +17,10 @@ describe('FeedTabs', () => {
     expect(capture).toHaveBeenCalledWith({name: 'feed_tab_selected', properties: {event_version: 1, feed: 'following', locale: 'en'}})
     expect(JSON.stringify(capture.mock.calls)).not.toContain('cursor')
   })
+
+  it('preserves the inactive selection over a page rerender without encoding it in the URL', () => {
+    const {rerender} = render(<FeedTabs currentQuery="visualType=anime" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="anime" />)
+    rerender(<FeedTabs currentQuery="feed=following" following labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="all" />)
+    expect(screen.getByRole('tab', {name: 'For you · Anime'})).toBeVisible()
+  })
 })

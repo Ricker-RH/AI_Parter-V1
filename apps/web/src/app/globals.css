@@ -1867,6 +1867,7 @@ button {
 }
 
 .mobile-top-bar { display: none; }
+.brand-logo-compact { display: none; }
 .rail-controls { display: none; }
 .global-more { margin-top: 14px; position: relative; }
 .more-trigger,
@@ -1905,7 +1906,13 @@ button {
   .mobile-feed-tabs { display: none; }
   .desktop-nav { display: block; overflow: visible; padding: 24px 10px; position: relative; }
   .desktop-nav .brand { margin: 2px 0 28px 10px; width: 32px; }
-  .desktop-nav .nav-title, .desktop-nav .global-more { display: none; }
+  .desktop-nav .brand-logo-full { display: none; }
+  .desktop-nav .brand-logo-compact { display: block; }
+  .desktop-nav .nav-title { display: none; }
+  .desktop-nav .global-more { display: block; }
+  .desktop-nav .global-more .more-trigger { font-size: 0; justify-content: center; min-height: 44px; padding: 0; width: 44px; }
+  .desktop-nav .global-more .more-trigger::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
+  .desktop-nav .global-more .global-more-menu { left: 54px; top: 0; }
   .desktop-nav .nav-link { justify-content: center; padding: 0; position: relative; }
   .desktop-nav .nav-link-label { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .desktop-nav .nav-link:hover::after, .desktop-nav .nav-link:focus-visible::after { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; box-shadow: var(--aifans-elevation-2); content: attr(aria-label); left: 54px; padding: 9px 12px; position: absolute; white-space: nowrap; z-index: 20; }
@@ -1918,5 +1925,7 @@ button {
 
 @media (min-width: 1150px) {
   .mobile-nav, .mobile-top-bar { display: none; }
-  .desktop-nav .rail-controls { display: none; }
+  .desktop-nav .rail-controls, .mobile-feed-tabs { display: none; }
+  .desktop-nav .brand-logo-full { display: block; }
+  .desktop-nav .brand-logo-compact { display: none; }
 }

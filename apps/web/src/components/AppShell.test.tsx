@@ -2,7 +2,7 @@ import {render, screen} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 
 let pathname = '/en'
-vi.mock('next/navigation', () => ({usePathname: () => pathname}))
+vi.mock('next/navigation', () => ({usePathname: () => pathname, useSearchParams: () => new URLSearchParams()}))
 import {AppShell} from './AppShell.js'
 
 const labels = {
