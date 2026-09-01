@@ -277,14 +277,17 @@ describe("real social content", () => {
     expect(screen.queryByRole("article")).toBeNull();
   });
 
-  it("refreshes unavailable results once and disables its localized retry control while pending", () => {
+  it("allows another unavailable retry after a refresh keeps the result mounted", () => {
     routerRefresh.mockReset();
     render(<FeedContent labels={labels} locale="en" result={{status: "unavailable"}} />);
 
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
 
     expect(routerRefresh).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", {name: "Retrying…"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Retry"})).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+    expect(routerRefresh).toHaveBeenCalledTimes(2);
   });
 
   it("normalizes legacy hybrid to All and keeps only the ordinary home filter values", () => {
