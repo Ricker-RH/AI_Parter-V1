@@ -92,7 +92,7 @@ button {
 .route-skeleton-avatar { border-radius: 50%; height: 42px; }
 .route-skeleton-line--short { width: 38%; }.route-skeleton-line--medium { width: 68%; }.route-skeleton-line--title { min-height: 26px; width: 42%; }.route-skeleton-media { aspect-ratio: 4 / 5; margin-top: 8px; }
 @keyframes route-skeleton-pulse { 50% { opacity: .58; } }
-.route-error { display: grid; gap: 12px; justify-items: start; padding: 32px 24px; }.route-error-actions { display: flex; gap: 12px; }
+.route-error { border: 1px solid var(--shell-border); border-radius: 16px; display: grid; gap: 12px; justify-items: start; margin: 24px; max-width: 480px; padding: 28px 24px; }.route-error h1 { font-size: 20px; letter-spacing: -0.02em; margin: 0; }.route-error p { color: var(--shell-muted); margin: 0; }.route-error-actions { display: flex; flex-wrap: wrap; gap: 10px; }.route-error-actions a, .route-error-actions button, .unavailable-retry { align-items: center; background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 999px; color: var(--shell-surface); cursor: pointer; display: inline-flex; justify-content: center; min-height: 40px; padding: 0 16px; }.route-error-actions a:hover, .route-error-actions button:hover, .unavailable-retry:hover { opacity: .84; }.unavailable-retry { margin: 0 24px 24px; }.unavailable-retry:disabled { cursor: wait; opacity: .6; }
 @media (prefers-reduced-motion: reduce) { .route-skeleton { animation: none; } }
 
 .shell {
@@ -184,6 +184,8 @@ button {
   line-height: 1.15;
   margin: 0 0 22px;
 }
+.shell[data-shell="public"] .page-header { align-items: center; display: flex; min-height: 60px; padding: 0 20px; }
+.shell[data-shell="public"] .page-title { font-size: 19px; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; margin: 0; }
 .tabs {
   display: flex;
   gap: 26px;
@@ -376,6 +378,11 @@ button {
   gap: 10px;
   padding: 16px 24px;
 }
+.search-form { border-bottom: 1px solid var(--shell-border); padding: 10px 16px; }
+.search-form-field { align-items: center; background: var(--shell-hover); border: 1px solid transparent; border-radius: 999px; display: flex; gap: 8px; min-height: 46px; padding-left: 14px; }
+.search-form-field:focus-within { background: var(--shell-surface); border-color: var(--shell-text); }
+.search-form input { background: transparent; border: 0; color: inherit; flex: 1; min-width: 0; outline: 0; padding: 0; }
+.search-form button { align-self: stretch; background: var(--shell-text); border: 0; border-radius: 999px; color: var(--shell-surface); cursor: pointer; font-weight: 650; min-width: 44px; padding: 0 16px; }
 .comment-composer textarea {
   background: transparent;
   border: 1px solid var(--shell-border);
@@ -481,12 +488,7 @@ button {
   letter-spacing: -0.01em;
   margin: 0 0 14px;
 }
-.rail-card .empty {
-  padding: 0;
-}
-.rail-card .empty h2 {
-  display: none;
-}
+.rail-empty { color: var(--shell-muted); font-size: 14px; margin: 0; }
 .settings {
   display: grid;
   gap: 28px;
@@ -1873,6 +1875,11 @@ button {
   .mobile-brand { justify-self: center; width: 94px; }
   .mobile-brand svg { display: block; width: 100%; }
   .mobile-search { align-items: center; display: flex; justify-content: center; min-height: 44px; }
+  .post-actions button,
+  .comment-composer button,
+  .profile-follow button,
+  .notification-read,
+  .search-form button { min-height: 44px; }
   .mobile-top-bar .global-more-menu { left: 0; top: 48px; }
   .mobile-nav { background: color-mix(in srgb, var(--shell-surface) 94%, transparent); border-top: 1px solid var(--shell-border); bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); left: 0; padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)); position: fixed; right: 0; z-index: 10; }
   .mobile-nav[data-count="4"] { grid-template-columns: repeat(4, 1fr); }

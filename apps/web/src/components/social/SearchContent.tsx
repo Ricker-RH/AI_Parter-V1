@@ -27,10 +27,10 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
   const profileHref = (profileId: string) => canMutate ? `/${locale}/profiles/${profileId}` : authHref(locale, `/${locale}/profiles/${profileId}`)
   return <>
     {normalized ? <SearchAnalytics category={category} locale={locale} queryLength={normalized.length} /> : null}
-    <form action={`/${locale}/search`} className="comment-composer" role="search">
-      <label htmlFor="search-query">{labels.searchInput ?? labels.search}</label>
-      <div className="account-row">
-        <input aria-label={labels.search ?? 'Search'} defaultValue={normalized} id="search-query" name="q" placeholder={labels.searchInput ?? labels.search} type="search" />
+    <form action={`/${locale}/search`} className="search-form" role="search">
+      <label className="sr-only" htmlFor="search-query">{labels.searchInput ?? labels.search}</label>
+      <div className="search-form-field">
+        <input defaultValue={normalized} id="search-query" name="q" placeholder={labels.searchInput ?? labels.search} type="search" />
         {category !== 'all' ? <input aria-label={labels.searchCategory ?? 'Search category'} name="category" type="hidden" value={category} /> : null}
         <button type="submit">{labels.searchSubmit ?? labels.search}</button>
       </div>

@@ -10,8 +10,9 @@ const labels = {
 }
 
 describe('RightRail', () => {
-  it('applies the shared empty-state layout class', () => {
+  it('keeps the honest empty recommendation message visible', () => {
     render(<RightRail labels={labels} />)
-    expect(screen.getByRole('region', {name: 'No recommendations yet'}).parentNode).toHaveClass('empty')
+    expect(screen.getByRole('region', {name: 'Recommendations'})).toHaveTextContent('No recommendations yet')
+    expect(screen.getByText('No recommendations yet', {selector: 'p'})).toBeVisible()
   })
 })

@@ -22,8 +22,14 @@ describe('public search page', () => {
   it('renders an anonymous search form without requesting an empty query', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
     expect(screen.getByRole('search')).toBeVisible()
-    expect(screen.getByRole('searchbox', {name: 'Search'})).toBeVisible()
+    expect(screen.getByRole('searchbox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('placeholder', 'Search AI/IP profiles and posts')
+    expect(screen.getByText('Search AI/IP profiles and posts')).toHaveClass('sr-only')
     expect(fetchSearch).not.toHaveBeenCalled()
+  })
+
+  it('uses the matching Chinese AI/IP-and-posts search copy', async () => {
+    render(await SearchPage({params: Promise.resolve({locale: 'zh-CN'}), searchParams: Promise.resolve({})}))
+    expect(screen.getByRole('searchbox', {name: '搜索 AI/IP 资料和帖子'})).toHaveAttribute('placeholder', '搜索 AI/IP 资料和帖子')
   })
 
   it('requests normalized query results and renders public profiles', async () => {

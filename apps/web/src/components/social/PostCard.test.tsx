@@ -25,7 +25,7 @@ const labels: SocialLabels = {
   notificationFollow: "followed you", notificationPostLike: "liked your post", notificationReply: "replied to your comment",
   notificationsEmptyTitle: "No notifications yet", notificationsEmptyDescription: "Updates appear here.", postNotFoundTitle: "Post not found",
   postNotFoundDescription: "It may have been removed.", removeBookmark: "Remove bookmark", unlike: "Unlike", unavailableTitle: "Unable to load",
-  unavailableDescription: "Try again later.", interactionError: "Action failed. Try again.", loadMore: "Load more", aifansActor: "AIFANS",
+  unavailableDescription: "Try again later.", unavailableRetry: "Retry", unavailableRetrying: "Retrying", interactionError: "Action failed. Try again.", loadMore: "Load more", aifansActor: "AIFANS",
   visualTypeFilter: "IP style", allTypes: "All", realistic: "Realistic", anime: "Anime", hybrid: "Hybrid", createdBy: "Created by",
   commentPlaceholder: "Write a comment", commentSubmit: "Comment", commentSending: "Posting", commentSuccess: "Posted", reply: "Reply",
   signInToComment: "Sign in to comment", markRead: "Mark as read", markingRead: "Marking", profileNotFoundTitle: "Profile not found",

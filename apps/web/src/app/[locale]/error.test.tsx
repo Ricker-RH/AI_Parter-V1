@@ -13,11 +13,11 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/zh-CN/posts/example" })
 
 describe("localized route error boundary", () => {
   it("uses Chinese recovery labels without exposing an error stack", () => {
-    const reset = vi.fn();
-    render(<ErrorPage error={new Error("private failure details")} reset={reset} />);
+    const retry = vi.fn();
+    render(<ErrorPage error={new Error("private failure details")} retry={retry} />);
 
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    expect(reset).toHaveBeenCalledOnce();
+    expect(retry).toHaveBeenCalledOnce();
     expect(screen.getByRole("link", { name: "返回首页" })).toHaveAttribute(
       "href",
       "/zh-CN",

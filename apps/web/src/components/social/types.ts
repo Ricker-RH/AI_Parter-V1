@@ -32,6 +32,8 @@ export interface SocialLabels {
   unlike: string
   unavailableTitle: string
   unavailableDescription: string
+  unavailableRetry: string
+  unavailableRetrying: string
   visualTypeFilter: string
   allTypes: string
   realistic: string

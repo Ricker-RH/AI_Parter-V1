@@ -19,4 +19,16 @@ describe('ordinary-user fluid shell CSS contract', () => {
   it('keeps the messages shell compact at every desktop width', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.messages-shell \{[\s\S]*?grid-template-columns: 76px minmax\(0, 1fr\)/)
   })
+
+  it('scopes Threads-like search and header density to the public shell', () => {
+    expect(stylesheet).toMatch(/\.search-form-field \{[^}]*display: flex[^}]*min-height: 46px/)
+    expect(stylesheet).toMatch(/\.shell\[data-shell="public"\] \.page-header \{[^}]*min-height: 60px/)
+    expect(stylesheet).toMatch(/\.shell\[data-shell="public"\] \.page-title \{[^}]*font-size: 19px/)
+  })
+
+  it('keeps public mobile controls at least 44px and styles route recovery actions', () => {
+    expect(stylesheet).toMatch(/\.post-actions button,\s*\.comment-composer button,\s*\.profile-follow button,\s*\.notification-read,\s*\.search-form button \{[^}]*min-height: 44px/)
+    expect(stylesheet).toMatch(/\.route-error \{[^}]*border: 1px solid var\(--shell-border\)/)
+    expect(stylesheet).toMatch(/\.route-error-actions a, \.route-error-actions button, \.unavailable-retry \{[^}]*border-radius: 999px/)
+  })
 })
