@@ -1,9 +1,9 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {fetchSearch, optionalAccess} = vi.hoisted(() => ({fetchSearch: vi.fn(), optionalAccess: vi.fn()}))
+const {fetchSearch, optionalAccess, authRedirect} = vi.hoisted(() => ({fetchSearch: vi.fn(), optionalAccess: vi.fn(), authRedirect: vi.fn()}))
 vi.mock('../../../lib/social-api.js', () => ({fetchSearch}))
-vi.mock('../../../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess}))
+vi.mock('../../../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess, redirectToUserSignIn: authRedirect}))
 
 import SearchPage from './page.js'
 
@@ -17,7 +17,7 @@ const profile = {
 }
 
 describe('public search page', () => {
-  beforeEach(() => { fetchSearch.mockReset(); optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'}) })
+  beforeEach(() => { fetchSearch.mockReset(); optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'}); authRedirect.mockReset() })
 
   it('renders an anonymous search form without requesting an empty query', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
@@ -52,5 +52,32 @@ describe('public search page', () => {
     await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna'})})
     expect(optionalAccess).toHaveBeenCalledOnce()
     expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({q: 'luna', token: 'token'}))
+  })
+
+  it('keeps the current cursor in post interaction return paths', async () => {
+    fetchSearch.mockResolvedValue({status: 'ok', data: {items: [{type: 'post', post: {
+      id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf31', body: 'A post', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile,
+      likeCount: 0, commentCount: 0,
+    }}], nextCursor: null}})
+    render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna', category: 'posts', cursor: 'abc_DEF-123'})}))
+    expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({cursor: 'abc_DEF-123'}))
+    expect(screen.getByRole('link', {name: 'Sign in to like, save, or follow'})).toHaveAttribute('href', expect.stringContaining(encodeURIComponent('/en/search?q=luna&category=posts&cursor=abc_DEF-123')))
+  })
+
+  it('redirects a stale authenticated search session to the bounded search URL', async () => {
+    optionalAccess.mockResolvedValue({status: 'authenticated', token: 'expired-token'})
+    fetchSearch.mockResolvedValue({status: 'auth-required'})
+    await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna', category: 'ips', cursor: 'abc_DEF-123'})})
+    expect(authRedirect).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/search?q=luna&category=ips&cursor=abc_DEF-123'})
+  })
+
+  it('links anonymous profile results to sign in while authenticated users can open the profile', async () => {
+    fetchSearch.mockResolvedValue({status: 'ok', data: {items: [{type: 'profile', profile}], nextCursor: null}})
+    render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna'})}))
+    expect(screen.getByRole('link', {name: 'Luna'})).toHaveAttribute('href', '/en/auth/sign-in?next=%2Fen%2Fprofiles%2F5b8ba43c-0a9e-43ec-87be-448a9e1ebf30')
+
+    optionalAccess.mockResolvedValue({status: 'authenticated', token: 'token'})
+    render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna'})}))
+    expect(screen.getAllByRole('link', {name: 'Luna'}).at(-1)).toHaveAttribute('href', '/en/profiles/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30')
   })
 })

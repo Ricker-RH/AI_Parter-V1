@@ -1,4 +1,5 @@
 import {describe, expect, it} from 'vitest'
+import {encodeSearchCursor} from '@aifans/contracts'
 import {authHref, readAdminReturnTo, readUserReturnTo} from './return-to.js'
 
 describe('admin auth return target', () => {
@@ -23,6 +24,15 @@ describe('admin auth return target', () => {
 })
 
 describe('user auth return target', () => {
+  it('accepts a contract-sized CJK query and its encoded cursor', () => {
+    const query = '月'.repeat(80)
+    const cursor = encodeSearchCursor({
+      v: 1, kind: 'search', category: 'ips', query, resultType: 'profile',
+      displayName: query, id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30',
+    })
+    const target = `/en/search?q=${encodeURIComponent(query)}&category=ips&cursor=${cursor}`
+    expect(readUserReturnTo('en', target)).toBe(target)
+  })
   it('builds an encoded login href only from a validated user target', () => {
     expect(authHref('en', '/en/messages')).toBe('/en/auth/sign-in?next=%2Fen%2Fmessages')
     expect(authHref('en', 'https://attacker.example')).toBe('/en/auth/sign-in?next=%2Fen')

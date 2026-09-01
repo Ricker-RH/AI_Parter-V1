@@ -1,6 +1,7 @@
 import type {SearchCategory, SearchPage} from '@aifans/contracts'
 import {EmptyState} from '@aifans/ui'
 import Link from 'next/link'
+import {authHref} from '../../lib/auth/return-to'
 import type {Locale} from '../../i18n/config'
 import type {SocialApiResult} from '../../lib/social-api'
 import {PostCard} from './PostCard'
@@ -20,8 +21,10 @@ function searchHref(locale: Locale, q: string, category: SearchCategory, cursor?
   return `/${locale}/search?${params}`
 }
 
-export function SearchContent({locale, labels, query, category, result, canMutate = false}: {locale: Locale; labels: SocialLabels; query?: string; category: SearchCategory; result?: SocialApiResult<SearchPage>; canMutate?: boolean}) {
+export function SearchContent({locale, labels, query, category, cursor, result, canMutate = false}: {locale: Locale; labels: SocialLabels; query?: string; category: SearchCategory; cursor?: string; result?: SocialApiResult<SearchPage>; canMutate?: boolean}) {
   const normalized = query?.trim().replace(/\s+/g, ' ') ?? ''
+  const returnTo = normalized ? searchHref(locale, normalized, category, cursor) : `/${locale}/search`
+  const profileHref = (profileId: string) => canMutate ? `/${locale}/profiles/${profileId}` : authHref(locale, `/${locale}/profiles/${profileId}`)
   return <>
     {normalized ? <SearchAnalytics category={category} locale={locale} queryLength={normalized.length} /> : null}
     <form action={`/${locale}/search`} className="comment-composer" role="search">
@@ -42,8 +45,8 @@ export function SearchContent({locale, labels, query, category, result, canMutat
       : result.data.items.length === 0 ? <div className="empty"><EmptyState title={labels.searchNoResults ?? labels.searchEmptyTitle ?? labels.homeEmptyTitle} /></div>
       : <section aria-labelledby="search-results-title" className="search-results"><h2 className="section-title" id="search-results-title">{labels.searchResults ?? labels.search}</h2><div className="feed-list">
         {result.data.items.map((item) => item.type === 'post'
-          ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} returnTo={searchHref(locale, normalized, category)} />
-          : <article className="post-card" key={`profile-${item.profile.id}`}><h3>{item.profile.displayName}</h3><p className="author-meta">@{item.profile.username} · {labels[item.profile.visualType] ?? item.profile.visualType}</p>{item.profile.bio ? <p>{item.profile.bio}</p> : null}</article>)}
+          ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} returnTo={returnTo} />
+          : <article className="post-card" key={`profile-${item.profile.id}`}><h3><Link href={profileHref(item.profile.id)}>{item.profile.displayName}</Link></h3><p className="author-meta">@{item.profile.username} · {labels[item.profile.visualType] ?? item.profile.visualType}</p>{item.profile.bio ? <p>{item.profile.bio}</p> : null}</article>)}
         {result.data.nextCursor ? <Link className="load-more" href={searchHref(locale, normalized, category, result.data.nextCursor)}>{labels.loadMore}</Link> : <p className="search-end">{labels.searchEnd ?? labels.loadMore}</p>}
       </div></section>}
   </>

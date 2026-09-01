@@ -31,7 +31,7 @@ function hasSafeSearchQuery(query: string): boolean {
   const q = params.get('q') ?? ''
   if (q.length < 1 || q.length > 80 || q.trim().replace(/\s+/g, ' ') !== q) return false
   if (params.getAll('category').length > 1 || (params.get('category') !== null && !['all', 'ips', 'posts'].includes(params.get('category')!))) return false
-  if (params.getAll('cursor').length > 1 || (params.get('cursor') !== null && !/^[A-Za-z0-9_-]{1,512}$/.test(params.get('cursor')!))) return false
+  if (params.getAll('cursor').length > 1 || (params.get('cursor') !== null && !/^[A-Za-z0-9_-]{1,2048}$/.test(params.get('cursor')!))) return false
   return true
 }
 
