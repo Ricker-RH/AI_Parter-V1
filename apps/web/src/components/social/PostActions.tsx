@@ -30,11 +30,11 @@ export function PostActions({postId, authorId, liked, bookmarked, followsAuthor,
     setError(false)
     try {
       const response = await fetch(`/api/social${path}`, {credentials: 'include', method})
-      const body: unknown = await response.json()
       if (response.status === 401) {
         router.replace(authHref(locale, `${window.location.pathname}${window.location.search}`))
         return
       }
+      const body: unknown = await response.json()
       if (!response.ok || !validMutationResponse(body, method)) throw new Error('mutation failed')
       setState((current) => ({...current, [action]: !active}))
       router.refresh()

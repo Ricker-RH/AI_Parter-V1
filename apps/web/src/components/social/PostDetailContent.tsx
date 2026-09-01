@@ -10,7 +10,7 @@ import {CommentComposer} from './CommentComposer'
 export function PostDetailContent({result, locale, labels, moreHref, authenticated=false}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined;authenticated?:boolean}) {
   if (result.status !== 'ok') return <ResultState labels={labels} result={result} />
   return <div>
-    <PostCard labels={labels} linked={false} locale={locale} post={result.data} returnTo={`/${locale}/posts/${result.data.id}`} />
+    <PostCard canMutate={authenticated} labels={labels} linked={false} locale={locale} post={result.data} returnTo={`/${locale}/posts/${result.data.id}`} />
     <section aria-labelledby="comments-title" className="comments-section">
       <h2 id="comments-title">{labels.comments}</h2>
       <CommentComposer authenticated={authenticated} labels={labels} locale={locale} postId={result.data.id} />

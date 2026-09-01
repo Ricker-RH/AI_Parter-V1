@@ -15,5 +15,5 @@ export default async function BookmarksPage({params, searchParams}: {params: Pro
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo: `/${locale}/bookmarks${cursor ? `?${new URLSearchParams({cursor})}` : ''}`})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/bookmarks?${new URLSearchParams({cursor: nextCursor})}` : undefined
-  return <main><header className="page-header"><h1 className="page-title">{messages.bookmarks}</h1></header><FeedContent empty="bookmarks" labels={messages} locale={locale} moreHref={moreHref} result={result} /></main>
+  return <main><header className="page-header"><h1 className="page-title">{messages.bookmarks}</h1></header><FeedContent canMutate empty="bookmarks" labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={`/${locale}/bookmarks${cursor ? `?${new URLSearchParams({cursor})}` : ''}`} /></main>
 }

@@ -33,7 +33,7 @@ describe('PostActions', () => {
 
   it('sends an expired session to localized full-page sign in without retrying the mutation', async () => {
     window.history.replaceState({}, '', '/en/posts/22222222-2222-4222-8222-222222222222?commentCursor=next')
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({code: 'AUTH_REQUIRED'}), {status: 401})))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
     render(<PostActions authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Like'}))

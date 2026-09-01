@@ -1,18 +1,19 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {access, authRedirect, fetchFeed} = vi.hoisted(() => ({access: vi.fn(), authRedirect: vi.fn(), fetchFeed: vi.fn(async () => ({status: 'ok', data: {items: [], nextCursor: null}}))}))
+const {access, optionalAccess, authRedirect, fetchFeed} = vi.hoisted(() => ({access: vi.fn(), optionalAccess: vi.fn(), authRedirect: vi.fn(), fetchFeed: vi.fn(async () => ({status: 'ok', data: {items: [], nextCursor: null}}))}))
 vi.mock('../../lib/request-cookie.js', () => ({requestCookie: vi.fn(async () => undefined)}))
 vi.mock('../../lib/social-api.js', () => ({
   fetchFeed,
 }))
-vi.mock('../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn: authRedirect}))
+vi.mock('../../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess, requireAuthenticatedPage: access, redirectToUserSignIn: authRedirect}))
 
 import HomePage from './page.js'
 
 describe('home feed query navigation', () => {
   beforeEach(() => {
     access.mockReset().mockResolvedValue({status: 'authenticated', token: 'token'})
+    optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'})
     authRedirect.mockReset()
     fetchFeed.mockClear()
   })
@@ -82,5 +83,13 @@ describe('home feed query navigation', () => {
     })
     expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({kind: 'for_you'}))
     expect(access).not.toHaveBeenCalled()
+  })
+
+  it('passes anonymous For You relationship projections as read-only capabilities', async () => {
+    render(await HomePage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
+
+    expect(optionalAccess).toHaveBeenCalledOnce()
+    expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({kind: 'for_you'}))
+    expect(screen.queryByRole('button', {name: 'Like'})).toBeNull()
   })
 })

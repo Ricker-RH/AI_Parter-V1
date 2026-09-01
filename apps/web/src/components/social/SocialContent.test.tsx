@@ -215,12 +215,10 @@ describe("real social content", () => {
   });
 
   it("shows anonymous users a localized sign-in interaction control", () => {
-    const anonymous = { ...post };
-    delete anonymous.viewerHasLiked;
-    delete anonymous.viewerHasBookmarked;
-    delete anonymous.viewerFollowsAuthor;
+    const anonymous = {...post, viewerHasLiked: false, viewerHasBookmarked: false, viewerFollowsAuthor: false};
     render(
       <FeedContent
+        canMutate={false}
         labels={labels}
         locale="en"
         result={{
@@ -232,6 +230,14 @@ describe("real social content", () => {
     expect(
       screen.getByRole("link", { name: "Sign in to like, save, or follow" }),
     ).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.queryByRole("button", {name: "Like"})).toBeNull();
+  });
+
+  it("keeps authenticated false relationship values interactive", () => {
+    const signedIn = {...post, viewerHasLiked: false, viewerHasBookmarked: false, viewerFollowsAuthor: false};
+    render(<FeedContent canMutate labels={labels} locale="en" result={{status: "ok", data: {items: [signedIn], nextCursor: null}}} />);
+
+    expect(screen.getByRole("button", {name: "Like"})).toBeEnabled();
   });
 
   it("renders localized empty, authentication, and unavailable states without posts", () => {

@@ -43,12 +43,14 @@ export function PostCard({
   labels,
   linked = true,
   returnTo,
+  canMutate = false,
 }: {
   post: FeedPost;
   locale: Locale;
   labels: SocialLabels;
   linked?: boolean;
   returnTo?: string;
+  canMutate?: boolean;
 }) {
   const analytics = useAnalytics();
   const isThreeImageGrid = post.media?.length === 3;
@@ -140,7 +142,7 @@ export function PostCard({
           <span>{labels.followingAction}</span>
         ) : null}
       </footer>
-      {post.viewerHasLiked !== undefined &&
+      {canMutate && post.viewerHasLiked !== undefined &&
       post.viewerHasBookmarked !== undefined &&
       post.viewerFollowsAuthor !== undefined ? (
         <PostActions
