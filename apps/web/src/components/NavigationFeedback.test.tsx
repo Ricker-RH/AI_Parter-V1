@@ -2,7 +2,8 @@ import {act, fireEvent, render, screen} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 
 let pathname = '/en'
-vi.mock('next/navigation', () => ({usePathname: () => pathname}))
+let search = ''
+vi.mock('next/navigation', () => ({usePathname: () => pathname, useSearchParams: () => new URLSearchParams(search)}))
 vi.mock('../lib/analytics/provider.js', () => ({
   routeNameForPath: (value: string) => value === '/en' ? '/[locale]' : value === '/en/messages' ? '/[locale]/messages' : null,
   useAnalytics: () => ({capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn()}),
@@ -32,6 +33,29 @@ describe('NavigationFeedback', () => {
     fireEvent.pointerDown(screen.getByRole('link', {name: 'External'}), {button: 0})
     fireEvent.pointerDown(screen.getByRole('link', {name: 'Messages'}), {button: 0, ctrlKey: true})
 
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('tracks query-only internal navigation and clears once its full destination is current', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const view = render(<><NavigationFeedback locale="en" release="test"/><a href="/en?feed=following">Following</a><main>Home</main></>)
+    fireEvent.pointerDown(screen.getByRole('link', {name: 'Following'}), {button: 0})
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    search = 'feed=following'
+    view.rerender(<><NavigationFeedback locale="en" release="test"/><a href="/en?feed=following">Following</a><main>Following</main></>)
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+    expect(screen.queryByRole('status')).toBeNull()
+    vi.unstubAllGlobals()
+    search = ''
+  })
+
+  it('clears feedback when a pointer activation is cancelled', () => {
+    render(<><NavigationFeedback locale="en" release="test"/><a href="/en/messages">Messages</a><main>Home</main></>)
+    const link = screen.getByRole('link', {name: 'Messages'})
+    fireEvent.pointerDown(link, {button: 0})
+    fireEvent.pointerCancel(link)
     expect(screen.queryByRole('status')).toBeNull()
   })
 

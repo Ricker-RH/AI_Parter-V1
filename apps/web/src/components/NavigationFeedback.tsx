@@ -2,13 +2,13 @@
 
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {flushSync} from 'react-dom'
-import {usePathname} from 'next/navigation'
+import {usePathname, useSearchParams} from 'next/navigation'
 import type {Locale} from '../i18n/config'
 import {routeNameForPath, useAnalytics} from '../lib/analytics/provider'
 import {deviceType, trackPerformanceMeasured} from '../lib/analytics/performance'
 import type {AnalyticsPerformanceMetric, AnalyticsPerformanceRating} from '../lib/analytics/contracts'
 
-type PendingNavigation = {id: number; startedAt: number; targetPathname: string}
+type PendingNavigation = {id: number; startedAt: number; targetPathname: string; targetRoute: string}
 
 function rating(metric: AnalyticsPerformanceMetric, value: number): AnalyticsPerformanceRating {
   const budget = metric === 'interaction' ? 100 : metric === 'skeleton' ? 150 : 800
@@ -24,13 +24,16 @@ function destinationFrom(target: EventTarget | null) {
   const anchor = target.closest('a[href]')
   if (!(anchor instanceof HTMLAnchorElement) || anchor.target || anchor.hasAttribute('download')) return null
   const destination = new URL(anchor.href, window.location.href)
-  if (destination.origin !== window.location.origin || destination.pathname === window.location.pathname) return null
-  return destination.pathname
+  const targetRoute = `${destination.pathname}${destination.search}`
+  if (destination.origin !== window.location.origin || targetRoute === `${window.location.pathname}${window.location.search}`) return null
+  return {targetPathname: destination.pathname, targetRoute}
 }
 
 export function NavigationFeedback({locale, release}: {locale: Locale; release: string}) {
   const analytics = useAnalytics()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentRoute = `${pathname}${searchParams.size ? `?${searchParams}` : ''}`
   const sequence = useRef(0)
   const [pending, setPending] = useState<PendingNavigation | null>(null)
 
@@ -52,9 +55,9 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
 
   useEffect(() => {
     function start(target: EventTarget | null) {
-      const targetPathname = destinationFrom(target)
-      if (!targetPathname) return
-      const active = {id: ++sequence.current, startedAt: performance.now(), targetPathname}
+      const destination = destinationFrom(target)
+      if (!destination) return
+      const active = {id: ++sequence.current, startedAt: performance.now(), ...destination}
       flushSync(() => setPending(active))
       measure('interaction', active)
     }
@@ -67,9 +70,12 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     }
     document.addEventListener('pointerdown', onPointerDown, true)
     document.addEventListener('keydown', onKeyDown, true)
+    const onPointerCancel = () => setPending(null)
+    document.addEventListener('pointercancel', onPointerCancel, true)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown, true)
+      document.removeEventListener('pointercancel', onPointerCancel, true)
     }
   }, [measure])
 
@@ -84,16 +90,18 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     reportSkeleton()
     const observer = new MutationObserver(reportSkeleton)
     observer.observe(document.body, {childList: true, subtree: true})
+    const timeout = window.setTimeout(() => setPending((current) => current?.id === pending.id ? null : current), 1500)
     const frame = requestAnimationFrame(() => {
-      if (pathname !== pending.targetPathname || !document.querySelector('main')) return
+      if (currentRoute !== pending.targetRoute || !document.querySelector('main:not(.route-skeleton)')) return
       measure('navigation', pending)
       setPending(null)
     })
     return () => {
       cancelAnimationFrame(frame)
+      window.clearTimeout(timeout)
       observer.disconnect()
     }
-  }, [measure, pathname, pending])
+  }, [currentRoute, measure, pending])
 
   return pending ? <div aria-atomic="true" aria-live="polite" className="navigation-feedback" data-navigation-pending="true" role="status"><span className="navigation-feedback__indicator" aria-hidden="true"/><span className="sr-only">{pendingLabel(locale)}</span></div> : null
 }
