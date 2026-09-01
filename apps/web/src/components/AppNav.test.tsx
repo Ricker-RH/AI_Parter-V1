@@ -1,4 +1,5 @@
 import {render, screen} from '@testing-library/react'
+import {readFileSync} from 'node:fs'
 import {describe, expect, it, vi} from 'vitest'
 import {AppNav} from './AppNav.js'
 
@@ -34,5 +35,10 @@ describe('AppNav', () => {
   it('marks Messages navigation as permanently compact for CSS contracts', () => {
     const {container} = render(<AppNav compact labels={labels} locale="en" />)
     expect(container.querySelector('.desktop-nav-compact[data-compact="true"]')).toBeTruthy()
+  })
+
+  it('keeps expanded labels available for the compact rail at desktop widths', () => {
+    const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
+    expect(css).toContain('.desktop-nav-compact[data-expanded] .nav-link-label')
   })
 })
