@@ -1911,5 +1911,5 @@ button {
 }
 
 @media (min-width: 1328px) {
-  .shell[data-shell="public"] .right-rail { display: block; left: max(936px, calc((100vw + 688px) / 2)); position: absolute; top: 0; width: 320px; }
+  .shell[data-shell="public"] .right-rail { bottom: 0; display: block; left: max(936px, calc((100vw + 688px) / 2)); position: absolute; top: 0; width: 320px; }
 }

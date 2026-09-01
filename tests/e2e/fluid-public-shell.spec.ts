@@ -46,3 +46,16 @@ test('ordinary public shell switches to the five-item mobile navigation below 70
     expect(current.overflow, `unexpected horizontal overflow at ${width}px`).toBe(false)
   }
 })
+
+test('recommendations stay sticky beside a long public feed', async ({page}) => {
+  await openAt(page, 1440)
+  await page.locator('.content').evaluate((element) => { element.style.minHeight = '2000px' })
+
+  await page.evaluate(() => window.scrollTo(0, 400))
+  const firstOffset = await page.locator('.rail-sticky').evaluate((element) => element.getBoundingClientRect().top)
+  await page.evaluate(() => window.scrollTo(0, 800))
+  const secondOffset = await page.locator('.rail-sticky').evaluate((element) => element.getBoundingClientRect().top)
+
+  expect(Math.abs(firstOffset), 'the rail must reach the viewport top after the feed scrolls').toBeLessThanOrEqual(1)
+  expect(Math.abs(secondOffset - firstOffset), 'the rail must remain fixed while the feed continues scrolling').toBeLessThanOrEqual(1)
+})
