@@ -30,4 +30,9 @@ describe('AppNav', () => {
     expect(container.querySelector('.brand-logo-full')).toBeTruthy()
     expect(container.querySelector('.brand-logo-compact')).toBeTruthy()
   })
+
+  it('marks Messages navigation as permanently compact for CSS contracts', () => {
+    const {container} = render(<AppNav compact labels={labels} locale="en" />)
+    expect(container.querySelector('.desktop-nav-compact[data-compact="true"]')).toBeTruthy()
+  })
 })

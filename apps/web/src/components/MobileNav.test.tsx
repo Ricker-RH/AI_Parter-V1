@@ -14,7 +14,8 @@ describe('MobileNav', () => {
   })
 
   it('does not show Creator when creator mode is disabled', () => {
-    render(<MobileNav creatorModeEnabled={false} labels={labels} locale="en" />)
+    const {container} = render(<MobileNav creatorModeEnabled={false} labels={labels} locale="en" />)
     expect(screen.queryByRole('link', {name: en.creatorCenter})).toBeNull()
+    expect(container.querySelector('.mobile-nav')).toHaveAttribute('data-count', '4')
   })
 })
