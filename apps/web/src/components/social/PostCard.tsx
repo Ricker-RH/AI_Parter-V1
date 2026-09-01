@@ -1,6 +1,6 @@
 "use client";
 
-import type { FeedPost } from "@aifans/contracts";
+import type { FeedPost, PublicPostMedia } from "@aifans/contracts";
 import Link from "next/link";
 import type { Locale } from "../../i18n/config";
 import { trackPostViewed } from "../../lib/analytics/events";
@@ -13,6 +13,27 @@ function publishedTime(value: string, locale: Locale) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function isPositiveNumber(value: number | null): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function mediaGeometry(media: PublicPostMedia) {
+  const width = media.width;
+  const height = media.height;
+  const aspectRatio = media.aspectRatio;
+  const hasDimensions = isPositiveNumber(width) && isPositiveNumber(height);
+
+  return {
+    aspectRatio: hasDimensions
+      ? width / height
+      : isPositiveNumber(aspectRatio)
+        ? aspectRatio
+        : 4 / 5,
+    height: hasDimensions ? height : undefined,
+    width: hasDimensions ? width : undefined,
+  };
 }
 
 export function PostCard({
@@ -32,16 +53,25 @@ export function PostCard({
       {post.body ? <p className="post-body">{post.body}</p> : null}
       {post.media?.length ? (
         <div className="post-media-grid" data-count={post.media.length}>
-          {post.media.map((media) => (
-            <img
-              alt={media.altText ?? ""}
-              height={media.height ?? undefined}
-              key={media.id}
-              loading="lazy"
-              src={media.url}
-              width={media.width ?? undefined}
-            />
-          ))}
+          {post.media.map((media) => {
+            const geometry = mediaGeometry(media);
+
+            return (
+              <div
+                className="post-media-frame"
+                key={media.id}
+                style={{ aspectRatio: geometry.aspectRatio }}
+              >
+                <img
+                  alt={media.altText ?? ""}
+                  height={geometry.height}
+                  loading="lazy"
+                  src={media.url}
+                  width={geometry.width}
+                />
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </>
