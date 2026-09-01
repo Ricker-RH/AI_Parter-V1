@@ -22,7 +22,10 @@ describe('activity center', () => {
     expect(fetchLiked).toHaveBeenCalledWith({cursor: 'opaque', token: 'token'})
     expect(fetchBookmarks).not.toHaveBeenCalled()
     expect(fetchNotifications).not.toHaveBeenCalled()
-    expect(screen.getByRole('tab', {name: 'Liked'})).toHaveAttribute('aria-selected', 'true')
+    const liked = screen.getByRole('link', {name: 'Liked'})
+    expect(liked).toHaveAttribute('aria-current', 'page')
+    expect(liked).toHaveAttribute('href', '/en/activity?tab=liked')
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
   it('does not read any activity dataset for an anonymous visitor', async () => {

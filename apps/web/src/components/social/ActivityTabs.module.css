@@ -1,0 +1,42 @@
+.tabs {
+  border-bottom: 1px solid var(--shell-border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.list {
+  display: flex;
+  min-width: 100%;
+  padding-inline: 24px;
+}
+
+.tab {
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  color: inherit;
+  display: flex;
+  flex: 1 0 0;
+  font-size: 15px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 8px;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tab[aria-current='page'] {
+  border-color: currentColor;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .list {
+    min-width: max-content;
+    padding-inline: 16px;
+  }
+
+  .tab {
+    flex: 0 0 min(34vw, 150px);
+  }
+}

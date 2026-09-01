@@ -1,4 +1,5 @@
 import {notFound} from 'next/navigation'
+import {ActivityTabs} from '../../../components/social/ActivityTabs'
 import {FeedContent} from '../../../components/social/FeedContent'
 import {NotificationsContent} from '../../../components/social/NotificationsContent'
 import {getMessages, isLocale} from '../../../i18n/config'
@@ -8,11 +9,6 @@ import {fetchBookmarks, fetchLiked, fetchNotifications} from '../../../lib/socia
 type ActivityTab = 'notifications' | 'liked' | 'saved'
 function tabValue(value: string | undefined): ActivityTab {
   return value === 'liked' || value === 'saved' ? value : 'notifications'
-}
-
-function ActivityTabs({locale, selected, labels}: {locale: string; selected: ActivityTab; labels: {notifications: string; liked: string; bookmarks: string; activity?: string}}) {
-  const tabs: Array<[ActivityTab, string]> = [['notifications', labels.notifications], ['liked', labels.liked], ['saved', labels.bookmarks]]
-  return <nav aria-label={labels.activity ?? labels.notifications} className="activity-tabs" role="tablist">{tabs.map(([tab, label]) => <a aria-selected={selected === tab} className="tab" href={`/${locale}/activity?tab=${tab}`} key={tab} role="tab">{label}</a>)}</nav>
 }
 
 export default async function ActivityPage({params, searchParams}: {params: Promise<{locale: string}>; searchParams: Promise<{tab?: string; cursor?: string}>}) {

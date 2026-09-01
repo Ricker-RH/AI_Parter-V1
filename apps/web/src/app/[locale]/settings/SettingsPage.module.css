@@ -1,0 +1,71 @@
+.settings {
+  padding: 20px 16px 36px;
+}
+
+.list,
+.unavailable {
+  background: var(--shell-surface);
+  border: 1px solid var(--shell-border);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shell-text) 6%, transparent);
+  overflow: hidden;
+}
+
+.list :global(.settings-section) {
+  border: 0;
+  margin: 0;
+  padding: 20px;
+}
+
+.list :global(.settings-section + .settings-section) {
+  border-top: 1px solid var(--shell-border);
+}
+
+.list :global(.settings-section h2) {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  margin-bottom: 5px;
+}
+
+.list :global(.settings-section p) {
+  font-size: 14px;
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+
+.list :global(.choice-row) {
+  gap: 8px;
+}
+
+.list :global(.choice) {
+  align-items: center;
+  border-radius: 10px;
+  display: inline-flex;
+  font-size: 14px;
+  justify-content: center;
+}
+
+.unavailable {
+  color: var(--shell-muted);
+  margin: 20px 16px 36px;
+  padding: 20px;
+}
+
+.unavailable p {
+  margin: 0;
+}
+
+@media (min-width: 640px) {
+  .settings {
+    padding: 24px;
+  }
+
+  .list,
+  .unavailable {
+    max-width: 640px;
+  }
+
+  .list :global(.settings-section) {
+    padding: 22px 24px;
+  }
+}
