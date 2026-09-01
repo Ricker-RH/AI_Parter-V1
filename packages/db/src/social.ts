@@ -25,7 +25,6 @@ import {
   SearchPageSchema,
   decodeCursor,
   decodeNotificationCursor,
-  encodeSearchCursor,
   encodeNotificationCursor,
   type Cursor as SocialCursor,
   type CreateIpInput,
@@ -47,6 +46,7 @@ import {
   withActor,
   withPlatformActor,
 } from "./session.js";
+import {paginateSearchResults, searchPostFetchLimit} from './social-search.js'
 
 export type CommandContext = { requestId: string };
 
@@ -562,20 +562,24 @@ export function createSocialRepository({
                   ],
                 )
               ).rows;
-        const posts =
-          input.category === "ips" || (profileAfter && profiles.length > 0)
-            ? []
-            : (
-                await client.query<PostRow>(
-                  "SELECT * FROM public.social_public_search_posts($1,$2,$3,$4)",
-                  [
-                    input.q,
-                    postAfter?.publishedAt ?? null,
-                    postAfter?.id ?? null,
-                    take,
-                  ],
-                )
-              ).rows;
+        const postsLimit = searchPostFetchLimit({
+          category: input.category,
+          profileCount: profiles.length,
+          limit: input.limit,
+        });
+        const posts = postsLimit
+          ? (
+              await client.query<PostRow>(
+                "SELECT * FROM public.social_public_search_posts($1,$2,$3,$4)",
+                [
+                  input.q,
+                  postAfter?.publishedAt ?? null,
+                  postAfter?.id ?? null,
+                  postsLimit,
+                ],
+              )
+            ).rows
+          : [];
         const profileItems = profiles.map((row) => ({
           type: "profile" as const,
           profile: publicIp(row),
@@ -589,32 +593,15 @@ export function createSocialRepository({
             ),
           })),
         );
-        const combined = [...profileItems, ...postItems];
-        const items = combined.slice(0, input.limit);
-        const last = items.at(-1);
-        const nextCursor =
-          combined.length > input.limit && last
-            ? last.type === "profile"
-              ? encodeSearchCursor({
-                  v: 1,
-                  kind: "search",
-                  category: input.category,
-                  query: input.q,
-                  resultType: "profile",
-                  displayName: last.profile.displayName,
-                  id: last.profile.id,
-                })
-              : encodeSearchCursor({
-                  v: 1,
-                  kind: "search",
-                  category: input.category,
-                  query: input.q,
-                  resultType: "post",
-                  publishedAt: last.post.publishedAt,
-                  id: last.post.id,
-                })
-            : null;
-        return SearchPageSchema.parse({items, nextCursor});
+        return SearchPageSchema.parse(
+          paginateSearchResults({
+            category: input.category,
+            query: input.q,
+            profiles: profileItems,
+            posts: postItems,
+            limit: input.limit,
+          }),
+        );
       });
     },
     follow: (actor, targetProfileId, context) =>
