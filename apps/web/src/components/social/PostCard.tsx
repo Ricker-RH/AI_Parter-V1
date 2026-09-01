@@ -7,7 +7,7 @@ import { trackPostViewed } from "../../lib/analytics/events";
 import { useAnalytics } from "../../lib/analytics/provider";
 import type { SocialLabels } from "./types";
 import { PostActions } from "./PostActions";
-import { authHref } from "../../lib/auth/return-to";
+import { AuthorPreview } from "./AuthorPreview";
 
 function publishedTime(value: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale, {
@@ -89,27 +89,13 @@ export function PostCard({
   );
   return (
     <article className="post-card">
+      <div className="post-layout">
+        <AuthorPreview author={post.author} canMutate={canMutate} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
+        <div className="post-content">
       <header className="post-author">
-        <div className="avatar" aria-hidden="true">
-          {post.author.displayName.slice(0, 1)}
-        </div>
-        <div>
-          <Link href={`/${locale}/profiles/${post.author.id}`}>
-            <strong>{post.author.displayName}</strong>
-          </Link>
-          <span className="author-meta">
-            @{post.author.username} ·{" "}
-            <span className="account-kind">{labels.aiAccount}</span>
-          </span>
-          {post.author.creator ? (
-            <span className="creator-attribution">
-              {labels.createdBy} @{post.author.creator.username}
-            </span>
-          ) : null}
-        </div>
-        <time dateTime={post.publishedAt}>
-          {publishedTime(post.publishedAt, locale)}
-        </time>
+        <div className="post-author-line"><Link href={`/${locale}/profiles/${post.author.id}`}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{publishedTime(post.publishedAt, locale)}</time></div>
+        <span className="author-meta">@{post.author.username} · <span className="account-kind">{labels.aiAccount}</span></span>
+        {post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}
       </header>
       {linked ? (
         <Link
@@ -125,40 +111,9 @@ export function PostCard({
       ) : (
         body
       )}
-      <footer
-        className="post-stats"
-        aria-label={`${post.likeCount} ${labels.like}, ${post.commentCount} ${labels.comments}`}
-      >
-        <span aria-label={post.viewerHasLiked ? labels.unlike : labels.like}>
-          {post.likeCount} {labels.like}
-        </span>
-        <span>
-          {post.commentCount} {labels.comments}
-        </span>
-        {post.viewerHasBookmarked === true ? (
-          <span>{labels.removeBookmark}</span>
-        ) : null}
-        {post.viewerFollowsAuthor === true ? (
-          <span>{labels.followingAction}</span>
-        ) : null}
-      </footer>
-      {canMutate && post.viewerHasLiked !== undefined &&
-      post.viewerHasBookmarked !== undefined &&
-      post.viewerFollowsAuthor !== undefined ? (
-        <PostActions
-          authorId={post.author.id}
-          bookmarked={post.viewerHasBookmarked}
-          followsAuthor={post.viewerFollowsAuthor}
-          labels={labels}
-          liked={post.viewerHasLiked}
-          locale={locale}
-          postId={post.id}
-        />
-      ) : (
-        <Link className="interaction-login" href={authHref(locale, returnTo ?? `/${locale}`)}>
-          {labels.signInToInteract}
-        </Link>
-      )}
+      <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`}/>
+        </div>
+      </div>
     </article>
   );
 }

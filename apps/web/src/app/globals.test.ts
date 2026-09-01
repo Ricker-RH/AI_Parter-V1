@@ -31,4 +31,16 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.route-error \{[^}]*border: 1px solid var\(--shell-border\)/)
     expect(stylesheet).toMatch(/\.route-error-actions a, \.route-error-actions button, \.unavailable-retry \{[^}]*border-radius: 999px/)
   })
+
+  it('uses the compact mobile Home hierarchy with equal-width feed selectors', () => {
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-header \{[^}]*display: block/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-title \{[^}]*clip:/)
+    expect(stylesheet).toMatch(/\.mobile-feed-selector \{[^}]*flex: 1/)
+    expect(stylesheet).toMatch(/\.mobile-feed-selector > \.tab \{[^}]*width: 100%/)
+    expect(stylesheet).toMatch(/\.mobile-top-bar \{[^}]*height: 60px/)
+    expect(stylesheet).toMatch(/\.post-card \{[^}]*padding: 12px/)
+    expect(stylesheet).toMatch(/\.post-action \{[^}]*min-height: 36px/)
+    expect(stylesheet).toMatch(/\.mobile-nav \{[^}]*height: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
+    expect(stylesheet).toMatch(/\.mobile-link span \{[^}]*clip:/)
+  })
 })

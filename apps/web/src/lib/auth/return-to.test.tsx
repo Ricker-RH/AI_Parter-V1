@@ -40,6 +40,7 @@ describe('user auth return target', () => {
   it.each([
     ['en', '/en/messages'],
     ['en', '/en?feed=following&visualType=anime'],
+    ['en', '/en?visualType=anime'],
     ['zh-CN', '/zh-CN/bookmarks'],
     ['zh-CN', '/zh-CN/posts/123'],
     ['en', '/en/search?q=luna%20moon&category=posts&cursor=abc_DEF-123'],

@@ -55,6 +55,9 @@ export interface SocialLabels {
   followers: string
   posts: string
   signInToInteract: string
+  messages?: string
+  profile?: string
+  share?: string
   searchInput?: string
   searchSubmit?: string
   searchCategory?: string

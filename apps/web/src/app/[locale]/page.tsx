@@ -31,7 +31,7 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   let canMutate = false
   if (following) {
     const access = await requireAuthenticatedPage({locale: candidate, returnTo: `/${candidate}?${currentQuery}`})
-    if (access.status === 'unavailable') return <main><header className="page-header"><h1 className="page-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate} visualType={visualType}/></header><FeedContent currentQuery={currentQuery} feedKind="following" labels={messages} locale={candidate} result={{status: 'unavailable'}} visualType={visualType} /></main>
+    if (access.status === 'unavailable') return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate} visualType={visualType}/></header><FeedContent currentQuery={currentQuery} feedKind="following" labels={messages} locale={candidate} result={{status: 'unavailable'}} visualType={visualType} /></main>
     token = access.token
     canMutate = true
   } else {
@@ -49,5 +49,5 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   if (visualType !== 'all') pageQuery.set('visualType', visualType)
   if (nextCursor) pageQuery.set('cursor', nextCursor)
   const moreHref = nextCursor ? `/${candidate}?${pageQuery}` : undefined
-  return <main><header className="page-header"><h1 className="page-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate} visualType={visualType}/></header><FeedContent canMutate={canMutate} currentQuery={currentQuery} feedKind={following ? 'following' : 'for_you'} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={`/${candidate}${currentQuery ? `?${currentQuery}` : ''}`} visualType={visualType} /></main>
+  return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate} visualType={visualType}/></header><FeedContent canMutate={canMutate} currentQuery={currentQuery} feedKind={following ? 'following' : 'for_you'} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={`/${candidate}${currentQuery ? `?${currentQuery}` : ''}`} visualType={visualType} /></main>
 }

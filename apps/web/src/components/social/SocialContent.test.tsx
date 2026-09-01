@@ -217,7 +217,7 @@ describe("real social content", () => {
     expect(container.querySelectorAll(".post-media-grid img")).toHaveLength(2);
   });
 
-  it("shows anonymous users a localized sign-in interaction control", () => {
+  it("shows anonymous users the real action row and gates protected actions", () => {
     const anonymous = {...post, viewerHasLiked: false, viewerHasBookmarked: false, viewerFollowsAuthor: false};
     render(
       <FeedContent
@@ -230,9 +230,9 @@ describe("real social content", () => {
         }}
       />,
     );
-    expect(
-      screen.getByRole("link", { name: "Sign in to like, save, or follow" }),
-    ).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", { name: "Like" })).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", { name: "Bookmark" })).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", { name: "Comments" })).toHaveAttribute("href", `/en/posts/${post.id}`);
     expect(screen.queryByRole("button", {name: "Like"})).toBeNull();
   });
 

@@ -67,7 +67,7 @@ describe('public search page', () => {
     }}], nextCursor: null}})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna', category: 'posts', cursor: 'abc_DEF-123'})}))
     expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({cursor: 'abc_DEF-123'}))
-    expect(screen.getByRole('link', {name: 'Sign in to like, save, or follow'})).toHaveAttribute('href', expect.stringContaining(encodeURIComponent('/en/search?q=luna&category=posts&cursor=abc_DEF-123')))
+    expect(screen.getByRole('link', {name: 'Like'})).toHaveAttribute('href', expect.stringContaining(encodeURIComponent('/en/search?q=luna&category=posts&cursor=abc_DEF-123')))
   })
 
   it('redirects a stale authenticated search session to the bounded search URL', async () => {

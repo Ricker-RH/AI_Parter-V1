@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ vi.mock("next/link", () => ({
 vi.mock("../../lib/analytics/provider.js", () => ({
   useAnalytics: () => ({ capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn() }),
 }));
+vi.mock("next/navigation", () => ({useRouter: () => ({refresh: vi.fn(), replace: vi.fn()})}));
 
 const labels: SocialLabels = {
   aiAccount: "AI/IP", authRequiredTitle: "Sign in required", authRequiredDescription: "Sign in to see this page.",
@@ -30,6 +31,7 @@ const labels: SocialLabels = {
   commentPlaceholder: "Write a comment", commentSubmit: "Comment", commentSending: "Posting", commentSuccess: "Posted", reply: "Reply",
   signInToComment: "Sign in to comment", markRead: "Mark as read", markingRead: "Marking", profileNotFoundTitle: "Profile not found",
   profileNotFoundDescription: "Not public", followers: "followers", posts: "Posts", signInToInteract: "Sign in to like, save, or follow",
+  messages: "Messages", profile: "Profile", share: "Share",
 };
 
 const post: FeedPost = {
@@ -132,5 +134,37 @@ describe("PostCard media geometry", () => {
     );
     expect(requiredFrame(frames, 1).getAttribute("style")).toBe("aspect-ratio:1.25");
     expect(requiredFrame(frames, 2).getAttribute("style")).toBe("aspect-ratio:0.8");
+  });
+});
+
+describe("PostCard public interaction hierarchy", () => {
+  it("shows the same icon action row to guests and gates only protected actions", () => {
+    render(<PostCard labels={labels} locale="en" post={post} returnTo="/en?visualType=anime" />);
+
+    expect(screen.queryByText(labels.signInToInteract)).toBeNull();
+    expect(screen.getByRole("link", {name: labels.like})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen%3FvisualType%3Danime");
+    expect(screen.getByRole("link", {name: labels.comments})).toHaveAttribute("href", `/en/posts/${post.id}`);
+    expect(screen.getByRole("link", {name: labels.bookmark})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen%3FvisualType%3Danime");
+    expect(screen.getByRole("button", {name: labels.share!})).toBeVisible();
+    expect(document.querySelectorAll(".post-action svg")).toHaveLength(4);
+  });
+
+  it("opens a real-data author preview and restores focus on Escape", () => {
+    render(<PostCard labels={labels} locale="en" post={post} />);
+    const trigger = screen.getByRole("button", {name: "Profile: Luma"});
+
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", {name: "Luma"});
+    expect(dialog).toBeVisible();
+    const profileLink = within(dialog).getByRole("link", {name: "Luma"});
+    expect(profileLink).toHaveAttribute("href", `/en/profiles/${post.author.id}`);
+    expect(screen.getByRole("link", {name: labels.follow})).toHaveAttribute("href", expect.stringContaining("/en/auth/sign-in"));
+    fireEvent.keyDown(document, {key: "Tab", shiftKey: true});
+    expect(within(dialog).getByRole("link", {name: labels.messages!})).toHaveFocus();
+    fireEvent.keyDown(document, {key: "Tab"});
+    expect(profileLink).toHaveFocus();
+    fireEvent.keyDown(document, {key: "Escape"});
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
   });
 });
