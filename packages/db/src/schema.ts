@@ -113,6 +113,15 @@ export const creatorDecisionValueEnum = pgEnum("creator_decision_value", [
   "approve",
   "reject",
 ]);
+export const chatMessageRoleEnum = pgEnum("chat_message_role", [
+  "human",
+  "assistant",
+]);
+export const chatDeliveryStateEnum = pgEnum("chat_delivery_state", [
+  "pending",
+  "sent",
+  "failed",
+]);
 
 export const profiles = pgTable(
   "profiles",
@@ -438,6 +447,94 @@ export const ipProfiles = pgTable(
         table.profileId.desc(),
       )
       .where(sql`${table.source} = 'creator'`),
+  ],
+);
+
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    humanProfileId: uuid("human_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    ipProfileId: uuid("ip_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    providerConversationId: text("provider_conversation_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("chat_conversations_human_ip_key").on(
+      table.humanProfileId,
+      table.ipProfileId,
+    ),
+    check(
+      "chat_conversations_provider_conversation_id_length_check",
+      sql`${table.providerConversationId} IS NULL OR char_length(${table.providerConversationId}) BETWEEN 1 AND 512`,
+    ),
+    index("chat_conversations_owner_updated_cursor_idx").on(
+      table.humanProfileId,
+      table.updatedAt.desc(),
+      table.id.desc(),
+    ),
+  ],
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    role: chatMessageRoleEnum("role").notNull(),
+    body: text().notNull(),
+    deliveryState: chatDeliveryStateEnum("delivery_state")
+      .notNull()
+      .default("pending"),
+    clientRequestId: uuid("client_request_id"),
+    inReplyToClientRequestId: uuid("in_reply_to_client_request_id"),
+    providerMessageId: text("provider_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("chat_messages_conversation_id_client_request_id_key").on(
+      table.conversationId,
+      table.clientRequestId,
+    ),
+    unique("chat_messages_conversation_id_in_reply_to_client_request_id_key").on(
+      table.conversationId,
+      table.inReplyToClientRequestId,
+    ),
+    foreignKey({
+      name: "chat_messages_reply_to_human_request_fkey",
+      columns: [table.conversationId, table.inReplyToClientRequestId],
+      foreignColumns: [table.conversationId, table.clientRequestId],
+    }).onDelete("cascade"),
+    check(
+      "chat_messages_body_length_check",
+      sql`char_length(${table.body}) BETWEEN 1 AND 4000`,
+    ),
+    check(
+      "chat_messages_provider_message_id_length_check",
+      sql`${table.providerMessageId} IS NULL OR char_length(${table.providerMessageId}) BETWEEN 1 AND 512`,
+    ),
+    check(
+      "chat_messages_role_request_link_check",
+      sql`(${table.role} = 'human' AND ${table.clientRequestId} IS NOT NULL AND ${table.inReplyToClientRequestId} IS NULL AND ${table.providerMessageId} IS NULL) OR (${table.role} = 'assistant' AND ${table.clientRequestId} IS NULL AND ${table.inReplyToClientRequestId} IS NOT NULL AND ${table.deliveryState} = 'sent')`,
+    ),
+    index("chat_messages_conversation_created_cursor_idx").on(
+      table.conversationId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
   ],
 );
 
