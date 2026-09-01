@@ -26,5 +26,6 @@ export default async function LocaleLayout({children, params}: Readonly<{childre
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
   const authConfigured = readWebAuthEnv(process.env).status === 'configured'
-  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><PerformanceReporter locale={candidate} release={analyticsRelease(process.env)} /><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={isCreatorModeEnabled()} labels={messages} locale={candidate}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
+  const release = analyticsRelease(process.env)
+  return <html lang={candidate} suppressHydrationWarning><body><AnalyticsProvider locale={candidate}><PerformanceReporter locale={candidate} release={release} /><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={isCreatorModeEnabled()} labels={messages} locale={candidate} release={release}>{children}</AppShell></ThemeProvider></AnalyticsProvider></body></html>
 }

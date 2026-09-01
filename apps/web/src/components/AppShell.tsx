@@ -10,14 +10,17 @@ import {CreatorShell} from './shell/CreatorShell'
 import {MessagesShell} from './shell/MessagesShell'
 import {PublicShell} from './shell/PublicShell'
 import {resolveShellKind} from './shell/route-shell'
+import {NavigationFeedback} from './NavigationFeedback'
 
-export function AppShell({authConfigured=false, creatorModeEnabled=true, locale, labels, children}: {authConfigured?: boolean; creatorModeEnabled?: boolean; locale: Locale; labels: ShellLabels; children: ReactNode}) {
+export function AppShell({authConfigured=false, creatorModeEnabled=true, locale, labels, children, release='local'}: {authConfigured?: boolean; creatorModeEnabled?: boolean; locale: Locale; labels: ShellLabels; children: ReactNode; release?: string}) {
   const pathname = usePathname()
+  let shell: ReactNode
   switch (resolveShellKind(pathname)) {
-    case 'admin': return <AdminShell authConfigured={authConfigured} locale={locale}>{children}</AdminShell>
-    case 'auth': return <AuthShell>{children}</AuthShell>
-    case 'messages': return <MessagesShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</MessagesShell>
-    case 'creator': return <CreatorShell>{children}</CreatorShell>
-    default: return <PublicShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</PublicShell>
+    case 'admin': shell = <AdminShell authConfigured={authConfigured} locale={locale}>{children}</AdminShell>; break
+    case 'auth': shell = <AuthShell>{children}</AuthShell>; break
+    case 'messages': shell = <MessagesShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</MessagesShell>; break
+    case 'creator': shell = <CreatorShell>{children}</CreatorShell>; break
+    default: shell = <PublicShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</PublicShell>
   }
+  return <>{shell}<NavigationFeedback locale={locale} release={release}/></>
 }

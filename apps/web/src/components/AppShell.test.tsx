@@ -1,4 +1,4 @@
-import {render, screen} from '@testing-library/react'
+import {fireEvent, render, screen} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 
 let pathname = '/en'
@@ -25,6 +25,15 @@ describe('AppShell', () => {
     render(<AppShell locale="zh-CN" labels={labels}><main>内容</main></AppShell>)
     expect(screen.getAllByRole('link', {name: 'Home'})[0]).toHaveAttribute('href', '/zh-CN')
     expect(screen.getAllByRole('link', {name: 'Messages'})[0]).toHaveAttribute('href', '/zh-CN/messages')
+  })
+
+  it('captures ordinary desktop and mobile navigation links for pending feedback', () => {
+    pathname = '/en'
+    render(<AppShell locale="en" labels={labels}><main>Feed</main></AppShell>)
+    const messageLink = screen.getAllByRole('link', {name: 'Messages'})[0]
+    if (!messageLink) throw new Error('Expected desktop Messages link')
+    fireEvent.pointerDown(messageLink, {button: 0})
+    expect(screen.getByRole('status')).toHaveAttribute('data-navigation-pending', 'true')
   })
 
   it('marks the ordinary public shell as a fluid layout without changing the messages variant', () => {
