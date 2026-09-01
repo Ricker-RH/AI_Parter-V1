@@ -325,6 +325,14 @@ export function registerAdminRoutes(
   app: Hono<{ Variables: ApiVariables }>,
   dependencies: AdminDependencies,
 ) {
+  app.get("/v1/admin/access", async (c) => {
+    const queryError = invalidQuery(c);
+    if (queryError) return queryError;
+    const operator = await requireOperator(c, dependencies);
+    if (!operator.ok) return operator.response;
+    return c.body(null, 204);
+  });
+
   app.post("/v1/admin/post-media/upload-intents", async (c) => {
     const queryError = invalidQuery(c);
     if (queryError) return queryError;

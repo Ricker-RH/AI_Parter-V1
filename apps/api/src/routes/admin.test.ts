@@ -122,6 +122,35 @@ async function expectError(response: Response, status: number, code: string) {
   expect(body).toMatchObject({ code, requestId });
 }
 
+describe("GET /v1/admin/access", () => {
+  it("returns no content only for an authenticated operator", async () => {
+    const calls: unknown[] = [];
+    const response = await createApp(
+      dependencies({ authority: authority(true, calls) }),
+    ).request("/v1/admin/access", { headers: { authorization: "Bearer valid" } });
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(calls).toEqual([{ subject }]);
+  });
+
+  it("rejects a missing session before exposing the operator console", async () => {
+    const response = await createApp(
+      dependencies({ auth: missingAuth }),
+    ).request("/v1/admin/access");
+
+    await expectError(response, 401, "AUTH_REQUIRED");
+  });
+
+  it("rejects an authenticated non-operator", async () => {
+    const response = await createApp(
+      dependencies({ authority: authority(false) }),
+    ).request("/v1/admin/access", { headers: { authorization: "Bearer valid" } });
+
+    await expectError(response, 403, "OPERATOR_REQUIRED");
+  });
+});
+
 const requests = [
   [
     "/v1/admin/ips",
