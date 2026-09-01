@@ -57,6 +57,7 @@ describe("social contracts", () => {
       id,
     };
     const encoded = encodeSearchCursor(cursor);
+    expect(encoded).toBe("eyJ2IjoxLCJraW5kIjoic2VhcmNoIiwiY2F0ZWdvcnkiOiJhbGwiLCJxdWVyeSI6Imx1bmEgbW9vbiIsInJlc3VsdFR5cGUiOiJwb3N0IiwicHVibGlzaGVkQXQiOiIyMDI2LTA5LTAxVDEyOjAwOjAwLjAwMFoiLCJpZCI6IjViOGJhNDNjLTBhOWUtNDNlYy04N2JlLTQ0OGE5ZTFlYmYzMCJ9");
     expect(decodeSearchCursor(encoded)).toEqual(cursor);
     expect(SearchCursorSchema.parse(cursor)).toEqual(cursor);
     expect(() => decodeSearchCursor("%%%bad")).toThrow("INVALID_CURSOR");
@@ -64,6 +65,21 @@ describe("social contracts", () => {
       category: "all",
       query: "luna moon",
     })).toThrow("INVALID_CURSOR");
+  });
+
+  it("round trips UTF-8 search cursors with bounded CJK and Unicode text", () => {
+    const query = "月".repeat(80);
+    const cursor = {
+      v: 1 as const,
+      kind: "search" as const,
+      category: "ips" as const,
+      query,
+      resultType: "profile" as const,
+      displayName: "月下✨",
+      id,
+    };
+    const encoded = encodeSearchCursor(cursor);
+    expect(decodeSearchCursor(encoded, {category: "ips", query})).toEqual(cursor);
   });
 
   it("keeps search results restricted to public IP and post projections", () => {

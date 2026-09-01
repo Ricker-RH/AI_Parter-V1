@@ -98,22 +98,33 @@ export type Locale = z.infer<typeof LocaleSchema>;
 const base64 =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 function base64urlEncode(value: string): string {
+  const encoded = encodeURIComponent(value);
+  const bytes: number[] = [];
+  for (let index = 0; index < encoded.length; ) {
+    if (encoded[index] === "%") {
+      bytes.push(Number.parseInt(encoded.slice(index + 1, index + 3), 16));
+      index += 3;
+    } else {
+      bytes.push(encoded.charCodeAt(index));
+      index += 1;
+    }
+  }
   let output = "";
-  for (let index = 0; index < value.length; index += 3) {
-    const a = value.charCodeAt(index);
-    const b = value.charCodeAt(index + 1);
-    const c = value.charCodeAt(index + 2);
+  for (let index = 0; index < bytes.length; index += 3) {
+    const a = bytes[index]!;
+    const b = bytes[index + 1];
+    const c = bytes[index + 2];
     output +=
       base64[a >> 2]! +
       base64[((a & 3) << 4) | ((b || 0) >> 4)]! +
-      (Number.isNaN(b) ? "" : base64[((b & 15) << 2) | ((c || 0) >> 6)]!) +
-      (Number.isNaN(c) ? "" : base64[c & 63]!);
+      (b === undefined ? "" : base64[((b & 15) << 2) | ((c ?? 0) >> 6)]!) +
+      (c === undefined ? "" : base64[c & 63]!);
   }
   return output.replaceAll("+", "-").replaceAll("/", "_");
 }
 function base64urlDecode(value: string): string {
   const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
-  let output = "";
+  const bytes: number[] = [];
   for (let index = 0; index < normalized.length; index += 4) {
     const a = base64.indexOf(normalized[index]!);
     const b = base64.indexOf(normalized[index + 1]!);
