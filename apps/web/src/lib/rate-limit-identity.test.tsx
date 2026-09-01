@@ -14,10 +14,9 @@ describe('rate limit identity envelope', () => {
     expect(createRateLimitIdentity(new Headers({'x-forwarded-for': '203.0.113.7'}), 1_788_200_000_000, 's'.repeat(32))).toBeNull()
   })
 
-  it('requires a non-placeholder signing secret in production', () => {
+  it('requires the same minimum-length signing secret as the API in production', () => {
     expect(() => requireWebRateLimitIdentitySecret({WEB_API_RATE_LIMIT_SIGNING_SECRET: undefined})).toThrow('Invalid Web rate limit environment')
-    expect(() => requireWebRateLimitIdentitySecret({WEB_API_RATE_LIMIT_SIGNING_SECRET: 'short'})).toThrow('Invalid Web rate limit environment')
-    expect(() => requireWebRateLimitIdentitySecret({WEB_API_RATE_LIMIT_SIGNING_SECRET: 'x'.repeat(32)})).toThrow('Invalid Web rate limit environment')
-    expect(requireWebRateLimitIdentitySecret({WEB_API_RATE_LIMIT_SIGNING_SECRET: 'secure-web-api-rate-limit-secret-123'})).toBe('secure-web-api-rate-limit-secret-123')
+    expect(() => requireWebRateLimitIdentitySecret({WEB_API_RATE_LIMIT_SIGNING_SECRET: 'x'.repeat(31)})).toThrow('Invalid Web rate limit environment')
+    expect(requireWebRateLimitIdentitySecret({WEB_API_RATE_LIMIT_SIGNING_SECRET: 'x'.repeat(32)})).toBe('x'.repeat(32))
   })
 })

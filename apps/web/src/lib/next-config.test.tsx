@@ -19,9 +19,9 @@ describe('Web production configuration', () => {
     await expect(import('../../next.config.js')).rejects.toThrow('Invalid Web rate limit environment')
   })
 
-  it('loads when production has a non-placeholder private signing secret', async () => {
+  it('loads when production has an API-compatible private signing secret', async () => {
     environment.NODE_ENV = 'production'
-    environment.WEB_API_RATE_LIMIT_SIGNING_SECRET = 'secure-web-api-rate-limit-secret-123'
+    environment.WEB_API_RATE_LIMIT_SIGNING_SECRET = 'x'.repeat(32)
     await expect(import('../../next.config.js')).resolves.toHaveProperty('default')
   })
 })
