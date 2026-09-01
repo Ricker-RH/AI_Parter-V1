@@ -40,7 +40,7 @@ describe('localized operator console page', () => {
     access.mockResolvedValue('anonymous')
 
     await expect(AdminPage({params: Promise.resolve({locale: 'zh-CN'})}))
-      .rejects.toThrow('REDIRECT:/zh-CN/auth/sign-in')
+      .rejects.toThrow('REDIRECT:/zh-CN/auth/sign-in?next=%2Fzh-CN%2Fadmin')
   })
 
   it('shows no operator forms to an authenticated non-operator', async () => {

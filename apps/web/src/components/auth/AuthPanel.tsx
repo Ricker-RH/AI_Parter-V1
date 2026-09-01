@@ -8,9 +8,9 @@ export type AuthMode = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-passwo
 
 export type AuthActions = {
   getSession(): Promise<{user: unknown} | null>
-  signInEmail(email: string, password: string): Promise<string | null>
-  signUpEmail(name: string, email: string, password: string): Promise<string | null>
-  signInGoogle(): Promise<string | null>
+  signInEmail(email: string, password: string, returnTo?: string): Promise<string | null>
+  signUpEmail(name: string, email: string, password: string, returnTo?: string): Promise<string | null>
+  signInGoogle(returnTo?: string): Promise<string | null>
   signOut(): Promise<string | null>
   requestPasswordReset(email: string, redirectTo: string): Promise<string | null>
   resetPassword(newPassword: string, token: string): Promise<string | null>
@@ -99,15 +99,15 @@ function providerError(error: unknown): string | null {
 export async function createBrowserAuthActions(locale: Locale): Promise<AuthActions> {
   const {createAuthClient} = await import('@neondatabase/auth/next')
   const client = createAuthClient()
-  const finish = (error: unknown) => {
-    if (!error) window.location.assign(`/${locale}`)
+  const finish = (error: unknown, returnTo?: string) => {
+    if (!error) window.location.assign(returnTo ?? `/${locale}`)
     return providerError(error)
   }
   return {
     async getSession() { const {data} = await client.getSession(); return data ?? null },
-    async signInEmail(email, password) { const {error} = await client.signIn.email({email, password}); return finish(error) },
-    async signUpEmail(name, email, password) { const {error} = await client.signUp.email({name, email, password}); return finish(error) },
-    async signInGoogle() { const {error} = await client.signIn.social({provider: 'google', callbackURL: `/${locale}`}); return error ? finish(error) : null },
+    async signInEmail(email, password, returnTo) { const {error} = await client.signIn.email({email, password}); return finish(error, returnTo) },
+    async signUpEmail(name, email, password, returnTo) { const {error} = await client.signUp.email({name, email, password}); return finish(error, returnTo) },
+    async signInGoogle(returnTo) { const {error} = await client.signIn.social({provider: 'google', callbackURL: returnTo ?? `/${locale}`}); return error ? finish(error, returnTo) : null },
     async signOut() { const {error} = await client.signOut(); return finish(error) },
     async requestPasswordReset(email, redirectTo) {
       const {error} = await client.requestPasswordReset({email, redirectTo})
@@ -125,12 +125,14 @@ export function AuthPanel({
   locale,
   mode,
   resetToken,
+  returnTo,
   actions,
 }: {
   configured: boolean
   locale: Locale
   mode: AuthMode
   resetToken?: string
+  returnTo?: string
   actions?: AuthActions
 }) {
   const labels = translations[locale]
@@ -159,8 +161,8 @@ export function AuthPanel({
         setStatus(error ? labels.resetError : labels.resetComplete)
       } else {
         const error = mode === 'sign-in'
-          ? await api.signInEmail(String(data.get('email')), String(data.get('password')))
-          : await api.signUpEmail(String(data.get('name')), String(data.get('email')), String(data.get('password')))
+          ? await api.signInEmail(String(data.get('email')), String(data.get('password')), returnTo)
+          : await api.signUpEmail(String(data.get('name')), String(data.get('email')), String(data.get('password')), returnTo)
         setStatus(error ? labels.error : labels.success[mode])
       }
     } catch {
@@ -179,7 +181,7 @@ export function AuthPanel({
     if (!configured || pending) return
     setPending(true); setStatus(null)
     try {
-      const error = await (await client()).signInGoogle()
+      const error = await (await client()).signInGoogle(returnTo)
       setStatus(error ? labels.error : labels.success['sign-in'])
     } catch {
       setStatus(labels.error)
@@ -191,5 +193,6 @@ export function AuthPanel({
   const standard = mode === 'sign-in' || mode === 'sign-up'
   const invalidReset = mode === 'reset-password' && !resetToken
   const showForm = configured && !completed && !invalidReset
-  return <main className="auth-page"><section className="auth-card"><p className="auth-eyebrow">AIFANS / AUTH</p><h1>{labels.title[mode]}</h1>{!configured ? <p className="auth-notice">{labels.notConfigured}</p> : invalidReset ? <p className="auth-notice">{labels.invalidReset}</p> : showForm ? <><form onSubmit={submit}>{mode === 'sign-up' && <label>{labels.name}<input autoComplete="name" name="name" required /></label>}{mode !== 'reset-password' && <label>{labels.email}<input autoComplete="email" name="email" required type="email" /></label>}{mode !== 'forgot-password' && <label>{mode === 'reset-password' ? labels.newPassword : labels.password}<input autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} minLength={8} name="password" required type="password" /></label>}<button disabled={pending} type="submit">{labels.submit[mode]}</button></form>{standard && <><div className="auth-divider"><span>OR</span></div><button className="auth-google" disabled={pending} onClick={google} type="button">{labels.google}</button></>}</> : null}{status && <p aria-live="polite" className="auth-status">{status}</p>}{mode === 'sign-in' && <p className="auth-switch"><Link href={`/${locale}/auth/forgot-password`}>{labels.forgotLink}</Link></p>}{standard ? <p className="auth-switch">{labels.switchText[mode]} <Link href={`/${locale}/auth/${mode === 'sign-in' ? 'sign-up' : 'sign-in'}`}>{labels.switchLink[mode]}</Link></p> : <p className="auth-switch"><Link href={`/${locale}/auth/sign-in`}>{labels.backToSignIn}</Link></p>}</section></main>
+  const authSwitchHref = `/${locale}/auth/${mode === 'sign-in' ? 'sign-up' : 'sign-in'}${returnTo ? `?next=${encodeURIComponent(returnTo)}` : ''}`
+  return <main className="auth-page"><section className="auth-card"><p className="auth-eyebrow">AIFANS / AUTH</p><h1>{labels.title[mode]}</h1>{!configured ? <p className="auth-notice">{labels.notConfigured}</p> : invalidReset ? <p className="auth-notice">{labels.invalidReset}</p> : showForm ? <><form onSubmit={submit}>{mode === 'sign-up' && <label>{labels.name}<input autoComplete="name" name="name" required /></label>}{mode !== 'reset-password' && <label>{labels.email}<input autoComplete="email" name="email" required type="email" /></label>}{mode !== 'forgot-password' && <label>{mode === 'reset-password' ? labels.newPassword : labels.password}<input autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} minLength={8} name="password" required type="password" /></label>}<button disabled={pending} type="submit">{labels.submit[mode]}</button></form>{standard && <><div className="auth-divider"><span>OR</span></div><button className="auth-google" disabled={pending} onClick={google} type="button">{labels.google}</button></>}</> : null}{status && <p aria-live="polite" className="auth-status">{status}</p>}{mode === 'sign-in' && <p className="auth-switch"><Link href={`/${locale}/auth/forgot-password`}>{labels.forgotLink}</Link></p>}{standard ? <p className="auth-switch">{labels.switchText[mode]} <Link href={authSwitchHref}>{labels.switchLink[mode]}</Link></p> : <p className="auth-switch"><Link href={`/${locale}/auth/sign-in`}>{labels.backToSignIn}</Link></p>}</section></main>
 }

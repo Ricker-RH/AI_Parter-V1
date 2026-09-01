@@ -2,6 +2,7 @@ import {notFound} from 'next/navigation'
 import {AuthPanel, type AuthMode} from '../../../../components/auth/AuthPanel'
 import {isLocale} from '../../../../i18n/config'
 import {readWebAuthEnv} from '../../../../lib/auth/env'
+import {readAdminReturnTo} from '../../../../lib/auth/return-to'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,16 +19,19 @@ export default async function AuthPage({
   searchParams,
 }: {
   params: Promise<{locale: string; view: string}>
-  searchParams: Promise<{token?: string | string[]}>
+  searchParams: Promise<{token?: string | string[]; next?: string | string[]}>
 }) {
   const {locale, view} = await params
   if (!isLocale(locale) || !authModes.has(view as AuthMode)) notFound()
   const configuration = readWebAuthEnv(process.env)
-  const resetToken = view === 'reset-password' ? readResetToken((await searchParams).token) : undefined
+  const query = await searchParams
+  const resetToken = view === 'reset-password' ? readResetToken(query.token) : undefined
+  const returnTo = readAdminReturnTo(locale, query.next)
   return <AuthPanel
     configured={configuration.status === 'configured'}
     locale={locale}
     mode={view as AuthMode}
     {...(resetToken ? {resetToken} : {})}
+    {...(returnTo ? {returnTo} : {})}
   />
 }

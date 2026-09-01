@@ -10,7 +10,7 @@ export default async function AdminPage({params}: {params: Promise<{locale: stri
   if (!isLocale(locale)) notFound()
   const messages = await getMessages(locale)
   const access = await getOperatorPageAccess()
-  if (access === 'anonymous') redirect(`/${locale}/auth/sign-in`)
+  if (access === 'anonymous') redirect(`/${locale}/auth/sign-in?next=${encodeURIComponent(`/${locale}/admin`)}`)
   if (access !== 'operator') {
     const message = access === 'forbidden' ? messages.admin.operatorRequired : messages.admin.serviceUnavailable
     return <main className="admin-page"><p className="admin-status admin-status-error" role="alert">{message}</p></main>

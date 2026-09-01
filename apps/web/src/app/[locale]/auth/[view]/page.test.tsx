@@ -2,6 +2,20 @@ import {describe, expect, it} from 'vitest'
 import AuthPage, {readResetToken} from './page.js'
 
 describe('auth recovery route', () => {
+  it('passes only a validated same-locale admin return target', async () => {
+    const accepted = await AuthPage({
+      params: Promise.resolve({locale: 'zh-CN', view: 'sign-in'}),
+      searchParams: Promise.resolve({next: '/zh-CN/admin/creator'}),
+    })
+    const rejected = await AuthPage({
+      params: Promise.resolve({locale: 'zh-CN', view: 'sign-in'}),
+      searchParams: Promise.resolve({next: 'https://attacker.example'}),
+    })
+
+    expect(accepted.props).toMatchObject({returnTo: '/zh-CN/admin/creator'})
+    expect(rejected.props.returnTo).toBeUndefined()
+  })
+
   it('makes the password-request page reachable', async () => {
     const page = await AuthPage({
       params: Promise.resolve({locale: 'en', view: 'forgot-password'}),

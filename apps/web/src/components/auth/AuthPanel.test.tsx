@@ -22,13 +22,14 @@ describe('AIFANS auth panel', () => {
 
   it('submits email/password sign-in and offers Google OAuth', async () => {
     const client = actions()
-    render(<AuthPanel actions={client} configured locale="en" mode="sign-in" />)
+    render(<AuthPanel actions={client} configured locale="en" mode="sign-in" returnTo="/en/admin" />)
     fireEvent.change(screen.getByLabelText('Email'), {target: {value: 'luna@example.com'}})
     fireEvent.change(screen.getByLabelText('Password'), {target: {value: 'strong-password'}})
     fireEvent.click(screen.getByRole('button', {name: 'Sign in'}))
-    await waitFor(() => expect(client.signInEmail).toHaveBeenCalledWith('luna@example.com', 'strong-password'))
+    await waitFor(() => expect(client.signInEmail).toHaveBeenCalledWith('luna@example.com', 'strong-password', '/en/admin'))
     fireEvent.click(screen.getByRole('button', {name: 'Continue with Google'}))
-    await waitFor(() => expect(client.signInGoogle).toHaveBeenCalled())
+    await waitFor(() => expect(client.signInGoogle).toHaveBeenCalledWith('/en/admin'))
+    expect(screen.getByRole('link', {name: 'Create account'})).toHaveAttribute('href', '/en/auth/sign-up?next=%2Fen%2Fadmin')
   })
 
   it('collects a display name when registering', async () => {
@@ -38,7 +39,7 @@ describe('AIFANS auth panel', () => {
     fireEvent.change(screen.getByLabelText('邮箱'), {target: {value: 'luna@example.com'}})
     fireEvent.change(screen.getByLabelText('密码'), {target: {value: 'strong-password'}})
     fireEvent.click(screen.getByRole('button', {name: '创建账户'}))
-    await waitFor(() => expect(client.signUpEmail).toHaveBeenCalledWith('露娜', 'luna@example.com', 'strong-password'))
+    await waitFor(() => expect(client.signUpEmail).toHaveBeenCalledWith('露娜', 'luna@example.com', 'strong-password', undefined))
   })
 
   it('recovers from provider transport errors without leaving the form stuck', async () => {

@@ -25,7 +25,7 @@ describe('creator operator console access', () => {
     access.mockResolvedValue('anonymous')
 
     await expect(CreatorAdminPage({params: Promise.resolve({locale: 'zh-CN'})}))
-      .rejects.toThrow('REDIRECT:/zh-CN/auth/sign-in')
+      .rejects.toThrow('REDIRECT:/zh-CN/auth/sign-in?next=%2Fzh-CN%2Fadmin%2Fcreator')
   })
 
   it('does not render the review queue for a non-operator', async () => {
