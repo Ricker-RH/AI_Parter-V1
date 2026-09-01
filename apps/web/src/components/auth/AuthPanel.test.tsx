@@ -24,6 +24,36 @@ const actions = (): AuthActions => ({
 })
 
 describe('AIFANS auth panel', () => {
+  it('uses a full-page accessible layout with separate AIFANS brand and form regions', () => {
+    render(<AuthPanel configured locale="en" mode="sign-in" />)
+
+    expect(screen.getByRole('main')).toHaveClass('auth-page')
+    expect(screen.getByRole('complementary', {name: 'AIFANS'})).toHaveClass('auth-brand')
+    expect(screen.getByRole('heading', {name: 'AIFANS', level: 2})).toBeVisible()
+    expect(screen.getByRole('region', {name: 'Sign in to AIFANS'})).toHaveClass('auth-form-panel')
+    expect(screen.getByLabelText('Email')).toHaveAttribute('id', 'auth-email')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('id', 'auth-password')
+  })
+
+  it('announces pending credential work and marks the form busy', async () => {
+    const client = actions()
+    let resolveSignIn!: (value: string | null) => void
+    vi.mocked(client.signInEmail).mockReturnValue(new Promise((resolve) => { resolveSignIn = resolve }))
+    render(<AuthPanel actions={client} configured locale="en" mode="sign-in" />)
+
+    fireEvent.change(screen.getByLabelText('Email'), {target: {value: 'luna@example.com'}})
+    fireEvent.change(screen.getByLabelText('Password'), {target: {value: 'strong-password'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Sign in'}))
+
+    expect(screen.getByRole('form')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('Signing in…')
+    expect(screen.getByRole('button', {name: 'Sign in'})).toBeDisabled()
+
+    resolveSignIn(null)
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Signed in. Returning to AIFANS…'))
+    expect(screen.getByRole('form')).toHaveAttribute('aria-busy', 'false')
+  })
+
   it('hands the safe admin callback to the auth provider with the credential request', async () => {
     provider.signIn.email.mockResolvedValue({error: {message: 'test stop'}})
     provider.signUp.email.mockResolvedValue({error: {message: 'test stop'}})
