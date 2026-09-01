@@ -1,9 +1,14 @@
 import {createHmac} from 'node:crypto'
-import {describe, expect, it, vi} from 'vitest'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {createApp} from './application.js'
 import type {RateLimitPort} from './ports/rate-limit.js'
 
 describe('API production hardening', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-01T12:00:00.000Z'))
+  })
+  afterEach(() => vi.useRealTimers())
   const identitySecret = 'i'.repeat(32)
   const rateLimitSecret = 'r'.repeat(32)
   const identity = (minute: number, address = '203.0.113.7') => {
@@ -37,13 +42,18 @@ describe('API production hardening', () => {
     const missing = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-forwarded-for':'203.0.113.7'},body:'{}'})
     const expired = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now - 2)},body:'{}'})
     const previous = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now - 1)},body:'{}'})
+    const future = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now + 1)},body:'{}'})
+    const malformed = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':'v1.not-a-minute.not-a-hash.not-a-signature'},body:'{}'})
     const signed = identity(now)
     const replacement = signed.endsWith('0') ? '1' : '0'
     const tampered = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':`${signed.slice(0, -1)}${replacement}`},body:'{}'})
     expect(valid.status).not.toBe(503)
     expect(previous.status).not.toBe(503)
+    expect(consume).toHaveBeenNthCalledWith(2, {policy:'chat_send', identifierHash:expect.stringMatching(/^[a-f0-9]{64}$/)})
     expect((await missing.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect((await expired.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
+    expect((await future.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
+    expect((await malformed.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect((await tampered.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect(JSON.stringify(consume.mock.calls)).not.toContain('203.0.113.7')
   })
