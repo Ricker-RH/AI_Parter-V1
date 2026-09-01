@@ -1,8 +1,8 @@
 import {createProductionApp} from './production.js'
 
 export default createProductionApp()
-export {createApp} from './app.js'
-export type {AppDependencies} from './app.js'
+export {createApp} from './application.js'
+export type {AppDependencies} from './application.js'
 export {apiError} from './errors.js'
 export {requestIdMiddleware} from './middleware/request-id.js'
 export {createDifyChatPort, difyChatPortFromEnv} from './adapters/dify-chat.js'

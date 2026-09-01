@@ -7,7 +7,7 @@ import {
   PublicIpProfileSchema,
 } from '@aifans/contracts'
 import {describe, expect, it} from 'vitest'
-import {createApp} from '../app.js'
+import {createApp} from '../application.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {ProfilePort} from '../ports/profiles.js'
 import type {SocialPort} from '../ports/social.js'

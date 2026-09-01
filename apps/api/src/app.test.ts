@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {AccountSchema, ApiErrorSchema} from '@aifans/contracts'
-import {createApp} from './app.js'
+import {createApp} from './application.js'
 import type {AuthVerifier} from './ports/auth.js'
 import type {ProfilePort} from './ports/profiles.js'
 

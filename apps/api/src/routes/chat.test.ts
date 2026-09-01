@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto'
 import {ApiErrorSchema, ChatMessageResponseSchema} from '@aifans/contracts'
 import {describe, expect, it} from 'vitest'
-import {createApp} from '../app.js'
+import {createApp} from '../application.js'
 import {ChatProviderError, type ChatPort} from '../ports/chat.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {ChatTargetPort} from '../ports/chat-target.js'

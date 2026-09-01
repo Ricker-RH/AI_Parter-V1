@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {createApp} from '../app.js'
+import {createApp} from '../application.js'
 import type {AnalyticsDeliveryWorker} from '../ports/analytics.js'
 
 function worker(calls: number[] = []): AnalyticsDeliveryWorker {

@@ -6,7 +6,7 @@ import {
   CreatePostResponseSchema,
 } from "@aifans/contracts";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
+import { createApp } from "../application.js";
 import type { AuthVerifier } from "../ports/auth.js";
 import { databaseAuthorityPort } from "../ports/authority.database.js";
 import type { AuthorityPort } from "../ports/authority.js";

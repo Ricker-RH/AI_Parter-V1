@@ -6,7 +6,7 @@ import {
   type DatabaseRuntimeRepositories,
   type DatabaseRuntimeUrls,
 } from "@aifans/db";
-import { createApp, type AppDependencies } from "./app.js";
+import { createApp, type AppDependencies } from "./application.js";
 import { createDifyChatPort } from "./adapters/dify-chat.js";
 import { createNeonJwtAuthVerifier } from "./adapters/neon-auth-jwt.js";
 import { createPostHogAnalyticsCapture } from "./adapters/posthog-analytics.js";
