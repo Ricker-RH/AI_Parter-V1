@@ -351,6 +351,35 @@ button {
   margin: 0;
   padding: 20px 24px 14px;
 }
+.comments-empty {
+  border-bottom: 1px solid var(--shell-border);
+  color: var(--shell-muted);
+  padding: 24px;
+}
+.comments-empty h3, .comments-empty p { margin: 0; }
+.comments-empty p { margin-top: 6px; }
+.post-detail-header {
+  align-items: center;
+  background: color-mix(in srgb, var(--shell-surface) 94%, transparent);
+  border-bottom: 1px solid var(--shell-border);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  min-height: 56px;
+  padding: 6px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 25;
+}
+.post-detail-header h1 { font-size: 17px; margin: 0; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.post-detail-back, .post-detail-menu-trigger, .post-detail-menu-list button { align-items: center; background: transparent; border: 0; border-radius: 8px; color: inherit; cursor: pointer; display: flex; font: inherit; font-weight: 600; justify-content: center; min-height: 44px; padding: 0; }
+.post-detail-back { font-size: 0; width: 44px; }
+.post-detail-back::before { content: "‹"; font-size: 32px; font-weight: 400; line-height: 1; }
+.post-detail-menu { position: relative; }
+.post-detail-menu-trigger { font-size: 18px; letter-spacing: 1px; width: 44px; }
+.post-detail-menu-trigger:hover, .post-detail-back:hover, .post-detail-menu-list button:hover { background: var(--shell-hover); }
+.post-detail-menu-list { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 10px; box-shadow: var(--aifans-elevation-2); display: grid; min-width: 172px; padding: 6px; position: absolute; right: 0; top: 48px; z-index: 30; }
+.post-detail-menu-list button { justify-content: flex-start; padding: 0 10px; width: 100%; }
+.post-detail-status { height: 1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .comment {
   border-bottom: 1px solid var(--shell-border);
   padding: 18px 24px;

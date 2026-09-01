@@ -9,6 +9,8 @@ export interface SocialLabels {
   likedEmptyDescription?: string
   commentCount: string
   comments: string
+  commentsEmptyTitle?: string
+  commentsEmptyDescription?: string
   deletedComment: string
   follow: string
   followingAction: string

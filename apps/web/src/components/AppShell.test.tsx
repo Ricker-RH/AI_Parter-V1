@@ -63,6 +63,12 @@ describe('AppShell', () => {
     expect(screen.queryByText('Recommendations')).toBeNull()
   })
 
+  it('omits the generic mobile More, AIFANS, and Search header for a post detail route', () => {
+    pathname = '/en/posts/22222222-2222-4222-8222-222222222222'
+    render(<AppShell locale="en" labels={labels}><main>Post</main></AppShell>)
+    expect(document.querySelector('.mobile-top-bar')).toBeNull()
+  })
+
   it('selects the compact, recommendation-free messages shell', () => {
     pathname = '/en/messages'
     render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)

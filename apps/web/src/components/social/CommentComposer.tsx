@@ -9,12 +9,13 @@ import {authHref} from '../../lib/auth/return-to'
 
 type Labels=Pick<SocialLabels,'commentPlaceholder'|'commentSubmit'|'commentSending'|'commentSuccess'|'interactionError'|'signInToComment'>
 
-export function CommentComposer({postId,parentCommentId,authenticated,locale,labels}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels}) {
+export function CommentComposer({postId,parentCommentId,authenticated,locale,labels,returnTo}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels;returnTo?:string}) {
   const router=useRouter()
   const [body,setBody]=useState('')
   const [pending,setPending]=useState(false)
   const [status,setStatus]=useState<'idle'|'success'|'error'>('idle')
-  if (!authenticated) return <p className="comment-signin"><Link href={authHref(locale, `/${locale}/posts/${postId}`)}>{labels.signInToComment}</Link></p>
+  const safeReturnTo = returnTo ?? `/${locale}/posts/${postId}`
+  if (!authenticated) return <p className="comment-signin"><Link href={authHref(locale, safeReturnTo)}>{labels.signInToComment}</Link></p>
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     const value=body.trim()

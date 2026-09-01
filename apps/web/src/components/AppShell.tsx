@@ -21,7 +21,7 @@ export function AppShell({authConfigured=false, creatorModeEnabled=true, locale,
     case 'auth': shell = <AuthShell>{children}</AuthShell>; break
     case 'messages': shell = <MessagesShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</MessagesShell>; break
     case 'creator': shell = <CreatorShell>{children}</CreatorShell>; break
-    default: shell = <PublicShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale}>{children}</PublicShell>
+    default: shell = <PublicShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale} suppressMobileTopBar={/^\/(?:en|zh-CN)\/posts\/[^/]+$/.test(pathname)}>{children}</PublicShell>
   }
   return <>{shell}<RouteReadySignal content={children}/><NavigationFeedback locale={locale} release={release}/></>
 }

@@ -464,12 +464,20 @@ describe("real social content", () => {
 
   it("keeps guest comment sign-in on the localized post detail route", () => {
     const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
-    render(<PostDetailContent authenticated={false} labels={labels} locale="zh-CN" result={{status: "ok", data: detail}} />);
+    render(<PostDetailContent authenticated={false} labels={labels} locale="zh-CN" returnTo={`/zh-CN/posts/${post.id}?commentCursor=comments-next`} result={{status: "ok", data: detail}} />);
 
     expect(screen.getByRole("link", {name: "Sign in to comment"})).toHaveAttribute(
       "href",
-      `/zh-CN/auth/sign-in?next=${encodeURIComponent(`/zh-CN/posts/${post.id}`)}`,
+      `/zh-CN/auth/sign-in?next=${encodeURIComponent(`/zh-CN/posts/${post.id}?commentCursor=comments-next`)}`,
     );
+  });
+
+  it("renders a localized empty state when a post has no comments", () => {
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+    render(<PostDetailContent authenticated labels={{...labels, commentsEmptyTitle: "No comments yet", commentsEmptyDescription: "Start the conversation."}} locale="en" result={{status: "ok", data: detail}} />);
+
+    expect(screen.getByRole("heading", {name: "No comments yet"})).toBeVisible();
+    expect(screen.getByText("Start the conversation.")).toBeVisible();
   });
 
   it("renders a public AI/IP profile without private creator operation fields", () => {
