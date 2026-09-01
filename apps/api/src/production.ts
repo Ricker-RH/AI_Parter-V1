@@ -60,7 +60,12 @@ export function createProductionDependencies(
     : undefined;
   const readiness=factories.createReadiness(env.databaseUserUrl)
   return {
-    auth: createNeonJwtAuthVerifier(env.auth),
+    auth: createNeonJwtAuthVerifier({
+      ...env.auth,
+      onVerification(event) {
+        if (event.status !== 'authenticated') console.info(JSON.stringify({event: 'auth_verification', ...event}))
+      },
+    }),
     authority: database.authority,
     platformSocial: database.platformSocial,
     profiles: database.profiles,

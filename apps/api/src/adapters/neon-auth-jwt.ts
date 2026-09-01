@@ -10,6 +10,7 @@ export type NeonJwtAuthOptions = {
   issuer: string
   audience: string
   keySet?: JWTVerifyGetKey
+  onVerification?: (event: {status: 'missing' | 'invalid' | 'authenticated'; code?: string; claim?: string}) => void
 }
 
 function bearerToken(request: Request): string | null | undefined {
@@ -32,8 +33,14 @@ export function createNeonJwtAuthVerifier(options: NeonJwtAuthOptions): AuthVeri
   return {
     async verify(request) {
       const token = bearerToken(request)
-      if (token === undefined) return {status: 'missing'}
-      if (token === null) return {status: 'invalid'}
+      if (token === undefined) {
+        options.onVerification?.({status: 'missing'})
+        return {status: 'missing'}
+      }
+      if (token === null) {
+        options.onVerification?.({status: 'invalid', code: 'MALFORMED_BEARER'})
+        return {status: 'invalid'}
+      }
       try {
         const {payload} = await jwtVerify(token, keySet, {
           algorithms: ['ES256', 'RS256', 'EdDSA'],
@@ -42,7 +49,10 @@ export function createNeonJwtAuthVerifier(options: NeonJwtAuthOptions): AuthVeri
           requiredClaims: ['exp'],
           clockTolerance: 5,
         })
-        if (typeof payload.sub !== 'string' || !payload.sub.trim()) return {status: 'invalid'}
+        if (typeof payload.sub !== 'string' || !payload.sub.trim()) {
+          options.onVerification?.({status: 'invalid', code: 'MISSING_SUBJECT'})
+          return {status: 'invalid'}
+        }
         const email = optionalString(payload.email)
         const displayName = optionalString(payload.name)
         const identity: VerifiedIdentity = {
@@ -50,8 +60,16 @@ export function createNeonJwtAuthVerifier(options: NeonJwtAuthOptions): AuthVeri
           ...(email === undefined ? {} : {email}),
           ...(displayName === undefined ? {} : {displayName}),
         }
+        options.onVerification?.({status: 'authenticated'})
         return {status: 'authenticated', identity}
-      } catch {
+      } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+          ? error.code
+          : 'JWT_VERIFICATION_FAILED'
+        const claim = error && typeof error === 'object' && 'claim' in error && typeof error.claim === 'string'
+          ? error.claim
+          : undefined
+        options.onVerification?.({status: 'invalid', code, ...(claim === undefined ? {} : {claim})})
         return {status: 'invalid'}
       }
     },
