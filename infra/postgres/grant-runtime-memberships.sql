@@ -36,7 +36,7 @@
   \quit
 \endif
 
-GRANT aifans_authenticated TO :"user_login_role";
+GRANT aifans_anon, aifans_authenticated TO :"user_login_role";
 GRANT aifans_platform TO :"platform_login_role";
 GRANT aifans_provisioner TO :"provisioning_login_role";
 GRANT aifans_analytics_delivery TO :"analytics_login_role";
