@@ -103,6 +103,25 @@ function isUsernameConflict(error: unknown): boolean {
   return postgresError.code === '23505' && postgresError.constraint === 'profiles_username_unique'
 }
 
+async function withProvisioner<T>(
+  pool: QueryPool,
+  callback: (client: Awaited<ReturnType<QueryPool['connect']>>) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('SET LOCAL ROLE aifans_provisioner')
+    const result = await callback(client)
+    await client.query('COMMIT')
+    return result
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export function createProfileRepository({
   adminPool,
   withActor: runWithActor,
@@ -116,23 +135,21 @@ export function createProfileRepository({
         throw new Error('Auth subject must not be blank')
       }
 
-      const existing = await adminPool.connect()
-      try {
+      const existingProfile = await withProvisioner(adminPool, async (existing) => {
         const result = await existing.query<ProfileRow>(
           `SELECT id, auth_subject, account_kind, username, display_name, preferred_locale, creator_mode_enabled
            FROM public.profiles WHERE auth_subject = $1`,
           [input.authSubject],
         )
-        if (result.rows[0]) return normalizeHumanProfile(result.rows[0])
-      } finally {
-        existing.release()
-      }
+        return result.rows[0] ? normalizeHumanProfile(result.rows[0]) : null
+      })
+      if (existingProfile) return existingProfile
 
       const displayName = displayNameFor(input)
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        const client = await adminPool.connect()
         try {
-          const inserted = await client.query<ProfileRow>(
+          const profile = await withProvisioner(adminPool, async (client) => {
+            const inserted = await client.query<ProfileRow>(
             `INSERT INTO public.profiles (
               id, auth_subject, account_kind, username, display_name
             ) VALUES ($1, $2, 'human', $3, $4)
@@ -140,18 +157,18 @@ export function createProfileRepository({
             RETURNING id, auth_subject, account_kind, username, display_name, preferred_locale, creator_mode_enabled`,
             [randomUUID(), input.authSubject, candidateUsername(), displayName],
           )
-          if (inserted.rows[0]) return normalizeHumanProfile(inserted.rows[0])
+            if (inserted.rows[0]) return normalizeHumanProfile(inserted.rows[0])
 
-          const result = await client.query<ProfileRow>(
+            const result = await client.query<ProfileRow>(
             `SELECT id, auth_subject, account_kind, username, display_name, preferred_locale, creator_mode_enabled
              FROM public.profiles WHERE auth_subject = $1`,
             [input.authSubject],
           )
-          if (result.rows[0]) return normalizeHumanProfile(result.rows[0])
+            return result.rows[0] ? normalizeHumanProfile(result.rows[0]) : null
+          })
+          if (profile) return profile
         } catch (error) {
           if (!isUsernameConflict(error) || attempt === 4) throw error
-        } finally {
-          client.release()
         }
       }
 
