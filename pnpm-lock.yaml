@@ -41,9 +41,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1121.0
         version: 3.1121.0
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
       hono:
         specifier: 4.13.5
         version: 4.13.5
@@ -54,6 +51,9 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
     devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
       typescript:
         specifier: 7.0.2
         version: 7.0.2
