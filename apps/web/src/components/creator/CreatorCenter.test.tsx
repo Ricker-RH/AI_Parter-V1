@@ -54,4 +54,17 @@ describe('CreatorCenter',()=>{
     render(<CreatorCenter labels={en.creator} locale="en" />)
     await waitFor(()=>expect(replace).toHaveBeenCalledWith('/en/auth/sign-in?next=%2Fen%2Fcreator'))
   })
+
+  it('redirects only once when concurrent creator requests find a stale session',async()=>{
+    const references=['avatar','cover','portrait','full_body','supporting_1'].map((role,index)=>({id:`00000000-0000-4000-8000-00000000000${index}`,role}))
+    const identity=(id:string,username:string,displayName:string)=>({id,username,displayName,shortDescription:'',languageCodes:['en'],contentThemes:['art'],visualType:'hybrid',status:'approved',operationEnabled:false,creator:{id:'99999999-9999-4999-8999-999999999999',username:'owner',displayName:'Owner'},references,createdAt:'2026-09-01T00:00:00.000Z'})
+    vi.stubGlobal('fetch',vi.fn()
+      .mockResolvedValueOnce(Response.json({items:[],nextCursor:null}))
+      .mockResolvedValueOnce(Response.json({items:[identity('11111111-1111-4111-8111-111111111111','luna_ip','Luna'),identity('22222222-2222-4222-8222-222222222222','nova_ip','Nova')],nextCursor:null}))
+      .mockResolvedValue(new Response(null,{status:401})))
+
+    render(<CreatorCenter labels={en.creator} locale="en" />)
+
+    await waitFor(()=>expect(replace).toHaveBeenCalledTimes(1))
+  })
 })

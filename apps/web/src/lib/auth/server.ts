@@ -15,6 +15,7 @@ export async function getApiBearerToken(): Promise<string | null> {
   const auth = createConfiguredNeonAuth()
   if (!auth) return null
   const result = await auth.token()
+  if (typeof result.error === 'object' && result.error !== null && 'status' in result.error && result.error.status === 401) return null
   if (result.error) throw new Error('Auth token provider unavailable')
   if (!result.data || typeof result.data !== 'object') return null
   const token = (result.data as {token?: unknown}).token

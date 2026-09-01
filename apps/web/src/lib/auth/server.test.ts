@@ -17,4 +17,10 @@ describe('API bearer token', () => {
 
     await expect(getApiBearerToken()).rejects.toThrow('Auth token provider unavailable')
   })
+
+  it('treats Neon Auth 401 token errors as an anonymous session', async () => {
+    token.mockResolvedValue({error: {status: 401}, data: null})
+
+    await expect(getApiBearerToken()).resolves.toBeNull()
+  })
 })

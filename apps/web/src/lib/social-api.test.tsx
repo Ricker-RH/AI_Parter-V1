@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
-vi.mock('./auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
+const {getApiBearerToken}=vi.hoisted(()=>({getApiBearerToken:vi.fn(async()=> 'signed-jwt')}))
+vi.mock('./auth/server.js', () => ({getApiBearerToken}))
 import {
   fetchBookmarks,
   fetchFeed,
@@ -28,6 +29,7 @@ const post = {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  getApiBearerToken.mockClear()
   delete process.env.AIFANS_API_URL
   delete process.env.NEXT_PUBLIC_AIFANS_API_URL
 })
@@ -46,6 +48,17 @@ describe('social API client', () => {
       'https://server.example/v1/feed?kind=following&locale=en&cursor=next+page',
       expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer signed-jwt'}}),
     )
+  })
+
+  it('reuses a protected page token instead of requesting another token', async () => {
+    process.env.AIFANS_API_URL = 'https://server.example'
+    const request = vi.fn().mockResolvedValue(Response.json({items: [post], nextCursor: null}))
+    vi.stubGlobal('fetch', request)
+
+    await expect(fetchFeed({kind: 'following', locale: 'en', token: 'guarded-jwt'})).resolves.toMatchObject({status: 'ok'})
+
+    expect(request).toHaveBeenCalledWith('https://server.example/v1/feed?kind=following&locale=en', expect.objectContaining({headers: {authorization: 'Bearer guarded-jwt'}}))
+    expect(getApiBearerToken).not.toHaveBeenCalled()
   })
 
   it('forwards opaque cursors for bookmark, notification, and comment pagination', async () => {

@@ -1,7 +1,6 @@
 import {notFound} from 'next/navigation'
 import {PublicProfileContent} from '../../../../components/social/PublicProfileContent'
 import {getMessages,isLocale} from '../../../../i18n/config'
-import {requestCookie} from '../../../../lib/request-cookie'
 import {fetchPublicProfile} from '../../../../lib/social-api'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../../lib/auth/access-policy'
 
@@ -12,8 +11,7 @@ export default async function PublicProfilePage({params,searchParams}:{params:Pr
   const access=await requireAuthenticatedPage({locale,returnTo:`/${locale}/profiles/${profileId}${cursor?`?${new URLSearchParams({cursor})}`:''}`})
   const messages=await getMessages(locale)
   if(access.status==='unavailable')return <main><PublicProfileContent labels={messages} locale={locale} result={{status:'unavailable'}}/></main>
-  const cookie=await requestCookie()
-  const result=await fetchPublicProfile(profileId,{cookie,cursor})
+  const result=await fetchPublicProfile(profileId,{cursor,token:access.token})
   if(result.status==='auth-required')redirectToUserSignIn({locale,returnTo:`/${locale}/profiles/${profileId}${cursor?`?${new URLSearchParams({cursor})}`:''}`})
   const nextCursor=result.status==='ok'?result.data.posts.nextCursor:null
   const moreHref=nextCursor?`/${locale}/profiles/${profileId}?${new URLSearchParams({cursor:nextCursor})}`:undefined

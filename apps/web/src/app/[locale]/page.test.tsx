@@ -59,4 +59,22 @@ describe('home feed query navigation', () => {
 
     expect(authRedirect).toHaveBeenCalledWith({locale: 'en', returnTo: '/en?feed=following'})
   })
+
+  it('reuses the guarded token for Following while anonymous For You still fetches normally', async () => {
+    await HomePage({
+      params: Promise.resolve({locale: 'en'}),
+      searchParams: Promise.resolve({feed: 'following'}),
+    })
+    expect(fetchFeed).toHaveBeenLastCalledWith(expect.objectContaining({kind: 'following', token: 'token'}))
+
+    fetchFeed.mockClear()
+    access.mockClear()
+    access.mockResolvedValue({status: 'unavailable'})
+    await HomePage({
+      params: Promise.resolve({locale: 'en'}),
+      searchParams: Promise.resolve({}),
+    })
+    expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({kind: 'for_you'}))
+    expect(access).not.toHaveBeenCalled()
+  })
 })
