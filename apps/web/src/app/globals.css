@@ -1642,42 +1642,6 @@ button {
   .admin-shell-content {
     border-right: 0;
   }
-  .shell {
-    display: block;
-    max-width: none;
-    padding-bottom: 68px;
-  }
-  .desktop-nav {
-    display: none;
-  }
-  .content {
-    border-right: 0;
-  }
-  .mobile-nav {
-    background: color-mix(in srgb, var(--shell-surface) 94%, transparent);
-    border-top: 1px solid var(--shell-border);
-    bottom: 0;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    left: 0;
-    padding: 6px max(8px, env(safe-area-inset-left))
-      calc(6px + env(safe-area-inset-bottom));
-    position: fixed;
-    right: 0;
-    z-index: 10;
-  }
-  .mobile-link {
-    flex-direction: column;
-    font-size: 10px;
-    gap: 2px;
-    justify-content: center;
-    min-height: 52px;
-    padding: 2px;
-  }
-  .mobile-link .nav-icon {
-    height: 20px;
-    width: 20px;
-  }
   .page-header {
     padding: 22px 20px 0;
   }
@@ -1736,7 +1700,6 @@ button {
     padding-left: 20px;
     padding-right: 20px;
   }
-  .post-card,
   .comment,
   .notification-row {
     padding-left: 20px;
@@ -1864,7 +1827,6 @@ button {
   .mobile-feed-menu { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 8px; box-shadow: var(--aifans-elevation-2); display: grid; left: 0; min-width: 132px; padding: 6px; position: absolute; top: 44px; z-index: 20; }
   .mobile-feed-menu a { min-height: 44px; padding: 10px; }
   .visual-filter { display: none; }
-  .visual-filter { padding-inline: 12px; }
   .post-card { padding-inline: 12px; }
 }
 
@@ -1886,7 +1848,6 @@ button {
   .desktop-nav .nav-link:hover::after, .desktop-nav .nav-link:focus-visible::after { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; box-shadow: var(--aifans-elevation-2); content: attr(aria-label); left: 54px; padding: 9px 12px; position: absolute; white-space: nowrap; z-index: 20; }
   .rail-controls { display: block; margin-bottom: 8px; }
   .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
-  .rail-expand::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
   .rail-expand::after { content: none; }
   .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
   .desktop-nav[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }
@@ -1907,7 +1868,6 @@ button {
   .desktop-nav-compact .nav-link:hover::after, .desktop-nav-compact .nav-link:focus-visible::after { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; box-shadow: var(--aifans-elevation-2); content: attr(aria-label); left: 54px; padding: 9px 12px; position: absolute; white-space: nowrap; z-index: 20; }
   .desktop-nav-compact .rail-controls { display: block; margin-bottom: 8px; }
   .desktop-nav-compact .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
-  .desktop-nav-compact .rail-expand::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
   .desktop-nav-compact .rail-expand::after { content: none; }
   .desktop-nav-compact .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
   .desktop-nav-compact[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }

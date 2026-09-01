@@ -23,4 +23,17 @@ describe('FeedTabs', () => {
     rerender(<FeedTabs currentQuery="feed=following" following labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="all" />)
     expect(screen.getByRole('button', {name: 'For you · Anime'})).toBeVisible()
   })
+
+  it('uses distinct menu ids and moves focus from trigger through the filter menu', () => {
+    render(<FeedTabs currentQuery="" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" />)
+    const forYou = screen.getByRole('button', {name: 'For you · All'})
+    const following = screen.getByRole('button', {name: 'Following · All'})
+    expect(forYou.getAttribute('aria-controls')).not.toBe(following.getAttribute('aria-controls'))
+    fireEvent.keyDown(forYou, {key: 'ArrowDown'})
+    expect(screen.getByRole('menuitem', {name: 'All'})).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menuitem', {name: 'All'}), {key: 'End'})
+    expect(screen.getByRole('menuitem', {name: 'Anime'})).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menuitem', {name: 'Anime'}), {key: 'Escape'})
+    expect(forYou).toHaveFocus()
+  })
 })
