@@ -18,7 +18,7 @@ describe('API production hardening', () => {
   }
 
   it('fails closed for protected mutations when production rate limiting is unavailable', async () => {
-    const response=await createApp({requireRateLimit:true}).request('/v1/chat/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+    const response=await createApp({requireRateLimit:true}).request('/v1/chat/conversations/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
     expect(response.status).toBe(503)
     expect(await response.json()).toMatchObject({code:'RATE_LIMIT_NOT_CONFIGURED'})
   })
@@ -36,7 +36,7 @@ describe('API production hardening', () => {
   it('accepts only current signed mutation identities and never trusts forwarded client addresses', async () => {
     const consume = vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))
     const app = createApp({requireRateLimit:true,rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})
-    const path = '/v1/chat/11111111-1111-4111-8111-111111111111/messages'
+    const path = '/v1/chat/conversations/11111111-1111-4111-8111-111111111111/messages'
     const now = Math.floor(Date.now() / 60_000)
     const valid = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':identity(now),'x-forwarded-for':'203.0.113.7'},body:'{}'})
     const missing = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-forwarded-for':'203.0.113.7'},body:'{}'})
@@ -47,8 +47,8 @@ describe('API production hardening', () => {
     const signed = identity(now)
     const replacement = signed.endsWith('0') ? '1' : '0'
     const tampered = await app.request(path, {method:'POST', headers:{'content-type':'application/json','x-aifans-rate-limit-identity':`${signed.slice(0, -1)}${replacement}`},body:'{}'})
-    expect(valid.status).not.toBe(503)
-    expect(previous.status).not.toBe(503)
+    expect((await valid.json()).code).toBe('AUTH_NOT_CONFIGURED')
+    expect((await previous.json()).code).toBe('AUTH_NOT_CONFIGURED')
     expect(consume).toHaveBeenNthCalledWith(2, {policy:'chat_send', identifierHash:expect.stringMatching(/^[a-f0-9]{64}$/)})
     expect((await missing.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
     expect((await expired.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
@@ -58,11 +58,23 @@ describe('API production hardening', () => {
     expect(JSON.stringify(consume.mock.calls)).not.toContain('203.0.113.7')
   })
 
+  it('rate limits both persistent chat mutations but not the removed legacy path', async () => {
+    const consume=vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))
+    const app=createApp({rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})
+    const headers={'content-type':'application/json','x-aifans-rate-limit-identity':identity(Math.floor(Date.now()/60_000))}
+    await app.request('/v1/chat/conversations',{method:'POST',headers,body:'{}'})
+    await app.request('/v1/chat/conversations/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers,body:'{}'})
+    await app.request('/v1/chat/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers,body:'{}'})
+    expect(consume).toHaveBeenCalledTimes(2)
+    expect(consume).toHaveBeenNthCalledWith(1,expect.objectContaining({policy:'chat_send'}))
+    expect(consume).toHaveBeenNthCalledWith(2,expect.objectContaining({policy:'chat_send'}))
+  })
+
   it('rejects declared and streamed bodies above the global limit before routes run', async () => {
     const rateLimit={consume:vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))} satisfies RateLimitPort
     const app=createApp({rateLimit,rateLimitHmacSecret:'s'.repeat(32)})
-    const declared=await app.request('/v1/chat/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json','content-length':'65537'},body:'{}'})
-    const streamed=await app.request('/v1/chat/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:'x'.repeat(66_000)})})
+    const declared=await app.request('/v1/chat/conversations/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json','content-length':'65537'},body:'{}'})
+    const streamed=await app.request('/v1/chat/conversations/11111111-1111-4111-8111-111111111111/messages',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:'x'.repeat(66_000)})})
     expect(declared.status).toBe(413)
     expect(streamed.status).toBe(413)
   })

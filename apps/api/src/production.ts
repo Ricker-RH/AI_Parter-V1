@@ -18,7 +18,7 @@ import {jsonConsoleLogger} from './ports/logger.js'
 import type {RateLimitPort} from './ports/rate-limit.js'
 import type {ReadinessPort} from './ports/readiness.js'
 
-type ProductionFactories = {
+export type ProductionFactories = {
   createDatabaseRuntime(urls: DatabaseRuntimeUrls): DatabaseRuntimeRepositories;
   createRateLimit(url:string):RateLimitPort;
   createReadiness(url:string):ReadinessPort;
@@ -71,6 +71,7 @@ export function createProductionDependencies(
     profiles: database.profiles,
     social: database.social,
     chatTargets: database.chatTargets,
+    conversations: database.chat,
     creator: database.creator,
     platformCreator: database.platformCreator,
     requireRateLimit:true,

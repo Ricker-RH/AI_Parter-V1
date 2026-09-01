@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto'
 import {afterEach, describe, expect, it, vi} from 'vitest'
-import {ChatProviderError} from '../ports/chat.js'
+import {ChatProviderError, type SendChatMessageInput} from '../ports/chat.js'
 import {createDifyChatPort, difyChatPortFromEnv} from './dify-chat.js'
 
 const encoder = new TextEncoder()
@@ -11,7 +11,8 @@ const input = {
   providerConversationId: 'conv_external_01',
   locale: 'zh-CN' as const,
   requestId: randomUUID(),
-}
+  signal: new AbortController().signal,
+} satisfies SendChatMessageInput
 
 function sseResponse(chunks: string[], options: {status?: number; contentType?: string} = {}) {
   const body = new ReadableStream<Uint8Array>({

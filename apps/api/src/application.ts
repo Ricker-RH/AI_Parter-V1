@@ -20,6 +20,7 @@ import type { ProfilePort } from "./ports/profiles.js";
 import type { SocialPort } from "./ports/social.js";
 import type { ChatPort } from "./ports/chat.js";
 import type { ChatTargetPort } from "./ports/chat-target.js";
+import type {ChatRepositoryPort} from './ports/chat-repository.js'
 import type { AnalyticsDeliveryWorker } from "./ports/analytics.js";
 import type { AssetPort, ImageGenerationPort } from "./ports/assets.js";
 import type { CreatorPort, PlatformCreatorPort } from "./ports/creator.js";
@@ -30,6 +31,8 @@ import type {StructuredLogger} from './ports/logger.js'
 import {rateLimitMiddleware} from './middleware/rate-limit.js'
 import {structuredLoggerMiddleware} from './middleware/structured-logger.js'
 
+export type UnhandledErrorDiagnostic = {name: string; code?: string; requestId?: string; conversationId?: string}
+
 export type AppDependencies = {
   auth?: AuthVerifier;
   authority?: AuthorityPort;
@@ -38,6 +41,7 @@ export type AppDependencies = {
   social?: SocialPort;
   chat?: ChatPort;
   chatTargets?: ChatTargetPort;
+  conversations?: ChatRepositoryPort;
   analyticsWorker?: AnalyticsDeliveryWorker;
   analyticsCronSecret?: string;
   creator?: CreatorPort;
@@ -51,10 +55,10 @@ export type AppDependencies = {
   requireRateLimit?:boolean;
   readiness?:ReadinessPort;
   logger?:StructuredLogger;
-  onUnhandledError?: (diagnostic: {name: string; code?: string}) => void;
+  onUnhandledError?: (diagnostic: UnhandledErrorDiagnostic) => void;
 };
 
-function unhandledErrorDiagnostic(error: unknown): {name: string; code?: string} {
+function unhandledErrorDiagnostic(error: unknown): UnhandledErrorDiagnostic {
   if (typeof error !== 'object' || error === null) return {name: 'Unknown'}
   const candidate = error as {name?: unknown; code?: unknown}
   return {

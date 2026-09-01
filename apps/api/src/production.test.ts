@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import type {DatabaseRuntimeRepositories} from '@aifans/db'
 import {
   createProductionApp,
   createProductionDependencies,
+  type ProductionFactories,
 } from "./production.js";
 
 const environment = {
@@ -17,18 +19,32 @@ const environment = {
 
 describe("production API composition", () => {
   it("injects every P0 runtime port without configuring optional chat", () => {
-    expect(createProductionDependencies(environment)).toMatchObject({
+    const database = {
+      authority: {} as DatabaseRuntimeRepositories['authority'],
+      platformSocial: {} as DatabaseRuntimeRepositories['platformSocial'],
+      profiles: {} as DatabaseRuntimeRepositories['profiles'],
+      social: {} as DatabaseRuntimeRepositories['social'],
+      chatTargets: {} as DatabaseRuntimeRepositories['chatTargets'],
+      chat: {} as DatabaseRuntimeRepositories['chat'],
+      creator: {} as DatabaseRuntimeRepositories['creator'],
+      platformCreator: {} as DatabaseRuntimeRepositories['platformCreator'],
+    } satisfies DatabaseRuntimeRepositories
+    const createDatabaseRuntime = (() => database) satisfies ProductionFactories['createDatabaseRuntime']
+    const dependencies = createProductionDependencies(environment, {createDatabaseRuntime})
+    expect(dependencies).toMatchObject({
       auth: expect.any(Object),
       authority: expect.any(Object),
       platformSocial: expect.any(Object),
       profiles: expect.any(Object),
       social: expect.any(Object),
       chatTargets: expect.any(Object),
+      conversations: expect.any(Object),
       creator: expect.any(Object),
       platformCreator: expect.any(Object),
     });
-    expect(createProductionDependencies(environment).chat).toBeUndefined();
-    expect(createProductionDependencies(environment).assets).toBeUndefined();
+    expect(dependencies.conversations).toBe(database.chat)
+    expect(dependencies.chat).toBeUndefined();
+    expect(dependencies.assets).toBeUndefined();
   });
 
   it('passes the configured Web-to-API identity secret to production middleware', () => {
@@ -51,28 +67,37 @@ describe("production API composition", () => {
 
   it("binds database repositories to the explicitly parsed environment instead of process.env", () => {
     const database = {
-      authority: {},
-      platformSocial: {},
-      profiles: {},
-      social: {},
-      chatTargets: {},
-      creator: {},
-      platformCreator: {},
-    };
-    const createDatabaseRuntime = vi.fn(() => database);
+      authority: {} as DatabaseRuntimeRepositories['authority'],
+      platformSocial: {} as DatabaseRuntimeRepositories['platformSocial'],
+      profiles: {} as DatabaseRuntimeRepositories['profiles'],
+      social: {} as DatabaseRuntimeRepositories['social'],
+      chatTargets: {} as DatabaseRuntimeRepositories['chatTargets'],
+      chat: {} as DatabaseRuntimeRepositories['chat'],
+      creator: {} as DatabaseRuntimeRepositories['creator'],
+      platformCreator: {} as DatabaseRuntimeRepositories['platformCreator'],
+    } satisfies DatabaseRuntimeRepositories;
+    const createDatabaseRuntime = vi.fn<ProductionFactories['createDatabaseRuntime']>(() => database);
     const previous = process.env.DATABASE_USER_URL;
     process.env.DATABASE_USER_URL =
       "postgresql://wrong:wrong@process.example/wrong";
     try {
-      const dependencies = createProductionDependencies(environment, {
-        createDatabaseRuntime,
-      } as never);
+      const dependencies = createProductionDependencies(environment, {createDatabaseRuntime});
       expect(createDatabaseRuntime).toHaveBeenCalledWith({
         userUrl: environment.DATABASE_USER_URL,
         platformUrl: environment.DATABASE_PLATFORM_URL,
         provisioningUrl: environment.DATABASE_PROVISIONING_URL,
       });
-      expect(dependencies).toMatchObject(database);
+      expect(dependencies).toMatchObject({
+        authority: database.authority,
+        platformSocial: database.platformSocial,
+        profiles: database.profiles,
+        social: database.social,
+        chatTargets: database.chatTargets,
+        conversations: database.chat,
+        creator: database.creator,
+        platformCreator: database.platformCreator,
+      });
+      expect(dependencies.chat).toBeUndefined()
     } finally {
       if (previous === undefined) delete process.env.DATABASE_USER_URL;
       else process.env.DATABASE_USER_URL = previous;
@@ -105,18 +130,17 @@ describe("production API composition", () => {
       R2_PUBLIC_BASE_URL: "https://media.example/assets/",
     };
     const database = {
-      authority: {},
-      platformSocial: {},
-      profiles: {},
-      social: {},
-      chatTargets: {},
-      creator: {},
-      platformCreator: {},
-    };
-    const createDatabaseRuntime = vi.fn(() => database);
-    const dependencies = createProductionDependencies(publicR2, {
-      createDatabaseRuntime,
-    } as never);
+      authority: {} as DatabaseRuntimeRepositories['authority'],
+      platformSocial: {} as DatabaseRuntimeRepositories['platformSocial'],
+      profiles: {} as DatabaseRuntimeRepositories['profiles'],
+      social: {} as DatabaseRuntimeRepositories['social'],
+      chatTargets: {} as DatabaseRuntimeRepositories['chatTargets'],
+      chat: {} as DatabaseRuntimeRepositories['chat'],
+      creator: {} as DatabaseRuntimeRepositories['creator'],
+      platformCreator: {} as DatabaseRuntimeRepositories['platformCreator'],
+    } satisfies DatabaseRuntimeRepositories;
+    const createDatabaseRuntime = vi.fn<ProductionFactories['createDatabaseRuntime']>(() => database);
+    const dependencies = createProductionDependencies(publicR2, {createDatabaseRuntime});
     expect(dependencies.postMediaAssets).toBeDefined();
     expect(createDatabaseRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
