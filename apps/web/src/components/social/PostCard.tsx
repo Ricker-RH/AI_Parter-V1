@@ -56,16 +56,17 @@ export function PostCard({
         <div className="post-media-grid" data-count={post.media.length}>
           {post.media.map((media, index) => {
             const geometry = mediaGeometry(media);
+            const isFeatured = isThreeImageGrid && index === 0;
 
             return (
               <div
                 className={
-                  isThreeImageGrid && index === 0
+                  isFeatured
                     ? "post-media-frame post-media-frame--featured"
                     : "post-media-frame"
                 }
                 key={media.id}
-                style={{ aspectRatio: geometry.aspectRatio }}
+                style={isFeatured ? undefined : { aspectRatio: geometry.aspectRatio }}
               >
                 <img
                   alt={media.altText ?? ""}

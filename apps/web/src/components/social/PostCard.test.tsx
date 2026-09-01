@@ -89,4 +89,20 @@ describe("PostCard media geometry", () => {
     expect(frames[1]).not.toHaveClass("post-media-frame--featured");
     expect(frames[2]).not.toHaveClass("post-media-frame--featured");
   });
+
+  it("lets the three-image featured frame take its height from the spanned grid area", () => {
+    const { container } = render(
+      <PostCard
+        linked={false}
+        labels={labels}
+        locale="en"
+        post={{ ...post, media: post.media?.slice(0, 3) }}
+      />,
+    );
+
+    const frames = container.querySelectorAll(".post-media-frame");
+    expect(frames[0]).not.toHaveAttribute("style");
+    expect(frames[1]).toHaveStyle({ aspectRatio: "1.25" });
+    expect(frames[2]).toHaveStyle({ aspectRatio: "0.8" });
+  });
 });
