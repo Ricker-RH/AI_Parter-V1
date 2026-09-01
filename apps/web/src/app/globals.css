@@ -1860,10 +1860,11 @@ button {
 }
 
 @media (min-width: 700px) and (max-width: 1149px) {
-  .shell[data-shell="public"] { column-gap: 24px; grid-template-columns: 76px minmax(0, 1fr); max-width: 740px; width: 100%; }
+  .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
+  .shell[data-shell="public"] .content { margin-left: max(100px, calc((100vw - 640px) / 2)); width: min(640px, calc(100vw - 100px)); }
   .mobile-nav, .mobile-top-bar { display: none; }
   .mobile-feed-tabs { display: none; }
-  .shell[data-shell="public"] .desktop-nav { display: block; overflow: visible; padding: 24px 10px; position: relative; }
+  .shell[data-shell="public"] .desktop-nav { bottom: 0; display: block; left: 0; overflow: visible; padding: 24px 10px; position: fixed; top: 0; width: 76px; z-index: 10; }
   .shell[data-shell="public"] .desktop-nav .brand { margin: 2px 0 28px 10px; width: 32px; }
   .shell[data-shell="public"] .desktop-nav .brand-logo-full { display: none; }
   .shell[data-shell="public"] .desktop-nav .brand-logo-compact { display: block; }
@@ -1884,7 +1885,9 @@ button {
 }
 
 @media (min-width: 1150px) {
-  .shell[data-shell="public"] { column-gap: 24px; grid-template-columns: 248px minmax(0, 1fr); max-width: 912px; width: 100%; }
+  .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
+  .shell[data-shell="public"] .content { margin-left: max(272px, calc((100vw - 640px) / 2)); width: min(640px, calc(100vw - 272px)); }
+  .shell[data-shell="public"] .desktop-nav { bottom: 0; left: 0; position: fixed; top: 0; width: 248px; z-index: 10; }
   .mobile-nav, .mobile-top-bar { display: none; }
   .desktop-nav .rail-controls, .mobile-feed-tabs { display: none; }
   .desktop-nav .brand-logo-full { display: block; }
@@ -1907,7 +1910,6 @@ button {
   .desktop-nav-compact .global-more .global-more-menu { left: 54px; top: 0; }
 }
 
-@media (min-width: 1256px) {
-  .shell[data-shell="public"] { grid-template-columns: 248px minmax(0, 640px) 320px; max-width: 1256px; }
-  .shell[data-shell="public"] .right-rail { display: block; }
+@media (min-width: 1328px) {
+  .shell[data-shell="public"] .right-rail { display: block; left: max(936px, calc((100vw + 688px) / 2)); position: absolute; top: 0; width: 320px; }
 }
