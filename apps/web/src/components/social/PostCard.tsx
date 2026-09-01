@@ -48,17 +48,22 @@ export function PostCard({
   linked?: boolean;
 }) {
   const analytics = useAnalytics();
+  const isThreeImageGrid = post.media?.length === 3;
   const body = (
     <>
       {post.body ? <p className="post-body">{post.body}</p> : null}
       {post.media?.length ? (
         <div className="post-media-grid" data-count={post.media.length}>
-          {post.media.map((media) => {
+          {post.media.map((media, index) => {
             const geometry = mediaGeometry(media);
 
             return (
               <div
-                className="post-media-frame"
+                className={
+                  isThreeImageGrid && index === 0
+                    ? "post-media-frame post-media-frame--featured"
+                    : "post-media-frame"
+                }
                 key={media.id}
                 style={{ aspectRatio: geometry.aspectRatio }}
               >

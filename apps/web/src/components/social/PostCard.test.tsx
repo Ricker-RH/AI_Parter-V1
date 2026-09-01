@@ -37,14 +37,15 @@ const post: FeedPost = {
   likeCount: 4, commentCount: 2,
   media: [
     { id: "33333333-3333-4333-8333-333333333333", type: "image", url: "https://media.example/one.webp", altText: "Wide moon", width: 1200, height: 800, aspectRatio: null },
-    { id: "44444444-4444-4444-8444-444444444444", type: "image", url: "https://media.example/two.webp", altText: "Contract ratio", width: 0, height: 600, aspectRatio: 1.25 },
-    { id: "55555555-5555-4555-8555-555555555555", type: "image", url: "https://media.example/three.webp", altText: "Fallback ratio", width: null, height: null, aspectRatio: 0 as never },
+    { id: "44444444-4444-4444-8444-444444444444", type: "image", url: "https://media.example/two.webp", altText: "Contract ratio", width: null, height: null, aspectRatio: 1.25 },
+    { id: "55555555-5555-4555-8555-555555555555", type: "image", url: "https://media.example/three.webp", altText: "Fallback ratio", width: null, height: null, aspectRatio: null },
+    { id: "66666666-6666-4666-8666-666666666666", type: "image", url: "https://media.example/four.webp", altText: "Square ratio", width: 800, height: 800, aspectRatio: 1 },
   ],
 };
 
 describe("PostCard media geometry", () => {
   it("wraps every image in a stable frame and uses dimensions, contract ratio, then 4:5 fallback", () => {
-    const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
+    const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={{ ...post, media: post.media?.slice(0, 3) }} />);
 
     const frames = container.querySelectorAll(".post-media-frame");
     expect(frames).toHaveLength(3);
@@ -55,5 +56,37 @@ describe("PostCard media geometry", () => {
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("height", "800");
     expect(screen.getByRole("img", { name: "Contract ratio" })).not.toHaveAttribute("width");
     expect(screen.getByRole("img", { name: "Fallback ratio" })).toHaveAttribute("loading", "lazy");
+  });
+
+  it.each([1, 2, 3, 4] as const)("keeps the %i-image grid contract", (count) => {
+    const { container } = render(
+      <PostCard
+        linked={false}
+        labels={labels}
+        locale="en"
+        post={{ ...post, media: post.media?.slice(0, count) }}
+      />,
+    );
+
+    const grid = container.querySelector(".post-media-grid");
+    expect(grid).toHaveAttribute("data-count", String(count));
+    expect(grid?.querySelectorAll(".post-media-frame")).toHaveLength(count);
+    expect(grid?.querySelectorAll("img")).toHaveLength(count);
+  });
+
+  it("marks the first frame as featured only in a three-image grid", () => {
+    const { container } = render(
+      <PostCard
+        linked={false}
+        labels={labels}
+        locale="en"
+        post={{ ...post, media: post.media?.slice(0, 3) }}
+      />,
+    );
+
+    const frames = container.querySelectorAll(".post-media-frame");
+    expect(frames[0]).toHaveClass("post-media-frame--featured");
+    expect(frames[1]).not.toHaveClass("post-media-frame--featured");
+    expect(frames[2]).not.toHaveClass("post-media-frame--featured");
   });
 });
