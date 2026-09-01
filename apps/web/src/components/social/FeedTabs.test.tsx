@@ -49,4 +49,10 @@ describe('FeedTabs', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(screen.getByRole('button', {name: 'After filters'})).not.toHaveFocus()
   })
+
+  it('makes Following the initial tab stop when a Following feed loads directly', () => {
+    render(<FeedTabs currentQuery="feed=following" following labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" />)
+    expect(screen.getByRole('button', {name: 'For you · All'})).toHaveAttribute('tabindex', '-1')
+    expect(screen.getByRole('button', {name: 'Following · All'})).toHaveAttribute('tabindex', '0')
+  })
 })
