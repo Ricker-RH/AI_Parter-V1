@@ -1,7 +1,19 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "build": {"dependsOn": ["^build"], "outputs": [".next/**", "dist/**"]},
+    "build": {
+      "dependsOn": ["^build"],
+      "env": [
+        "AIFANS_API_URL",
+        "AIFANS_RELEASE",
+        "CREATOR_MODE_ENABLED",
+        "NEON_AUTH_BASE_URL",
+        "NEON_AUTH_COOKIE_SECRET",
+        "VERCEL_GIT_COMMIT_SHA",
+        "WEB_API_RATE_LIMIT_SIGNING_SECRET"
+      ],
+      "outputs": [".next/**", "dist/**"]
+    },
     "dev": {"cache": false, "persistent": true},
     "lint": {"dependsOn": ["^lint"]},
     "typecheck": {"dependsOn": ["^typecheck"]},

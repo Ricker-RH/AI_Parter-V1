@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+import {readFile} from 'node:fs/promises'
 
 const environment = process.env as Record<string, string | undefined>
 const originalNodeEnv = environment.NODE_ENV
@@ -16,6 +17,12 @@ afterEach(() => {
 })
 
 describe('Web production configuration', () => {
+  it('passes the private rate-limit signing secret through Turborepo builds', async () => {
+    const turbo = JSON.parse(await readFile('../../turbo.json', 'utf8')) as {tasks?: {build?: {env?: string[]}}}
+
+    expect(turbo.tasks?.build?.env).toContain('WEB_API_RATE_LIMIT_SIGNING_SECRET')
+  })
+
   it('fails startup without a valid private rate-limit signing secret', async () => {
     environment.NODE_ENV = 'production'
     delete environment.WEB_API_RATE_LIMIT_SIGNING_SECRET
