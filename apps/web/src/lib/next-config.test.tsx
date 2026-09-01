@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest'
 const environment = process.env as Record<string, string | undefined>
 const originalNodeEnv = environment.NODE_ENV
 const originalSecret = environment.WEB_API_RATE_LIMIT_SIGNING_SECRET
+const originalDistDir = environment.AIFANS_NEXT_DIST_DIR
 
 afterEach(() => {
   vi.resetModules()
@@ -10,6 +11,8 @@ afterEach(() => {
   else environment.NODE_ENV = originalNodeEnv
   if (originalSecret === undefined) delete environment.WEB_API_RATE_LIMIT_SIGNING_SECRET
   else environment.WEB_API_RATE_LIMIT_SIGNING_SECRET = originalSecret
+  if (originalDistDir === undefined) delete environment.AIFANS_NEXT_DIST_DIR
+  else environment.AIFANS_NEXT_DIST_DIR = originalDistDir
 })
 
 describe('Web production configuration', () => {
@@ -23,5 +26,13 @@ describe('Web production configuration', () => {
     environment.NODE_ENV = 'production'
     environment.WEB_API_RATE_LIMIT_SIGNING_SECRET = 'x'.repeat(32)
     await expect(import('../../next.config.js')).resolves.toHaveProperty('default')
+  })
+
+  it('uses an isolated build directory when validation config requests one', async () => {
+    environment.AIFANS_NEXT_DIST_DIR = '.next-production-e2e'
+
+    const config = await import('../../next.config.js')
+
+    expect(config.default).toMatchObject({distDir: '.next-production-e2e'})
   })
 })

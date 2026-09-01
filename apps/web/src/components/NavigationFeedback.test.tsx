@@ -83,6 +83,24 @@ describe('NavigationFeedback', () => {
     act(() => { frames.forEach((frame) => frame(performance.now())) })
 
     expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByRole('main')).toHaveAttribute('data-route-ready', '/en/messages')
     vi.unstubAllGlobals()
+  })
+
+  it('keeps feedback pending while the destination skeleton is visible beside the previous route main', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    pathname = '/en'
+    const view = render(<><NavigationFeedback locale="en" release="test"/><a href="/en/messages">Messages</a><main>Home</main></>)
+
+    fireEvent.pointerDown(screen.getByRole('link', {name: 'Messages'}), {button: 0})
+    pathname = '/en/messages'
+    view.rerender(<><NavigationFeedback locale="en" release="test"/><a href="/en/messages">Messages</a><main>Home</main><main className="route-skeleton">Loading messages</main></>)
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    vi.unstubAllGlobals()
+    pathname = '/en'
   })
 })

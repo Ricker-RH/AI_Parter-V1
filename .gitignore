@@ -2,6 +2,7 @@
 !.env.example
 node_modules/
 .next/
+.next-production-e2e/
 .turbo/
 dist/
 coverage/

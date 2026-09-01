@@ -8,7 +8,7 @@ import {routeNameForPath, useAnalytics} from '../lib/analytics/provider'
 import {deviceType, trackPerformanceMeasured} from '../lib/analytics/performance'
 import type {AnalyticsPerformanceMetric, AnalyticsPerformanceRating} from '../lib/analytics/contracts'
 
-type PendingNavigation = {id: number; startedAt: number; targetPathname: string; targetRoute: string}
+type PendingNavigation = {id: number; sourceMain: HTMLElement | null; sourceMarkup: string | null; startedAt: number; targetPathname: string; targetRoute: string}
 
 function rating(metric: AnalyticsPerformanceMetric, value: number): AnalyticsPerformanceRating {
   const budget = metric === 'interaction' ? 100 : metric === 'skeleton' ? 150 : 800
@@ -57,7 +57,8 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     function start(target: EventTarget | null) {
       const destination = destinationFrom(target)
       if (!destination) return
-      const active = {id: ++sequence.current, startedAt: performance.now(), ...destination}
+      const sourceMain = document.querySelector<HTMLElement>('main:not(.route-skeleton)')
+      const active = {id: ++sequence.current, sourceMain, sourceMarkup: sourceMain?.outerHTML ?? null, startedAt: performance.now(), ...destination}
       flushSync(() => setPending(active))
       measure('interaction', active)
     }
@@ -87,15 +88,26 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
       skeletonReported = true
       measure('skeleton', pending)
     }
-    reportSkeleton()
-    const observer = new MutationObserver(reportSkeleton)
-    observer.observe(document.body, {childList: true, subtree: true})
-    const timeout = window.setTimeout(() => setPending((current) => current?.id === pending.id ? null : current), 1500)
-    const frame = requestAnimationFrame(() => {
-      if (currentRoute !== pending.targetRoute || !document.querySelector('main:not(.route-skeleton)')) return
+    const targetReadyMain = () => {
+      const main = document.querySelector<HTMLElement>('main:not(.route-skeleton)')
+      if (!main || document.querySelector('.route-skeleton')) return null
+      if (main === pending.sourceMain && main.outerHTML === pending.sourceMarkup) return null
+      main.setAttribute('data-route-ready', pending.targetRoute)
+      return main.getAttribute('data-route-ready') === pending.targetRoute ? main : null
+    }
+    const reportReady = () => {
+      if (currentRoute !== pending.targetRoute || !targetReadyMain()) return
       measure('navigation', pending)
       setPending(null)
+    }
+    reportSkeleton()
+    const observer = new MutationObserver(() => {
+      reportSkeleton()
+      reportReady()
     })
+    observer.observe(document.body, {childList: true, subtree: true})
+    const timeout = window.setTimeout(() => setPending((current) => current?.id === pending.id ? null : current), 1500)
+    const frame = requestAnimationFrame(reportReady)
     return () => {
       cancelAnimationFrame(frame)
       window.clearTimeout(timeout)
