@@ -268,7 +268,7 @@ describe("real social content", () => {
     expect(screen.queryByRole("article")).toBeNull();
   });
 
-  it("preserves following and locale in visual type links and keeps filters in empty results", () => {
+  it("normalizes legacy hybrid to All and keeps only the ordinary home filter values", () => {
     render(
       <FeedContent
         currentQuery="feed=following&visualType=hybrid&campaign=launch&cursor=stale"
@@ -276,7 +276,7 @@ describe("real social content", () => {
         labels={labels}
         locale="zh-CN"
         result={{ status: "ok", data: { items: [], nextCursor: null } }}
-        visualType="hybrid"
+        visualType="all"
       />,
     );
     expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
@@ -287,10 +287,7 @@ describe("real social content", () => {
       "href",
       "/zh-CN?feed=following&visualType=realistic&campaign=launch",
     );
-    expect(screen.getByRole("tab", { name: "Hybrid" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.queryByRole("tab", { name: "Hybrid" })).toBeNull();
     expect(
       screen.getByRole("heading", { name: "Nothing here yet" }),
     ).toBeVisible();

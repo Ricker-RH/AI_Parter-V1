@@ -26,15 +26,21 @@ describe('home feed query navigation', () => {
       }),
     }))
 
-    expect(screen.getByRole('tab', {name: 'Following'})).toHaveAttribute(
-      'href',
-      '/en?campaign=launch&campaign=return&visualType=anime&feed=following',
-    )
+    expect(screen.getByRole('tab', {name: 'Following · All'})).toBeVisible()
     expect(screen.getByRole('tab', {name: 'Realistic'})).toHaveAttribute(
       'href',
       '/en?campaign=launch&campaign=return&visualType=realistic',
     )
     expect(screen.getAllByRole('tab').every((tab) => !tab.getAttribute('href')?.includes('cursor='))).toBe(true)
+  })
+
+  it('normalizes a legacy hybrid home filter to All before it fetches', async () => {
+    await HomePage({
+      params: Promise.resolve({locale: 'en'}),
+      searchParams: Promise.resolve({visualType: 'hybrid'}),
+    })
+
+    expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({visualType: 'all'}))
   })
 
   it('guards Following before it requests a personalized feed', async () => {

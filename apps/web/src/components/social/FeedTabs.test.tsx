@@ -8,11 +8,12 @@ vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture
 vi.mock('next/link', () => ({default: ({children, onClick, ...props}: {children: ReactNode; onClick: MouseEventHandler<HTMLAnchorElement>; [key: string]: unknown}) => <a {...props} onClick={(event) => { event.preventDefault(); onClick(event) }}>{children}</a>}))
 
 describe('FeedTabs', () => {
-  it('captures the real selected feed tab without a query payload', () => {
-    render(<FeedTabs currentQuery="visualType=anime&campaign=launch&cursor=stale" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home'}} locale="en" />)
-    expect(screen.getByRole('tab', {name: 'For you'})).toHaveAttribute('href', '/en?visualType=anime&campaign=launch')
-    expect(screen.getByRole('tab', {name: 'Following'})).toHaveAttribute('href', '/en?visualType=anime&campaign=launch&feed=following')
-    fireEvent.click(screen.getByRole('tab', {name: 'Following'}))
+  it('uses combined mobile labels and removes stale cursors without replacing the other feed filter', () => {
+    render(<FeedTabs currentQuery="visualType=anime&campaign=launch&cursor=stale" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en" visualType="anime" />)
+    expect(screen.getByRole('tab', {name: 'For you · Anime'})).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', {name: 'Following · All'}))
+    expect(screen.getByRole('menuitem', {name: 'Anime'})).toHaveAttribute('href', '/en?campaign=launch&feed=following&visualType=anime')
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Anime'}))
     expect(capture).toHaveBeenCalledWith({name: 'feed_tab_selected', properties: {event_version: 1, feed: 'following', locale: 'en'}})
     expect(JSON.stringify(capture.mock.calls)).not.toContain('cursor')
   })

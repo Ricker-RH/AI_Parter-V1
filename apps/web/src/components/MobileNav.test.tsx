@@ -3,20 +3,17 @@ import {describe, expect, it} from 'vitest'
 import {MobileNav} from './MobileNav.js'
 
 const labels = {
-  primary: 'Primary', home: 'Home', search: 'Search', notifications: 'Notifications',
-  messages: 'Messages', bookmarks: 'Bookmarks', profile: 'Profile', settings: 'Settings',
-  creatorNav: 'Creator',
+  primary: 'Primary', home: 'Home', search: 'Search',
+  messages: 'Messages', bookmarks: 'Bookmarks', profile: 'My Profile', settings: 'Settings',
+  creatorNav: 'Creator Center', notifications: 'Activity',
   recommendations: 'Recommendations', recommendationsEmpty: 'No recommendations yet', more: 'More',
 }
 
 describe('MobileNav', () => {
-  it('reveals every remaining primary destination from the More menu', () => {
+  it('uses the strict five-destination mobile order', () => {
     render(<MobileNav labels={labels} locale="en" />)
 
-    fireEvent.click(screen.getByRole('button', {name: 'More'}))
-
-    expect(screen.getByRole('link', {name: 'Bookmarks'})).toHaveAttribute('href', '/en/bookmarks')
-    expect(screen.getByRole('link', {name: 'Profile'})).toHaveAttribute('href', '/en/profile')
-    expect(screen.getByRole('link', {name: 'Settings'})).toHaveAttribute('href', '/en/settings')
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label')))
+      .toEqual(['Home', 'Messages', 'Creator Center', 'Activity', 'My Profile'])
   })
 })
