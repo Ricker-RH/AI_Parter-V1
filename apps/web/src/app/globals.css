@@ -179,7 +179,8 @@ button {
   min-height: 44px;
   padding: 0 1px 11px;
 }
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-pressed="true"] {
   border-color: currentColor;
   font-weight: 700;
 }

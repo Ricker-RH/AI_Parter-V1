@@ -36,4 +36,17 @@ describe('FeedTabs', () => {
     fireEvent.keyDown(screen.getByRole('menuitem', {name: 'Anime'}), {key: 'Escape'})
     expect(forYou).toHaveFocus()
   })
+
+  it('uses a roving tab stop and lets Tab leave an open menu without focus restoration', () => {
+    render(<><FeedTabs currentQuery="" following={false} labels={{forYou: 'For you', following: 'Following', home: 'Home', allTypes: 'All', realistic: 'Realistic', anime: 'Anime'}} locale="en"/><button type="button">After filters</button></>)
+    const forYou = screen.getByRole('button', {name: 'For you · All'})
+    const following = screen.getByRole('button', {name: 'Following · All'})
+    expect(forYou).toHaveAttribute('tabindex', '0')
+    expect(following).toHaveAttribute('tabindex', '-1')
+    fireEvent.click(forYou)
+    fireEvent.keyDown(forYou, {key: 'Tab'})
+    fireEvent.blur(forYou, {relatedTarget: screen.getByRole('button', {name: 'After filters'})})
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('button', {name: 'After filters'})).not.toHaveFocus()
+  })
 })
