@@ -27,6 +27,18 @@ describe('AppShell', () => {
     expect(screen.getAllByRole('link', {name: 'Messages'})[0]).toHaveAttribute('href', '/zh-CN/messages')
   })
 
+  it('marks the ordinary public shell as a fluid layout without changing the messages variant', () => {
+    pathname = '/en'
+    const {unmount} = render(<AppShell locale="en" labels={labels}><main>Feed</main></AppShell>)
+    expect(document.querySelector('[data-shell="public"]')).toHaveAttribute('data-layout', 'fluid')
+    expect(document.querySelector('[data-shell="public"] .right-rail')).toHaveAttribute('data-priority', 'secondary')
+    unmount()
+
+    pathname = '/en/messages'
+    render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)
+    expect(document.querySelector('[data-shell="messages"]')).not.toHaveAttribute('data-layout', 'fluid')
+  })
+
   it('selects the isolated admin shell for admin routes', () => {
     pathname = '/en/admin'
     render(<AppShell authConfigured={false} locale="en" labels={labels}><main>Operations</main></AppShell>)
