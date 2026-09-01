@@ -1,11 +1,23 @@
 import {randomBytes} from 'node:crypto'
 import {Pool} from 'pg'
-import {afterAll,describe,expect,it} from 'vitest'
-import {createRateLimitRepository} from '../src/rate-limit.js'
+import {afterAll,describe,expect,it,vi} from 'vitest'
+import {createRateLimitRepository,createScopedRateLimitRepository} from '../src/rate-limit.js'
+import type {QueryClient,QueryPool} from '../src/session.js'
 
 const connectionString=process.env.DATABASE_URL??''
 const describeIntegration=connectionString?describe:describe.skip
 const pool=new Pool({connectionString})
+
+describe('rate-limit runtime session',()=>{
+  it('enters the bounded rate-limiter role for each decision',async()=>{
+    const statements:string[]=[]
+    const client={query:async(text:string)=>{statements.push(text);return text.includes('consume_rate_limit')?{rows:[{allowed:true,remaining:9,retry_after_seconds:60}],rowCount:1}:{rows:[],rowCount:null}},release:vi.fn()} as QueryClient
+    const runtime=createScopedRateLimitRepository({connect:async()=>client} satisfies QueryPool)
+    await expect(runtime.consume({policy:'admin_mutation',identifierHash:'a'.repeat(64)})).resolves.toMatchObject({allowed:true})
+    expect(statements).toEqual(['BEGIN','SET LOCAL ROLE aifans_rate_limiter',expect.stringContaining('consume_rate_limit'),'COMMIT'])
+    expect(client.release).toHaveBeenCalledOnce()
+  })
+})
 
 describeIntegration('database rate limiting',()=>{
   afterAll(async()=>pool.end())

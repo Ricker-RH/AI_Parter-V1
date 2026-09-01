@@ -1,5 +1,5 @@
 import {Pool} from '@neondatabase/serverless'
-import type {QueryClient} from './session.js'
+import type {QueryClient,QueryPool} from './session.js'
 
 export type DatabaseRateLimitPolicy='chat_send'|'comment_create'|'social_mutation'|'creator_mutation'|'admin_mutation'|'auth_attempt'
 export type DatabaseRateLimitDecision={allowed:boolean;remaining:number;retryAfterSeconds:number}
@@ -15,11 +15,27 @@ export function createRateLimitRepository(client:Pick<QueryClient,'query'>):Rate
   }}
 }
 
+export function createScopedRateLimitRepository(pool:QueryPool):RateLimitRepository {
+  return {async consume(input){
+    const client=await pool.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query('SET LOCAL ROLE aifans_rate_limiter')
+      const decision=await createRateLimitRepository(client).consume(input)
+      await client.query('COMMIT')
+      return decision
+    } catch(error) {
+      await client.query('ROLLBACK').catch(()=>undefined)
+      throw error
+    } finally {client.release()}
+  }}
+}
+
 export function createRateLimitRepositoryFromUrl(connectionString:string):RateLimitRepository {
   const protocol=new URL(connectionString).protocol
   if(protocol!=='postgres:'&&protocol!=='postgresql:') throw new Error('Rate limit URL must use postgres')
   const pool=new Pool({connectionString})
-  return createRateLimitRepository(pool)
+  return createScopedRateLimitRepository(pool)
 }
 
 export function createReadinessProbeFromUrl(connectionString:string):{check():Promise<boolean>} {
