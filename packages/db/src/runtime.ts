@@ -7,6 +7,7 @@ import {
   createChatTargetRepository,
   type ChatTargetRepository,
 } from "./chat-target.js";
+import { createChatRepository, type ChatRepository } from "./chat.js";
 import { createProfileRepository, type ProfileRepository } from "./profiles.js";
 import {
   createCreatorRepository,
@@ -39,6 +40,7 @@ export type DatabaseRuntimeRepositories = {
   profiles: ProfileRepository;
   social: SocialRepository;
   chatTargets: ChatTargetRepository;
+  chat: ChatRepository;
   creator: CreatorRepository;
   platformCreator: PlatformCreatorRepository;
 };
@@ -99,6 +101,7 @@ export function createDatabaseRuntimeRepositories(
         : {}),
     }),
     chatTargets: createChatTargetRepository(withActor),
+    chat: createChatRepository(withActor),
     creator: createCreatorRepository({ withActor }),
     platformCreator: createPlatformCreatorRepository({ withPlatformActor }),
   };
