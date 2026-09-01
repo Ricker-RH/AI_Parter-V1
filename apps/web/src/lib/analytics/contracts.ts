@@ -5,7 +5,7 @@ export const ANALYTICS_EVENT_NAMES = [
 ] as const
 
 export const ANALYTICS_ROUTE_NAMES = [
-  '/[locale]', '/[locale]/admin', '/[locale]/bookmarks', '/[locale]/messages', '/[locale]/notifications', '/[locale]/profile', '/[locale]/search', '/[locale]/settings', '/[locale]/posts/[postId]', '/[locale]/profiles/[profileId]', '/[locale]/creator',
+  '/[locale]', '/[locale]/activity', '/[locale]/admin', '/[locale]/bookmarks', '/[locale]/liked', '/[locale]/messages', '/[locale]/notifications', '/[locale]/profile', '/[locale]/search', '/[locale]/settings', '/[locale]/posts/[postId]', '/[locale]/profiles/[profileId]', '/[locale]/creator',
 ] as const
 export const MAX_SEARCH_QUERY_LENGTH = 256
 

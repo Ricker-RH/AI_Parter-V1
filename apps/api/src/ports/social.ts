@@ -43,6 +43,7 @@ export type SocialPort = {
   bookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{created: boolean}>
   unbookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{deleted: boolean}>
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>
+  listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>
   createHumanComment(actor: Actor, postId: string, input: CreateHumanComment, context: MutationContext): Promise<PublicComment>
   listNotifications(actor: Actor, page: PageQuery): Promise<NotificationPage>
   markNotificationRead(actor: Actor, notificationId: string, context: MutationContext): Promise<{readAt: string} | null>

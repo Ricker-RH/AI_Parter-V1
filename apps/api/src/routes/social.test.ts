@@ -102,6 +102,7 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
     bookmarkPost: async () => ({created: true}),
     unbookmarkPost: async () => ({deleted: true}),
     listBookmarks: async () => page,
+    listLiked: async () => page,
     createHumanComment: async () => comment,
     listNotifications: async () => ({items: [], nextCursor: null}),
     markNotificationRead: async () => ({readAt}),
@@ -372,6 +373,23 @@ describe('authenticated social routes', () => {
     ])
     await expectError(await app.request('/v1/bookmarks?limit=2&limit=3'), 400, 'INVALID_REQUEST')
     await expectError(await app.request('/v1/notifications?limit=2&limit=3'), 400, 'INVALID_REQUEST')
+  })
+
+  it('lists only the verified actor liked posts and validates the private cursor', async () => {
+    const calls: unknown[] = []
+    const social = socialPort({
+      listLiked: async (actor, query) => {
+        calls.push([actor, query])
+        return page
+      },
+    })
+    const app = createApp(dependencies(social))
+
+    expect((await app.request('/v1/likes?limit=2')).status).toBe(200)
+    expect(calls).toEqual([[{subject: identity.subject}, {limit: 2}]])
+    await expectError(await createApp(dependencies(social)).request('/v1/likes?limit=2&limit=3'), 400, 'INVALID_REQUEST')
+    await expectError(await createApp(dependencies(social)).request('/v1/likes?cursor=not-a-cursor'), 400, 'INVALID_CURSOR')
+    await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social}).request('/v1/likes'), 401, 'AUTH_REQUIRED')
   })
 
   it.each([

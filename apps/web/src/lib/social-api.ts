@@ -79,6 +79,12 @@ export function fetchBookmarks({cookie, cursor, token}: {cookie?: string | undef
   return request(`/v1/bookmarks${query.size ? `?${query}` : ''}`, FeedPageSchema, token)
 }
 
+export function fetchLiked({cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<FeedPage>> {
+  const query = new URLSearchParams()
+  if (cursor) query.set('cursor', cursor)
+  return request(`/v1/likes${query.size ? `?${query}` : ''}`, FeedPageSchema, token)
+}
+
 export function fetchNotifications({cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<NotificationPage>> {
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)

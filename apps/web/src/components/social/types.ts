@@ -5,6 +5,8 @@ export interface SocialLabels {
   bookmark: string
   bookmarksEmptyTitle: string
   bookmarksEmptyDescription: string
+  likedEmptyTitle?: string
+  likedEmptyDescription?: string
   commentCount: string
   comments: string
   deletedComment: string

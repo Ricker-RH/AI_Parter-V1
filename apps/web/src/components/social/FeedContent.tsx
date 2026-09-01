@@ -16,7 +16,7 @@ function visualTypeHref(locale: Locale, currentQuery: string, visualType: FeedVi
   return `/${locale}${query.size ? `?${query}` : ''}`
 }
 
-export function FeedContent({result, locale, labels, empty = 'home', moreHref, feedKind, visualType, currentQuery = '', canMutate = false, returnTo}: {result: SocialApiResult<FeedPage>; locale: Locale; labels: SocialLabels; empty?: 'home' | 'bookmarks'; moreHref?: string | undefined; feedKind?: FeedKind; visualType?: FeedVisualType; currentQuery?: string; canMutate?: boolean; returnTo?: string}) {
+export function FeedContent({result, locale, labels, empty = 'home', moreHref, feedKind, visualType, currentQuery = '', canMutate = false, returnTo}: {result: SocialApiResult<FeedPage>; locale: Locale; labels: SocialLabels; empty?: 'home' | 'bookmarks' | 'liked'; moreHref?: string | undefined; feedKind?: FeedKind; visualType?: FeedVisualType; currentQuery?: string; canMutate?: boolean; returnTo?: string}) {
   const selectedVisualType = visualType === 'hybrid' ? 'all' : visualType
   const filters = feedKind && selectedVisualType ? <nav aria-label={labels.visualTypeFilter} className="visual-filter"><div className="tabs" role="tablist">{visualTypes.map((type) => <Link aria-selected={type === selectedVisualType} className="tab" href={visualTypeHref(locale, currentQuery, type)} key={type} role="tab">{type === 'all' ? labels.allTypes : labels[type]}</Link>)}</div></nav> : null
   if (result.status !== 'ok') return <>{filters}<ResultState labels={labels} result={result} /></>

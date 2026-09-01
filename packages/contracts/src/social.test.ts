@@ -22,6 +22,9 @@ import {
   decodeSearchCursor,
   encodeSearchCursor,
   SearchPageSchema,
+  LikedCursorSchema,
+  decodeLikedCursor,
+  encodeLikedCursor,
 } from "./social.js";
 
 
@@ -279,6 +282,14 @@ describe("social contracts", () => {
       ).toString("base64url"),
     ])
       expect(() => decodeNotificationCursor(invalid)).toThrow("INVALID_CURSOR");
+  });
+
+  it("round trips liked cursors and rejects cursors from other private lists", () => {
+    const cursor = {v: 1 as const, kind: "liked" as const, likedAt: timestamp, id};
+    expect(LikedCursorSchema.parse(cursor)).toEqual(cursor);
+    expect(decodeLikedCursor(encodeLikedCursor(cursor))).toEqual(cursor);
+    expect(() => decodeLikedCursor("not-a-cursor")).toThrow("INVALID_CURSOR");
+    expect(() => decodeLikedCursor(Buffer.from(JSON.stringify({...cursor, kind: "bookmarks"}), "utf8").toString("base64url"))).toThrow("INVALID_CURSOR");
   });
 
   it("accepts only clean platform business inputs and returns existing safe projections", () => {

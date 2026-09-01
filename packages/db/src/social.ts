@@ -10,6 +10,7 @@ import {
   type FeedPost,
   type FeedVisualType,
   type Locale,
+  type LikedCursor,
   type NotificationPage,
   NotificationPageSchema,
   type PageQuery,
@@ -24,7 +25,9 @@ import {
   PublicIpProfileSchema,
   SearchPageSchema,
   decodeCursor,
+  decodeLikedCursor,
   decodeNotificationCursor,
+  encodeLikedCursor,
   encodeNotificationCursor,
   type Cursor as SocialCursor,
   type CreateIpInput,
@@ -96,6 +99,7 @@ export type SocialRepository = {
   bookmarkPost(actor: Actor, postId: string): Promise<{ created: boolean }>;
   unbookmarkPost(actor: Actor, postId: string): Promise<{ deleted: boolean }>;
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>;
+  listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>;
   createHumanComment(
     actor: Actor,
     postId: string,
@@ -193,6 +197,7 @@ type PostRow = PublicIpRow & {
   viewer_has_bookmarked?: boolean;
   viewer_follows_author?: boolean;
   score?: number | string;
+  liked_at?: Date | string;
 };
 const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at,
   p.id, p.username, p.display_name, p.bio, p.languages, p.visual_type,
@@ -202,6 +207,10 @@ const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at
   FROM public.social_public_posts() p
   CROSS JOIN LATERAL public.social_viewer_flags(p.post_id, p.author_profile_id) flags
   CROSS JOIN LATERAL public.social_post_metrics(p.post_id, p.author_profile_id, NULL::text) metrics`;
+const likedPostSql = publicPostSql.replace(
+  " FROM public.social_public_posts() p",
+  ", liked.created_at AS liked_at FROM public.social_public_posts() p JOIN public.post_likes liked ON liked.post_id = p.post_id AND liked.profile_id = public.current_profile_id()",
+);
 
 function iso(value: Date | string): string {
   return new Date(value).toISOString();
@@ -345,10 +354,11 @@ export function createSocialRepository({
       visualType?: FeedVisualType;
       locale?: Locale;
       limit: number;
-      after: Cursor | null;
+      after: Cursor | LikedCursor | null;
       authorProfileId?: string;
     },
     bookmarkedOnly = false,
+    likedOnly = false,
   ): Promise<FeedPage> {
     const after = input.after;
     const params: unknown[] = [input.locale ?? null];
@@ -360,12 +370,19 @@ export function createSocialRepository({
         `p.visual_type = $${params.length}::public.creator_visual_type`,
       );
     }
-    if (input.kind === "following" && !bookmarkedOnly && !input.authorProfileId)
+    if (
+      input.kind === "following" &&
+      !bookmarkedOnly &&
+      !likedOnly &&
+      !input.authorProfileId
+    )
       filters.push("public.social_viewer_follows(p.author_profile_id)");
     if (bookmarkedOnly)
       filters.push(
         "EXISTS (SELECT 1 FROM public.bookmarks saved WHERE saved.profile_id = public.current_profile_id() AND saved.post_id = p.post_id)",
       );
+    if (likedOnly && after && after.kind !== "liked")
+      throw new Error("INVALID_CURSOR");
     if (!publicMediaBaseUrl)
       filters.push(
         "NOT EXISTS (SELECT 1 FROM public.social_public_post_media(p.post_id))",
@@ -388,38 +405,52 @@ export function createSocialRepository({
         `(${score}, p.published_at, p.post_id) < ($${params.length - 2}, public.social_public_post_anchor($${params.length}::uuid, $${params.length - 1}::timestamptz), $${params.length}::uuid)`,
       );
     }
+    if (after?.kind === "liked") {
+      params.push(after.likedAt, after.id);
+      filters.push(
+        `(liked.created_at, liked.post_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`,
+      );
+    }
     params.push(input.limit + 1);
-    const order =
-      input.kind === "for_you"
+    const order = likedOnly
+      ? "liked.created_at DESC, liked.post_id DESC"
+      : input.kind === "for_you"
         ? `${score} DESC, p.published_at DESC, p.post_id DESC`
         : "p.published_at DESC, p.post_id DESC";
     const result = await client.query<PostRow>(
-      `${publicPostSql.replace("NULL::text", "$1::text").replace(" FROM public.social_public_posts() p", `, ${score} AS score FROM public.social_public_posts() p`)} WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT $${params.length}`,
+      `${(likedOnly ? likedPostSql : publicPostSql).replace("NULL::text", "$1::text").replace(" FROM public.social_public_posts() p", `, ${score} AS score FROM public.social_public_posts() p`)} WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT $${params.length}`,
       params,
     );
     const rows = result.rows.slice(0, input.limit);
     const last = rows.at(-1);
     const nextCursor =
       result.rows.length > input.limit && last
-        ? Buffer.from(
-            JSON.stringify(
-              input.kind === "for_you"
-                ? {
-                    v: 1,
-                    kind: "for_you",
-                    score: Number(last.score ?? 0),
-                    publishedAt: iso(last.published_at),
-                    id: last.post_id,
-                  }
-                : {
-                    v: 1,
-                    kind: "chronological",
-                    publishedAt: iso(last.published_at),
-                    id: last.post_id,
-                  },
-            ),
-            "utf8",
-          ).toString("base64url")
+        ? likedOnly
+          ? encodeLikedCursor({
+              v: 1,
+              kind: "liked",
+              likedAt: iso(last.liked_at!),
+              id: last.post_id,
+            })
+          : Buffer.from(
+              JSON.stringify(
+                input.kind === "for_you"
+                  ? {
+                      v: 1,
+                      kind: "for_you",
+                      score: Number(last.score ?? 0),
+                      publishedAt: iso(last.published_at),
+                      id: last.post_id,
+                    }
+                  : {
+                      v: 1,
+                      kind: "chronological",
+                      publishedAt: iso(last.published_at),
+                      id: last.post_id,
+                    },
+              ),
+              "utf8",
+            ).toString("base64url")
         : null;
     return FeedPageSchema.parse({
       items: await Promise.all(
@@ -674,6 +705,20 @@ export function createSocialRepository({
             limit: page.limit,
             after: page.cursor ? decodeCursor(page.cursor, "following") : null,
           },
+          true,
+        ),
+      ),
+    listLiked: (actor, page) =>
+      runWithActor(actor, (client) =>
+        feed(
+          client,
+          {
+            kind: "following",
+            visualType: "all",
+            limit: page.limit,
+            after: page.cursor ? decodeLikedCursor(page.cursor) : null,
+          },
+          false,
           true,
         ),
       ),

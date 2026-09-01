@@ -64,6 +64,12 @@ export const NotificationCursorSchema = z.strictObject({
   createdAt: dateTime,
   id: uuid,
 });
+export const LikedCursorSchema = z.strictObject({
+  v: z.literal(1),
+  kind: z.literal("liked"),
+  likedAt: dateTime,
+  id: uuid,
+});
 const SearchCursorBaseSchema = z.strictObject({
   v: z.literal(1),
   kind: z.literal("search"),
@@ -93,6 +99,7 @@ export type SearchCursor = z.infer<typeof SearchCursorSchema>;
 export type Cursor = z.infer<typeof CursorSchema>;
 export type CommentCursor = z.infer<typeof CommentCursorSchema>;
 export type NotificationCursor = z.infer<typeof NotificationCursorSchema>;
+export type LikedCursor = z.infer<typeof LikedCursorSchema>;
 export type Locale = z.infer<typeof LocaleSchema>;
 
 const base64 =
@@ -135,13 +142,11 @@ function base64urlDecode(value: string): string {
       ? base64.indexOf(normalized[index + 3]!)
       : 0;
     if (a < 0 || b < 0 || c < 0 || d < 0) throw new Error("invalid base64url");
-    output += String.fromCharCode(
-      (a << 2) | (b >> 4),
-      ((b & 15) << 4) | (c >> 2),
-      ((c & 3) << 6) | d,
-    );
+    bytes.push((a << 2) | (b >> 4));
+    if (index + 2 < normalized.length) bytes.push(((b & 15) << 4) | (c >> 2));
+    if (index + 3 < normalized.length) bytes.push(((c & 3) << 6) | d);
   }
-  return output.replace(/\0+$/, "");
+  return decodeURIComponent(bytes.map((byte) => `%${byte.toString(16).padStart(2, "0")}`).join(""));
 }
 export function encodeCursor(cursor: Cursor): string {
   return base64urlEncode(JSON.stringify(CursorSchema.parse(cursor)));
@@ -182,6 +187,24 @@ export function decodeNotificationCursor(value: string): NotificationCursor {
     throw new Error("INVALID_CURSOR");
   }
   const cursor = NotificationCursorSchema.safeParse(decoded);
+  if (!cursor.success) throw new Error("INVALID_CURSOR");
+  return cursor.data;
+}
+export function encodeLikedCursor(cursor: LikedCursor): string {
+  return base64urlEncode(JSON.stringify(LikedCursorSchema.parse(cursor)));
+}
+export function decodeLikedCursor(value: string): LikedCursor {
+  let decoded: unknown;
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1)
+      throw new Error("invalid base64url");
+    const json = base64urlDecode(value);
+    if (base64urlEncode(json) !== value) throw new Error("non-canonical base64url");
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error("INVALID_CURSOR");
+  }
+  const cursor = LikedCursorSchema.safeParse(decoded);
   if (!cursor.success) throw new Error("INVALID_CURSOR");
   return cursor.data;
 }

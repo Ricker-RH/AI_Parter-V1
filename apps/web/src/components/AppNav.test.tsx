@@ -7,7 +7,7 @@ const {search} = vi.hoisted(() => ({search: new URLSearchParams()}))
 vi.mock('next/navigation', () => ({usePathname: () => '/en', useSearchParams: () => search}))
 vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.ReactNode; [key: string]: unknown}) => <a {...props}>{children}</a>}))
 
-const labels = {primary: 'Primary', home: 'Home', forYou: 'For You', following: 'Following', search: 'Search', notifications: 'Activity', messages: 'Messages', bookmarks: 'Saved', profile: 'My Profile', settings: 'Settings', creatorNav: 'Creator Center', recommendations: 'Recommendations', recommendationsEmpty: 'None', more: 'More', appearance: 'Appearance', contact: 'Contact Us', signOut: 'Sign Out', contactUnavailable: 'Contact is unavailable'}
+const labels = {primary: 'Primary', home: 'Home', forYou: 'For You', following: 'Following', search: 'Search', notifications: 'Notifications', messages: 'Messages', liked: 'Liked', bookmarks: 'Saved', profile: 'My Profile', settings: 'Settings', creatorNav: 'Creator Center', recommendations: 'Recommendations', recommendationsEmpty: 'None', more: 'More', appearance: 'Appearance', contact: 'Contact Us', signOut: 'Sign Out', contactUnavailable: 'Contact is unavailable'}
 
 describe('AppNav', () => {
   it('keeps Home feed choices in the desktop sidebar without a human composer', () => {
@@ -17,6 +17,14 @@ describe('AppNav', () => {
     expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?feed=following')
     expect(screen.queryByRole('button', {name: /post|compose|publish/i})).toBeNull()
     expect(screen.queryByRole('link', {name: 'Settings'})).toBeNull()
+  })
+
+  it('keeps the ordinary desktop order and excludes Creator Center', () => {
+    render(<AppNav labels={labels} locale="en" />)
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label'))).toEqual([
+      'AIFANS', 'For You', 'Following', 'Search', 'Messages', 'Notifications', 'Liked', 'Saved', 'My Profile',
+    ])
+    expect(screen.queryByRole('link', {name: 'Creator Center'})).toBeNull()
   })
 
   it('marks only Following active for a following query and exposes rail labels', () => {

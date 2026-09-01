@@ -193,6 +193,8 @@ describe('PostHog browser adapter', () => {
     expect(routeNameForPath('/en')).toBe('/[locale]')
     expect(routeNameForPath(`/zh-CN/posts/${postId}`)).toBe('/[locale]/posts/[postId]')
     expect(routeNameForPath('/en/messages')).toBe('/[locale]/messages')
+    expect(routeNameForPath('/en/activity')).toBe('/[locale]/activity')
+    expect(routeNameForPath('/zh-CN/liked')).toBe('/[locale]/liked')
     expect(routeNameForPath('/en?email=private@example.com')).toBeNull()
   })
 

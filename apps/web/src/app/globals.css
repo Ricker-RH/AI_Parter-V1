@@ -210,6 +210,16 @@ button {
   gap: 22px;
   min-width: max-content;
 }
+.activity-tabs {
+  display: flex;
+  gap: 26px;
+  border-bottom: 1px solid var(--shell-border);
+  overflow-x: auto;
+  padding: 0 24px;
+}
+.activity-tabs .tab {
+  min-width: max-content;
+}
 .empty {
   display: grid;
   gap: 8px;
@@ -1872,6 +1882,7 @@ button {
   .mobile-feed-menu { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 8px; box-shadow: var(--aifans-elevation-2); display: grid; left: 0; min-width: 132px; padding: 6px; position: absolute; top: 44px; z-index: 20; }
   .mobile-feed-menu a { min-height: 44px; padding: 10px; }
   .visual-filter { display: none; }
+  .activity-tabs { padding-inline: 20px; }
   .post-card { padding-inline: 12px; }
 }
 

@@ -3,6 +3,7 @@ const {getApiBearerToken}=vi.hoisted(()=>({getApiBearerToken:vi.fn(async()=> 'si
 vi.mock('./auth/server.js', () => ({getApiBearerToken}))
 import {
   fetchBookmarks,
+  fetchLiked,
   fetchFeed,
   fetchNotifications,
   fetchPost,
@@ -61,20 +62,23 @@ describe('social API client', () => {
     expect(getApiBearerToken).not.toHaveBeenCalled()
   })
 
-  it('forwards opaque cursors for bookmark, notification, and comment pagination', async () => {
+  it('forwards opaque cursors for bookmark, liked, notification, and comment pagination', async () => {
     process.env.AIFANS_API_URL = 'https://server.example'
     const request = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
       .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
       .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
       .mockResolvedValueOnce(new Response(JSON.stringify({...post, comments: {items: [], nextCursor: null}}), {status: 200}))
     vi.stubGlobal('fetch', request)
 
     await fetchBookmarks({cursor: 'bookmark cursor'})
+    await fetchLiked({cursor: 'liked cursor'})
     await fetchNotifications({cursor: 'notification cursor'})
     await fetchPost(post.id, {commentCursor: 'comment cursor'})
 
     expect(request.mock.calls.map(([url]) => url)).toEqual([
       'https://server.example/v1/bookmarks?cursor=bookmark+cursor',
+      'https://server.example/v1/likes?cursor=liked+cursor',
       'https://server.example/v1/notifications?cursor=notification+cursor',
       `https://server.example/v1/posts/${post.id}?commentCursor=comment+cursor`,
     ])

@@ -179,7 +179,7 @@ export function createBrowserAnalytics(): AnalyticsClient {
   return createPostHogAnalytics({key: process.env.NEXT_PUBLIC_POSTHOG_KEY, host: process.env.NEXT_PUBLIC_POSTHOG_HOST})
 }
 
-const knownRoutes: Record<string, AnalyticsRouteName> = {'': '/[locale]', admin: '/[locale]/admin', bookmarks: '/[locale]/bookmarks', messages: '/[locale]/messages', notifications: '/[locale]/notifications', profile: '/[locale]/profile', search: '/[locale]/search', settings: '/[locale]/settings', creator: '/[locale]/creator'}
+const knownRoutes: Record<string, AnalyticsRouteName> = {'': '/[locale]', activity: '/[locale]/activity', admin: '/[locale]/admin', bookmarks: '/[locale]/bookmarks', liked: '/[locale]/liked', messages: '/[locale]/messages', notifications: '/[locale]/notifications', profile: '/[locale]/profile', search: '/[locale]/search', settings: '/[locale]/settings', creator: '/[locale]/creator'}
 
 export function routeNameForPath(pathname: string): AnalyticsRouteName | null {
   if (!pathname.startsWith('/') || pathname.includes('?') || pathname.includes('#')) return null
