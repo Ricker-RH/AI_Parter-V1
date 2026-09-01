@@ -46,6 +46,13 @@ describe('AppShell', () => {
     pathname = '/en/messages'
     render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)
     expect(document.querySelector('[data-shell="messages"]')).toHaveAttribute('data-nav-variant', 'compact')
+    expect(document.querySelector('.messages-shell')).toHaveClass('shell')
+    expect(document.querySelector('.desktop-nav-compact')).toBeInTheDocument()
+    expect(document.querySelector('.messages-shell .mobile-nav')).toBeInTheDocument()
+    const compactSearch = document.querySelector('.desktop-nav-compact a[href="/en/search"]')
+    expect(compactSearch).toHaveAttribute('aria-label', 'Search')
+    expect(compactSearch?.querySelector('svg')).toBeInTheDocument()
+    expect(compactSearch?.querySelector('.sr-only')).toHaveTextContent('Search')
     expect(screen.queryByText('Recommendations')).toBeNull()
   })
 

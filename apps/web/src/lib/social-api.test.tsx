@@ -86,6 +86,17 @@ describe('social API client', () => {
     await expect(fetchFeed({kind: 'for_you', locale: 'en'})).resolves.toEqual({status: 'unavailable'})
   })
 
+  it.each([
+    [new Response(null, {status: 401})],
+    [new Response('not json', {status: 401})],
+    [new Response(JSON.stringify({unexpected: true}), {status: 401})],
+  ])('maps any 401 to auth-required before parsing its body', async (response) => {
+    process.env.AIFANS_API_URL = 'https://server.example'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+
+    await expect(fetchBookmarks()).resolves.toEqual({status: 'auth-required'})
+  })
+
   it('parses post detail and maps a missing post without fabricating content', async () => {
     process.env.AIFANS_API_URL = 'https://server.example'
     const request = vi.fn()

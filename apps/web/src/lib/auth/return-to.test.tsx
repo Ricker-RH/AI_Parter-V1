@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {readAdminReturnTo, readUserReturnTo} from './return-to.js'
+import {authHref, readAdminReturnTo, readUserReturnTo} from './return-to.js'
 
 describe('admin auth return target', () => {
   it.each([
@@ -23,6 +23,10 @@ describe('admin auth return target', () => {
 })
 
 describe('user auth return target', () => {
+  it('builds an encoded login href only from a validated user target', () => {
+    expect(authHref('en', '/en/messages')).toBe('/en/auth/sign-in?next=%2Fen%2Fmessages')
+    expect(authHref('en', 'https://attacker.example')).toBe('/en/auth/sign-in?next=%2Fen')
+  })
   it.each([
     ['en', '/en/messages'],
     ['en', '/en?feed=following&visualType=anime'],

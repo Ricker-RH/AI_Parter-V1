@@ -28,6 +28,7 @@ export function socialApiBaseUrl(): string | null {
 async function request<T>(path: string, schema: Schema<T>, cookie?: string): Promise<SocialApiResult<T>> {
   try {
     const response = await fetchAifansApi(path)
+    if (response.status === 401) return {status: 'auth-required'}
     const body: unknown = await response.json()
     if (response.ok) {
       const parsed = schema.safeParse(body)
@@ -36,9 +37,6 @@ async function request<T>(path: string, schema: Schema<T>, cookie?: string): Pro
 
     const error = ApiErrorSchema.safeParse(body)
     if (!error.success) return {status: 'unavailable'}
-    if (response.status === 401 && (error.data.code === 'AUTH_REQUIRED' || error.data.code === 'AUTH_INVALID')) {
-      return {status: 'auth-required'}
-    }
     if (response.status === 404 && (error.data.code === 'POST_NOT_FOUND' || error.data.code === 'PROFILE_NOT_FOUND')) return {status: 'not-found'}
     return {status: 'unavailable'}
   } catch {

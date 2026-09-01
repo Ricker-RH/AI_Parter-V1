@@ -5,6 +5,8 @@ import zh from '../../../../messages/zh-CN.json'
 
 const access = vi.hoisted(() => vi.fn())
 vi.mock('../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access}))
+const router = vi.hoisted(() => ({replace: vi.fn()}))
+vi.mock('next/navigation', () => ({notFound: vi.fn(), useRouter: () => router}))
 import MessagesPage from './page.js'
 
 describe('localized messages page', () => {

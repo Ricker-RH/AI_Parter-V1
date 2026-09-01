@@ -1,10 +1,13 @@
-import {fireEvent, render, screen} from '@testing-library/react'
+import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import en from '../../../messages/en.json'
 import type {CreatorDraft} from './types.js'
 import {CreatorDraftForm} from './CreatorDraftForm.js'
 
-afterEach(()=>vi.unstubAllGlobals())
+const {replace,router}=vi.hoisted(()=>{const replace=vi.fn();return {replace,router:{replace}}})
+vi.mock('next/navigation',()=>({useRouter:()=>router}))
+
+afterEach(()=>{vi.unstubAllGlobals();replace.mockClear()})
 const id='11111111-1111-4111-8111-111111111111'
 const draft:CreatorDraft={id,username:'luna_ip',displayName:'Luna',shortDescription:'',languageCodes:['en'],contentThemes:['art'],persona:{personality:'calm',background:'story',world:'earth',values:'care',tone:'warm',interests:[],boundaries:'safe',relationshipStyle:'kind'},visualType:'realistic',appearance:'silver hair',status:'draft',references:[],createdAt:'2026-09-01T00:00:00.000Z',updatedAt:'2026-09-01T00:00:00.000Z'}
 
@@ -36,5 +39,24 @@ describe('CreatorDraftForm',()=>{
     render(<CreatorDraftForm draft={{...draft,status:'submitted'}} labels={en.creator} locale="en" />)
     expect(screen.getByText('Submitted drafts are read-only.')).toBeVisible()
     expect(screen.queryByRole('button',{name:'Save draft'})).toBeNull()
+  })
+
+  it('replaces a stale draft session with its validated draft return target',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(null,{status:401})))
+    render(<CreatorDraftForm draft={draft} labels={en.creator} locale="en" />)
+    fireEvent.click(screen.getByRole('button',{name:'Generate references'}))
+
+    await waitFor(()=>expect(replace).toHaveBeenCalledWith(`/en/auth/sign-in?next=${encodeURIComponent(`/en/creator/${id}`)}`))
+  })
+
+  it('does not refetch a reference preview when changing that reference role',async()=>{
+    const fetcher=vi.fn().mockResolvedValue(Response.json({url:'https://read.example'}))
+    vi.stubGlobal('fetch',fetcher)
+    render(<CreatorDraftForm draft={{...draft,references:[{id:'22222222-2222-4222-8222-222222222222',role:'avatar'}]}} labels={en.creator} locale="en" />)
+    await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(screen.getByLabelText('1 of 8 references Request type'),{target:{value:'cover'}})
+
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 })

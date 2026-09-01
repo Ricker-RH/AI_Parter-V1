@@ -2,9 +2,11 @@
 
 import {ChatMessageInputSchema, ChatMessageResponseSchema} from '@aifans/contracts'
 import {useRef, useState, type FormEvent, type KeyboardEvent} from 'react'
+import {useRouter} from 'next/navigation'
 import type {Locale} from '../../i18n/config'
 import {trackChatOpened} from '../../lib/analytics/events'
 import {useAnalytics} from '../../lib/analytics/provider'
+import {authHref} from '../../lib/auth/return-to'
 
 export interface ChatLabels {
   title: string
@@ -81,6 +83,7 @@ async function sendChat(ipProfileId: string, body: object) {
 
 export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}) {
   const analytics = useAnalytics()
+  const router = useRouter()
   const openedTarget = useRef<string | null>(null)
   const [ipProfileId, setIpProfileId] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -119,6 +122,10 @@ export function ChatPanel({locale, labels}: {locale: Locale; labels: ChatLabels}
       setMessages((current) => [...current, {id: response.messageId, role: 'assistant', text: response.answer}])
       setState({kind: 'idle'})
     } catch (error) {
+      if (error instanceof ChatRequestError && error.kind === 'auth') {
+        router.replace(authHref(locale, `/${locale}/messages`))
+        return
+      }
       setDraft((current) => current || payload.data.message)
       setState({kind: 'error', message: localizedError(error, labels)})
     }

@@ -1,5 +1,10 @@
 import type {Locale} from '../../i18n/config'
 
+export function authHref(locale: Locale, returnTo: string): string {
+  const safeReturn = readUserReturnTo(locale, returnTo) ?? `/${locale}`
+  return `/${locale}/auth/sign-in?next=${encodeURIComponent(safeReturn)}`
+}
+
 export function readAdminReturnTo(locale: Locale, value: string | readonly string[] | undefined): string | undefined {
   if (typeof value !== 'string') return undefined
   const allowed = new Set([`/${locale}/admin`, `/${locale}/admin/creator`])

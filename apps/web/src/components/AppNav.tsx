@@ -47,16 +47,16 @@ function destination(locale: Locale, href: string) {
   return `/${locale}${href}`
 }
 
-function NavLink({item, locale, label, mobile = false}: {item: (typeof navItems)[number]; locale: Locale; label: string; mobile?: boolean}) {
+function NavLink({item, locale, label, mobile = false, compact = false}: {item: (typeof navItems)[number]; locale: Locale; label: string; mobile?: boolean; compact?: boolean}) {
   const pathname = usePathname()
   const href = destination(locale, item.href)
   const Icon = item.icon
   const active = pathname === href
 
-  return <Link aria-current={active ? 'page' : undefined} className={mobile ? 'mobile-link' : 'nav-link'} href={href}><Icon aria-hidden="true" className="nav-icon" />{label}</Link>
+  return <Link aria-current={active ? 'page' : undefined} aria-label={compact ? label : undefined} className={mobile ? 'mobile-link' : 'nav-link'} href={href}><Icon aria-hidden="true" className="nav-icon" />{compact ? <span className="sr-only">{label}</span> : label}</Link>
 }
 
 export function visibleNavItems(creatorModeEnabled=true){return creatorModeEnabled?navItems:navItems.filter((item)=>item.key!=='creatorNav')}
 export function AppNav({locale, labels, creatorModeEnabled=true, compact=false}: {locale: Locale; labels: ShellLabels; creatorModeEnabled?: boolean; compact?: boolean}) {
-  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo /></Link><p className="nav-title">{labels.primary}</p><div className="nav-list">{visibleNavItems(creatorModeEnabled).map((item) => <NavLink item={item} key={item.key} label={labels[item.key]} locale={locale} />)}</div></div></nav>
+  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo /></Link><p className={compact ? 'nav-title sr-only' : 'nav-title'}>{labels.primary}</p><div className="nav-list">{visibleNavItems(creatorModeEnabled).map((item) => <NavLink compact={compact} item={item} key={item.key} label={labels[item.key]} locale={locale} />)}</div></div></nav>
 }

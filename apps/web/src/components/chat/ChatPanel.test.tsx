@@ -4,6 +4,8 @@ import {ChatPanel, type ChatLabels} from './ChatPanel.js'
 
 const analyticsCapture = vi.fn()
 vi.mock('../../lib/analytics/provider.js', () => ({useAnalytics: () => ({capture: analyticsCapture, identify: vi.fn(), page: vi.fn(), reset: vi.fn()})}))
+const replace = vi.hoisted(() => vi.fn())
+vi.mock('next/navigation', () => ({useRouter: () => ({replace})}))
 
 const ipProfileId = '11111111-1111-4111-8111-111111111111'
 const conversationId = '22222222-2222-4222-8222-222222222222'
@@ -17,6 +19,7 @@ const response = {answer: 'Hello back', conversationId, messageId: '33333333-333
 afterEach(() => {
   vi.unstubAllGlobals()
   analyticsCapture.mockClear()
+  replace.mockClear()
 })
 
 function selectTarget() {
@@ -122,7 +125,6 @@ describe('ChatPanel', () => {
   })
 
   it.each([
-    [401, 'Sign in to chat.'],
     [502, 'The chat provider is unavailable.'],
     [503, 'Chat is not configured.'],
     [422, 'The message could not be sent.'],
@@ -135,6 +137,16 @@ describe('ChatPanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
     expect(screen.queryByText('private detail')).toBeNull()
     expect(screen.queryByText('AI/IP')).toBeNull()
+  })
+
+  it('replaces a stale chat session with the validated messages return target', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
+    render(<ChatPanel labels={labels} locale="en" />)
+    selectTarget()
+    fireEvent.change(screen.getByLabelText('Message'), {target: {value: 'Hello'}})
+    fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/en/auth/sign-in?next=%2Fen%2Fmessages'))
   })
 
   it('rejects a malformed success without inventing an assistant answer', async () => {

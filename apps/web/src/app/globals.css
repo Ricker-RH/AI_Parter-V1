@@ -68,6 +68,17 @@ button {
   outline-offset: 3px;
 }
 
+.sr-only {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 248px minmax(0, var(--aifans-content-width)) 320px;
@@ -1672,6 +1683,37 @@ button {
   }
   .post-author time {
     grid-column: 2;
+  }
+}
+
+@media (min-width: 700px) {
+  .messages-shell {
+    grid-template-columns: 76px minmax(0, var(--aifans-content-width));
+    max-width: calc(76px + var(--aifans-content-width));
+  }
+  .messages-shell .desktop-nav-compact {
+    padding: 24px 10px;
+  }
+  .desktop-nav-compact .brand {
+    margin: 2px 0 28px 10px;
+    width: 32px;
+  }
+  .desktop-nav-compact .nav-link {
+    justify-content: center;
+    padding: 0;
+  }
+  .messages-shell .mobile-nav {
+    display: none;
+  }
+}
+
+@media (min-width: 700px) and (max-width: 767px) {
+  .messages-shell {
+    display: grid;
+    padding-bottom: 0;
+  }
+  .messages-shell .desktop-nav {
+    display: block;
   }
 }
 .post-media-grid {

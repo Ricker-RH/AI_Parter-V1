@@ -1,14 +1,13 @@
 import {redirect as nextRedirect} from 'next/navigation'
 import type {Locale} from '../../i18n/config'
-import {readUserReturnTo} from './return-to'
+import {authHref} from './return-to'
 
 export type AuthenticatedPageAccess = {status: 'authenticated'; token: string}
 export type UnavailablePageAccess = {status: 'unavailable'}
 export type PageAccess = AuthenticatedPageAccess | UnavailablePageAccess
 
 export function redirectToUserSignIn({locale, returnTo, redirect = nextRedirect}: {locale: Locale; returnTo: string; redirect?: (path: string) => void}): void {
-  const safeReturn = readUserReturnTo(locale, returnTo) ?? `/${locale}`
-  redirect(`/${locale}/auth/sign-in?next=${encodeURIComponent(safeReturn)}`)
+  redirect(authHref(locale, returnTo))
 }
 
 export async function requireAuthenticatedPage({
