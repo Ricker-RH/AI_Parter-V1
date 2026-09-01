@@ -1,7 +1,10 @@
 import {fireEvent, render, screen} from '@testing-library/react'
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {MobileNav} from './MobileNav.js'
 import en from '../../messages/en.json'
+
+const {pathname} = vi.hoisted(() => ({pathname: {value: '/en'}}))
+vi.mock('next/navigation', () => ({usePathname: () => pathname.value}))
 
 const labels = en
 
@@ -21,7 +24,10 @@ describe('MobileNav', () => {
   })
 
   it('marks Activity as the active destination on the activity route', () => {
+    pathname.value = '/en/activity'
     render(<MobileNav labels={labels} locale="en" />)
     expect(screen.getByRole('link', {name: 'Activity'})).toHaveAttribute('href', '/en/activity')
+    expect(screen.getByRole('link', {name: 'Activity'})).toHaveAttribute('aria-current', 'page')
+    pathname.value = '/en'
   })
 })

@@ -2,12 +2,14 @@ import {render, screen} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
 import {describe, expect, it, vi} from 'vitest'
 import {AppNav} from './AppNav.js'
+import en from '../../messages/en.json'
+import zhCN from '../../messages/zh-CN.json'
 
 const {search} = vi.hoisted(() => ({search: new URLSearchParams()}))
 vi.mock('next/navigation', () => ({usePathname: () => '/en', useSearchParams: () => search}))
 vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.ReactNode; [key: string]: unknown}) => <a {...props}>{children}</a>}))
 
-const labels = {primary: 'Primary', home: 'Home', forYou: 'For You', following: 'Following', search: 'Search', notifications: 'Notifications', messages: 'Messages', liked: 'Liked', bookmarks: 'Saved', profile: 'My Profile', settings: 'Settings', creatorNav: 'Creator Center', recommendations: 'Recommendations', recommendationsEmpty: 'None', more: 'More', appearance: 'Appearance', contact: 'Contact Us', signOut: 'Sign Out', contactUnavailable: 'Contact is unavailable'}
+const labels = en
 
 describe('AppNav', () => {
   it('keeps Home feed choices in the desktop sidebar without a human composer', () => {
@@ -25,6 +27,14 @@ describe('AppNav', () => {
       'AIFANS', 'For You', 'Following', 'Search', 'Messages', 'Notifications', 'Liked', 'Saved', 'My Profile',
     ])
     expect(screen.queryByRole('link', {name: 'Creator Center'})).toBeNull()
+  })
+
+  it.each([
+    ['en', en, en.myProfile],
+    ['zh-CN', zhCN, zhCN.myProfile],
+  ] as const)('uses the localized my-profile label from %s messages', (locale, messages, profileLabel) => {
+    render(<AppNav labels={messages} locale={locale} />)
+    expect(screen.getByRole('link', {name: profileLabel})).toHaveAttribute('href', `/${locale}/profile`)
   })
 
   it('marks only Following active for a following query and exposes rail labels', () => {
