@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto'
 import {Pool} from '@neondatabase/serverless'
-import {AccountSchema, type Account} from '@aifans/contracts'
+import {AccountSchema, type Account, type UpdateCurrentAccount} from '@aifans/contracts'
 import {
   type Actor,
   type QueryPool,
@@ -33,11 +33,13 @@ type ProfileRow = {
 
 type CurrentAccountRow = {
   current_account: unknown
+  bio?: string | null
 }
 
 export type ProfileRepository = {
   ensureHumanProfile(input: EnsureHumanProfileInput): Promise<HumanProfile>
   getCurrentAccount(actor: Actor | null): Promise<CurrentAccount | null>
+  updateCurrentAccount(actor: Actor | null, input: UpdateCurrentAccount): Promise<CurrentAccount | null>
 }
 
 function requireProvisioningUrl(): string {
@@ -85,7 +87,7 @@ function normalizeHumanProfile(row: ProfileRow): HumanProfile {
   return {...account, authSubject: row.auth_subject, accountKind: 'human'}
 }
 
-function normalizeCurrentAccount(value: unknown): CurrentAccount | null {
+function normalizeCurrentAccount(value: unknown, bio?: string | null): CurrentAccount | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
   const row = value as Record<string, unknown>
   return AccountSchema.parse({
@@ -93,6 +95,7 @@ function normalizeCurrentAccount(value: unknown): CurrentAccount | null {
     kind: row.account_kind,
     username: row.username,
     displayName: row.display_name,
+    ...(bio === undefined ? {} : {bio}),
     preferredLocale: row.preferred_locale,
     creatorModeEnabled: row.creator_mode_enabled,
   })
@@ -179,9 +182,39 @@ export function createProfileRepository({
       if (actor === null) return null
       return runWithActor(actor, async (client) => {
         const result = await client.query<CurrentAccountRow>(
-          'SELECT public.current_account() AS current_account',
+          `SELECT public.current_account() AS current_account,
+                  (SELECT bio FROM public.profiles WHERE auth_subject = app.current_auth_subject()) AS bio`,
         )
-        return normalizeCurrentAccount(result.rows[0]?.current_account ?? null)
+        const row = result.rows[0]
+        return normalizeCurrentAccount(row?.current_account ?? null, row?.bio)
+      })
+    },
+
+    async updateCurrentAccount(actor: Actor | null, input: UpdateCurrentAccount): Promise<CurrentAccount | null> {
+      if (actor === null) return null
+      return runWithActor(actor, async (client) => {
+        const assignments: string[] = []
+        const values: unknown[] = []
+        const add = (column: string, value: unknown) => {
+          assignments.push(`${column} = $${values.length + 1}`)
+          values.push(value)
+        }
+        if (input.username !== undefined) add('username', input.username)
+        if (input.displayName !== undefined) add('display_name', input.displayName)
+        if (input.bio !== undefined) add('bio', input.bio)
+        if (input.preferredLocale !== undefined) add('preferred_locale', input.preferredLocale)
+        const updated = await client.query(
+          `UPDATE public.profiles SET ${assignments.join(', ')}
+           WHERE auth_subject = app.current_auth_subject() AND account_kind = 'human'`,
+          values,
+        )
+        if (updated.rowCount !== 1) return null
+        const result = await client.query<CurrentAccountRow>(
+          `SELECT public.current_account() AS current_account,
+                  (SELECT bio FROM public.profiles WHERE auth_subject = app.current_auth_subject()) AS bio`,
+        )
+        const row = result.rows[0]
+        return normalizeCurrentAccount(row?.current_account ?? null, row?.bio)
       })
     },
   }
@@ -204,4 +237,8 @@ export async function ensureHumanProfile(input: EnsureHumanProfileInput): Promis
 
 export async function getCurrentAccount(actor: Actor | null): Promise<CurrentAccount | null> {
   return getRepository().getCurrentAccount(actor)
+}
+
+export async function updateCurrentAccount(actor: Actor | null, input: UpdateCurrentAccount): Promise<CurrentAccount | null> {
+  return getRepository().updateCurrentAccount(actor, input)
 }

@@ -1,0 +1,152 @@
+.profile {
+  border-bottom: 1px solid var(--shell-border);
+  padding: 28px 24px;
+}
+.header {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+.header h2,
+.header p,
+.details p,
+.details dl {
+  margin: 0;
+}
+.header h2 {
+  font-size: 22px;
+}
+.header p,
+.details dt,
+.details dd {
+  color: var(--shell-muted);
+}
+.header p {
+  margin-top: 2px;
+}
+.header button,
+.state button,
+.actions button {
+  background: var(--shell-text);
+  border: 1px solid var(--shell-text);
+  border-radius: 999px;
+  color: var(--shell-canvas);
+  cursor: pointer;
+  min-height: 38px;
+  padding: 0 14px;
+}
+.header button {
+  margin-left: auto;
+}
+.avatar {
+  align-items: center;
+  background: var(--shell-hover);
+  border: 1px solid var(--shell-border);
+  border-radius: 50%;
+  display: flex;
+  flex: 0 0 64px;
+  font-size: 24px;
+  font-weight: 700;
+  height: 64px;
+  justify-content: center;
+  width: 64px;
+}
+.details {
+  display: grid;
+  gap: 20px;
+  margin: 24px 0 0 78px;
+}
+.details dl {
+  display: grid;
+  gap: 6px;
+}
+.details dt,
+.details dd {
+  display: inline;
+}
+.details dt {
+  font-size: 13px;
+  margin-right: 8px;
+}
+.details dd {
+  margin: 0;
+}
+.empty {
+  color: var(--shell-muted);
+}
+.form {
+  display: grid;
+  gap: 14px;
+  margin: 24px auto 0;
+  max-width: 520px;
+}
+.form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 650;
+}
+.form input,
+.form textarea,
+.form select {
+  background: transparent;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  color: inherit;
+  min-height: 42px;
+  padding: 9px 11px;
+}
+.form textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.form > p,
+.message {
+  color: var(--shell-muted);
+  margin: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.actions button:last-child {
+  background: transparent;
+  color: var(--shell-text);
+}
+.actions button:disabled,
+.header button:disabled,
+.state button:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+.state {
+  display: grid;
+  gap: 10px;
+  padding: 48px 24px;
+}
+.state p {
+  margin: 0;
+}
+.state a {
+  text-decoration: underline;
+}
+@media (max-width: 767px) {
+  .profile {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .details {
+    margin-left: 0;
+  }
+  .header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .header button {
+    margin-left: 78px;
+  }
+  .state {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}

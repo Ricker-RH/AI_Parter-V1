@@ -1,6 +1,6 @@
 export {readDatabaseEnv} from './env.js'
 export {migrate} from './migrate.js'
-export {getCurrentAccount, ensureHumanProfile, createProfileRepository} from './profiles.js'
+export {getCurrentAccount, ensureHumanProfile, updateCurrentAccount, createProfileRepository} from './profiles.js'
 export type {
   CurrentAccount,
   EnsureHumanProfileInput,
