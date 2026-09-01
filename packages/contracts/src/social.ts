@@ -23,6 +23,18 @@ export const FeedQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(50).default(25),
   cursor: z.string().min(1).optional(),
 });
+const searchText = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/\s+/g, " "))
+  .pipe(z.string().min(1).max(80));
+export const SearchCategorySchema = z.enum(["all", "ips", "posts"]);
+export const SearchQuerySchema = z.strictObject({
+  q: searchText,
+  category: SearchCategorySchema.default("all"),
+  limit: z.coerce.number().int().min(1).max(50).default(25),
+  cursor: z.string().min(1).optional(),
+});
 export const ChronologicalCursorSchema = z.strictObject({
   v: z.literal(1),
   kind: z.literal("chronological"),
@@ -52,11 +64,32 @@ export const NotificationCursorSchema = z.strictObject({
   createdAt: dateTime,
   id: uuid,
 });
+const SearchCursorBaseSchema = z.strictObject({
+  v: z.literal(1),
+  kind: z.literal("search"),
+  category: SearchCategorySchema,
+  query: z.string().min(1).max(80),
+});
+export const SearchCursorSchema = z.discriminatedUnion("resultType", [
+  SearchCursorBaseSchema.extend({
+    resultType: z.literal("profile"),
+    displayName: z.string().min(1).max(80),
+    id: uuid,
+  }),
+  SearchCursorBaseSchema.extend({
+    resultType: z.literal("post"),
+    publishedAt: dateTime,
+    id: uuid,
+  }),
+]);
 
 export type FeedKind = z.infer<typeof FeedKindSchema>;
 export type FeedVisualType = z.infer<typeof FeedVisualTypeSchema>;
 export type PageQuery = z.infer<typeof PageQuerySchema>;
 export type FeedQuery = z.infer<typeof FeedQuerySchema>;
+export type SearchCategory = z.infer<typeof SearchCategorySchema>;
+export type SearchQuery = z.infer<typeof SearchQuerySchema>;
+export type SearchCursor = z.infer<typeof SearchCursorSchema>;
 export type Cursor = z.infer<typeof CursorSchema>;
 export type CommentCursor = z.infer<typeof CommentCursorSchema>;
 export type NotificationCursor = z.infer<typeof NotificationCursorSchema>;
@@ -141,6 +174,32 @@ export function decodeNotificationCursor(value: string): NotificationCursor {
   if (!cursor.success) throw new Error("INVALID_CURSOR");
   return cursor.data;
 }
+export function encodeSearchCursor(cursor: SearchCursor): string {
+  return base64urlEncode(JSON.stringify(SearchCursorSchema.parse(cursor)));
+}
+export function decodeSearchCursor(
+  value: string,
+  expected?: {category?: SearchCategory; query?: string},
+): SearchCursor {
+  let decoded: unknown;
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1)
+      throw new Error("invalid base64url");
+    const json = base64urlDecode(value);
+    if (base64urlEncode(json) !== value) throw new Error("non-canonical base64url");
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error("INVALID_CURSOR");
+  }
+  const cursor = SearchCursorSchema.safeParse(decoded);
+  if (
+    !cursor.success ||
+    (expected?.category && cursor.data.category !== expected.category) ||
+    (expected?.query && cursor.data.query !== expected.query)
+  )
+    throw new Error("INVALID_CURSOR");
+  return cursor.data;
+}
 
 export const PublicCreatorSchema = z.strictObject({
   id: uuid,
@@ -222,6 +281,14 @@ export const NotificationSchema = z.strictObject({
 });
 export const FeedPageSchema = z.strictObject({
   items: z.array(FeedPostSchema),
+  nextCursor: z.string().nullable(),
+});
+export const SearchResultSchema = z.discriminatedUnion("type", [
+  z.strictObject({type: z.literal("profile"), profile: PublicIpSchema}),
+  z.strictObject({type: z.literal("post"), post: FeedPostSchema}),
+]);
+export const SearchPageSchema = z.strictObject({
+  items: z.array(SearchResultSchema),
   nextCursor: z.string().nullable(),
 });
 export const PublicIpProfileSchema = z.strictObject({
@@ -326,6 +393,8 @@ export type RegisteredPostMedia = z.infer<typeof RegisteredPostMediaSchema>;
 export type PublicComment = z.infer<typeof PublicCommentSchema>;
 export type Notification = z.infer<typeof NotificationSchema>;
 export type FeedPage = z.infer<typeof FeedPageSchema>;
+export type SearchResult = z.infer<typeof SearchResultSchema>;
+export type SearchPage = z.infer<typeof SearchPageSchema>;
 export type PublicIpProfile = z.infer<typeof PublicIpProfileSchema>;
 export type PostDetail = z.infer<typeof PostDetailSchema>;
 export type NotificationPage = z.infer<typeof NotificationPageSchema>;

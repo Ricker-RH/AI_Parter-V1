@@ -5,6 +5,8 @@ import {
   PostDetailSchema,
   PublicCommentSchema,
   PublicIpProfileSchema,
+  SearchPageSchema,
+  encodeSearchCursor,
 } from '@aifans/contracts'
 import {describe, expect, it} from 'vitest'
 import {createApp} from '../application.js'
@@ -92,6 +94,7 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
     listFeed: async () => page,
     getPost: async () => detail,
     getPublicProfile: async () => PublicIpProfileSchema.parse({profile:ip,followerCount:0,posts:page}),
+    search: async () => ({items: [], nextCursor: null}),
     follow: async () => ({created: true}),
     unfollow: async () => ({deleted: true}),
     likePost: async () => ({created: true}),
@@ -115,6 +118,26 @@ async function expectError(response: Response, status: number, code: string) {
 }
 
 describe('social read routes', () => {
+  it('allows anonymous bounded search and binds cursors to the query', async () => {
+    const calls: unknown[] = []
+    const search = SearchPageSchema.parse({items: [{type: 'profile', profile: ip}], nextCursor: null})
+    const social = socialPort({
+      search: async (input) => {
+        calls.push(input)
+        return search
+      },
+    })
+    const app = createApp({social})
+    const response = await app.request('/v1/search?q=luna%20%20moon&category=ips&limit=10')
+    expect(response.status).toBe(200)
+    expect(SearchPageSchema.parse(await response.json())).toEqual(search)
+    expect(calls).toEqual([{viewer: null, q: 'luna moon', category: 'ips', limit: 10, after: null}])
+    await expectError(await app.request('/v1/search?q=%20%20'), 400, 'INVALID_REQUEST')
+    await expectError(await app.request('/v1/search?q=luna&category=users'), 400, 'INVALID_REQUEST')
+    await expectError(await app.request('/v1/search?q=luna&q=moon'), 400, 'INVALID_REQUEST')
+    await expectError(await app.request(`/v1/search?q=luna&category=ips&cursor=${encodeSearchCursor({v: 1, kind: 'search', category: 'ips', query: 'luna', resultType: 'post', publishedAt, id: postId})}`), 400, 'INVALID_CURSOR')
+  })
+
   it('returns SOCIAL_NOT_CONFIGURED with a correlated request ID', async () => {
     await expectError(await createApp().request('/v1/feed?kind=for_you'), 503, 'SOCIAL_NOT_CONFIGURED')
   })

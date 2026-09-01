@@ -17,12 +17,74 @@ import {
   PublicIpProfileSchema,
   PublicPostMediaSchema,
   PostMediaUploadIntentRequestSchema,
+  SearchQuerySchema,
+  SearchCursorSchema,
+  decodeSearchCursor,
+  encodeSearchCursor,
+  SearchPageSchema,
 } from "./social.js";
+
 
 const id = "5b8ba43c-0a9e-43ec-87be-448a9e1ebf30";
 const timestamp = "2026-09-01T12:00:00.000Z";
 
 describe("social contracts", () => {
+  it("normalizes bounded public search inputs and rejects unsafe cursors", () => {
+    expect(SearchQuerySchema.parse({q: "  luna   moon  "})).toEqual({
+      q: "luna moon",
+      category: "all",
+      limit: 25,
+    });
+    expect(SearchQuerySchema.parse({q: "luna", category: "ips", limit: "10"})).toEqual({
+      q: "luna",
+      category: "ips",
+      limit: 10,
+    });
+    expect(() => SearchQuerySchema.parse({q: "   "})).toThrow();
+    expect(() => SearchQuerySchema.parse({q: "x".repeat(81)})).toThrow();
+    expect(() => SearchQuerySchema.parse({q: "luna", category: "users"})).toThrow();
+    expect(() => SearchQuerySchema.parse({q: "luna", cursor: "not-a-cursor"})).not.toThrow();
+  });
+
+  it("round trips search cursors with query/category binding", () => {
+    const cursor = {
+      v: 1 as const,
+      kind: "search" as const,
+      category: "all" as const,
+      query: "luna moon",
+      resultType: "post" as const,
+      publishedAt: timestamp,
+      id,
+    };
+    const encoded = encodeSearchCursor(cursor);
+    expect(decodeSearchCursor(encoded)).toEqual(cursor);
+    expect(SearchCursorSchema.parse(cursor)).toEqual(cursor);
+    expect(() => decodeSearchCursor("%%%bad")).toThrow("INVALID_CURSOR");
+    expect(() => decodeSearchCursor(encodeSearchCursor({...cursor, query: "other"}), {
+      category: "all",
+      query: "luna moon",
+    })).toThrow("INVALID_CURSOR");
+  });
+
+  it("keeps search results restricted to public IP and post projections", () => {
+    expect(
+      SearchPageSchema.parse({
+        items: [{type: "profile", profile: {
+          kind: "ip", id, username: "luna_ip", displayName: "Luna",
+          languages: ["en"], visualType: "anime",
+        }}],
+        nextCursor: null,
+      }).items[0]?.type,
+    ).toBe("profile");
+    expect(() => SearchPageSchema.parse({
+      items: [{type: "profile", profile: {
+        kind: "ip", id, username: "luna_ip", displayName: "Luna",
+        languages: ["en"], visualType: "anime", authSubject: "private",
+      }}],
+      nextCursor: null,
+    })).toThrow();
+  });
+
   it("strictly parses only safe public records", () => {
     const ip = {
       kind: "ip" as const,

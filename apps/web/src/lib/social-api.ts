@@ -4,6 +4,9 @@ import {
   NotificationPageSchema,
   PostDetailSchema,
   PublicIpProfileSchema,
+  SearchPageSchema,
+  type SearchCategory,
+  type SearchPage,
   type FeedPage,
   type FeedVisualType,
   type NotificationPage,
@@ -62,6 +65,12 @@ export function fetchPublicProfile(profileId: string, {cookie, cursor, token}: {
   const query=new URLSearchParams()
   if (cursor) query.set('cursor',cursor)
   return request(`/v1/profiles/${encodeURIComponent(profileId)}${query.size?`?${query}`:''}`,PublicIpProfileSchema,token)
+}
+
+export function fetchSearch({q, category = 'all', cursor, token}: {q: string; category?: SearchCategory; cursor?: string; token?: string}): Promise<SocialApiResult<SearchPage>> {
+  const query = new URLSearchParams({q, category})
+  if (cursor) query.set('cursor', cursor)
+  return request(`/v1/search?${query}`, SearchPageSchema, token)
 }
 
 export function fetchBookmarks({cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<FeedPage>> {

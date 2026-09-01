@@ -18,9 +18,14 @@ import {
   type PublicIp,
   type PublicIpProfile,
   type PublicPostMedia,
+  type SearchCategory,
+  type SearchCursor,
+  type SearchPage,
   PublicIpProfileSchema,
+  SearchPageSchema,
   decodeCursor,
   decodeNotificationCursor,
+  encodeSearchCursor,
   encodeNotificationCursor,
   type Cursor as SocialCursor,
   type CreateIpInput,
@@ -66,6 +71,13 @@ export type SocialRepository = {
     limit: number;
     after: Cursor | null;
   }): Promise<PublicIpProfile | null>;
+  search(input: {
+    viewer: Actor | null;
+    q: string;
+    category: SearchCategory;
+    limit: number;
+    after: SearchCursor | null;
+  }): Promise<SearchPage>;
   follow(
     actor: Actor,
     targetProfileId: string,
@@ -169,6 +181,7 @@ type PublicProfileRow = PublicIpRow & {
   follower_count: number | string;
   viewer_follows?: boolean;
 };
+type SearchProfileRow = PublicIpRow;
 type PostRow = PublicIpRow & {
   post_id: string;
   body: string;
@@ -527,6 +540,81 @@ export function createSocialRepository({
             : {}),
           posts,
         });
+      });
+    },
+    async search(input) {
+      return read(input.viewer, async (client) => {
+        const profileAfter =
+          input.after?.resultType === "profile" ? input.after : null;
+        const postAfter = input.after?.resultType === "post" ? input.after : null;
+        const take = input.limit + 1;
+        const profiles =
+          input.category === "posts" || postAfter
+            ? []
+            : (
+                await client.query<SearchProfileRow>(
+                  "SELECT * FROM public.social_public_search_profiles($1,$2,$3,$4)",
+                  [
+                    input.q,
+                    profileAfter?.displayName ?? null,
+                    profileAfter?.id ?? null,
+                    take,
+                  ],
+                )
+              ).rows;
+        const posts =
+          input.category === "ips" || (profileAfter && profiles.length > 0)
+            ? []
+            : (
+                await client.query<PostRow>(
+                  "SELECT * FROM public.social_public_search_posts($1,$2,$3,$4)",
+                  [
+                    input.q,
+                    postAfter?.publishedAt ?? null,
+                    postAfter?.id ?? null,
+                    take,
+                  ],
+                )
+              ).rows;
+        const profileItems = profiles.map((row) => ({
+          type: "profile" as const,
+          profile: publicIp(row),
+        }));
+        const postItems = await Promise.all(
+          posts.map(async (row) => ({
+            type: "post" as const,
+            post: post(
+              row,
+              await publicMedia(client, row.post_id, publicMediaBaseUrl),
+            ),
+          })),
+        );
+        const combined = [...profileItems, ...postItems];
+        const items = combined.slice(0, input.limit);
+        const last = items.at(-1);
+        const nextCursor =
+          combined.length > input.limit && last
+            ? last.type === "profile"
+              ? encodeSearchCursor({
+                  v: 1,
+                  kind: "search",
+                  category: input.category,
+                  query: input.q,
+                  resultType: "profile",
+                  displayName: last.profile.displayName,
+                  id: last.profile.id,
+                })
+              : encodeSearchCursor({
+                  v: 1,
+                  kind: "search",
+                  category: input.category,
+                  query: input.q,
+                  resultType: "post",
+                  publishedAt: last.post.publishedAt,
+                  id: last.post.id,
+                })
+            : null;
+        return SearchPageSchema.parse({items, nextCursor});
       });
     },
     follow: (actor, targetProfileId, context) =>

@@ -8,8 +8,11 @@ import {
   PostDetailSchema,
   PublicCommentSchema,
   PublicIpProfileSchema,
+  SearchPageSchema,
+  SearchQuerySchema,
   decodeCursor,
   decodeNotificationCursor,
+  decodeSearchCursor,
 } from '@aifans/contracts'
 import type {Actor} from '@aifans/db'
 import type {Context, Hono} from 'hono'
@@ -279,6 +282,44 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
       if (!result) return notFound(c,'PROFILE_NOT_FOUND')
       return c.json(PublicIpProfileSchema.parse(result),200)
     } catch (error) { return knownSocialError(c,error,{notFound:'PROFILE_NOT_FOUND'}) }
+  })
+
+  app.get('/v1/search', async (c) => {
+    const unavailable = socialUnavailable(c, dependencies.social)
+    if (unavailable) return unavailable
+    const rawQuery = safeQuery(c)
+    if (rawQuery === null) return invalidRequest(c)
+    const query = SearchQuerySchema.safeParse(rawQuery)
+    if (!query.success) return invalidRequest(c)
+    let after = null
+    if (query.data.cursor) {
+      try {
+        after = decodeSearchCursor(query.data.cursor, {
+          category: query.data.category,
+          query: query.data.q,
+        })
+        if (
+          (query.data.category === 'ips' && after.resultType !== 'profile') ||
+          (query.data.category === 'posts' && after.resultType !== 'post')
+        ) return invalidCursor(c)
+      } catch {
+        return invalidCursor(c)
+      }
+    }
+    const actor = await resolveActor(c, dependencies, false)
+    if (!actor.ok) return actor.response
+    try {
+      const result = await dependencies.social!.search({
+        viewer: actor.actor,
+        q: query.data.q,
+        category: query.data.category,
+        limit: query.data.limit,
+        after,
+      })
+      return c.json(SearchPageSchema.parse(result), 200)
+    } catch (error) {
+      return knownSocialError(c, error)
+    }
   })
 
   const relationship = (

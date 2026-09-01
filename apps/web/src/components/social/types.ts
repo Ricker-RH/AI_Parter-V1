@@ -49,4 +49,16 @@ export interface SocialLabels {
   followers: string
   posts: string
   signInToInteract: string
+  searchInput?: string
+  searchSubmit?: string
+  searchCategory?: string
+  searchAll?: string
+  searchIps?: string
+  searchPosts?: string
+  searchResults?: string
+  searchNoResults?: string
+  searchEnd?: string
+  search?: string
+  searchEmptyTitle?: string
+  searchEmptyDescription?: string
 }

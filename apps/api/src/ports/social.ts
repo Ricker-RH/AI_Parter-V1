@@ -11,6 +11,9 @@ import type {
   PostDetail,
   PublicComment,
   PublicIpProfile,
+  SearchCategory,
+  SearchPage,
+  SearchCursor,
 } from '@aifans/contracts'
 import type {Actor, CommandContext} from '@aifans/db'
 
@@ -32,6 +35,7 @@ export type SocialPort = {
     commentAfter: CommentCursor | null
   }): Promise<PostDetail | null>
   getPublicProfile(input: {viewer: Actor | null; profileId: string; limit: number; after: Cursor | null}): Promise<PublicIpProfile | null>
+  search(input: {viewer: Actor | null; q: string; category: SearchCategory; limit: number; after: SearchCursor | null}): Promise<SearchPage>
   follow(actor: Actor, targetProfileId: string, context: MutationContext): Promise<{created: boolean}>
   unfollow(actor: Actor, targetProfileId: string, context: MutationContext): Promise<{deleted: boolean}>
   likePost(actor: Actor, postId: string, context: MutationContext): Promise<{created: boolean}>
