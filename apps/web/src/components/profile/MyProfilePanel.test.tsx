@@ -1,6 +1,7 @@
-import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
+import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
+import {StrictMode} from 'react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {MyProfilePanel} from './MyProfilePanel.js'
 
@@ -15,6 +16,12 @@ const labels = {
 const account = {id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30', kind: 'human', username: 'rui', displayName: 'Rui', bio: null, preferredLocale: 'en', creatorModeEnabled: false}
 const moduleUrl = import.meta.url
 const stylesheet = readFileSync(fileURLToPath(new URL('./MyProfilePanel.module.css', moduleUrl)), 'utf8')
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => { resolve = next })
+  return {promise, resolve}
+}
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -95,5 +102,61 @@ describe('MyProfilePanel', () => {
     expect(stylesheet).toMatch(/\.profile\s*\{[^}]*max-width:\s*640px/s)
     expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.profile\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*24px/s)
     expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.profile\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/s)
+  })
+
+  it('keeps the newest StrictMode profile load when an aborted older request resolves late', async () => {
+    const older = deferred<Response>()
+    const newer = deferred<Response>()
+    const signals: AbortSignal[] = []
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.signal) signals.push(init.signal)
+      return signals.length === 1 ? older.promise : newer.promise
+    }))
+
+    render(<StrictMode><MyProfilePanel labels={labels} locale="en" /></StrictMode>)
+    await waitFor(() => expect(signals).toHaveLength(2))
+    expect(signals[0]?.aborted).toBe(true)
+    await act(async () => { newer.resolve(Response.json({...account, displayName: 'Newest profile'})) })
+    expect(await screen.findByRole('heading', {level: 2, name: 'Newest profile'})).toBeVisible()
+
+    await act(async () => { older.resolve(new Response(null, {status: 401})) })
+    expect(screen.getByRole('heading', {level: 2, name: 'Newest profile'})).toBeVisible()
+    expect(screen.queryByText('Sign in required')).toBeNull()
+  })
+
+  it('aborts an active profile load when the panel unmounts', async () => {
+    const pending = deferred<Response>()
+    let signal: AbortSignal | undefined
+    vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined
+      return pending.promise
+    }))
+
+    const view = render(<MyProfilePanel labels={labels} locale="en" />)
+    await waitFor(() => expect(signal).toBeDefined())
+    view.unmount()
+    expect(signal?.aborted).toBe(true)
+    await act(async () => { pending.resolve(Response.json(account)) })
+  })
+
+  it('aborts an active save and ignores its late completion after unmount', async () => {
+    const pendingSave = deferred<Response>()
+    let saveSignal: AbortSignal | undefined
+    const request = vi.fn()
+      .mockResolvedValueOnce(Response.json(account))
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) => {
+        saveSignal = init?.signal ?? undefined
+        return pendingSave.promise
+      })
+    vi.stubGlobal('fetch', request)
+    const view = render(<MyProfilePanel labels={labels} locale="en" />)
+    await screen.findByText('@rui')
+    fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
+    fireEvent.click(screen.getByRole('button', {name: 'Save changes'}))
+    await waitFor(() => expect(saveSignal).toBeDefined())
+
+    view.unmount()
+    expect(saveSignal?.aborted).toBe(true)
+    await act(async () => { pendingSave.resolve(Response.json({...account, displayName: 'Late save'})) })
   })
 })

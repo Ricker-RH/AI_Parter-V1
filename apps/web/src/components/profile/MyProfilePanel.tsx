@@ -2,7 +2,7 @@
 
 import {AccountSchema, UpdateCurrentAccountSchema, type Account, type UpdateCurrentAccount} from '@aifans/contracts'
 import Link from 'next/link'
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import styles from './MyProfilePanel.module.css'
 
@@ -25,19 +25,57 @@ export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; local
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [fieldError, setFieldError] = useState<'name' | 'username' | null>(null)
+  const lifecycle = useRef<{mounted: boolean; generation: number; controller: AbortController | null}>({mounted: false, generation: 0, controller: null})
+
+  function startRequest() {
+    const current = lifecycle.current
+    current.generation += 1
+    current.controller?.abort()
+    const controller = new AbortController()
+    current.controller = controller
+    return {controller, generation: current.generation}
+  }
+
+  function isCurrentRequest(request: {controller: AbortController; generation: number}) {
+    const current = lifecycle.current
+    return current.mounted && current.generation === request.generation && current.controller === request.controller && !request.controller.signal.aborted
+  }
+
+  function finishRequest(request: {controller: AbortController; generation: number}) {
+    if (isCurrentRequest(request)) lifecycle.current.controller = null
+  }
+
+  function invalidateRequest() {
+    const current = lifecycle.current
+    current.generation += 1
+    current.controller?.abort()
+    current.controller = null
+  }
 
   async function load() {
+    const request = startRequest()
+    if (!isCurrentRequest(request)) return
     setState({status: 'loading'}); setMessage(null)
     try {
-      const response = await fetch('/api/me', {cache: 'no-store', credentials: 'include'})
+      const response = await fetch('/api/me', {cache: 'no-store', credentials: 'include', signal: request.controller.signal})
+      if (!isCurrentRequest(request)) return
       if (response.status === 401) { setState({status: 'auth'}); return }
       if (!response.ok) { setState({status: 'unavailable'}); return }
       const account = parseAccount(await response.json())
+      if (!isCurrentRequest(request)) return
       setState(account ? {status: 'ready', account} : {status: 'unavailable'})
-    } catch { setState({status: 'unavailable'}) }
+    } catch { if (isCurrentRequest(request)) setState({status: 'unavailable'}) }
+    finally { finishRequest(request) }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    lifecycle.current.mounted = true
+    void load()
+    return () => {
+      lifecycle.current.mounted = false
+      invalidateRequest()
+    }
+  }, [])
 
   if (state.status === 'loading') return <section className={styles.state} role="status">{labels.loading}</section>
   if (state.status === 'auth') return <section className={styles.state} role="alert"><p>{labels.authRequired}</p><Link href={`/${locale}/auth/sign-in`}>{labels.signIn}</Link></section>
@@ -50,7 +88,7 @@ export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; local
     setDraft({username: account.username, displayName: account.displayName, bio: account.bio ?? null, preferredLocale: account.preferredLocale})
     setFieldError(null); setMessage(null); setState({status: 'editing', account})
   }
-  function cancel() { setFieldError(null); setMessage(null); setState({status: 'ready', account}) }
+  function cancel() { invalidateRequest(); setPending(false); setFieldError(null); setMessage(null); setState({status: 'ready', account}) }
   async function save() {
     const parsed = UpdateCurrentAccountSchema.safeParse(draft)
     if (!parsed.success) {
@@ -58,15 +96,20 @@ export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; local
       setFieldError(paths.includes('username') ? 'username' : paths.includes('displayName') ? 'name' : null)
       setMessage(labels.saveError); return
     }
+    const request = startRequest()
+    if (!isCurrentRequest(request)) return
     setPending(true); setMessage(null); setFieldError(null)
     try {
-      const response = await fetch('/api/me', {method: 'PATCH', credentials: 'include', headers: {'content-type': 'application/json'}, body: JSON.stringify(parsed.data)})
+      const response = await fetch('/api/me', {method: 'PATCH', credentials: 'include', headers: {'content-type': 'application/json'}, body: JSON.stringify(parsed.data), signal: request.controller.signal})
+      if (!isCurrentRequest(request)) return
       if (response.status === 401) { setState({status: 'auth'}); return }
       if (!response.ok) { setMessage(labels.saveError); return }
       const next = parseAccount(await response.json())
+      if (!isCurrentRequest(request)) return
       if (!next) { setMessage(labels.saveError); return }
       setState({status: 'ready', account: next}); setDraft({}); setMessage(labels.saved)
-    } catch { setMessage(labels.saveError) } finally { setPending(false) }
+    } catch { if (isCurrentRequest(request)) setMessage(labels.saveError) }
+    finally { if (isCurrentRequest(request)) setPending(false); finishRequest(request) }
   }
 
   return <section className={styles.profile} aria-labelledby="my-profile-title">
