@@ -81,6 +81,7 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
     <button aria-expanded={open} aria-haspopup="dialog" aria-label={`${profileLabel}: ${author.displayName}`} className="post-avatar-trigger" onClick={() => setOpen(true)} ref={trigger} type="button">
       <span aria-hidden="true" className="avatar">{author.displayName.slice(0, 1)}</span>
     </button>
+    {canMutate && followsAuthor === false ? <ProfileFollowButton appearance="avatar" following={false} labels={labels} locale={locale} profileId={author.id}/> : null}
     {open ? <div className="author-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
       <div aria-label={author.displayName} aria-modal="true" className="author-preview-dialog" ref={dialog} role="dialog">
         <div className="author-preview-heading">

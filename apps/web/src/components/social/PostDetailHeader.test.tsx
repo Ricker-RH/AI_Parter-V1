@@ -25,13 +25,12 @@ describe('PostDetailHeader', () => {
     expect(router.back).not.toHaveBeenCalled()
   })
 
-  it('uses the compact Threads-style chrome without a visible Post title or divider', () => {
+  it('uses compact Threads-style chrome with the localized Post title and no divider', () => {
     const {container} = render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" />)
 
-    expect(screen.queryByRole('heading', {name: 'Post'})).toBeNull()
-    expect(screen.getByRole('link', {name: 'AIFANS'})).toHaveAttribute('href', '/en')
-    expect(container.querySelector('.post-detail-brand svg')).toHaveAttribute('viewBox', '0 0 64 64')
-    expect(container.querySelector('.post-detail-header')).toHaveAttribute('data-titleless', 'true')
+    expect(container.querySelector('.post-detail-brand')).toBeNull()
+    expect(container.querySelector('.post-detail-header')).not.toHaveAttribute('data-titleless')
+    expect(screen.getByRole('heading', {name: 'Post'})).toBeVisible()
   })
 
   it('uses app history when the referrer is same-origin and in the selected locale', () => {

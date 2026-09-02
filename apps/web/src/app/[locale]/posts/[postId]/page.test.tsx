@@ -23,8 +23,13 @@ describe('post detail route', () => {
     render(await PostPage({params: Promise.resolve({locale: 'zh-CN', postId}), searchParams: Promise.resolve({commentCursor: 'comments_next-1'})}))
     expect(fetchPost).toHaveBeenCalledWith(postId, {commentCursor: 'comments_next-1'})
     expect(screen.getByRole('link', {name: '登录后参与讨论'})).toHaveAttribute('href', `/zh-CN/auth/sign-in?next=${encodeURIComponent(`/zh-CN/posts/${postId}?commentCursor=comments_next-1`)}`)
-    expect(screen.queryByRole('heading', {name: '动态'})).toBeNull()
-    expect(screen.getByRole('link', {name: 'AIFANS'})).toHaveAttribute('href', '/zh-CN')
+    expect(screen.getByRole('heading', {name: '动态'})).toBeVisible()
+  })
+
+  it('waits for the bounded authenticated session check before deciding whether comments are interactive', async () => {
+    await PostPage({params: Promise.resolve({locale: 'en', postId}), searchParams: Promise.resolve({})})
+
+    expect(getOptionalPageAccess).toHaveBeenCalledWith({timeoutMs: 1500})
   })
 
   it('drops an unsafe comment cursor from the request and return path', async () => {

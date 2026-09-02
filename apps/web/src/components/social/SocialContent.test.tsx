@@ -47,6 +47,7 @@ const labels: SocialLabels = {
   bookmarksEmptyDescription: "Save posts for later.",
   commentCount: "{count} comments",
   comments: "Comments",
+  commentSortChronological: "Chronological",
   deletedComment: "This comment was deleted.",
   follow: "Follow",
   followingAction: "Following",
@@ -352,7 +353,8 @@ describe("real social content", () => {
     expect(screen.getByText("Created by @comment_creator")).toBeVisible();
     expect(screen.getByRole("img", {name: "Alex"})).toHaveTextContent("A");
     expect(screen.getByText("5m")).toHaveAttribute("datetime", "2026-08-31T12:05:00.000Z");
-    expect(screen.queryByRole("heading", {name: "Comments"})).toBeNull();
+    expect(screen.getByRole("heading", {name: "Comments"})).toBeVisible();
+    expect(screen.getByText('Chronological')).toBeVisible();
     expect(document.querySelectorAll(".comment-thread-item")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute(
       "href",

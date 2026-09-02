@@ -37,6 +37,7 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
     <PostCard canMutate={authenticated} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={postReturnTo} />
     <section aria-label={labels.comments} className="comments-section">
       <CommentComposer authenticated={authenticated} labels={labels} locale={locale} postId={result.data.id} returnTo={postReturnTo} />
+      <div className="comments-toolbar"><h2>{labels.comments}</h2><span>{labels.commentSortChronological ?? labels.comments}</span></div>
       {result.data.comments.items.length === 0 ? <div className="comments-empty"><h3>{labels.commentsEmptyTitle ?? labels.comments}</h3>{labels.commentsEmptyDescription ? <p>{labels.commentsEmptyDescription}</p> : null}</div> : null}
       <div className="comment-thread">{result.data.comments.items.map((comment) => <CommentThreadItem authenticated={authenticated} comment={comment} key={comment.id} labels={labels} locale={locale} postId={result.data.id} referenceTime={referenceTime} returnTo={postReturnTo}/>)}</div>
       {result.data.comments.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}

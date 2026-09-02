@@ -477,6 +477,9 @@ button {
 .author-preview { position: relative; }
 .post-avatar-trigger { background: transparent; border: 0; border-radius: 50%; color: inherit; cursor: pointer; height: 44px; margin: -4px; padding: 4px; width: 44px; }
 .post-avatar-trigger .avatar { height: 36px; width: 36px; }
+.profile-follow--avatar { bottom: -2px; position: absolute; right: -2px; z-index: 1; }
+.profile-follow--avatar button { align-items: center; background: var(--shell-text); border: 2px solid var(--shell-surface); border-radius: 50%; color: var(--shell-surface); display: flex; font-size: 17px; font-weight: 500; height: 20px; justify-content: center; line-height: 1; min-height: 20px; padding: 0; width: 20px; }
+.profile-follow--avatar .interaction-error { left: 0; position: absolute; top: calc(100% + 4px); white-space: nowrap; }
 .author-preview-backdrop { align-items: center; background: color-mix(in srgb, #000 40%, transparent); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 60; }
 .author-preview-dialog { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 20px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 14px; max-width: 380px; padding: 22px; width: 100%; }
 .author-preview-dialog p { margin: 0; }
@@ -492,16 +495,20 @@ button {
 .author-preview-follow-action, .author-preview-follow-action .profile-follow { display: contents; }
 .author-preview-follow-action .author-preview-primary, .author-preview-follow-action .profile-follow button { background: var(--shell-text); border-color: var(--shell-text); color: var(--shell-surface); grid-column: 1 / -1; width: 100%; }
 .comments-section { border-top: 0; }
+.comments-toolbar { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; justify-content: space-between; padding: 12px 24px; }
+.comments-toolbar h2 { font-size: 15px; margin: 0; }
+.comments-toolbar span { color: var(--shell-muted); font-size: 13px; }
 .comments-empty {
-  border-bottom: 1px solid var(--shell-border);
   color: var(--shell-muted);
-  padding: 24px;
+  padding: 28px 24px 22px 74px;
 }
 .comments-empty h3, .comments-empty p { margin: 0; }
 .comments-empty p { margin-top: 6px; }
+.post-detail-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; overflow: hidden; }
+.post-detail-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .post-detail-header {
   align-items: center;
-  background: color-mix(in srgb, var(--shell-surface) 94%, transparent);
+  background: var(--shell-surface);
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   min-height: 56px;
@@ -510,10 +517,7 @@ button {
   top: 0;
   z-index: 25;
 }
-.post-detail-brand { align-items: center; display: flex; height: 44px; justify-content: center; justify-self: center; width: 44px; }
-.post-detail-brand svg { color: currentColor; display: block; height: 32px; width: 32px; }
-.post-detail-brand svg path:first-of-type { fill: currentColor; }
-.post-detail-brand svg path:nth-of-type(2) { fill: var(--shell-surface); }
+.post-detail-title { font-size: 17px; font-weight: 700; justify-self: center; letter-spacing: -0.015em; margin: 0; }
 .post-detail-back, .post-detail-menu-trigger, .post-detail-menu-list button { align-items: center; background: transparent; border: 0; border-radius: 8px; color: inherit; cursor: pointer; display: flex; font: inherit; font-weight: 600; justify-content: center; min-height: 44px; padding: 0; }
 .post-detail-back { font-size: 0; width: 44px; }
 .post-detail-back::before { content: "←"; font-size: 24px; font-weight: 400; line-height: 1; }

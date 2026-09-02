@@ -125,6 +125,15 @@ describe("PostCard media geometry", () => {
     expect(container.querySelector('.post-author-line .account-kind')).toBeNull();
   });
 
+  it('shows an independent accessible follow control on an unfollowed IP avatar only for signed-in viewers', () => {
+    const {container, rerender} = render(<PostCard linked={false} canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />)
+
+    expect(container.querySelector('.profile-follow--avatar')).toBeTruthy()
+    expect(screen.getByRole('button', {name: 'Follow'})).toBeVisible()
+    rerender(<PostCard linked={false} canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: true}} referenceTime={cardReferenceTime} />)
+    expect(container.querySelector('.profile-follow--avatar')).toBeNull()
+  })
+
   it("exposes a named keyboard carousel without nesting links and scrolls it with horizontal arrows", () => {
     const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
     const rail = screen.getByRole('region', {name: 'Post media'});
