@@ -30,6 +30,19 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.post-actions button,\s*\.comment-composer button,\s*\.profile-follow button,\s*\.notification-read,\s*\.search-form button \{[^}]*min-height: 44px/)
     expect(stylesheet).toMatch(/\.route-error \{[^}]*border: 1px solid var\(--shell-border\)/)
     expect(stylesheet).toMatch(/\.route-error-actions a, \.route-error-actions button, \.unavailable-retry \{[^}]*border-radius: 999px/)
+    expect(stylesheet).toMatch(/\.route-error-actions a, \.route-error-actions button, \.unavailable-retry \{[^}]*min-height: 44px/)
+  })
+
+  it('uses a full-screen branded entry state with restrained reduced-motion-safe movement', () => {
+    expect(stylesheet).toMatch(/\.loading-screen \{[^}]*min-height: 100dvh/)
+    expect(stylesheet).toMatch(/\.loading-screen-mark \{[^}]*width: clamp\(112px, 24vw, 176px\)[^}]*animation: loading-mark-enter 240ms/)
+    expect(stylesheet).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\.loading-screen-mark[^}]*animation: none/)
+  })
+
+  it('keeps every route skeleton and not-found recovery usable across mobile widths', () => {
+    expect(stylesheet).toMatch(/\.route-skeleton \{[^}]*max-width: 100%[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/\.route-not-found a \{[^}]*min-height: 44px/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.route-skeleton--messages \.route-skeleton-message-detail \{[^}]*display: none/)
   })
 
   it('uses the compact mobile Home hierarchy with two equal-width feed tabs', () => {

@@ -5,6 +5,6 @@ import Loading from './loading.js'
 describe('post detail loading boundary', () => {
   it('uses the detail route skeleton', () => {
     render(<Loading />)
-    expect(screen.getByRole('status', {name: 'Loading detail'})).toBeVisible()
+    expect(screen.getByRole('status', {name: 'AIFANS'})).toBeVisible()
   })
 })

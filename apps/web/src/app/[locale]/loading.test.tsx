@@ -6,7 +6,7 @@ describe("localized loading boundary", () => {
   it("uses the feed route skeleton", () => {
     render(<Loading />);
 
-    expect(screen.getByRole("status", { name: "Loading feed" })).toHaveAttribute(
+    expect(screen.getByRole("status", { name: "AIFANS" })).toHaveAttribute(
       "aria-busy",
       "true",
     );

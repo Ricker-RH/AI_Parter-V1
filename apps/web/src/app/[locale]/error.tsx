@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 type ErrorPageProps = {
   error: Error & { digest?: string };
-  retry: () => void;
+  reset: () => void;
 };
 
 const localizedLabels = {
@@ -23,7 +23,7 @@ const localizedLabels = {
   },
 } as const;
 
-export default function ErrorPage({ error: _error, retry }: ErrorPageProps) {
+export default function ErrorPage({ error: _error, reset }: ErrorPageProps) {
   const pathname = usePathname();
   const locale = pathname.startsWith("/zh-CN") ? "zh-CN" : "en";
   const labels = localizedLabels[locale];
@@ -33,7 +33,7 @@ export default function ErrorPage({ error: _error, retry }: ErrorPageProps) {
       <h1>{labels.title}</h1>
       <p>{labels.description}</p>
       <div className="route-error-actions">
-        <button onClick={retry} type="button">
+        <button onClick={reset} type="button">
           {labels.retry}
         </button>
         <Link href={`/${locale}`}>{labels.home}</Link>

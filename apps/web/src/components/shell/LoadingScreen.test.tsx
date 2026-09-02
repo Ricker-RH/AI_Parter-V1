@@ -3,15 +3,13 @@ import { describe, expect, it } from "vitest";
 import { LoadingScreen } from "./LoadingScreen.js";
 
 describe("LoadingScreen", () => {
-  it("renders only the AIFANS wordmark with an accessible loading status", () => {
+  it("renders the official mark as a full-screen neutral loading status", () => {
     render(<LoadingScreen />);
 
-    expect(screen.getByRole("status", { name: "Loading AIFANS" })).toHaveClass(
+    expect(screen.getByRole("status", { name: "AIFANS" })).toHaveClass(
       "loading-screen",
     );
-    expect(screen.getByText("AIFANS")).toHaveClass(
-      "loading-screen-wordmark",
-    );
+    expect(screen.getByRole("img", {name: "AIFANS"})).toHaveClass("loading-screen-mark");
     expect(screen.getByRole("status").childElementCount).toBe(1);
   });
 });
