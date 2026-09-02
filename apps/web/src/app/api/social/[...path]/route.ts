@@ -1,4 +1,6 @@
+import {ApiErrorSchema, CreateHumanCommentSchema, PublicCommentSchema} from '@aifans/contracts'
 import {fetchAifansApi} from '../../../../lib/server-api'
+import {invalidateSocialMutation} from '../../../../lib/social-invalidation'
 
 type RouteContext = {params: Promise<{path: string[]}>}
 
@@ -50,6 +52,36 @@ function duplicateTopLevelKey(text: string): boolean {
 function declaredBodyTooLarge(request:Request):boolean { const value=request.headers.get('content-length');return value!==null&&(!/^\d+$/.test(value)||Number(value)>COMMENT_BODY_LIMIT) }
 async function readCommentBody(request:Request):Promise<string>{if(declaredBodyTooLarge(request))throw new Error('BODY_TOO_LARGE');if(!request.body)return'';const reader=request.body.getReader();const chunks:Uint8Array[]=[];let size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;if(value){size+=value.byteLength;if(size>COMMENT_BODY_LIMIT){await reader.cancel();throw new Error('BODY_TOO_LARGE')}chunks.push(value)}}}finally{reader.releaseLock()}const joined=new Uint8Array(size);let offset=0;for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength}return new TextDecoder().decode(joined)}
 
+function responseHeaders(upstream: Response): HeadersInit {
+  const headers: Record<string, string> = {'cache-control': 'private, no-store', 'content-type': 'application/json'}
+  const requestId = upstream.headers.get('x-request-id')
+  if (requestId) headers['x-request-id'] = requestId
+  return headers
+}
+
+async function safeUpstreamError(upstream: Response): Promise<Response> {
+  if (upstream.status === 401) return Response.json({code: 'AUTH_REQUIRED'}, {status: 401, headers: responseHeaders(upstream)})
+  try {
+    const parsed = ApiErrorSchema.safeParse(await upstream.json() as unknown)
+    if (parsed.success) return Response.json(parsed.data, {status: upstream.status, headers: responseHeaders(upstream)})
+  } catch {}
+  return Response.json({code: 'SOCIAL_INVALID_RESPONSE'}, {status: 502, headers: responseHeaders(upstream)})
+}
+
+function mutationResponse(path: string, method: 'POST' | 'PUT' | 'DELETE', body: unknown): unknown | null {
+  if (method === 'POST' && /\/comments$/.test(path)) return PublicCommentSchema.safeParse(body).success ? PublicCommentSchema.parse(body) : null
+  const expected = method === 'PUT' ? 'created' : 'deleted'
+  if (method === 'PUT' && /\/read$/.test(path)) {
+    if (typeof body !== 'object' || body === null) return null
+    const entries = Object.entries(body)
+    const readAt = entries.length === 1 && entries[0]?.[0] === 'readAt' && typeof entries[0][1] === 'string' ? entries[0][1] : null
+    return readAt !== null && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(readAt) && !Number.isNaN(Date.parse(readAt)) ? {readAt} : null
+  }
+  if (typeof body !== 'object' || body === null) return null
+  const entries = Object.entries(body)
+  return entries.length === 1 && entries[0]?.[0] === expected && typeof entries[0][1] === 'boolean' ? {[expected]: entries[0][1]} : null
+}
+
 async function proxy(request: Request, context: RouteContext, method: 'POST' | 'PUT' | 'DELETE') {
   if (!sameOrigin(request)) return Response.json({code:'CSRF_REJECTED'},{status:403})
   if(new URL(request.url).search) return Response.json({code:'INVALID_REQUEST'},{status:400})
@@ -62,12 +94,22 @@ async function proxy(request: Request, context: RouteContext, method: 'POST' | '
       if(declaredBodyTooLarge(request)) return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})
       try{body=await readCommentBody(request)}catch{return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})}
       if (!body.trim() || duplicateTopLevelKey(body)) return Response.json({code:'COMMENT_INVALID'},{status:422})
+      let parsed: unknown
+      try { parsed=JSON.parse(body) } catch { return Response.json({code:'COMMENT_INVALID'},{status:422}) }
+      const comment=CreateHumanCommentSchema.safeParse(parsed)
+      if(!comment.success)return Response.json({code:'COMMENT_INVALID'},{status:422})
+      body=JSON.stringify(comment.data)
     }
     const upstream = await fetchAifansApi(`/v1/${path}`, {policy: 'live-no-store', requestInit: {method, headers: request.headers, ...(body===undefined?{}:{body})}, trustedClientHeaders: request.headers})
-    return new Response(await upstream.arrayBuffer(), {
-      status: upstream.status,
-      headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'},
-    })
+    if (!upstream.ok) return safeUpstreamError(upstream)
+    const expectedStatus = method === 'POST' ? 201 : 200
+    if (upstream.status !== expectedStatus) return Response.json({code:'SOCIAL_INVALID_RESPONSE'},{status:502,headers:responseHeaders(upstream)})
+    let payload: unknown
+    try { payload=await upstream.json() } catch { return Response.json({code:'SOCIAL_INVALID_RESPONSE'},{status:502,headers:responseHeaders(upstream)}) }
+    const parsed=mutationResponse(path,method,payload)
+    if(parsed===null)return Response.json({code:'SOCIAL_INVALID_RESPONSE'},{status:502,headers:responseHeaders(upstream)})
+    invalidateSocialMutation({method,path})
+    return Response.json(parsed,{status:upstream.status,headers:responseHeaders(upstream)})
   } catch {
     return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})
   }

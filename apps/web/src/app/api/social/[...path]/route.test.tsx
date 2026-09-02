@@ -1,5 +1,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+const {revalidateTag} = vi.hoisted(() => ({revalidateTag: vi.fn()}))
 vi.mock('../../../../lib/auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
+vi.mock('next/cache', () => ({revalidateTag}))
 import {DELETE, GET, POST, PUT} from './route.js'
 
 afterEach(() => {
@@ -7,6 +9,7 @@ afterEach(() => {
   delete process.env.AIFANS_API_URL
   delete process.env.NEXT_PUBLIC_AIFANS_API_URL
   delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET
+  revalidateTag.mockReset()
 })
 
 describe('same-origin social mutation proxy', () => {
@@ -67,18 +70,37 @@ describe('same-origin social mutation proxy', () => {
     expect(response.status).toBe(503)
   })
 
-  it('forwards comments exactly and rejects cross-origin or duplicate-key bodies', async () => {
+  it('accepts only the strict comment request, returns only the strict created-comment DTO, and invalidates fixed feed tags', async () => {
     process.env.AIFANS_API_URL='https://internal-api.example'
-    const upstream=vi.fn().mockResolvedValue(new Response(JSON.stringify({id:'ok'}),{status:201,headers:{'content-type':'application/json'}}))
+    const created={id:'33333333-3333-4333-8333-333333333333',postId:'22222222-2222-4222-8222-222222222222',parentCommentId:null,state:'published',body:'hello',createdAt:'2026-09-02T12:00:00.000Z',author:{kind:'human',id:'44444444-4444-4444-8444-444444444444',username:'alex',displayName:'Alex'}}
+    const upstream=vi.fn().mockResolvedValue(new Response(JSON.stringify(created),{status:201,headers:{'content-type':'application/json'}}))
     vi.stubGlobal('fetch',upstream)
     const path=['posts','22222222-2222-4222-8222-222222222222','comments']
     const request=new Request('https://web.example/api/social/'+path.join('/'),{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:'{"body":"hello"}'})
-    expect((await POST(request,{params:Promise.resolve({path})})).status).toBe(201)
+    const response=await POST(request,{params:Promise.resolve({path})})
+    expect(response.status).toBe(201)
+    expect(await response.json()).toEqual(created)
     expect(upstream).toHaveBeenCalledWith('https://internal-api.example/v1/'+path.join('/'),expect.objectContaining({method:'POST',body:'{"body":"hello"}'}))
+    expect(revalidateTag).toHaveBeenCalledTimes(2)
+    expect(revalidateTag).toHaveBeenCalledWith('feed:for_you:en','max')
+    expect(revalidateTag).toHaveBeenCalledWith('feed:for_you:zh-CN','max')
+    const expanded=new Request('https://web.example/api/social/'+path.join('/'),{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:'{"body":"hello","actor":"forged"}'})
+    expect((await POST(expanded,{params:Promise.resolve({path})})).status).toBe(422)
     const duplicate=new Request('https://web.example/api/social/'+path.join('/'),{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:'{"body":"one","body":"two"}'})
     expect((await POST(duplicate,{params:Promise.resolve({path})})).status).toBe(422)
     const crossOrigin=new Request('https://web.example/api/social/'+path.join('/'),{method:'POST',headers:{origin:'https://evil.example','content-type':'application/json'},body:'{"body":"hello"}'})
     expect((await POST(crossOrigin,{params:Promise.resolve({path})})).status).toBe(403)
+  })
+
+  it('does not invalidate or expose malformed successful comment payloads', async () => {
+    process.env.AIFANS_API_URL='https://internal-api.example'
+    const path=['posts','22222222-2222-4222-8222-222222222222','comments']
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({id:'leak',internalToken:'secret'}),{status:201,headers:{'content-type':'application/json'}})))
+    const request=new Request('https://web.example/api/social/'+path.join('/'),{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:'{"body":"hello"}'})
+    const response=await POST(request,{params:Promise.resolve({path})})
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({code:'SOCIAL_INVALID_RESPONSE'})
+    expect(revalidateTag).not.toHaveBeenCalled()
   })
 
   it('rejects declared and streamed oversized comment bodies before upstream auth transport',async()=>{process.env.AIFANS_API_URL='https://internal-api.example';const upstream=vi.fn();vi.stubGlobal('fetch',upstream);const path=['posts','22222222-2222-4222-8222-222222222222','comments'];const url='https://web.example/api/social/'+path.join('/');for(const request of [new Request(url,{method:'POST',headers:{origin:'https://web.example','content-type':'application/json','content-length':'9000'},body:'{}'}),new Request(url,{method:'POST',headers:{origin:'https://web.example','content-type':'application/json'},body:JSON.stringify({body:'x'.repeat(9000)})})])expect((await POST(request,{params:Promise.resolve({path})})).status).toBe(413);expect(upstream).not.toHaveBeenCalled()})

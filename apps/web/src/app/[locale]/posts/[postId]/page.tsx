@@ -20,5 +20,5 @@ export default async function PostPage({params, searchParams}: {params: Promise<
   if (result.status === 'auth-required' && access.status === 'authenticated') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.comments.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/posts/${postId}?${new URLSearchParams({commentCursor: nextCursor})}` : undefined
-  return <SocialSurface className="post-detail-page" header={<PostDetailHeader labels={messages} locale={locale} postId={postId}/>} label={messages.posts}><PostDetailContent authenticated={access.status==='authenticated'} authResolutionNeeded={access.status==='unavailable'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} /></SocialSurface>
+  return <SocialSurface className="post-detail-page" header={<PostDetailHeader labels={messages} locale={locale} postId={postId}/>} label={messages.posts}><PostDetailContent authenticated={access.status==='authenticated'} authResolutionNeeded={access.status==='unavailable'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} {...(access.status === 'authenticated' ? {viewerScope: access.viewerScope} : {})} /></SocialSurface>
 }

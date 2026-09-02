@@ -5,6 +5,7 @@ import type {AnchorHTMLAttributes, ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
 import type {FeedPost} from '@aifans/contracts'
 import {PublicProfileContent} from './PublicProfileContent.js'
+import {PublicProfileTabs} from './PublicProfileTabs.js'
 import type {SocialLabels} from './types.js'
 import styles from './PublicProfileContent.module.css'
 
@@ -34,6 +35,39 @@ const labels: SocialLabels = {
 const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', bio: 'A quiet astronomer sharing notes from the night sky.', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
 
 describe('PublicProfileContent', () => {
+  it('replaces pagination state and aborts stale loads when the profile or viewer changes', async () => {
+    const first: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Profile A post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    const next: FeedPost = {id: '33333333-3333-4333-8333-333333333333', body: 'Profile B post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    let resolve!: (response: Response) => void
+    const request = vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done }))
+    vi.stubGlobal('fetch', request)
+    const {rerender} = render(<PublicProfileTabs canMutate={false} labels={labels} locale="en" posts={{items: [first], nextCursor: 'cursor-a'}} profileId={profile.id} referenceTime={0} returnTo="/en" viewerScope="viewer-a"/>)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    const signal = (request.mock.calls[0]?.[1] as RequestInit).signal!
+    const nextProfileId = '88888888-8888-4888-8888-888888888888'
+    rerender(<PublicProfileTabs canMutate={false} labels={labels} locale="en" posts={{items: [next], nextCursor: 'cursor-b'}} profileId={nextProfileId} referenceTime={0} returnTo="/en" viewerScope="viewer-b"/>)
+
+    expect(screen.getByText('Profile B post')).toBeVisible()
+    expect(screen.queryByText('Profile A post')).toBeNull()
+    expect(signal.aborted).toBe(true)
+    resolve(Response.json({profile, followerCount: 0, posts: {items: [first], nextCursor: null}}))
+    await Promise.resolve()
+    expect(screen.getByText('Profile B post')).toBeVisible()
+    expect(screen.queryByText('Profile A post')).toBeNull()
+  })
+
+  it('replaces the initial cursor page when the server refreshes the same profile', () => {
+    const first: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Older server page', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    const refreshed: FeedPost = {id: '33333333-3333-4333-8333-333333333333', body: 'Refreshed server page', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    const {rerender} = render(<PublicProfileTabs canMutate={false} labels={labels} locale="en" posts={{items: [first], nextCursor: 'old-cursor'}} profileId={profile.id} referenceTime={0} returnTo="/en" viewerScope="viewer-a"/>)
+
+    rerender(<PublicProfileTabs canMutate={false} labels={labels} locale="en" posts={{items: [refreshed], nextCursor: 'new-cursor'}} profileId={profile.id} referenceTime={0} returnTo="/en" viewerScope="viewer-a"/>)
+
+    expect(screen.getByText('Refreshed server page')).toBeVisible()
+    expect(screen.queryByText('Older server page')).toBeNull()
+  })
+
   it('renders a contextual public-profile title and metadata in Threads-style semantic order', () => {
     const {container} = render(<PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile, followerCount: 12, posts: {items: [], nextCursor: null}}}} />)
     const header = container.querySelector(`.${styles.header}`)
@@ -169,7 +203,7 @@ describe('PublicProfileContent', () => {
     let resolve!: (response: Response) => void
     vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
     const longProfile = {...profile, displayName: 'Luma the exceptionally long profile name that must wrap without overlapping actions'}
-    const {container} = render(<PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile: longProfile, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}}} />)
+    const {container} = render(<PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile: longProfile, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}}} viewerScope="viewer-a" />)
     const header = container.querySelector(`.${styles.header}`)
     const actions = container.querySelector(`.${styles.profileActions}`)
 

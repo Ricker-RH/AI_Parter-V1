@@ -20,5 +20,5 @@ export default async function NotificationsPage({params, searchParams}: {params:
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo: `/${locale}/notifications${cursor ? `?${new URLSearchParams({cursor})}` : ''}`})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/notifications?${new URLSearchParams({cursor: nextCursor})}` : undefined
-  return <main className={styles.notificationsPage}><MessagesSectionHeader active="notifications" labels={messages.chat} locale={locale}/><NotificationsContent labels={messages} locale={locale} moreHref={moreHref} result={result} /></main>
+  return <main className={styles.notificationsPage}><MessagesSectionHeader active="notifications" labels={messages.chat} locale={locale}/><NotificationsContent labels={messages} locale={locale} moreHref={moreHref} result={result} viewerScope={access.viewerScope} /></main>
 }

@@ -16,9 +16,10 @@ type AuthorPreviewProps = {
   locale: Locale
   returnTo: string
   context?: 'post' | 'comment'
+  viewerScope?: string
 }
 
-export function AuthorPreview({author, canMutate, followsAuthor, labels, locale, returnTo, context = 'post'}: AuthorPreviewProps) {
+function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, returnTo, context = 'post', viewerScope}: AuthorPreviewProps) {
   const [open, setOpen] = useState(false)
   const [profile, setProfile] = useState<{followerCount: number; viewerFollows?: boolean} | null>(null)
   const [followingOverride, setFollowingOverride] = useState<boolean>()
@@ -33,13 +34,6 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
     setOpen(false)
     trigger.current?.focus()
   }
-
-  useEffect(() => {
-    profileRequestId.current += 1
-    setProfile(null)
-    setFollowingOverride(undefined)
-    setProfileState('idle')
-  }, [author.id])
 
   useEffect(() => {
     if (!open) return
@@ -91,7 +85,7 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
 
   const resolvedFollowing = followingOverride ?? followsAuthor ?? profile?.viewerFollows
   const followAction = canMutate
-    ? resolvedFollowing === undefined ? null : <ProfileFollowButton following={resolvedFollowing} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id}/>
+    ? resolvedFollowing === undefined || !viewerScope ? null : <ProfileFollowButton following={resolvedFollowing} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id} viewerScope={viewerScope}/>
     : <Link className="author-preview-primary" href={authHref(locale, returnTo)}>{labels.follow}</Link>
   const triggerClass = context === 'comment' ? 'comment-avatar-trigger' : 'post-avatar-trigger'
   const avatarClass = context === 'comment' ? 'comment-avatar' : 'avatar'
@@ -114,4 +108,9 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
       </div>
     </div> : null}
   </div>
+}
+
+export function AuthorPreview(props: AuthorPreviewProps) {
+  const scope = `${props.author.id}\u0000${props.viewerScope ?? 'guest'}`
+  return <ScopedAuthorPreview {...props} key={scope}/>
 }

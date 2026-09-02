@@ -10,7 +10,7 @@ import styles from './PublicProfileContent.module.css'
 import {PublicProfileTabs} from './PublicProfileTabs'
 import {ProfilePageHeader} from '../profile/ProfilePageHeader'
 
-export function PublicProfileContent({result,locale,labels,moreHref}: {result:SocialApiResult<PublicIpProfile>;locale:Locale;labels:SocialLabels;moreHref?:string}) {
+export function PublicProfileContent({result,locale,labels,moreHref,viewerScope}: {result:SocialApiResult<PublicIpProfile>;locale:Locale;labels:SocialLabels;moreHref?:string;viewerScope?:string}) {
   if(result.status!=='ok') return <div className={styles.resultState}><ResultState labels={labels} profile result={result}/></div>
   const {profile,followerCount,viewerFollows,posts}=result.data
   const referenceTime=Date.now()
@@ -30,11 +30,11 @@ export function PublicProfileContent({result,locale,labels,moreHref}: {result:So
       {profile.bio?<p className={styles.bio}>{profile.bio}</p>:null}
       <p className={styles.followers}>{followerCount} {labels.followers}</p>
       <div className={styles.profileActions}>
-        <div className={styles.followAction}>{viewerFollows===undefined?<Link href={`/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`}>{labels.follow}</Link>:<ProfileFollowButton following={viewerFollows} labels={labels} locale={locale} profileId={profile.id}/>}</div>
+        <div className={styles.followAction}>{viewerFollows===undefined || !viewerScope?<Link href={`/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`}>{labels.follow}</Link>:<ProfileFollowButton following={viewerFollows} labels={labels} locale={locale} profileId={profile.id} viewerScope={viewerScope}/>}</div>
         <div className={styles.chatAction}><StartChatButton authenticated={viewerFollows!==undefined} ipProfileId={profile.id} labels={{startChat: labels.startChat, startingChat: labels.startingChat, chatStartError: labels.chatStartError}} locale={locale}/></div>
       </div>
     </section>
-    <PublicProfileTabs canMutate labels={labels} locale={locale} posts={posts} profileId={profile.id} referenceTime={referenceTime} returnTo={returnTo}/>
+    <PublicProfileTabs canMutate={Boolean(viewerScope)} labels={labels} locale={locale} posts={posts} profileId={profile.id} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
     </div>
   </div>
 }

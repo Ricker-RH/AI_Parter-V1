@@ -34,5 +34,5 @@ export default async function ActivityPage({params, searchParams}: {params: Prom
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/activity?${new URLSearchParams({tab, cursor: nextCursor})}` : undefined
-  return <main><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent canMutate empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
+  return <main><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent canMutate empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} viewerScope={access.viewerScope} /></main>
 }

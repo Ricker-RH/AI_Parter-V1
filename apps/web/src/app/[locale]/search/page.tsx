@@ -37,5 +37,5 @@ export default async function SearchPage({params, searchParams}: {params: Promis
   const returnTo = query ? `/${locale}/search?${returnParams}` : `/${locale}/search`
   if (result?.status === 'auth-required' && canMutate) redirectToUserSignIn({locale, returnTo})
   if (recommendationResult?.status === 'auth-required' && canMutate) redirectToUserSignIn({locale, returnTo})
-  return <SearchContent canMutate={canMutate} category={category} labels={messages} locale={locale} query={query} {...(cursor === undefined ? {} : {cursor})} {...(result === undefined ? {} : {result})} {...(recommendationResult === undefined ? {} : {recommendationResult})}/>
+  return <SearchContent canMutate={canMutate} category={category} labels={messages} locale={locale} query={query} {...(cursor === undefined ? {} : {cursor})} {...(result === undefined ? {} : {result})} {...(recommendationResult === undefined ? {} : {recommendationResult})} {...(access.status === 'authenticated' ? {viewerScope: access.viewerScope} : {})}/>
 }

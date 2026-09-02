@@ -23,7 +23,7 @@ function parseAccount(value: unknown): Account | null {
   return result.success && result.data.kind === 'human' ? result.data : null
 }
 
-export function MyProfilePanel({labels, locale, socialLabels}: {labels: MyProfileLabels; locale: Locale; socialLabels?: SocialLabels}) {
+export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {labels: MyProfileLabels; locale: Locale; socialLabels?: SocialLabels; viewerScope?: string}) {
   const [state, setState] = useState<State>({status: 'loading'})
   const [draft, setDraft] = useState<UpdateCurrentAccount>({})
   const [pending, setPending] = useState(false)
@@ -129,5 +129,5 @@ export function MyProfilePanel({labels, locale, socialLabels}: {labels: MyProfil
       {message ? <p role="status">{message}</p> : null}
     </form>}
     {!editing && message ? <p className={styles.message} role="status">{message}</p> : null}
-  </section>{!editing?<MyProfileTabs labels={{tabs:labels.tabs,myIps:labels.myIps,liked:labels.liked,saved:labels.savedTab,following:labels.following,loadingSection:labels.loadingSection,unavailableSection:labels.unavailableSection,retrySection:labels.retrySection,myIpsEmpty:labels.myIpsEmpty,likedEmpty:labels.likedEmpty,savedEmpty:labels.savedEmpty,followingEmpty:labels.followingEmpty}} locale={locale} socialLabels={socialLabels??({} as SocialLabels)}/>:null}</div></div>
+  </section>{!editing?<MyProfileTabs labels={{tabs:labels.tabs,myIps:labels.myIps,liked:labels.liked,saved:labels.savedTab,following:labels.following,loadingSection:labels.loadingSection,unavailableSection:labels.unavailableSection,retrySection:labels.retrySection,myIpsEmpty:labels.myIpsEmpty,likedEmpty:labels.likedEmpty,savedEmpty:labels.savedEmpty,followingEmpty:labels.followingEmpty}} locale={locale} socialLabels={socialLabels??({} as SocialLabels)} {...(viewerScope ? {viewerScope} : {})}/>:null}</div></div>
 }

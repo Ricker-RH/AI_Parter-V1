@@ -14,7 +14,7 @@ type Tab='ips'|'liked'|'saved'|'following'
 type Section={status:'idle'}|{status:'loading'}|{status:'unavailable'}|{status:'ready';items:CreatorIp[]|FeedPage['items']}
 const tabs:Tab[]=['ips','liked','saved','following']
 
-export function MyProfileTabs({labels,locale,socialLabels}:{labels:MyProfileTabsLabels;locale:Locale;socialLabels:SocialLabels}){
+export function MyProfileTabs({labels,locale,socialLabels,viewerScope}:{labels:MyProfileTabsLabels;locale:Locale;socialLabels:SocialLabels;viewerScope?:string}){
   const [active,setActive]=useState<Tab>('ips')
   const [sections,setSections]=useState<Record<Tab,Section>>({ips:{status:'idle'},liked:{status:'idle'},saved:{status:'idle'},following:{status:'idle'}})
   const refs=useRef<Record<Tab,HTMLButtonElement|null>>({ips:null,liked:null,saved:null,following:null})
@@ -36,14 +36,14 @@ export function MyProfileTabs({labels,locale,socialLabels}:{labels:MyProfileTabs
   const section=sections[active]
   return <section className={styles.tabsSection}>
     <div aria-label={labels.tabs} className={styles.tabList} role="tablist">{tabs.map((tab)=><button aria-controls={`my-profile-${tab}`} aria-selected={active===tab} className={styles.tab} id={`my-profile-${tab}-tab`} key={tab} onClick={()=>setActive(tab)} onKeyDown={(event)=>onKey(event,tab)} ref={(node)=>{refs.current[tab]=node}} role="tab" tabIndex={active===tab?0:-1} type="button">{label[tab]}</button>)}</div>
-    {tabs.map((tab)=><div aria-labelledby={`my-profile-${tab}-tab`} hidden={active!==tab} id={`my-profile-${tab}`} key={tab} role="tabpanel">{active===tab?<SectionContent empty={empty[tab]} labels={labels} locale={locale} {...(tab==='following'?{}:{retry:()=>void load(tab)})} section={section} socialLabels={socialLabels} tab={tab}/>:null}</div>)}
+    {tabs.map((tab)=><div aria-labelledby={`my-profile-${tab}-tab`} hidden={active!==tab} id={`my-profile-${tab}`} key={tab} role="tabpanel">{active===tab?<SectionContent empty={empty[tab]} labels={labels} locale={locale} {...(tab==='following'?{}:{retry:()=>void load(tab)})} section={section} socialLabels={socialLabels} tab={tab} {...(viewerScope ? {viewerScope} : {})}/>:null}</div>)}
   </section>
 }
 
-function SectionContent({empty,labels,locale,retry,section,socialLabels,tab}:{empty:string;labels:MyProfileTabsLabels;locale:Locale;retry?:()=>void;section:Section;socialLabels:SocialLabels;tab:Tab}){
+function SectionContent({empty,labels,locale,retry,section,socialLabels,tab,viewerScope}:{empty:string;labels:MyProfileTabsLabels;locale:Locale;retry?:()=>void;section:Section;socialLabels:SocialLabels;tab:Tab;viewerScope?:string}){
   if(section.status==='idle'||section.status==='loading')return <div className={styles.tabState} role="status">{labels.loadingSection}</div>
   if(section.status==='unavailable')return <div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p>{retry?<button onClick={retry} type="button">{labels.retrySection}</button>:null}</div>
   if(!section.items.length)return <div className={styles.tabEmpty}><EmptyState description="" title={empty}/></div>
   if(tab==='ips')return <div className={styles.ipList}>{(section.items as CreatorIp[]).map((ip)=><Link aria-label={ip.displayName} className={styles.ipRow} href={`/${locale}/profiles/${ip.id}`} key={ip.id}><span className={styles.ipAvatar} aria-hidden="true">{ip.displayName.slice(0,1)}</span><span><strong>{ip.displayName}</strong><small>@{ip.username}</small>{ip.shortDescription?<p>{ip.shortDescription}</p>:null}</span></Link>)}</div>
-  return <div>{(section.items as FeedPage['items']).map((post)=><PostCard canMutate key={post.id} labels={socialLabels} locale={locale} post={post} referenceTime={Date.now()} returnTo={`/${locale}/profile`}/>)}</div>
+  return <div>{(section.items as FeedPage['items']).map((post)=><PostCard canMutate key={post.id} labels={socialLabels} locale={locale} post={post} referenceTime={Date.now()} returnTo={`/${locale}/profile`} {...(viewerScope ? {viewerScope} : {})}/>)}</div>
 }

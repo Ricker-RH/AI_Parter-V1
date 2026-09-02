@@ -17,5 +17,5 @@ export default async function PublicProfilePage({params,searchParams}:{params:Pr
   if(result.status==='auth-required')redirectToUserSignIn({locale,returnTo:`/${locale}/profiles/${profileId}${cursor?`?${new URLSearchParams({cursor})}`:''}`})
   const nextCursor=result.status==='ok'?result.data.posts.nextCursor:null
   const moreHref=nextCursor?`/${locale}/profiles/${profileId}?${new URLSearchParams({cursor:nextCursor})}`:undefined
-  return <main><PublicProfileContent labels={messages} locale={locale} result={result} {...(moreHref?{moreHref}:{})}/></main>
+  return <main><PublicProfileContent labels={messages} locale={locale} result={result} viewerScope={access.viewerScope} {...(moreHref?{moreHref}:{})}/></main>
 }

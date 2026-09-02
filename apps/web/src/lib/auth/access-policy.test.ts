@@ -1,10 +1,10 @@
 import {describe, expect, it, vi} from 'vitest'
-import {getOptionalPageAccess, requireAuthenticatedPage} from './access-policy.js'
+import {getOptionalPageAccess, requireAuthenticatedPage, viewerScopeForToken} from './access-policy.js'
 
 describe('requireAuthenticatedPage', () => {
   it('returns a non-empty token without redirecting', async () => {
     const redirect = vi.fn()
-    await expect(requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages', getToken: async () => 'token', redirect})).resolves.toEqual({status: 'authenticated', token: 'token'})
+    await expect(requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages', getToken: async () => 'token', redirect})).resolves.toEqual({status: 'authenticated', token: 'token', viewerScope: viewerScopeForToken('token')})
     expect(redirect).not.toHaveBeenCalled()
   })
 
@@ -22,6 +22,14 @@ describe('requireAuthenticatedPage', () => {
 })
 
 describe('getOptionalPageAccess', () => {
+  it('derives a stable opaque viewer scope without exposing a bearer token', () => {
+    const token = 'eyJhbGciOiJIUzI1NiJ9.viewer-token.signature'
+    const scope = viewerScopeForToken(token)
+    expect(scope).toBe(viewerScopeForToken(token))
+    expect(scope).not.toBe(viewerScopeForToken(`${token}-other`))
+    expect(scope).not.toContain(token)
+    expect(scope).not.toBe(token)
+  })
   it('keeps anonymous public-page visitors on the requested page', async () => {
     const redirect = vi.fn()
 
@@ -30,7 +38,7 @@ describe('getOptionalPageAccess', () => {
   })
 
   it('reuses a non-empty token for optional personalized reads', async () => {
-    await expect(getOptionalPageAccess({getToken: async () => 'token'})).resolves.toEqual({status: 'authenticated', token: 'token'})
+    await expect(getOptionalPageAccess({getToken: async () => 'token'})).resolves.toEqual({status: 'authenticated', token: 'token', viewerScope: viewerScopeForToken('token')})
   })
 
   it('keeps a token provider timeout unresolved rather than misclassifying the viewer as anonymous', async () => {

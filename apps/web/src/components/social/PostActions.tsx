@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import {useRouter} from 'next/navigation'
-import {useState, type ReactNode, type SVGProps} from 'react'
+import {useEffect, useRef, useState, type ReactNode, type SVGProps} from 'react'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import type {SocialLabels} from './types'
@@ -25,9 +25,18 @@ type PostActionsProps = {
   commentCount?: number
   likeCount?: number
   returnTo?: string
+  viewerScope?: string
 }
 
 type MutationAction = 'like' | 'bookmark'
+
+type ActionState = {
+  like: boolean
+  bookmark: boolean
+  likeCount: number | undefined
+  pending: Record<MutationAction, boolean>
+  error: MutationAction | null
+}
 
 function HeartIcon(props: SVGProps<SVGSVGElement>) {
   return <svg fill="none" viewBox="0 0 24 24" {...props}><path d="M20.8 8.7c0 5.2-8.8 10.3-8.8 10.3S3.2 13.9 3.2 8.7A4.5 4.5 0 0 1 12 6.5a4.5 4.5 0 0 1 8.8 2.2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8"/></svg>
@@ -89,39 +98,63 @@ function ActionFrame({afterComment, beforeComment, commentsLabel, commentCount, 
   </footer>
 }
 
-function AuthenticatedActions({bookmarked, commentCount, labels, liked, likeCount, locale, postId}: PostActionsProps) {
+function AuthenticatedActions({bookmarked, commentCount, labels, liked, likeCount, locale, postId, viewerScope}: PostActionsProps & {viewerScope: string}) {
+  const scope = JSON.stringify([viewerScope, postId, liked, bookmarked, likeCount])
+  return <ScopedAuthenticatedActions key={scope} bookmarked={bookmarked} labels={labels} liked={liked} locale={locale} postId={postId} {...(commentCount === undefined ? {} : {commentCount})} {...(likeCount === undefined ? {} : {likeCount})}/>
+}
+
+function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, likeCount, locale, postId}: Pick<PostActionsProps, 'bookmarked' | 'commentCount' | 'labels' | 'liked' | 'likeCount' | 'locale' | 'postId'>) {
   const router = useRouter()
-  const [state, setState] = useState({like: liked, bookmark: bookmarked})
-  const [pending, setPending] = useState<MutationAction | null>(null)
-  const [error, setError] = useState(false)
+  const authoritative: ActionState = {like: liked, bookmark: bookmarked, likeCount, pending: {like: false, bookmark: false}, error: null}
+  const [state, setState] = useState(authoritative)
+  const mutationId = useRef<Record<MutationAction, number>>({like: 0, bookmark: 0})
+  const controllers = useRef<Partial<Record<MutationAction, AbortController>>>({})
+
+  function updateState(update: (current: ActionState) => ActionState) {
+    setState(update)
+  }
+
+  useEffect(() => () => { for (const controller of Object.values(controllers.current)) controller?.abort() }, [])
 
   async function mutate(action: MutationAction) {
+    if (state.pending[action]) return
+    const requestedPostId = postId
     const active = state[action]
+    const previousLikeCount = state.likeCount
+    const next = !active
     const method = active ? 'DELETE' : 'PUT'
-    setPending(action)
-    setError(false)
+    const requestId = ++mutationId.current[action]
+    const controller = new AbortController()
+    controllers.current[action] = controller
+    const isCurrent = () => !controller.signal.aborted && mutationId.current[action] === requestId
+    updateState((current) => ({...current, [action]: next, ...(action === 'like' ? {likeCount: previousLikeCount === undefined ? undefined : Math.max(0, previousLikeCount + (next ? 1 : -1))} : {}), pending: {...current.pending, [action]: true}, error: null}))
     try {
-      const response = await fetch(`/api/social/posts/${postId}/${action}`, {credentials: 'include', method})
+      const response = await fetch(`/api/social/posts/${requestedPostId}/${action}`, {credentials: 'include', method, signal: controller.signal})
+      if (!isCurrent()) return
       if (response.status === 401) {
+        updateState((current) => ({...current, [action]: active, ...(action === 'like' ? {likeCount: previousLikeCount} : {})}))
         router.replace(authHref(locale, `${window.location.pathname}${window.location.search}`))
         return
       }
       const body: unknown = await response.json()
       if (!response.ok || !validMutationResponse(body, method)) throw new Error('mutation failed')
-      setState((current) => ({...current, [action]: !active}))
-      router.refresh()
     } catch {
-      setError(true)
+      if (isCurrent()) {
+        updateState((current) => ({...current, [action]: active, ...(action === 'like' ? {likeCount: previousLikeCount} : {}), error: action}))
+      }
     } finally {
-      setPending(null)
+      if (isCurrent()) {
+        delete controllers.current[action]
+        updateState((current) => ({...current, pending: {...current.pending, [action]: false}}))
+      }
     }
   }
 
   const commentsLabel = labels.comments ?? 'Comments'
   const likeLabel = state.like ? labels.unlike : labels.like
   const bookmarkLabel = state.bookmark ? labels.removeBookmark : labels.bookmark
-  const likeAction = <button aria-busy={pending === 'like'} aria-label={likeLabel} aria-pressed={state.like} className="post-action" disabled={pending !== null} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count>{likeCount}</Count></button>
-  const bookmarkAction = <><button aria-busy={pending === 'bookmark'} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={pending !== null} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/></button>{error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
+  const likeAction = <button aria-busy={state.pending.like} aria-label={likeLabel} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count>{state.likeCount}</Count></button>
+  const bookmarkAction = <><button aria-busy={state.pending.bookmark} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/></button>{state.error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
 
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={commentsLabel} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'}/>
 }
@@ -135,5 +168,6 @@ function GuestActions({commentCount, labels, likeCount, locale, postId, returnTo
 }
 
 export function PostActions(props: PostActionsProps) {
-  return props.canMutate === false ? <GuestActions {...props}/> : <AuthenticatedActions {...props}/>
+  if (props.canMutate === undefined) return <AuthenticatedActions {...props} viewerScope={props.viewerScope ?? 'legacy-test-scope'}/>
+  return props.canMutate && props.viewerScope ? <AuthenticatedActions {...props} viewerScope={props.viewerScope}/> : <GuestActions {...props}/>
 }

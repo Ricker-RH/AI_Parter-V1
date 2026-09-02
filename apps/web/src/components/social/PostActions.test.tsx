@@ -1,5 +1,7 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
+import {flushSync} from 'react-dom'
+import {createRoot} from 'react-dom/client'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {PostActions} from './PostActions.js'
 
@@ -10,6 +12,13 @@ vi.mock('next/link', () => ({default: ({children, prefetch: linkPrefetch, ...pro
 afterEach(() => { vi.unstubAllGlobals(); prefetch.mockReset(); refresh.mockReset(); replace.mockReset() })
 
 describe('PostActions', () => {
+  it('isolates authenticated action state in a keyed committed subtree', () => {
+    const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/PostActions.tsx' : 'apps/web/src/components/social/PostActions.tsx', 'utf8')
+    expect(source).toContain('<ScopedAuthenticatedActions key={scope}')
+    expect(source).not.toContain('if (stored.scope !== scope) setStored')
+    expect(source).not.toContain('identity.current = scope')
+  })
+
   it('defers comment and guest auth navigation prefetches until intent, then de-duplicates their URLs', () => {
     const labels = {bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike', comments: 'Comments'}
     render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" returnTo="/en" />)
@@ -47,20 +56,79 @@ describe('PostActions', () => {
     expect(stylesheet).not.toMatch(/\.post-action\[aria-pressed="true"\][^{]*\{[^}]*background:/)
   })
 
-  it('waits for the real mutation before updating pressed state and never invents a count', async () => {
+  it('optimistically updates the affected like state and exact count without refreshing the route', async () => {
     let finish!: (value: Response) => void
     const request = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { finish = resolve }))
     vi.stubGlobal('fetch', request)
-    render(<PostActions authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
+    render(<PostActions authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} likeCount={4} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Like'}))
 
-    expect(screen.getByRole('button', {name: 'Like'})).toBeDisabled()
-    expect(request).toHaveBeenCalledWith('/api/social/posts/22222222-2222-4222-8222-222222222222/like', {credentials: 'include', method: 'PUT'})
+    expect(screen.getByRole('button', {name: 'Unlike'})).toBeDisabled()
+    expect(screen.getByRole('button', {name: 'Unlike'})).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', {name: 'Unlike'})).toHaveTextContent('5')
+    expect(request).toHaveBeenCalledWith('/api/social/posts/22222222-2222-4222-8222-222222222222/like', expect.objectContaining({credentials: 'include', method: 'PUT', signal: expect.any(AbortSignal)}))
     finish(new Response(JSON.stringify({created: true}), {status: 200}))
-    await waitFor(() => expect(screen.getByRole('button', {name: 'Unlike'})).toHaveAttribute('aria-pressed', 'true'))
-    expect(refresh).toHaveBeenCalledOnce()
-    expect(document.body).not.toHaveTextContent(/5 likes/)
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Unlike'})).toBeEnabled())
+    expect(screen.getByRole('button', {name: 'Unlike'})).toHaveTextContent('5')
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('rolls back only a rejected optimistic like to its exact previous count', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({code: 'SOCIAL_UNAVAILABLE'}), {status: 503})))
+    render(<PostActions bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} likeCount={4} locale="en" postId="22222222-2222-4222-8222-222222222222" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Like'}))
+    expect(screen.getByRole('button', {name: 'Unlike'})).toHaveTextContent('5')
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Action failed.')
+    expect(screen.getByRole('button', {name: 'Like'})).toHaveTextContent('4')
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('renders a new post or viewer scope from authoritative props before passive cleanup can run', () => {
+    const labels = {bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}
+    const request = vi.fn().mockReturnValue(new Promise<Response>(() => undefined))
+    vi.stubGlobal('fetch', request)
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    const firstPostId = '22222222-2222-4222-8222-222222222222'
+    const nextPostId = '33333333-3333-4333-8333-333333333333'
+    flushSync(() => root.render(<PostActions bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
+    fireEvent.click(container.querySelector('button[aria-label="Like"]')!)
+    expect(container.querySelector('button[aria-label="Unlike"]')).toHaveTextContent('5')
+
+    flushSync(() => root.render(<PostActions bookmarked labels={labels} liked locale="en" likeCount={9} postId={nextPostId}/>))
+
+    expect(container.querySelector('button[aria-label="Unlike"]')).toHaveTextContent('9')
+    expect(container.querySelector('button[aria-label="Remove bookmark"]')).toBeEnabled()
+    expect(container.querySelector('button[aria-label="Unlike"]')).toBeEnabled()
+
+    flushSync(() => root.render(<PostActions bookmarked labels={labels} liked={false} likeCount={2} locale="en" postId={nextPostId}/>))
+    expect(container.querySelector('button[aria-label="Like"]')).toHaveTextContent('2')
+    expect(container.querySelector('button[aria-label="Remove bookmark"]')).toBeEnabled()
+    flushSync(() => root.unmount())
+  })
+
+  it('does not revive a pending optimistic action after switching A to B and back to A', () => {
+    const labels = {bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>(() => undefined)))
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    const firstPostId = '22222222-2222-4222-8222-222222222222'
+    const nextPostId = '33333333-3333-4333-8333-333333333333'
+
+    flushSync(() => root.render(<PostActions bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
+    fireEvent.click(container.querySelector('button[aria-label="Like"]')!)
+    expect(container.querySelector('button[aria-label="Unlike"]')).toBeDisabled()
+
+    flushSync(() => root.render(<PostActions bookmarked labels={labels} liked locale="en" likeCount={9} postId={nextPostId}/>))
+    flushSync(() => root.render(<PostActions bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
+
+    expect(container.querySelector('button[aria-label="Like"]')).toHaveTextContent('4')
+    expect(container.querySelector('button[aria-label="Like"]')).toBeEnabled()
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    flushSync(() => root.unmount())
   })
 
   it('announces mutation errors accessibly', async () => {

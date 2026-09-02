@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import {flushSync} from "react-dom";
+import {createRoot} from "react-dom/client";
 import type { AnchorHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { FeedPost, Notification, PostDetail } from "@aifans/contracts";
@@ -268,7 +270,7 @@ describe("real social content", () => {
 
   it("keeps authenticated false relationship values interactive", () => {
     const signedIn = {...post, viewerHasLiked: false, viewerHasBookmarked: false, viewerFollowsAuthor: false};
-    render(<FeedContent canMutate labels={labels} locale="en" result={{status: "ok", data: {items: [signedIn], nextCursor: null}}} />);
+    render(<FeedContent canMutate labels={labels} locale="en" result={{status: "ok", data: {items: [signedIn], nextCursor: null}}} viewerScope="viewer-a" />);
 
     expect(screen.getByRole("button", {name: "Like"})).toBeEnabled();
   });
@@ -428,7 +430,7 @@ describe("real social content", () => {
         {id: "55555555-5555-4555-8555-555555555555", postId: post.id, parentCommentId: parentId, state: "published", body: "Nested reply", createdAt: "2026-08-31T12:06:00.000Z", author: ip},
       ], nextCursor: null},
     };
-    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" referenceTime={Date.parse("2026-08-31T12:10:00.000Z")} result={{status: "ok", data: detail}} />);
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" referenceTime={Date.parse("2026-08-31T12:10:00.000Z")} result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
 
     expect(container.querySelector(".comment-thread-item--reply")).toHaveTextContent("Nested reply");
     expect(container.querySelector(".comment-thread-item--reply")).toHaveAttribute("data-parent-comment-id", parentId);
@@ -440,10 +442,10 @@ describe("real social content", () => {
     const detail: PostDetail = {...post, comments: {items: [comment], nextCursor: null}};
     const request = vi.fn()
       .mockResolvedValueOnce(Response.json({profile: ip, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}))
-      .mockResolvedValueOnce(new Response(null, {status: 204}))
-      .mockResolvedValueOnce(new Response(null, {status: 204}));
+      .mockResolvedValueOnce(Response.json({created: true}))
+      .mockResolvedValueOnce(Response.json({deleted: true}));
     vi.stubGlobal("fetch", request);
-    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
     const commentRow = container.querySelector<HTMLElement>(".comment-thread-item")!;
     const trigger = within(commentRow).getByRole("button", {name: "Profile: Luma"});
 
@@ -465,7 +467,7 @@ describe("real social content", () => {
 
   it("uses a compact reply composer rather than a large boxed form", () => {
     const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
-    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
 
     expect(container.querySelector(".comment-composer--primary")).toBeTruthy();
     expect(screen.getByRole("textbox", {name: "Write a comment"})).toHaveAttribute("rows", "1");
@@ -521,22 +523,33 @@ describe("real social content", () => {
   });
 
   it("submits authenticated human comments through the same-origin proxy", async () => {
+    routerRefresh.mockClear();
+    const createdComment = {
+      id: "66666666-6666-4666-8666-666666666666",
+      postId: post.id,
+      parentCommentId: null,
+      state: "published" as const,
+      body: "Hello IP",
+      createdAt: "2026-08-31T12:08:00.000Z",
+      author: {kind: "human" as const, id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"},
+    };
     const request = vi
       .fn()
       .mockResolvedValue(
-        new Response(JSON.stringify({ id: "comment" }), { status: 201 }),
+        new Response(JSON.stringify(createdComment), { status: 201 }),
       );
     vi.stubGlobal("fetch", request);
     const detail: PostDetail = {
       ...post,
       comments: { items: [], nextCursor: null },
     };
-    render(
+    const {rerender} = render(
       <PostDetailContent
         authenticated
         labels={labels}
         locale="en"
         result={{ status: "ok", data: detail }}
+        viewerScope="viewer-a"
       />,
     );
     fireEvent.change(screen.getByRole("textbox", { name: "Write a comment" }), {
@@ -552,6 +565,57 @@ describe("real social content", () => {
         }),
       ),
     );
+    expect(await screen.findByText("Hello IP", {selector: ".comment-thread-content > p"})).toBeVisible();
+    rerender(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: {...detail, comments: {...detail.comments, items: [...detail.comments.items]}}}} viewerScope="viewer-a"/>);
+    expect(screen.getByText("Hello IP", {selector: ".comment-thread-content > p"})).toBeVisible();
+    const primaryComposer = screen.getAllByRole("textbox", {name: "Write a comment"})[0]!;
+    expect(primaryComposer).toHaveValue("");
+    expect(primaryComposer).toHaveFocus();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("switches comment result scopes in the render that receives a different post", () => {
+    const oldDetail: PostDetail = {...post, comments: {items: [{id: "33333333-3333-4333-8333-333333333333", postId: post.id, parentCommentId: null, state: "published", body: "Old post comment", createdAt: "2026-08-31T12:05:00.000Z", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}}], nextCursor: null}};
+    const nextPost = {...post, id: "55555555-5555-4555-8555-555555555555", body: "New post"};
+    const nextDetail: PostDetail = {...nextPost, comments: {items: [{id: "66666666-6666-4666-8666-666666666666", postId: nextPost.id, parentCommentId: null, state: "published", body: "New post comment", createdAt: "2026-08-31T12:06:00.000Z", author: {kind: "human", id: "77777777-7777-4777-8777-777777777777", username: "sam", displayName: "Sam"}}], nextCursor: null}};
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    flushSync(() => root.render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: oldDetail}}/>));
+    expect(container).toHaveTextContent("Old post comment");
+
+    flushSync(() => root.render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: nextDetail}}/>));
+
+    expect(container).toHaveTextContent("New post comment");
+    expect(container).not.toHaveTextContent("Old post comment");
+    flushSync(() => root.unmount());
+  });
+
+  it("shows the new server comments immediately when the same post cursor changes", () => {
+    const firstPage: PostDetail = {...post, comments: {items: [{id: "33333333-3333-4333-8333-333333333333", postId: post.id, parentCommentId: null, state: "published", body: "First page comment", createdAt: "2026-08-31T12:05:00.000Z", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}}], nextCursor: "page-two"}};
+    const secondPage: PostDetail = {...post, comments: {items: [{id: "55555555-5555-4555-8555-555555555555", postId: post.id, parentCommentId: null, state: "published", body: "Second page comment", createdAt: "2026-08-31T12:06:00.000Z", author: {kind: "human", id: "66666666-6666-4666-8666-666666666666", username: "sam", displayName: "Sam"}}], nextCursor: null}};
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    flushSync(() => root.render(<PostDetailContent authenticated labels={labels} locale="en" returnTo={`/en/posts/${post.id}`} result={{status: "ok", data: firstPage}}/>));
+    flushSync(() => root.render(<PostDetailContent authenticated labels={labels} locale="en" returnTo={`/en/posts/${post.id}?commentCursor=page-two`} result={{status: "ok", data: secondPage}}/>));
+
+    expect(container).toHaveTextContent("Second page comment");
+    expect(container).not.toHaveTextContent("First page comment");
+    flushSync(() => root.unmount());
+  });
+
+  it("uses fresh server comments to update and remove existing comments on the current page", () => {
+    const initial: PostDetail = {...post, comments: {items: [
+      {id: "33333333-3333-4333-8333-333333333333", postId: post.id, parentCommentId: null, state: "published", body: "Original", createdAt: "2026-08-31T12:05:00.000Z", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}},
+      {id: "55555555-5555-4555-8555-555555555555", postId: post.id, parentCommentId: null, state: "published", body: "Removed", createdAt: "2026-08-31T12:06:00.000Z", author: {kind: "human", id: "66666666-6666-4666-8666-666666666666", username: "sam", displayName: "Sam"}},
+    ], nextCursor: null}};
+    const refreshed: PostDetail = {...initial, comments: {items: [{...initial.comments.items[0]!, body: "Updated"}], nextCursor: null}};
+    const {rerender} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: initial}}/>);
+
+    rerender(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: refreshed}}/>);
+
+    expect(screen.getByText("Updated")).toBeVisible();
+    expect(screen.queryByText("Original")).toBeNull();
+    expect(screen.queryByText("Removed")).toBeNull();
   });
 
   it("resolves an inconclusive server session before hiding the real comment composer", async () => {

@@ -22,7 +22,14 @@ function dayLabel(timestamp: string, locale: Locale, timeZone: string | undefine
   return new Intl.DateTimeFormat(locale, {day: 'numeric', month: 'long', timeZone, year: 'numeric'}).format(new Date(timestamp))
 }
 
-export function PublicProfileTabs({canMutate, labels, locale, posts, profileId, referenceTime, returnTo}: {canMutate: boolean; labels: SocialLabels; locale: Locale; posts: PublicIpProfilePosts; profileId: string; referenceTime: number; returnTo: string}) {
+type PublicProfileTabsProps = {canMutate: boolean; labels: SocialLabels; locale: Locale; posts: PublicIpProfilePosts; profileId: string; referenceTime: number; returnTo: string; viewerScope?: string}
+
+export function PublicProfileTabs(props: PublicProfileTabsProps) {
+  const scope = JSON.stringify([props.profileId, props.viewerScope ?? 'guest', props.posts])
+  return <ScopedPublicProfileTabs key={scope} {...props}/>
+}
+
+function ScopedPublicProfileTabs({canMutate, labels, locale, posts, profileId, referenceTime, returnTo, viewerScope}: PublicProfileTabsProps) {
   const [active, setActive] = useState<'posts' | 'media'>('posts')
   const [items, setItems] = useState(posts.items)
   const [nextCursor, setNextCursor] = useState(posts.nextCursor)
@@ -36,6 +43,8 @@ export function PublicProfileTabs({canMutate, labels, locale, posts, profileId, 
   const viewer = useRef<HTMLDivElement | null>(null)
   const postsTab = useRef<HTMLButtonElement | null>(null)
   const mediaTab = useRef<HTMLButtonElement | null>(null)
+  const loadController = useRef<AbortController | null>(null)
+  const loadRequestId = useRef(0)
   const mediaItems = useMemo<GalleryItem[]>(() => items.flatMap((post) => (post.media ?? []).map((media) => ({media, publishedAt: post.publishedAt}))), [items])
   const groups = useMemo(() => {
     const output: Array<{key: string; label: string; items: Array<GalleryItem & {index: number}>}> = []
@@ -61,23 +70,35 @@ export function PublicProfileTabs({canMutate, labels, locale, posts, profileId, 
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return
+    const requestId = ++loadRequestId.current
+    const controller = new AbortController()
+    loadController.current = controller
     setLoadingMore(true)
     setLoadError(false)
     try {
-      const response = await fetch(`/api/social/profiles/${profileId}?${new URLSearchParams({cursor: nextCursor})}`, {credentials: 'same-origin'})
+      const response = await fetch(`/api/social/profiles/${profileId}?${new URLSearchParams({cursor: nextCursor})}`, {credentials: 'same-origin', signal: controller.signal})
       const parsed = response.ok ? PublicIpProfileSchema.safeParse(await response.json()) : null
       if (!parsed?.success || parsed.data.profile.id !== profileId) throw new Error('INVALID_PROFILE_PAGE')
+      if (controller.signal.aborted || requestId !== loadRequestId.current) return
       setItems((current) => {
         const ids = new Set(current.map((post) => post.id))
         return [...current, ...parsed.data.posts.items.filter((post) => !ids.has(post.id))]
       })
       setNextCursor(parsed.data.posts.nextCursor)
     } catch {
-      setLoadError(true)
+      if (!controller.signal.aborted && requestId === loadRequestId.current) setLoadError(true)
     } finally {
-      setLoadingMore(false)
+      if (!controller.signal.aborted && requestId === loadRequestId.current) {
+        loadController.current = null
+        setLoadingMore(false)
+      }
     }
   }
+
+  useEffect(() => () => {
+    loadRequestId.current += 1
+    loadController.current?.abort()
+  }, [])
 
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
@@ -131,7 +152,7 @@ export function PublicProfileTabs({canMutate, labels, locale, posts, profileId, 
       <button aria-controls={mediaId} aria-selected={active === 'media'} className={styles.tab} id="profile-media-tab" onClick={() => setActive('media')} onKeyDown={onTabKeyDown} ref={mediaTab} role="tab" tabIndex={active === 'media' ? 0 : -1} type="button">{labels.profileMedia ?? labels.postMedia}</button>
     </div>
     <div aria-labelledby="profile-posts-tab" hidden={active !== 'posts'} id={postsId} role="tabpanel">
-      {items.length ? items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} returnTo={returnTo}/>) : <div className={styles.empty}><EmptyState description={labels.homeEmptyDescription} title={labels.homeEmptyTitle}/></div>}
+      {items.length ? items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>) : <div className={styles.empty}><EmptyState description={labels.homeEmptyDescription} title={labels.homeEmptyTitle}/></div>}
       {loadMoreControl}
     </div>
     <div aria-labelledby="profile-media-tab" className={styles.mediaPanel} hidden={active !== 'media'} id={mediaId} role="tabpanel">

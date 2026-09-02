@@ -20,5 +20,5 @@ export default async function LikedPage({params, searchParams}: {params: Promise
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/liked?${new URLSearchParams({cursor: nextCursor})}` : undefined
-  return <SocialSurface className="collection-page" header={header} label={messages.posts}><FeedContent canMutate empty="liked" emptyActionHref={`/${locale}`} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></SocialSurface>
+  return <SocialSurface className="collection-page" header={header} label={messages.posts}><FeedContent canMutate empty="liked" emptyActionHref={`/${locale}`} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} viewerScope={access.viewerScope} /></SocialSurface>
 }

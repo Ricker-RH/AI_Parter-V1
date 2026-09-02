@@ -1,13 +1,18 @@
 import {redirect as nextRedirect} from 'next/navigation'
+import {createHash} from 'node:crypto'
 import type {Locale} from '../../i18n/config'
 import {authHref} from './return-to'
 
-export type AuthenticatedPageAccess = {status: 'authenticated'; token: string}
+export type AuthenticatedPageAccess = {status: 'authenticated'; token: string; viewerScope: string}
 export type AnonymousPageAccess = {status: 'anonymous'}
 export type UnavailablePageAccess = {status: 'unavailable'}
 export type PageAccess = AuthenticatedPageAccess | UnavailablePageAccess
 export type OptionalPageAccess = AuthenticatedPageAccess | AnonymousPageAccess | UnavailablePageAccess
 export const OPTIONAL_PAGE_ACCESS_TIMEOUT_MS = 250
+
+export function viewerScopeForToken(token: string): string {
+  return `v1.${createHash('sha256').update(token).digest('base64url')}`
+}
 
 export function redirectToUserSignIn({locale, returnTo, redirect = nextRedirect}: {locale: Locale; returnTo: string; redirect?: (path: string) => void}): void {
   redirect(authHref(locale, returnTo))
@@ -39,7 +44,7 @@ export async function getOptionalPageAccess({
     if (outcome.type === 'timed-out') return {status: 'unavailable'}
     if (outcome.type === 'failed') return {status: 'unavailable'}
     const {token} = outcome
-    return typeof token === 'string' && token.length > 0 ? {status: 'authenticated', token} : {status: 'anonymous'}
+    return typeof token === 'string' && token.length > 0 ? {status: 'authenticated', token, viewerScope: viewerScopeForToken(token)} : {status: 'anonymous'}
   } catch {
     return {status: 'unavailable'}
   } finally {
@@ -68,7 +73,7 @@ export async function requireAuthenticatedPage({
   } catch {
     return {status: 'unavailable'}
   }
-  if (typeof token === 'string' && token.length > 0) return {status: 'authenticated', token}
+  if (typeof token === 'string' && token.length > 0) return {status: 'authenticated', token, viewerScope: viewerScopeForToken(token)}
 
   redirectToUserSignIn({locale, returnTo, redirect})
   return {status: 'unavailable'}

@@ -31,7 +31,7 @@ function SearchEmptyIcon() {
   return <svg aria-hidden="true" className={styles.emptyIcon} fill="none" viewBox="0 0 48 48"><circle cx="21" cy="21" r="12" stroke="currentColor" strokeWidth="2"/><path d="m30 30 9 9" stroke="currentColor" strokeLinecap="round" strokeWidth="2"/></svg>
 }
 
-function Recommendations({canMutate, labels, locale, result}: {canMutate: boolean; labels: SocialLabels; locale: Locale; result?: SocialApiResult<FeedPage>}) {
+function Recommendations({canMutate, labels, locale, result, viewerScope}: {canMutate: boolean; labels: SocialLabels; locale: Locale; result?: SocialApiResult<FeedPage>; viewerScope?: string}) {
   const recommendationLabel = labels.searchRecommended ?? labels.recommendations ?? labels.search ?? (locale === 'zh-CN' ? '推荐关注' : 'Recommended follows')
   if (!result || result.status !== 'ok') return <div data-social-surface-fill>{result ? <ResultState labels={labels} result={result}/> : null}</div>
   const recommendations = new Map<string, {profile: FeedPage['items'][number]['author']; follows?: boolean}>()
@@ -46,14 +46,14 @@ function Recommendations({canMutate, labels, locale, result}: {canMutate: boolea
     {Array.from(recommendations.values()).map(({profile, follows}) => {
       const href = canMutate ? `/${locale}/profiles/${profile.id}` : authHref(locale, `/${locale}/profiles/${profile.id}`)
       const action = canMutate && follows !== undefined
-        ? <ProfileFollowButton following={follows} labels={labels} locale={locale} profileId={profile.id}/>
+        ? viewerScope ? <ProfileFollowButton following={follows} labels={labels} locale={locale} profileId={profile.id} viewerScope={viewerScope}/> : null
         : !canMutate ? <Link aria-label={labels.follow} className={styles.followLink} href={authHref(locale, returnTo)}>{labels.follow}</Link> : null
       return <ProfileResult {...(action ? {action} : {})} href={href} key={profile.id} labels={labels} profile={profile}/>
     })}
   </section>
 }
 
-export function SearchContent({locale, labels, query, category, cursor, result, recommendationResult, canMutate = false}: {
+export function SearchContent({locale, labels, query, category, cursor, result, recommendationResult, canMutate = false, viewerScope}: {
   locale: Locale
   labels: SocialLabels
   query?: string
@@ -62,6 +62,7 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
   result?: SocialApiResult<SearchPage>
   recommendationResult?: SocialApiResult<FeedPage>
   canMutate?: boolean
+  viewerScope?: string
 }) {
   const referenceTime = Date.now()
   const normalized = query?.trim().replace(/\s+/g, ' ') ?? ''
@@ -77,14 +78,14 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
   </header>
 
   let content
-  if (!normalized) content = <Recommendations canMutate={canMutate} labels={labels} locale={locale} {...(recommendationResult ? {result: recommendationResult} : {})}/>
+  if (!normalized) content = <Recommendations canMutate={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} {...(recommendationResult ? {result: recommendationResult} : {})} {...(viewerScope ? {viewerScope} : {})}/>
   else if (!result || result.status !== 'ok') content = <div data-social-surface-fill>{result ? <ResultState labels={labels} result={result}/> : null}</div>
   else if (!result.data.items.length) content = <div className={styles.empty} data-social-surface-fill><SearchEmptyIcon/><EmptyState {...(labels.searchNoResultsDescription ? {description: labels.searchNoResultsDescription} : {})} title={labels.searchNoResults ?? labels.searchEmptyTitle ?? labels.homeEmptyTitle}/></div>
   else {
     const items = category === 'all' ? rankPopularSearchResults(result.data.items, normalized) : result.data.items
     content = <section aria-label={labels.searchResults ?? labels.search} className={styles.results}><div className="feed-list">
       {items.map((item) => item.type === 'post'
-        ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} referenceTime={referenceTime} returnTo={returnTo}/>
+        ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
         : <ProfileResult href={profileHref(item.profile.id)} key={`profile-${item.profile.id}`} labels={labels} profile={item.profile}/>)
       }
       {result.data.nextCursor ? <Link className="load-more" href={searchHref(locale, normalized, category, result.data.nextCursor)}>{labels.loadMore}</Link> : null}

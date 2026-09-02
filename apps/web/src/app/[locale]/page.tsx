@@ -28,30 +28,30 @@ function FeedFallback({label}: {label: string}) {
   return <div aria-busy="true" aria-label={label} className="route-skeleton route-skeleton--feed" data-home-feed-fallback role="status"><div aria-hidden="true" className="route-skeleton-content">{Array.from({length: 3}, (_, index) => <div className="route-skeleton-card" key={index}><span className="route-skeleton-avatar"/><span className="route-skeleton-card-content"><span className="route-skeleton-line route-skeleton-line--short"/><span className="route-skeleton-line"/><span className="route-skeleton-line route-skeleton-line--medium"/></span></div>)}</div></div>
 }
 
-function FeedView({canMutate, cursor, following, labels, locale, result, returnTo}: {canMutate: boolean; cursor?: string; following: boolean; labels: Messages; locale: 'en' | 'zh-CN'; result: FeedResult; returnTo: string}) {
+function FeedView({canMutate, cursor, following, labels, locale, result, returnTo, viewerScope}: {canMutate: boolean; cursor?: string; following: boolean; labels: Messages; locale: 'en' | 'zh-CN'; result: FeedResult; returnTo: string; viewerScope?: string}) {
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const pageQuery = new URLSearchParams()
   if (following) pageQuery.set('feed', 'following')
   if (nextCursor) pageQuery.set('cursor', nextCursor)
   const moreHref = nextCursor ? `/${locale}?${pageQuery}` : undefined
-  return <FeedContent canMutate={canMutate} labels={labels} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} />
+  return <FeedContent canMutate={canMutate} labels={labels} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})} />
 }
 
-async function OptionalForYouFeed({cursor, labels, locale, personalization, publicResult, returnTo}: {cursor?: string; labels: Messages; locale: 'en' | 'zh-CN'; personalization: Promise<{canMutate: boolean; result: FeedResult} | null>; publicResult: FeedResult; returnTo: string}) {
+async function OptionalForYouFeed({cursor, labels, locale, personalization, publicResult, returnTo}: {cursor?: string; labels: Messages; locale: 'en' | 'zh-CN'; personalization: Promise<{canMutate: boolean; result: FeedResult; viewerScope: string} | null>; publicResult: FeedResult; returnTo: string}) {
   const personalized = await personalization
-  const selected = personalized ?? {canMutate: false, result: publicResult}
-  return <FeedView canMutate={selected.canMutate} {...(cursor ? {cursor} : {})} following={false} labels={labels} locale={locale} result={selected.result} returnTo={returnTo}/>
+  const selected = personalized ?? {canMutate: false, result: publicResult, viewerScope: undefined}
+  return <FeedView canMutate={selected.canMutate} {...(cursor ? {cursor} : {})} following={false} labels={labels} locale={locale} result={selected.result} returnTo={returnTo} {...(selected.canMutate ? {viewerScope: selected.viewerScope} : {})}/>
 }
 
-export async function PublicForYouFeed({cursor, labels, locale, personalization, publicResult, returnTo}: {cursor?: string; labels: Messages; locale: 'en' | 'zh-CN'; personalization: Promise<{canMutate: boolean; result: FeedResult} | null>; publicResult: Promise<FeedResult>; returnTo: string}) {
+export async function PublicForYouFeed({cursor, labels, locale, personalization, publicResult, returnTo}: {cursor?: string; labels: Messages; locale: 'en' | 'zh-CN'; personalization: Promise<{canMutate: boolean; result: FeedResult; viewerScope: string} | null>; publicResult: Promise<FeedResult>; returnTo: string}) {
   const result = await publicResult
   const publicView = <FeedView canMutate={false} {...(cursor ? {cursor} : {})} following={false} labels={labels} locale={locale} result={result} returnTo={returnTo}/>
   return <Suspense fallback={publicView}><OptionalForYouFeed {...(cursor ? {cursor} : {})} labels={labels} locale={locale} personalization={personalization} publicResult={result} returnTo={returnTo}/></Suspense>
 }
 
-async function FollowingFeed({labels, locale, load, returnTo}: {labels: Messages; locale: 'en' | 'zh-CN'; load: Promise<{canMutate: boolean; result: FeedResult}>; returnTo: string}) {
+async function FollowingFeed({labels, locale, load, returnTo}: {labels: Messages; locale: 'en' | 'zh-CN'; load: Promise<{canMutate: boolean; result: FeedResult; viewerScope?: string}>; returnTo: string}) {
   const loaded = await load
-  return <FeedView canMutate={loaded.canMutate} following labels={labels} locale={locale} result={loaded.result} returnTo={returnTo}/>
+  return <FeedView canMutate={loaded.canMutate} following labels={labels} locale={locale} result={loaded.result} returnTo={returnTo} {...(loaded.viewerScope ? {viewerScope: loaded.viewerScope} : {})}/>
 }
 
 export async function HomeQueryContent({locale: candidate, messages, searchParams}: {locale: 'en' | 'zh-CN'; messages: Messages; searchParams: Promise<HomeSearchParams>}) {
@@ -70,7 +70,7 @@ export async function HomeQueryContent({locale: candidate, messages, searchParam
       if (access.status === 'unavailable') return {canMutate: false, result: {status: 'unavailable'} as const}
       const result = await fetchFeed({kind: 'following', locale: candidate, ...(cursor ? {cursor} : {}), token: access.token})
       if (result.status === 'auth-required') redirectToUserSignIn({locale: candidate, returnTo})
-      return {canMutate: true, result}
+      return {canMutate: true, result, viewerScope: access.viewerScope}
     })
     return <SocialSurface className="home-page" header={header} label={messages.posts}><Suspense fallback={<FeedFallback label={messages.posts}/>}><FollowingFeed labels={messages} load={load} locale={candidate} returnTo={returnTo}/></Suspense></SocialSurface>
   }
@@ -80,7 +80,7 @@ export async function HomeQueryContent({locale: candidate, messages, searchParam
     if (access.status !== 'authenticated') return null
     const result = await fetchFeed({kind: 'for_you', locale: candidate, ...(cursor ? {cursor} : {}), token: access.token})
     if (result.status === 'auth-required') redirectToUserSignIn({locale: candidate, returnTo})
-    return {canMutate: true, result}
+    return {canMutate: true, result, viewerScope: access.viewerScope}
   })
   return <SocialSurface className="home-page" header={header} label={messages.posts}><Suspense fallback={<FeedFallback label={messages.posts}/>}><PublicForYouFeed {...(cursor ? {cursor} : {})} labels={messages} locale={candidate} personalization={personalization} publicResult={publicResult} returnTo={returnTo}/></Suspense></SocialSurface>
 }

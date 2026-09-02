@@ -365,6 +365,8 @@ describe("PostCard public interaction hierarchy", () => {
     const {rerender} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
     fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
     rerender(<PostCard labels={labels} locale="en" post={{...post, author: nextAuthor}} referenceTime={cardReferenceTime} />);
+    expect(screen.queryByRole("dialog", {name: "Nova"})).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Nova"}));
     await act(async () => resolveNova(Response.json({profile: nextAuthor, followerCount: 2, posts: {items: [], nextCursor: null}})));
     expect(await screen.findByText("2 followers")).toBeVisible();
     await act(async () => resolveLuma(Response.json({profile: post.author, followerCount: 99, posts: {items: [], nextCursor: null}})));
@@ -375,18 +377,19 @@ describe("PostCard public interaction hierarchy", () => {
   it("resets a local relationship override when the card author changes", async () => {
     const nextAuthor = {...post.author, id: "77777777-7777-4777-8777-777777777777", username: "nova", displayName: "Nova"};
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {status: 204})));
-    const {rerender} = render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />);
+    const {rerender} = render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} viewerScope="viewer-a" />);
     fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
     fireEvent.click(screen.getByRole("button", {name: "Follow"}));
     expect(await screen.findByRole("button", {name: "Following"})).toBeVisible();
-    rerender(<PostCard canMutate labels={labels} locale="en" post={{...post, author: nextAuthor, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />);
-    expect(screen.getByRole("dialog", {name: "Nova"})).toBeVisible();
+    rerender(<PostCard canMutate labels={labels} locale="en" post={{...post, author: nextAuthor, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} viewerScope="viewer-a" />);
+    expect(screen.queryByRole("dialog", {name: "Nova"})).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Nova"}));
     expect(screen.getByRole("button", {name: "Follow"})).toBeVisible();
   });
 
   it("pulls pending modal focus back inside and exposes a localized close action", () => {
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise<Response>(() => undefined)));
-    render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />);
+    render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} viewerScope="viewer-a" />);
     fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
     const dialog = screen.getByRole("dialog", {name: "Luma"});
     expect(within(dialog).getByRole("button", {name: "Close"})).toBeVisible();
