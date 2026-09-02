@@ -12,6 +12,7 @@ const profile = {
   id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30',
   username: 'luna_ip',
   displayName: 'Luna',
+  bio: 'A quiet moonlit storyteller.',
   languages: ['en' as const],
   visualType: 'anime' as const,
 }
@@ -23,7 +24,10 @@ describe('public search page', () => {
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
     expect(screen.getByRole('search')).toBeVisible()
     expect(screen.getByRole('searchbox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('placeholder', 'Search AI/IP profiles and posts')
+    expect(screen.getByRole('searchbox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('maxlength', '80')
     expect(screen.getByText('Search AI/IP profiles and posts')).toHaveClass('sr-only')
+    expect(screen.getByRole('heading', {level: 1, name: 'Search'})).toHaveClass('sr-only')
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['All', 'AI/IP', 'Posts'])
     expect(fetchSearch).not.toHaveBeenCalled()
   })
 
@@ -42,6 +46,7 @@ describe('public search page', () => {
     expect(screen.getByText('Luna')).toBeVisible()
     expect(screen.getByText('Luna').closest('article')).toHaveClass('profile-result')
     expect(screen.getByText('@luna_ip')).toBeVisible()
+    expect(screen.getByText('A quiet moonlit storyteller.')).toBeVisible()
     expect(screen.queryByText('Anime')).toBeNull()
     expect(screen.queryByRole('button', {name: 'Follow'})).toBeNull()
   })
@@ -53,6 +58,24 @@ describe('public search page', () => {
       searchParams: Promise.resolve({q: 'unknown'}),
     }))
     expect(screen.getByText('No results found')).toBeVisible()
+    expect(screen.queryByRole('heading', {name: 'Search results'})).toBeNull()
+  })
+
+  it('bounds query input and ignores duplicate or unsafe routing values', async () => {
+    fetchSearch.mockResolvedValue({status: 'ok', data: {items: [], nextCursor: null}})
+    const longQuery = `  ${'x'.repeat(100)}  `
+    await SearchPage({
+      params: Promise.resolve({locale: 'en'}),
+      searchParams: Promise.resolve({q: longQuery, category: ['posts', 'ips'], cursor: 'bad.cursor', unknown: 'ignored'}),
+    })
+    expect(fetchSearch).toHaveBeenCalledWith({q: 'x'.repeat(80), category: 'all'})
+
+    fetchSearch.mockClear()
+    await SearchPage({
+      params: Promise.resolve({locale: 'en'}),
+      searchParams: Promise.resolve({q: ['luna', 'moon'], category: 'not-real', cursor: ['first', 'second']}),
+    })
+    expect(fetchSearch).not.toHaveBeenCalled()
   })
 
   it('passes the optional authenticated token so signed-in users keep interaction capabilities', async () => {

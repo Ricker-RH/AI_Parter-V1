@@ -77,5 +77,8 @@ describe('ordinary-user fluid shell CSS contract', () => {
   it('gives search profile results their own compact row instead of a post-card layout', () => {
     expect(stylesheet).toMatch(/\.profile-result \{[^}]*display: grid[^}]*grid-template-columns: 44px minmax\(0, 1fr\)/)
     expect(stylesheet).toMatch(/\.profile-result-avatar \{[^}]*height: 44px[^}]*width: 44px/)
+    expect(stylesheet).toMatch(/\.search-category-tabs \.tabs \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.search-category-tabs \{[^}]*display: block/)
+    expect(stylesheet).toMatch(/\.search-results \{[^}]*min-width: 0/)
   })
 })

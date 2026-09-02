@@ -65,6 +65,7 @@ export interface SocialLabels {
   searchPosts?: string
   searchResults?: string
   searchNoResults?: string
+  searchNoResultsDescription?: string
   searchEnd?: string
   search?: string
   searchEmptyTitle?: string

@@ -10,6 +10,7 @@
   "searchPosts": "帖子",
   "searchResults": "搜索结果",
   "searchNoResults": "没有找到结果",
+  "searchNoResultsDescription": "可以尝试其他名称、用户名或关键词。",
   "searchEnd": "已到结果末尾",
   "notifications": "通知",
   "liked": "喜欢",

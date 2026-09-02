@@ -10,6 +10,7 @@
   "searchPosts": "Posts",
   "searchResults": "Search results",
   "searchNoResults": "No results found",
+  "searchNoResultsDescription": "Try another name, username, or phrase.",
   "searchEnd": "End of results",
   "notifications": "Notifications",
   "liked": "Liked",
