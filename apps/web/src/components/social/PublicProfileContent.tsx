@@ -2,13 +2,13 @@ import type {PublicIpProfile} from '@aifans/contracts'
 import Link from 'next/link'
 import type {Locale} from '../../i18n/config'
 import type {SocialApiResult} from '../../lib/social-api'
-import {PostCard} from './PostCard'
 import {ProfileFollowButton} from './ProfileFollowButton'
 import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
 import {StartChatButton} from '../chat/StartChatButton'
-import {EmptyState} from '@aifans/ui'
 import styles from './PublicProfileContent.module.css'
+import {PublicProfileTabs} from './PublicProfileTabs'
+import {ProfilePageHeader} from '../profile/ProfilePageHeader'
 
 export function PublicProfileContent({result,locale,labels,moreHref}: {result:SocialApiResult<PublicIpProfile>;locale:Locale;labels:SocialLabels;moreHref?:string}) {
   if(result.status!=='ok') return <div className={styles.resultState}><ResultState labels={labels} profile result={result}/></div>
@@ -16,7 +16,7 @@ export function PublicProfileContent({result,locale,labels,moreHref}: {result:So
   const referenceTime=Date.now()
   const returnTo=`/${locale}/profiles/${profile.id}`
   return <div className={styles.profile}>
-    <header className={styles.contextualTitle}><h1>{profile.username}</h1></header>
+    <ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={profile.username}/>
     <div className={styles.profileSurface}>
     <section className={styles.header} aria-labelledby="profile-display-name">
       <div className={styles.identityRow}>
@@ -34,10 +34,7 @@ export function PublicProfileContent({result,locale,labels,moreHref}: {result:So
         <div className={styles.chatAction}><StartChatButton authenticated={viewerFollows!==undefined} ipProfileId={profile.id} labels={{startChat: labels.startChat, startingChat: labels.startingChat, chatStartError: labels.chatStartError}} locale={locale}/></div>
       </div>
     </section>
-    <section aria-labelledby="profile-posts-heading" className={styles.postsSection}>
-      <div className={styles.tabList}><h2 className={styles.tab} id="profile-posts-heading">{labels.posts}</h2></div>
-      <div>{posts.items.length?posts.items.map(post=><PostCard canMutate key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime}/>):<div className={styles.empty}><EmptyState description={labels.homeEmptyDescription} title={labels.homeEmptyTitle}/></div>}{posts.nextCursor&&moreHref?<Link className={styles.loadMore} href={moreHref}>{labels.loadMore}</Link>:null}</div>
-    </section>
+    <PublicProfileTabs canMutate labels={labels} locale={locale} posts={posts} profileId={profile.id} referenceTime={referenceTime} returnTo={returnTo}/>
     </div>
   </div>
 }

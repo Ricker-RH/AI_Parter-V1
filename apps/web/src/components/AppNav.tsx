@@ -3,7 +3,7 @@
 import {AifansBookmarkIcon, AifansFollowingIcon, AifansHomeIcon, AifansMessageIcon, AifansNotificationIcon, AifansProfileIcon, AifansSearchIcon, Logo} from '@aifans/ui'
 import Link from 'next/link'
 import {usePathname, useSearchParams} from 'next/navigation'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 import type {ComponentType, SVGProps} from 'react'
 import type {Locale} from '../i18n/config'
 import {GlobalMoreMenu, type MoreMenuLabels} from './GlobalMoreMenu'
@@ -35,6 +35,6 @@ export const mobileNavItems: ReadonlyArray<NavItem> = [
 ]
 
 export function AppNav({locale, labels, creatorModeEnabled=true, compact=false}: {locale: Locale; labels: ShellLabels; creatorModeEnabled?: boolean; compact?: boolean}) {
-  const [expanded, setExpanded] = useState(false); const items = visibleNavItems(creatorModeEnabled); const expandLabel = labels.expandNavigation ?? labels.more
-  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined} data-expanded={expanded || undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo className="brand-logo-full"/><Logo className="brand-logo-compact" showWordmark={false}/></Link><div className="rail-controls"><button aria-expanded={expanded} aria-label={expandLabel} className="rail-expand" onClick={() => setExpanded((value) => !value)} type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div><Suspense fallback={<NavList compact={compact} items={items} labels={labels} locale={locale}/> }><QueryAwareNavList compact={compact} items={items} labels={labels} locale={locale}/></Suspense><GlobalMoreMenu labels={labels} locale={locale}/></div></nav>
+  const items = visibleNavItems(creatorModeEnabled)
+  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo className="brand-logo-full"/><Logo className="brand-logo-compact" showWordmark={false}/></Link><Suspense fallback={<NavList compact={compact} items={items} labels={labels} locale={locale}/> }><QueryAwareNavList compact={compact} items={items} labels={labels} locale={locale}/></Suspense><GlobalMoreMenu labels={labels} locale={locale}/></div></nav>
 }

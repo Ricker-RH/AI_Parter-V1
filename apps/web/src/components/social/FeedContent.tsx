@@ -10,5 +10,5 @@ export function FeedContent({result, locale, labels, empty = 'home', emptyAction
   if (result.status !== 'ok') return <ResultState labels={labels} result={result} />
   if (result.data.items.length === 0) return <ResultState {...(emptyActionHref ? {actionHref: emptyActionHref} : {})} empty={empty} labels={labels} result={{status: 'not-found'}} />
   const referenceTime = Date.now()
-  return <div className="feed-list">{result.data.items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} {...(returnTo ? {returnTo} : {})} />)}{result.data.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}</div>
+  return <div aria-label={labels.posts} className="feed-list" role="region" tabIndex={0}>{result.data.items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} {...(returnTo ? {returnTo} : {})} />)}{result.data.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}</div>
 }

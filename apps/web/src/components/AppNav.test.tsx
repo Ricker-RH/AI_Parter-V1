@@ -73,9 +73,21 @@ describe('AppNav', () => {
     pathname.value = '/en'
   })
 
-  it('keeps expanded labels available for the compact rail at desktop widths', () => {
+  it('expands the whole compact rail on hover or keyboard focus without a toggle control', () => {
+    const {container} = render(<AppNav compact labels={labels} locale="en" />)
     const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
-    expect(css).toContain('.desktop-nav-compact[data-expanded] .nav-link-label')
+
+    expect(container.querySelector('.rail-expand')).toBeNull()
+    expect(container.querySelector('.desktop-nav-compact')).not.toHaveAttribute('data-expanded')
+    expect(css).toContain('.desktop-nav-compact:is(:hover, :focus-within)')
+    expect(css).toContain('.shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within)')
+    expect(css).not.toContain('.desktop-nav-compact[data-expanded]')
+    expect(css).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.desktop-nav \.nav-sticky \{[^}]*display: flex[^}]*flex-direction: column[^}]*height: 100%/)
+    expect(css).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.desktop-nav \.global-more \{[^}]*margin-top: auto/)
+    expect(css).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.messages-shell \{[^}]*grid-template-columns: 76px minmax\(0, 1fr\)[\s\S]*?\.desktop-nav-compact:is\(:hover, :focus-within\) \{[^}]*width: 248px/)
+    expect(css).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[^}]*margin-left: max\(100px,[^}]*width: min\(640px,[\s\S]*?\.shell\[data-shell="public"\] \.desktop-nav \{[^}]*width: 76px[\s\S]*?\.shell\[data-shell="public"\] \.desktop-nav:is\(:hover, :focus-within\) \{[^}]*width: 248px/)
+    expect(css).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.desktop-nav \{[^}]*width: 248px/)
+    expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.desktop-nav \{[^}]*display: none/)
   })
 
   it('keeps query-aware navigation within an explicit Suspense boundary', () => {

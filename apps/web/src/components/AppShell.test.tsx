@@ -69,6 +69,12 @@ describe('AppShell', () => {
     expect(document.querySelector('.mobile-top-bar')).toBeNull()
   })
 
+  it('omits the generic mobile header when a public profile supplies its own contextual header', () => {
+    pathname = '/en/profiles/11111111-1111-4111-8111-111111111111'
+    render(<AppShell locale="en" labels={labels}><main>Public profile</main></AppShell>)
+    expect(document.querySelector('.mobile-top-bar')).toBeNull()
+  })
+
   it('selects the compact, recommendation-free messages shell', () => {
     pathname = '/en/messages'
     render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)

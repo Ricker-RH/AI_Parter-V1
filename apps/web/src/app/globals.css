@@ -376,11 +376,34 @@ button {
 .feed-list {
   display: grid;
 }
+.home-page > .feed-list,
+.home-page > .empty,
+.collection-page > .feed-list,
+.collection-page > .empty,
+.post-detail-content {
+  -ms-overflow-style: none;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.home-page > .feed-list::-webkit-scrollbar,
+.home-page > .empty::-webkit-scrollbar,
+.collection-page > .feed-list::-webkit-scrollbar,
+.collection-page > .empty::-webkit-scrollbar,
+.post-detail-content::-webkit-scrollbar {
+  display: none;
+}
+.feed-list:focus-visible,
+.post-detail-content:focus-visible {
+  outline: 2px solid var(--shell-focus);
+  outline-offset: -3px;
+}
 .post-card {
   border-bottom: 1px solid var(--shell-border);
   padding: 16px 24px;
 }
-.post-layout { display: grid; gap: 12px; grid-template-columns: 36px minmax(0, 1fr); }
+.post-layout { display: grid; gap: 12px; grid-template-columns: 44px minmax(0, 1fr); }
 .post-content { min-width: 0; }
 .post-author {
   display: block;
@@ -475,13 +498,10 @@ button {
   font-size: 13px;
 }
 .author-preview { position: relative; }
-.post-avatar-trigger { background: transparent; border: 0; border-radius: 50%; color: inherit; cursor: pointer; height: 44px; margin: -4px; padding: 4px; width: 44px; }
-.post-avatar-trigger .avatar { height: 36px; width: 36px; }
-.profile-follow--avatar { bottom: -2px; position: absolute; right: -2px; z-index: 1; }
-.profile-follow--avatar button { align-items: center; background: var(--shell-text); border: 2px solid var(--shell-surface); border-radius: 50%; color: var(--shell-surface); display: flex; font-size: 17px; font-weight: 500; height: 20px; justify-content: center; line-height: 1; min-height: 20px; padding: 0; width: 20px; }
-.profile-follow--avatar .interaction-error { left: 0; position: absolute; top: calc(100% + 4px); white-space: nowrap; }
+.post-avatar-trigger { background: transparent; border: 0; border-radius: 50%; color: inherit; cursor: pointer; height: 52px; margin: -4px; padding: 4px; width: 52px; }
+.post-avatar-trigger .avatar { font-size: 16px; height: 44px; width: 44px; }
 .author-preview-backdrop { align-items: center; background: color-mix(in srgb, #000 40%, transparent); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 60; }
-.author-preview-dialog { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 20px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 14px; max-width: 380px; padding: 22px; width: 100%; }
+.author-preview-dialog { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 20px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 14px; max-width: 380px; padding: 22px; position: relative; width: 100%; }
 .author-preview-dialog p { margin: 0; }
 .author-preview-heading { align-items: start; display: flex; justify-content: space-between; }
 .author-preview-heading > div { display: grid; }
@@ -490,11 +510,13 @@ button {
 .author-preview-avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; font-weight: 700; height: 52px; justify-content: center; width: 52px; }
 .author-preview-bio { line-height: 1.4; }
 .author-preview-followers { color: var(--shell-muted); font-size: 13px; margin: 0; }
-.author-preview-actions { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
-.author-preview-actions > a, .author-preview-actions .profile-follow button, .author-preview-actions .profile-start-chat button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; }
-.author-preview-actions .profile-start-chat { display: grid; }
-.author-preview-follow-action, .author-preview-follow-action .profile-follow { display: contents; }
-.author-preview-follow-action .author-preview-primary, .author-preview-follow-action .profile-follow button { background: var(--shell-text); border-color: var(--shell-text); color: var(--shell-surface); grid-column: 1 / -1; width: 100%; }
+.author-preview-actions { display: flex; justify-content: flex-end; }
+.author-preview-follow-action .author-preview-primary,
+.author-preview-follow-action .profile-follow button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; min-width: 104px; padding: 0 16px; }
+.author-preview-follow-action .profile-follow { display: block; }
+.author-preview-close { align-items: center; background: var(--shell-hover); border: 0; border-radius: 50%; color: var(--shell-muted); cursor: pointer; display: flex; font: inherit; font-size: 23px; height: 44px; justify-content: center; line-height: 1; position: absolute; right: 12px; top: 12px; width: 44px; }
+.author-preview-close:hover { color: inherit; }
+.author-preview-heading { padding-right: 42px; }
 .comments-section { border-top: 0; }
 .comment-auth-loading { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; min-height: 58px; padding: 0 18px; }
 .comment-auth-loading span { animation: route-skeleton-pulse 1.2s ease-in-out infinite; background: var(--shell-hover); border-radius: 999px; display: block; height: 34px; width: 100%; }
@@ -535,7 +557,7 @@ button {
   border-bottom: 1px solid var(--shell-border);
   display: grid;
   gap: 10px;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
   padding: 14px 24px;
   position: relative;
 }
@@ -547,13 +569,15 @@ button {
   display: flex;
   font-size: 14px;
   font-weight: 700;
-  height: 40px;
+  height: 44px;
   justify-content: center;
-  width: 40px;
+  width: 44px;
 }
+.comment-avatar-trigger { background: transparent; border: 0; border-radius: 50%; color: inherit; cursor: pointer; height: 52px; margin: -4px; padding: 4px; width: 52px; }
 .comment-thread-content { min-width: 0; }
 .comment-thread-heading { align-items: baseline; display: flex; gap: 7px; min-width: 0; }
 .comment-thread-heading strong { font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-thread-heading > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .comment-thread-heading time { flex: 0 0 auto; }
 .comment-thread-content > p {
   line-height: 1.4;
@@ -569,7 +593,7 @@ button {
 .comment-thread-item--reply::before {
   background: var(--shell-border);
   content: "";
-  left: 43px;
+  left: 46px;
   position: absolute;
   top: -14px;
   bottom: 24px;
@@ -1790,6 +1814,43 @@ button {
 @media (min-width: 700px) {
   .comment-composer--primary,
   .comment-signin--primary { bottom: 0; }
+  .desktop-nav .nav-sticky {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .desktop-nav .global-more { margin-top: auto; }
+  .shell[data-shell="public"] .page-header { border-bottom: 0; }
+  .home-page > .feed-list > *,
+  .collection-page > .feed-list > *,
+  .post-detail-content > * {
+    border-inline: 1px solid var(--shell-border);
+  }
+  .home-page > .feed-list > :first-child,
+  .collection-page > .feed-list > :first-child,
+  .post-detail-content > :first-child {
+    border-top: 1px solid var(--shell-border);
+    border-radius: 16px 16px 0 0;
+  }
+  .home-page > .feed-list > :last-child,
+  .collection-page > .feed-list > :last-child,
+  .post-detail-content > :last-child {
+    border-bottom: 1px solid var(--shell-border);
+    border-radius: 0 0 16px 16px;
+  }
+  .home-page > .feed-list > :only-child,
+  .collection-page > .feed-list > :only-child,
+  .post-detail-content > :only-child {
+    border-radius: 16px;
+  }
+  .home-page > .empty,
+  .collection-page > .empty,
+  .post-detail-content > .empty {
+    border: 1px solid var(--shell-border);
+    border-radius: 16px;
+    max-width: none;
+  }
   .messages-shell {
     column-gap: 24px;
     grid-template-columns: 76px minmax(0, 1fr);
@@ -1797,10 +1858,13 @@ button {
     width: 100%;
   }
   .messages-shell .desktop-nav-compact {
+    background: var(--shell-surface);
     display: block;
     overflow: visible;
     padding: 24px 10px;
     position: relative;
+    width: 76px;
+    z-index: 20;
   }
   .desktop-nav-compact .brand {
     margin: 2px 0 28px 10px;
@@ -1814,41 +1878,33 @@ button {
     padding: 0;
     position: relative;
   }
-  .desktop-nav-compact .nav-link:hover::after,
-  .desktop-nav-compact .nav-link:focus-visible::after {
+  .desktop-nav-compact:is(:hover, :focus-within) {
     background: var(--shell-surface);
-    border: 1px solid var(--shell-border);
-    border-radius: 7px;
     box-shadow: var(--aifans-elevation-2);
-    content: attr(aria-label);
-    left: 54px;
-    padding: 9px 12px;
-    position: absolute;
-    white-space: nowrap;
-    z-index: 20;
+    width: 248px;
+    z-index: 30;
   }
-  .desktop-nav-compact .rail-controls { display: block; margin-bottom: 8px; }
-  .desktop-nav-compact .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
-  .desktop-nav-compact .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
-  .desktop-nav-compact[data-expanded] .nav-link-label {
-    background: var(--shell-surface);
-    border: 1px solid var(--shell-border);
-    border-radius: 7px;
+  .desktop-nav-compact:is(:hover, :focus-within) .brand { margin-bottom: 16px; width: 128px; }
+  .desktop-nav-compact:is(:hover, :focus-within) .brand-logo-full { display: block; }
+  .desktop-nav-compact:is(:hover, :focus-within) .brand-logo-compact { display: none; }
+  .desktop-nav-compact:is(:hover, :focus-within) .nav-link { justify-content: flex-start; padding: 0 10px; }
+  .desktop-nav-compact:is(:hover, :focus-within) .nav-link-label {
     clip: auto;
     height: auto;
-    left: 54px;
     margin: 0;
-    padding: 9px 12px;
-    width: max-content;
-    z-index: 20;
+    overflow: visible;
+    padding: 0;
+    position: static;
+    white-space: normal;
+    width: auto;
   }
   .desktop-nav-compact .global-more { display: block; }
   .desktop-nav-compact .global-more .more-trigger { font-size: 0; justify-content: center; min-height: 44px; padding: 0; width: 44px; }
   .desktop-nav-compact .global-more .more-trigger::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
-  .desktop-nav-compact .global-more .global-more-menu { left: 54px; top: 0; }
-  .desktop-nav-compact[data-expanded] .nav-link-label {
-    position: absolute;
-  }
+  .desktop-nav-compact .global-more .global-more-menu { bottom: 0; left: 54px; top: auto; }
+  .desktop-nav-compact:is(:hover, :focus-within) .global-more .more-trigger { font-size: 15px; justify-content: flex-start; padding: 0 10px; width: 100%; }
+  .desktop-nav-compact:is(:hover, :focus-within) .global-more .more-trigger::after { content: none; }
+  .desktop-nav-compact:is(:hover, :focus-within) .global-more .global-more-menu { bottom: 48px; left: 0; top: auto; }
   .messages-shell .mobile-nav {
     display: none;
   }
@@ -1870,7 +1926,7 @@ button {
 .post-media-frame {
   background: var(--shell-hover);
   display: block;
-  height: 320px;
+  height: 260px;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -1881,7 +1937,8 @@ button {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
 }
 .post-media-uploader {
   border: 1px solid var(--shell-border);
@@ -1920,9 +1977,32 @@ button {
 .global-more-menu a,
 .global-more-menu button { align-items: center; background: transparent; border: 0; border-radius: 8px; color: inherit; cursor: pointer; display: flex; font: inherit; font-size: 15px; font-weight: 600; min-height: 44px; padding: 0 10px; text-align: left; width: 100%; }
 .more-trigger:hover,
-.global-more-menu a:hover { background: var(--shell-hover); }
+.global-more-menu a:hover,
+.global-more-menu button:not(:disabled):hover { background: var(--shell-hover); }
 .more-trigger-icon { display: none; height: 22px; width: 22px; }
-.global-more-menu { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 10px; box-shadow: var(--aifans-elevation-2); display: grid; min-width: 190px; padding: 6px; position: absolute; top: 48px; z-index: 30; }
+.global-more-menu { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 16px; box-shadow: var(--aifans-elevation-2); display: grid; min-width: 240px; padding: 8px; position: absolute; top: auto; bottom: 48px; z-index: 70; }
+.global-more-menu button { justify-content: space-between; }
+.global-more-menu button:disabled { cursor: default; }
+.global-more-menu-title { color: var(--shell-muted); font-size: 13px; font-weight: 700; padding: 8px 10px 4px; }
+.global-more-back { gap: 10px; justify-content: flex-start !important; }
+.global-more-item-note { color: var(--shell-muted); display: block; font-size: 11px; font-weight: 500; margin-left: auto; max-width: 112px; text-align: right; }
+.global-more-sign-out { color: #dc2626 !important; }
+.global-more-session-checking { opacity: .62; }
+.global-more-theme-options { display: grid; }
+.global-more-theme-check { min-width: 18px; text-align: center; }
+.report-problem-overlay { align-items: center; background: color-mix(in srgb, #000 48%, transparent); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 100; }
+.report-problem-dialog { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 20px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 12px; max-height: calc(100dvh - 32px); max-width: 560px; overflow-y: auto; padding: 18px 20px 22px; width: 100%; }
+.report-problem-close { align-items: center; align-self: start; background: transparent; border: 0; border-radius: 50%; cursor: pointer; display: flex; font-size: 22px; height: 44px; justify-content: center; margin-left: -8px; width: 44px; }
+.report-problem-header h2 { font-size: 22px; margin: 0; }
+.report-problem-header p { color: var(--shell-muted); margin: 4px 0 0; }
+.report-problem-form { display: grid; gap: 14px; }
+.report-problem-form label { display: grid; font-size: 14px; font-weight: 650; gap: 6px; }
+.report-problem-form input,
+.report-problem-form select,
+.report-problem-form textarea { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; padding: 10px 12px; width: 100%; }
+.report-problem-form textarea { resize: vertical; }
+.report-problem-form button[type="submit"] { background: var(--shell-text); border: 0; border-radius: 999px; color: var(--shell-surface); min-height: 44px; opacity: .5; }
+.report-problem-unavailable { color: var(--shell-muted); font-size: 13px; margin: 0; }
 
 @media (max-width: 699px) {
   .route-skeleton { padding: 12px 16px 32px; }
@@ -1962,7 +2042,9 @@ button {
   .profile-follow button,
   .notification-read,
   .search-form button { min-height: 44px; }
-  .mobile-top-bar .global-more-menu { left: 0; top: 48px; }
+  .mobile-top-bar .global-more-menu { bottom: auto; left: 0; max-width: calc(100vw - 24px); top: 48px; }
+  .report-problem-overlay { align-items: stretch; padding: 0; }
+  .report-problem-dialog { border: 0; border-radius: 0; max-height: 100dvh; max-width: none; min-height: 100dvh; padding: max(12px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom)); }
   .mobile-nav { background: color-mix(in srgb, var(--shell-surface) 94%, transparent); border-top: 1px solid var(--shell-border); bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); height: calc(50px + env(safe-area-inset-bottom)); left: 0; padding: 0 max(8px, env(safe-area-inset-left)) env(safe-area-inset-bottom); position: fixed; right: 0; z-index: 10; }
   .mobile-nav[data-count="4"] { grid-template-columns: repeat(4, 1fr); }
   .mobile-link { border-radius: 0; justify-content: center; min-height: 49px; padding: 0; }
@@ -1986,17 +2068,17 @@ button {
   .post-action { min-height: 44px; min-width: 44px; }
   .comment-thread-item { padding-inline: 12px; }
   .comment-thread-item--reply { padding-left: 56px; }
-  .comment-thread-item--reply::before { left: 31px; }
+  .comment-thread-item--reply::before { left: 34px; }
   .comment-composer,
   .comment-signin { padding-inline: 12px; }
 }
 
 @media (min-width: 700px) and (max-width: 1183px) {
   .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
-  .shell[data-shell="public"] .content { background: var(--shell-surface); border: 1px solid var(--shell-border); height: calc(100dvh - 32px); margin-left: max(100px, calc((100% - 640px) / 2)); margin-top: 16px; overflow: hidden; width: min(640px, calc(100% - 100px)); }
+  .shell[data-shell="public"] .content { background: var(--shell-surface); height: calc(100dvh - 32px); margin-left: max(100px, calc((100% - 640px) / 2)); margin-top: 16px; overflow: hidden; width: min(640px, calc(100% - 100px)); }
   .mobile-nav, .mobile-top-bar { display: none; }
   .mobile-feed-tabs { display: none; }
-  .shell[data-shell="public"] .desktop-nav { bottom: 0; display: block; left: 0; overflow: visible; padding: 24px 10px; position: fixed; top: 0; width: 76px; z-index: 10; }
+  .shell[data-shell="public"] .desktop-nav { background: var(--shell-surface); bottom: 0; display: block; left: 0; overflow: visible; padding: 24px 10px; position: fixed; top: 0; width: 76px; z-index: 20; }
   .shell[data-shell="public"] .desktop-nav .brand { margin: 2px 0 28px 10px; width: 32px; }
   .shell[data-shell="public"] .desktop-nav .brand-logo-full { display: none; }
   .shell[data-shell="public"] .desktop-nav .brand-logo-compact { display: block; }
@@ -2004,15 +2086,18 @@ button {
   .shell[data-shell="public"] .desktop-nav .global-more { display: block; }
   .shell[data-shell="public"] .desktop-nav .global-more .more-trigger { font-size: 0; justify-content: center; min-height: 44px; padding: 0; width: 44px; }
   .shell[data-shell="public"] .desktop-nav .global-more .more-trigger::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
-  .shell[data-shell="public"] .desktop-nav .global-more .global-more-menu { left: 54px; top: 0; }
+  .shell[data-shell="public"] .desktop-nav .global-more .global-more-menu { bottom: 0; left: 54px; top: auto; }
   .shell[data-shell="public"] .desktop-nav .nav-link { justify-content: center; padding: 0; position: relative; }
   .shell[data-shell="public"] .desktop-nav .nav-link-label { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-  .shell[data-shell="public"] .desktop-nav .nav-link:hover::after, .shell[data-shell="public"] .desktop-nav .nav-link:focus-visible::after { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; box-shadow: var(--aifans-elevation-2); content: attr(aria-label); left: 54px; padding: 9px 12px; position: absolute; white-space: nowrap; z-index: 20; }
-  .shell[data-shell="public"] .rail-controls { display: block; margin-bottom: 8px; }
-  .shell[data-shell="public"] .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
-  .shell[data-shell="public"] .rail-expand::after { content: none; }
-  .shell[data-shell="public"] .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
-  .shell[data-shell="public"] .desktop-nav[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) { box-shadow: var(--aifans-elevation-2); width: 248px; z-index: 30; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .brand { margin-bottom: 16px; width: 128px; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .brand-logo-full { display: block; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .brand-logo-compact { display: none; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .nav-link { justify-content: flex-start; padding: 0 10px; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .nav-link-label { clip: auto; height: auto; margin: 0; overflow: visible; padding: 0; position: static; white-space: normal; width: auto; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .global-more .more-trigger { font-size: 15px; justify-content: flex-start; padding: 0 10px; width: 100%; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .global-more .more-trigger::after { content: none; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .global-more .global-more-menu { bottom: 48px; left: 0; top: auto; }
   .home-page, .collection-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; overflow: hidden; }
   .home-page > .feed-list, .collection-page > .feed-list, .collection-page > .empty { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .post-card { padding-inline: 24px; }
@@ -2020,7 +2105,7 @@ button {
 
 @media (min-width: 1184px) {
   .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
-  .shell[data-shell="public"] .content { background: var(--shell-surface); border: 1px solid var(--shell-border); height: calc(100dvh - 32px); margin-left: max(272px, calc((100% - 640px) / 2)); margin-top: 16px; overflow: hidden; width: min(640px, calc(100% - 272px)); }
+  .shell[data-shell="public"] .content { background: var(--shell-surface); height: calc(100dvh - 32px); margin-left: max(272px, calc((100% - 640px) / 2)); margin-top: 16px; overflow: hidden; width: min(640px, calc(100% - 272px)); }
   .shell[data-shell="public"] .desktop-nav { bottom: 0; left: 0; position: fixed; top: 0; width: 248px; z-index: 10; }
   .mobile-nav, .mobile-top-bar { display: none; }
   .desktop-nav .rail-controls, .mobile-feed-tabs { display: none; }
@@ -2028,22 +2113,8 @@ button {
   .home-page > .feed-list, .collection-page > .feed-list, .collection-page > .empty { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .desktop-nav .brand-logo-full { display: block; }
   .desktop-nav .brand-logo-compact { display: none; }
-  .desktop-nav-compact { display: block; overflow: visible; padding: 24px 10px; position: relative; }
-  .desktop-nav-compact .brand { margin: 2px 0 28px 10px; width: 32px; }
   .desktop-nav-compact .brand-logo-full { display: none; }
   .desktop-nav-compact .brand-logo-compact { display: block; }
-  .desktop-nav-compact .nav-title { display: none; }
-  .desktop-nav-compact .nav-link { justify-content: center; padding: 0; position: relative; }
-  .desktop-nav-compact .nav-link:hover::after, .desktop-nav-compact .nav-link:focus-visible::after { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; box-shadow: var(--aifans-elevation-2); content: attr(aria-label); left: 54px; padding: 9px 12px; position: absolute; white-space: nowrap; z-index: 20; }
-  .desktop-nav-compact .rail-controls { display: block; margin-bottom: 8px; }
-  .desktop-nav-compact .rail-expand { background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 0; min-height: 44px; padding: 0; width: 44px; }
-  .desktop-nav-compact .rail-expand::after { content: none; }
-  .desktop-nav-compact .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
-  .desktop-nav-compact[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }
-  .desktop-nav-compact .global-more { display: block; }
-  .desktop-nav-compact .global-more .more-trigger { font-size: 0; justify-content: center; min-height: 44px; padding: 0; width: 44px; }
-  .desktop-nav-compact .global-more .more-trigger::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
-  .desktop-nav-compact .global-more .global-more-menu { left: 54px; top: 0; }
 }
 
 @media (min-width: 1328px) {

@@ -10,14 +10,17 @@ afterEach(() => {
 })
 
 describe('same-origin social mutation proxy', () => {
-  it('forwards only a UUID public-profile read and rejects query input', async () => {
+  it('forwards only a UUID public-profile read with one opaque cursor', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example'
-    const upstream = vi.fn().mockResolvedValue(Response.json({profile: {}, followerCount: 0, posts: {items: [], nextCursor: null}}))
+    const upstream = vi.fn().mockImplementation(async () => Response.json({profile: {}, followerCount: 0, posts: {items: [], nextCursor: null}}))
     vi.stubGlobal('fetch', upstream)
     const path = ['profiles', '11111111-1111-4111-8111-111111111111']
     expect((await GET(new Request('https://web.example/api/social/profiles/11111111-1111-4111-8111-111111111111'), {params: Promise.resolve({path})})).status).toBe(200)
     expect(upstream).toHaveBeenCalledWith('https://internal-api.example/v1/profiles/11111111-1111-4111-8111-111111111111', expect.objectContaining({cache: 'no-store'}))
-    expect((await GET(new Request('https://web.example/api/social/profiles/11111111-1111-4111-8111-111111111111?cursor=forged'), {params: Promise.resolve({path})})).status).toBe(400)
+    expect((await GET(new Request('https://web.example/api/social/profiles/11111111-1111-4111-8111-111111111111?cursor=next_page'), {params: Promise.resolve({path})})).status).toBe(200)
+    expect(upstream).toHaveBeenLastCalledWith('https://internal-api.example/v1/profiles/11111111-1111-4111-8111-111111111111?cursor=next_page', expect.objectContaining({cache: 'no-store'}))
+    expect((await GET(new Request('https://web.example/api/social/profiles/11111111-1111-4111-8111-111111111111?cursor=one&cursor=two'), {params: Promise.resolve({path})})).status).toBe(400)
+    expect((await GET(new Request('https://web.example/api/social/profiles/11111111-1111-4111-8111-111111111111?admin=true'), {params: Promise.resolve({path})})).status).toBe(400)
   })
   it('forwards only an allowed mutation with a short-lived bearer token', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example/'

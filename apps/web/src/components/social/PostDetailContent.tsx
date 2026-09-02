@@ -10,6 +10,7 @@ import type {SocialLabels} from './types'
 import {CommentComposer} from './CommentComposer'
 import {formatRelativeDuration} from '../../lib/relative-time'
 import {useEffect, useState} from 'react'
+import {AuthorPreview} from './AuthorPreview'
 
 type Comment = PostDetail['comments']['items'][number]
 
@@ -28,12 +29,15 @@ function CommentThreadItem({authenticated, comment, labels, locale, postId, refe
   const creatorLabel = comment.author.kind === 'ip' && comment.author.creator
     ? `${labels.createdBy} @${comment.author.creator.username}`
     : null
+  const profileHref = comment.author.kind === 'ip' ? `/${locale}/profiles/${comment.author.id}` : null
 
   return <article className={`comment-thread-item${isReply ? ' comment-thread-item--reply' : ''}`} data-parent-comment-id={comment.parentCommentId ?? undefined}>
-    <span aria-label={comment.author.displayName} className="comment-avatar" role="img">{comment.author.displayName.slice(0, 1)}</span>
+    {comment.author.kind === 'ip'
+      ? <AuthorPreview author={comment.author} canMutate={authenticated} context="comment" labels={labels} locale={locale} returnTo={returnTo}/>
+      : <span aria-label={comment.author.displayName} className="comment-avatar" role="img">{comment.author.displayName.slice(0, 1)}</span>}
     <div className="comment-thread-content">
       <header className="comment-thread-heading">
-        <strong title={comment.author.displayName}>{comment.author.displayName}</strong>
+        {profileHref ? <Link href={profileHref} title={comment.author.displayName}><strong>{comment.author.displayName}</strong></Link> : <strong title={comment.author.displayName}>{comment.author.displayName}</strong>}
         <time dateTime={comment.createdAt}>{formatRelativeDuration(comment.createdAt, locale, referenceTime)}</time>
       </header>
       {creatorLabel ? <span aria-label={creatorLabel} className="creator-attribution">{creatorLabel}</span> : null}
@@ -72,9 +76,9 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
     return () => controller.abort()
   }, [authResolutionNeeded, authenticated])
 
-  if (result.status !== 'ok') return <ResultState labels={labels} result={result} />
+  if (result.status !== 'ok') return <div aria-label={labels.posts} className="post-detail-content" role="region" tabIndex={0}><ResultState labels={labels} result={result} /></div>
   const postReturnTo = returnTo ?? `/${locale}/posts/${result.data.id}`
-  return <div className="post-detail-content">
+  return <div aria-label={labels.posts} className="post-detail-content" role="region" tabIndex={0}>
     <PostCard canMutate={canMutate} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={postReturnTo} />
     <section aria-label={labels.comments} className="comments-section">
       {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate} labels={labels} locale={locale} postId={result.data.id} returnTo={postReturnTo} />}

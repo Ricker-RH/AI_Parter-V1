@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { AnchorHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { FeedPost, Notification, PostDetail } from "@aifans/contracts";
@@ -119,6 +119,40 @@ const post: FeedPost = {
 };
 
 describe("real social content", () => {
+  it("makes feed and detail scroll containers named keyboard regions", () => {
+    const {container, rerender} = render(
+      <FeedContent
+        labels={labels}
+        locale="en"
+        result={{ status: "ok", data: { items: [post], nextCursor: null } }}
+      />,
+    );
+    expect(container.querySelector(".feed-list")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("region", {name: "Posts"})).toBeVisible();
+
+    rerender(
+      <PostDetailContent
+        labels={labels}
+        locale="en"
+        result={{status: "ok", data: {...post, comments: {items: [], nextCursor: null}}}}
+      />,
+    );
+    expect(container.querySelector(".post-detail-content")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("region", {name: "Posts"})).toBeVisible();
+  });
+
+  it("keeps an unavailable post detail inside the same named scroll region", () => {
+    const {container} = render(
+      <PostDetailContent
+        labels={labels}
+        locale="en"
+        result={{status: "unavailable"}}
+      />,
+    );
+    expect(container.querySelector(".post-detail-content")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("region", {name: "Posts"})).toContainElement(screen.getByRole("alert"));
+  });
+
   it("renders API post fields and preserves the locale in the detail URL", () => {
     render(
       <FeedContent
@@ -337,7 +371,7 @@ describe("real social content", () => {
         creator: { ...ip.creator, username: "comment_creator" },
       },
     };
-    const { rerender } = render(
+    const { container, rerender } = render(
       <PostDetailContent
         labels={labels}
         locale="en"
@@ -356,6 +390,16 @@ describe("real social content", () => {
     expect(screen.getByRole("heading", {name: "Comments"})).toBeVisible();
     expect(screen.getByText('Chronological')).toBeVisible();
     expect(document.querySelectorAll(".comment-thread-item")).toHaveLength(2);
+    const commentRows = container.querySelectorAll<HTMLElement>(".comment-thread-item");
+    expect(within(commentRows[0]!).queryByRole("link", {name: "Alex"})).toBeNull();
+    expect(within(commentRows[0]!).getByRole("img", {name: "Alex"})).toBeVisible();
+    expect(within(commentRows[1]!).getByRole("link", {name: "Luma"})).toHaveAttribute("href", `/en/profiles/${ip.id}`);
+    expect(within(commentRows[1]!).getByRole("button", {name: "Profile: Luma"})).toBeVisible();
+    fireEvent.click(within(commentRows[1]!).getByRole("button", {name: "Profile: Luma"}));
+    const preview = screen.getByRole("dialog", {name: "Luma"});
+    expect(within(preview).queryByRole("link", {name: labels.startChat})).toBeNull();
+    fireEvent.keyDown(document, {key: "Escape"});
+    expect(screen.queryByRole("dialog", {name: "Luma"})).toBeNull();
     expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute(
       "href",
       `/en/posts/${post.id}?commentCursor=comments-next`,
@@ -386,6 +430,34 @@ describe("real social content", () => {
     expect(container.querySelector(".comment-thread-item--reply")).toHaveTextContent("Nested reply");
     expect(container.querySelector(".comment-thread-item--reply")).toHaveAttribute("data-parent-comment-id", parentId);
     expect(screen.getByText("Reply", {selector: "summary"})).toBeVisible();
+  });
+
+  it("keeps a comment author relationship after closing and reopening the preview", async () => {
+    const comment = {id: "55555555-5555-4555-8555-555555555555", postId: post.id, parentCommentId: null, state: "published" as const, body: "IP reply", createdAt: "2026-08-31T12:06:00.000Z", author: ip};
+    const detail: PostDetail = {...post, comments: {items: [comment], nextCursor: null}};
+    const request = vi.fn()
+      .mockResolvedValueOnce(Response.json({profile: ip, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}))
+      .mockResolvedValueOnce(new Response(null, {status: 204}))
+      .mockResolvedValueOnce(new Response(null, {status: 204}));
+    vi.stubGlobal("fetch", request);
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    const commentRow = container.querySelector<HTMLElement>(".comment-thread-item")!;
+    const trigger = within(commentRow).getByRole("button", {name: "Profile: Luma"});
+
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("button", {name: "Follow"}));
+    expect(await screen.findByRole("button", {name: "Following"})).toBeVisible();
+    fireEvent.keyDown(document, {key: "Escape"});
+    fireEvent.click(trigger);
+    expect(screen.getByRole("button", {name: "Following"})).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", {name: "Following"}));
+    expect(await screen.findByRole("button", {name: "Follow"})).toBeVisible();
+    fireEvent.keyDown(document, {key: "Escape"});
+    fireEvent.click(trigger);
+    expect(screen.getByRole("button", {name: "Follow"})).toBeVisible();
+    const relationshipMutations = request.mock.calls.filter(([url]) => url === `/api/social/profiles/${ip.id}/follow`);
+    expect(relationshipMutations.map(([, init]) => init?.method)).toEqual(["PUT", "DELETE"]);
   });
 
   it("uses a compact reply composer rather than a large boxed form", () => {

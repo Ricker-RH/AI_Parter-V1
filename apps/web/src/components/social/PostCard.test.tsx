@@ -34,7 +34,7 @@ const labels: SocialLabels = {
   signInToComment: "Sign in to comment", markRead: "Mark as read", markingRead: "Marking", profileNotFoundTitle: "Profile not found",
   profileNotFoundDescription: "Not public", followers: "followers", posts: "Posts", signInToInteract: "Sign in to like, save, or follow",
   startChat: "Chat", startingChat: "Opening…", chatStartError: "Unable to start a conversation.",
-  messages: "Messages", profile: "Profile", share: "Share",
+  messages: "Messages", profile: "Profile", share: "Share", close: "Close",
   postMedia: "Post media",
 };
 
@@ -125,25 +125,11 @@ describe("PostCard media geometry", () => {
     expect(container.querySelector('.post-author-line .account-kind')).toBeNull();
   });
 
-  it('shows an independent accessible follow control on an unfollowed IP avatar only for signed-in viewers', () => {
-    const {container, rerender} = render(<PostCard linked={false} canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />)
-
-    expect(container.querySelector('.profile-follow--avatar')).toBeTruthy()
-    expect(screen.getByRole('button', {name: 'Follow'})).toBeVisible()
-    rerender(<PostCard linked={false} canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: true}} referenceTime={cardReferenceTime} />)
-    expect(container.querySelector('.profile-follow--avatar')).toBeNull()
-  })
-
-  it('removes the avatar plus after a successful follow instead of leaving a misleading unfollow control', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 204})))
+  it('never overlays a plus follow control on a content avatar', () => {
     const {container} = render(<PostCard linked={false} canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />)
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', {name: 'Follow'}))
-      await Promise.resolve()
-    })
-
     expect(container.querySelector('.profile-follow--avatar')).toBeNull()
+    expect(container.querySelector('.post-avatar-trigger + .profile-follow')).toBeNull()
   })
 
   it("exposes a named keyboard carousel without nesting links and scrolls it with horizontal arrows", () => {
@@ -223,12 +209,15 @@ describe("PostCard public interaction hierarchy", () => {
     fireEvent.click(trigger);
     const dialog = screen.getByRole("dialog", {name: "Luma"});
     expect(dialog).toBeVisible();
+    const profileLinks = within(dialog).getAllByRole("link");
+    expect(profileLinks).toHaveLength(3);
+    expect(profileLinks.filter((link) => link.getAttribute('href') === `/en/profiles/${post.author.id}`)).toHaveLength(2);
     const profileLink = within(dialog).getByRole("link", {name: "Luma"});
-    expect(profileLink).toHaveAttribute("href", `/en/profiles/${post.author.id}`);
     expect(screen.getByRole("link", {name: labels.follow})).toHaveAttribute("href", expect.stringContaining("/en/auth/sign-in"));
-    expect(within(dialog).getByRole("link", {name: labels.startChat})).toHaveAttribute("href", expect.stringContaining("/en/auth/sign-in"));
+    expect(within(dialog).queryByRole("link", {name: labels.startChat!})).toBeNull();
+    expect(within(dialog).queryByRole("button", {name: labels.startChat!})).toBeNull();
     fireEvent.keyDown(document, {key: "Tab", shiftKey: true});
-    expect(within(dialog).getByRole("link", {name: labels.startChat})).toHaveFocus();
+    expect(within(dialog).getByRole("button", {name: labels.close!})).toHaveFocus();
     fireEvent.keyDown(document, {key: "Tab"});
     expect(profileLink).toHaveFocus();
     fireEvent.keyDown(document, {key: "Escape"});
@@ -250,5 +239,52 @@ describe("PostCard public interaction hierarchy", () => {
 
     await act(async () => resolveProfile(Response.json({profile: post.author, followerCount: 12, posts: {items: [], nextCursor: null}})));
     expect(await screen.findByText("12 followers")).toBeVisible();
+  });
+
+  it("discards an old author profile response after the card author changes", async () => {
+    const nextAuthor = {...post.author, id: "77777777-7777-4777-8777-777777777777", username: "nova", displayName: "Nova"};
+    let resolveLuma!: (response: Response) => void;
+    let resolveNova!: (response: Response) => void;
+    const request = vi.fn((url: string) => new Promise<Response>((resolve) => {
+      if (url.includes(post.author.id)) resolveLuma = resolve;
+      else resolveNova = resolve;
+    }));
+    vi.stubGlobal("fetch", request);
+    const {rerender} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
+    rerender(<PostCard labels={labels} locale="en" post={{...post, author: nextAuthor}} referenceTime={cardReferenceTime} />);
+    await act(async () => resolveNova(Response.json({profile: nextAuthor, followerCount: 2, posts: {items: [], nextCursor: null}})));
+    expect(await screen.findByText("2 followers")).toBeVisible();
+    await act(async () => resolveLuma(Response.json({profile: post.author, followerCount: 99, posts: {items: [], nextCursor: null}})));
+    expect(screen.getByText("2 followers")).toBeVisible();
+    expect(screen.queryByText("99 followers")).toBeNull();
+  });
+
+  it("resets a local relationship override when the card author changes", async () => {
+    const nextAuthor = {...post.author, id: "77777777-7777-4777-8777-777777777777", username: "nova", displayName: "Nova"};
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {status: 204})));
+    const {rerender} = render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />);
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
+    fireEvent.click(screen.getByRole("button", {name: "Follow"}));
+    expect(await screen.findByRole("button", {name: "Following"})).toBeVisible();
+    rerender(<PostCard canMutate labels={labels} locale="en" post={{...post, author: nextAuthor, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />);
+    expect(screen.getByRole("dialog", {name: "Nova"})).toBeVisible();
+    expect(screen.getByRole("button", {name: "Follow"})).toBeVisible();
+  });
+
+  it("pulls pending modal focus back inside and exposes a localized close action", () => {
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise<Response>(() => undefined)));
+    render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />);
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
+    const dialog = screen.getByRole("dialog", {name: "Luma"});
+    expect(within(dialog).getByRole("button", {name: "Close"})).toBeVisible();
+    fireEvent.click(within(dialog).getByRole("button", {name: "Follow"}));
+    document.body.tabIndex = -1;
+    document.body.focus();
+    fireEvent.keyDown(document, {key: "Tab"});
+    expect(within(dialog).getByRole("link", {name: "Luma"})).toHaveFocus();
+    document.body.focus();
+    fireEvent.keyDown(document, {key: "Tab", shiftKey: true});
+    expect(within(dialog).getByRole("button", {name: "Close"})).toHaveFocus();
   });
 });

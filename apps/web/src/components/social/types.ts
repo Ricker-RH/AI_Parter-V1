@@ -56,6 +56,16 @@ export interface SocialLabels {
   startChat: string
   startingChat: string
   chatStartError: string
+  close?: string
+  back?: string
+  more?: string
+  profileContentTabs?: string
+  profileMedia?: string
+  profileMediaEmptyTitle?: string
+  profileMediaEmptyDescription?: string
+  profileMediaClose?: string
+  profileMediaPrevious?: string
+  profileMediaNext?: string
   messages?: string
   profile?: string
   share?: string
