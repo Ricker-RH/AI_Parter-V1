@@ -24,16 +24,18 @@ describe('social feed follower projection', () => {
 
     expect(actors).toEqual([actor])
     expect(query).toHaveBeenCalledOnce()
-    expect(query.mock.calls[0]?.[0]).toContain('public.social_viewer_follows(followed.profile_id)')
-    expect(query.mock.calls[0]?.[0]).toContain('public.social_public_ip_profile(followed.profile_id)')
-    expect(query.mock.calls[0]?.[1]).toEqual([2])
+    expect(query.mock.calls[0]?.[0]).toContain('public.social_followed_ip_profiles')
+    expect(query.mock.calls[0]?.[0]).not.toContain('public.social_viewer_follows')
+    expect(query.mock.calls[0]?.[0]).not.toContain('FROM public.ip_profiles')
+    expect(query.mock.calls[0]?.[1]).toEqual([null, null, 2])
     expect(page.items).toEqual([expect.objectContaining({id: authorId, followerCount: 7})])
     expect(decodeFollowedIpCursor(page.nextCursor!)).toEqual({v: 1, kind: 'followed_ips', profileCreatedAt: rows[0]!.profile_created_at, id: authorId})
 
     const continuation = await repository.listFollowedIps(actor, {limit: 1, cursor: page.nextCursor!})
 
     expect(actors).toEqual([actor, actor])
-    expect(query.mock.calls[1]?.[0]).toContain('(followed.created_at, followed.profile_id) < ($1::timestamptz, $2::uuid)')
+    expect(query.mock.calls[1]?.[0]).toContain('public.social_followed_ip_profiles')
+    expect(query.mock.calls[1]?.[0]).not.toContain('public.social_viewer_follows')
     expect(query.mock.calls[1]?.[1]).toEqual([rows[0]!.profile_created_at, authorId, 2])
     expect(continuation).toEqual({items: [expect.objectContaining({id: secondId, followerCount: 2})], nextCursor: null})
   })

@@ -739,24 +739,9 @@ export function createSocialRepository({
         const after: FollowedIpCursor | null = page.cursor
           ? decodeFollowedIpCursor(page.cursor)
           : null;
-        const params: unknown[] = [];
-        const filters = ["public.social_viewer_follows(followed.profile_id)"];
-        if (after) {
-          params.push(after.profileCreatedAt, after.id);
-          filters.push(
-            `(followed.created_at, followed.profile_id) < ($1::timestamptz, $2::uuid)`,
-          );
-        }
-        params.push(page.limit + 1);
         const result = await client.query<FollowedIpRow>(
-          `SELECT profile.*,
-             to_char(followed.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS profile_created_at
-             FROM public.ip_profiles followed
-             CROSS JOIN LATERAL public.social_public_ip_profile(followed.profile_id) profile
-             WHERE ${filters.join(" AND ")}
-             ORDER BY followed.created_at DESC, followed.profile_id DESC
-             LIMIT $${params.length}`,
-          params,
+          `SELECT * FROM public.social_followed_ip_profiles($1::timestamptz,$2::uuid,$3::integer)`,
+          [after?.profileCreatedAt ?? null, after?.id ?? null, page.limit + 1],
         );
         const rows = result.rows.slice(0, page.limit);
         const last = rows.at(-1);

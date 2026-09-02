@@ -148,9 +148,12 @@ describeIntegration('social core authorization', () => {
       const hidden = await ip(client, 'paused')
       const postId = await publishedPost(client, visible.id, 'Text only is valid')
       await client.query('SET LOCAL ROLE aifans_anon')
-      const publicIps = await client.query('SELECT profile_id FROM public.ip_profiles')
+      const publicIps = await client.query(
+        'SELECT profile_id FROM public.ip_profiles WHERE profile_id = ANY($1::uuid[])',
+        [[visible.id, hidden.id]],
+      )
       expect(publicIps.rows).toEqual([{ profile_id: visible.id }])
-      const posts = await client.query('SELECT id FROM public.posts')
+      const posts = await client.query('SELECT id FROM public.posts WHERE id=$1', [postId])
       expect(posts.rows).toEqual([{ id: postId }])
       await expect(savepoint(client, () => client.query('SELECT auth_subject FROM public.profiles'))).rejects.toThrow(/permission denied/)
       await expect(savepoint(client, () => client.query('SELECT acting_operator_profile_id FROM public.posts'))).rejects.toThrow(/permission denied/)
