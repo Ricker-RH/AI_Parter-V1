@@ -73,6 +73,18 @@ async function proxy(request: Request, context: RouteContext, method: 'POST' | '
   }
 }
 
+export async function GET(request: Request, context: RouteContext) {
+  const url = new URL(request.url)
+  const path = (await context.params).path
+  if (url.search || path.length !== 2 || path[0] !== 'profiles' || !uuid.test(path[1] ?? '')) return Response.json({code: 'INVALID_REQUEST'}, {status: 400})
+  try {
+    const upstream = await fetchAifansApi(`/v1/profiles/${path[1]}`, {requestInit: {method: 'GET'}, trustedClientHeaders: request.headers})
+    return new Response(await upstream.arrayBuffer(), {status: upstream.status, headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'}})
+  } catch {
+    return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})
+  }
+}
+
 export function PUT(request: Request, context: RouteContext) {
   return proxy(request, context, 'PUT')
 }

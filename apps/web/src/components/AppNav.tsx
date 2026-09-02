@@ -1,6 +1,6 @@
 'use client'
 
-import {AifansBookmarkIcon, AifansHomeIcon, AifansMessageIcon, AifansNotificationIcon, AifansProfileIcon, AifansSearchIcon, Logo} from '@aifans/ui'
+import {AifansBookmarkIcon, AifansFollowingIcon, AifansHomeIcon, AifansMessageIcon, AifansNotificationIcon, AifansProfileIcon, AifansSearchIcon, Logo} from '@aifans/ui'
 import Link from 'next/link'
 import {usePathname, useSearchParams} from 'next/navigation'
 import {Suspense, useState} from 'react'
@@ -16,7 +16,7 @@ function LikedIcon(props: SVGProps<SVGSVGElement>) { return <svg fill="none" str
 function CollectionsIcon(props: SVGProps<SVGSVGElement>) { return <svg fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" {...props}><path d="M12 20s-7-4.1-7-8.5a3.6 3.6 0 0 1 6.6-2 3.6 3.6 0 0 1 6.6 2C18.2 15.9 12 20 12 20Z"/><path d="M17.5 4.5h2v12l-2-1.4-2 1.4v-12h2Z"/></svg> }
 
 export const navItems: ReadonlyArray<NavItem> = [
-  {key: 'forYou', href: '', icon: AifansHomeIcon}, {key: 'following', href: '?feed=following', icon: AifansHomeIcon}, {key: 'search', href: '/search', icon: AifansSearchIcon}, {key: 'messages', href: '/messages', icon: AifansMessageIcon}, {key: 'notifications', href: '/notifications', icon: AifansNotificationIcon}, {key: 'liked', href: '/liked', icon: LikedIcon}, {key: 'bookmarks', href: '/bookmarks', icon: AifansBookmarkIcon}, {key: 'profile', href: '/profile', icon: AifansProfileIcon}, {key: 'creatorNav', href: '/creator', icon: CreatorPlusIcon},
+  {key: 'forYou', href: '', icon: AifansHomeIcon}, {key: 'following', href: '?feed=following', icon: AifansFollowingIcon}, {key: 'search', href: '/search', icon: AifansSearchIcon}, {key: 'messages', href: '/messages', icon: AifansMessageIcon}, {key: 'notifications', href: '/notifications', icon: AifansNotificationIcon}, {key: 'liked', href: '/liked', icon: LikedIcon}, {key: 'bookmarks', href: '/bookmarks', icon: AifansBookmarkIcon}, {key: 'profile', href: '/profile', icon: AifansProfileIcon}, {key: 'creatorNav', href: '/creator', icon: CreatorPlusIcon},
 ]
 
 function destination(locale: Locale, href: string) { return `/${locale}${href}` }
@@ -36,5 +36,5 @@ export const mobileNavItems: ReadonlyArray<NavItem> = [
 
 export function AppNav({locale, labels, creatorModeEnabled=true, compact=false}: {locale: Locale; labels: ShellLabels; creatorModeEnabled?: boolean; compact?: boolean}) {
   const [expanded, setExpanded] = useState(false); const items = visibleNavItems(creatorModeEnabled); const expandLabel = labels.expandNavigation ?? labels.more
-  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined} data-expanded={expanded || undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo className="brand-logo-full"/><Logo className="brand-logo-compact" showWordmark={false}/></Link><div className="rail-controls"><button aria-expanded={expanded} aria-label={expandLabel} className="rail-expand" onClick={() => setExpanded((value) => !value)} type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div><p className={compact ? 'nav-title sr-only' : 'nav-title'}>{labels.primary}</p><Suspense fallback={<NavList compact={compact} items={items} labels={labels} locale={locale}/> }><QueryAwareNavList compact={compact} items={items} labels={labels} locale={locale}/></Suspense><GlobalMoreMenu labels={labels} locale={locale}/></div></nav>
+  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined} data-expanded={expanded || undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo className="brand-logo-full"/><Logo className="brand-logo-compact" showWordmark={false}/></Link><div className="rail-controls"><button aria-expanded={expanded} aria-label={expandLabel} className="rail-expand" onClick={() => setExpanded((value) => !value)} type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div><Suspense fallback={<NavList compact={compact} items={items} labels={labels} locale={locale}/> }><QueryAwareNavList compact={compact} items={items} labels={labels} locale={locale}/></Suspense><GlobalMoreMenu labels={labels} locale={locale}/></div></nav>
 }

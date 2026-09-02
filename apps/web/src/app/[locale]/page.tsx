@@ -22,6 +22,7 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   const messages = await getMessages(candidate)
   const query = await searchParams
   const following = query.feed === 'following'
+  const feedTitle = following ? messages.following : messages.forYou
   const cursor = typeof query.cursor === 'string' ? query.cursor : undefined
   const currentQueryParams = new URLSearchParams(currentQueryString(query))
   currentQueryParams.delete('cursor')
@@ -32,7 +33,7 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   let canMutate = false
   if (following) {
     const access = await requireAuthenticatedPage({locale: candidate, returnTo})
-    if (access.status === 'unavailable') return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent labels={messages} locale={candidate} result={{status: 'unavailable'}} /></main>
+    if (access.status === 'unavailable') return <main className="home-page"><header className="page-header home-header"><h1 className="page-title home-title">{feedTitle}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent labels={messages} locale={candidate} result={{status: 'unavailable'}} /></main>
     token = access.token
     canMutate = true
   } else {
@@ -49,5 +50,5 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   if (following) pageQuery.set('feed', 'following')
   if (nextCursor) pageQuery.set('cursor', nextCursor)
   const moreHref = nextCursor ? `/${candidate}?${pageQuery}` : undefined
-  return <main><header className="page-header home-header"><h1 className="page-title home-title">{messages.home}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent canMutate={canMutate} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
+  return <main className="home-page"><header className="page-header home-header"><h1 className="page-title home-title">{feedTitle}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent canMutate={canMutate} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
 }

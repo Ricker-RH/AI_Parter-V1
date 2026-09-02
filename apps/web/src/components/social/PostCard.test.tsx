@@ -76,15 +76,12 @@ describe("PostCard media geometry", () => {
   beforeEach(() => vi.useFakeTimers({now: new Date('2026-09-02T12:00:00.000Z')}));
   afterEach(() => vi.useRealTimers());
 
-  it("uses dimensions, contract ratio, then 4:5 fallback for ordinary frames", () => {
+  it("uses one fixed-height media viewport regardless of source geometry", () => {
     const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
 
     const frames = staticMediaFrames(4);
     expect(frames).toHaveLength(4);
-    expect(requiredFrame(frames, 0).getAttribute("style")).toBe("aspect-ratio:1.5");
-    expect(requiredFrame(frames, 1).getAttribute("style")).toBe("aspect-ratio:1.25");
-    expect(requiredFrame(frames, 2).getAttribute("style")).toBe("aspect-ratio:0.8");
-    expect(requiredFrame(frames, 3).getAttribute("style")).toBe("aspect-ratio:1");
+    expect([...frames].every((frame) => frame.classList.contains('post-media-frame'))).toBe(true);
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("width", "1200");
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("height", "800");
     expect(screen.getByRole("img", { name: "Contract ratio" })).not.toHaveAttribute("width");
@@ -119,13 +116,13 @@ describe("PostCard media geometry", () => {
     expect([...frames].every((frame) => !frame.classList.contains("post-media-frame--featured"))).toBe(true);
   });
 
-  it("shows compact relative time, omits the username row, and keeps the AI/IP badge inline", () => {
+  it("shows compact relative time without an AI/IP badge", () => {
     const {container} = render(<PostCard linked={false} labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
 
     expect(screen.getByText('2d')).toHaveAttribute('datetime', post.publishedAt);
     expect(container.querySelector('.author-meta')).toBeNull();
     expect(screen.getByRole('article')).not.toHaveTextContent('@luma');
-    expect(container.querySelector('.post-author-line .account-kind')).toHaveTextContent(labels.aiAccount);
+    expect(container.querySelector('.post-author-line .account-kind')).toBeNull();
   });
 
   it("exposes a named keyboard carousel without nesting links and scrolls it with horizontal arrows", () => {
@@ -182,7 +179,7 @@ describe("PostCard media geometry", () => {
 
     expect(screen.getByRole('link', {name: displayName})).toHaveAttribute('title', displayName);
     expect(container.querySelector('.post-author-line time')).toHaveTextContent('2d');
-    expect(container.querySelector('.post-author-line .account-kind')).toHaveTextContent('AI/IP');
+    expect(container.querySelector('.post-author-line .account-kind')).toBeNull();
   });
 });
 

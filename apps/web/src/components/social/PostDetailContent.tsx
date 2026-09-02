@@ -22,7 +22,6 @@ function CommentThreadItem({authenticated, comment, labels, locale, postId, refe
       <header className="comment-thread-heading">
         <strong title={comment.author.displayName}>{comment.author.displayName}</strong>
         <time dateTime={comment.createdAt}>{formatRelativeDuration(comment.createdAt, locale, referenceTime)}</time>
-        <span className="account-kind">{comment.author.kind === 'ip' ? labels.aiAccount : labels.humanAccount}</span>
       </header>
       {creatorLabel ? <span aria-label={creatorLabel} className="creator-attribution">{creatorLabel}</span> : null}
       <p className={comment.state === 'deleted' ? 'deleted-comment' : undefined}>{comment.state === 'deleted' ? labels.deletedComment : comment.body}</p>

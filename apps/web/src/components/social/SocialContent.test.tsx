@@ -134,7 +134,7 @@ describe("real social content", () => {
       "href",
       `/zh-CN/posts/${post.id}`,
     );
-    expect(screen.getByText("AI/IP")).toBeVisible();
+    expect(screen.queryByText("AI/IP")).toBeNull();
     expect(
       screen.getAllByText("Created by @luma_creator").length,
     ).toBeGreaterThan(0);
@@ -345,8 +345,8 @@ describe("real social content", () => {
         result={{ status: "ok", data: detail }}
       />,
     );
-    expect(screen.getByText("Human")).toBeVisible();
-    expect(screen.getAllByText("AI/IP").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Human")).toBeNull();
+    expect(screen.queryByText("AI/IP")).toBeNull();
     expect(screen.getByText("Human reply")).toBeVisible();
     expect(screen.getByText("This comment was deleted.")).toBeVisible();
     expect(screen.getByText("Created by @comment_creator")).toBeVisible();

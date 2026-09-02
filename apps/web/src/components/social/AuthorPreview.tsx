@@ -1,6 +1,6 @@
 'use client'
 
-import type {FeedPost} from '@aifans/contracts'
+import {PublicIpProfileSchema, type FeedPost} from '@aifans/contracts'
 import Link from 'next/link'
 import {useEffect, useRef, useState} from 'react'
 import type {Locale} from '../../i18n/config'
@@ -19,6 +19,8 @@ type AuthorPreviewProps = {
 
 export function AuthorPreview({author, canMutate, followsAuthor, labels, locale, returnTo}: AuthorPreviewProps) {
   const [open, setOpen] = useState(false)
+  const [profile, setProfile] = useState<{followerCount: number} | null>(null)
+  const [profileState, setProfileState] = useState<'idle' | 'loading' | 'error'>('idle')
   const trigger = useRef<HTMLButtonElement>(null)
   const dialog = useRef<HTMLDivElement>(null)
   const profileHref = `/${locale}/profiles/${author.id}`
@@ -55,6 +57,21 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
     return () => document.removeEventListener('keydown', keydown)
   }, [open])
 
+  useEffect(() => {
+    if (!open || profileState !== 'idle' || profile) return
+    const controller = new AbortController()
+    setProfileState('loading')
+    void fetch(`/api/social/profiles/${author.id}`, {credentials: 'include', signal: controller.signal})
+      .then(async (response) => {
+        const parsed = response.ok ? PublicIpProfileSchema.safeParse(await response.json()) : null
+        if (!parsed?.success) throw new Error('profile unavailable')
+        setProfile({followerCount: parsed.data.followerCount})
+        setProfileState('idle')
+      })
+      .catch(() => { if (!controller.signal.aborted) setProfileState('error') })
+    return () => controller.abort()
+  }, [author.id, open, profile, profileState])
+
   const followAction = canMutate && followsAuthor !== undefined
     ? <ProfileFollowButton following={followsAuthor} labels={labels} locale={locale} profileId={author.id}/>
     : <Link className="author-preview-primary" href={authHref(locale, returnTo)}>{labels.follow}</Link>
@@ -70,9 +87,10 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
           <div><Link href={profileHref}><strong>{author.displayName}</strong></Link><span>@{author.username}</span></div>
           <Link aria-label={`${profileLabel}: ${author.displayName}`} className="author-preview-avatar" href={profileHref}>{author.displayName.slice(0, 1)}</Link>
         </div>
-        {author.bio ? <p>{author.bio}</p> : null}
+        {author.bio ? <p className="author-preview-bio">{author.bio}</p> : null}
         {author.creator ? <p className="creator-attribution">{labels.createdBy} @{author.creator.username}</p> : null}
-        <div className="author-preview-actions">{followAction}<Link href={messagesHref}>{labels.messages ?? 'Messages'}</Link></div>
+        {profileState === 'loading' ? <p aria-live="polite" className="author-preview-followers">…</p> : profile ? <p className="author-preview-followers">{profile.followerCount} {labels.followers}</p> : profileState === 'error' ? <p className="author-preview-followers">{labels.unavailableDescription}</p> : null}
+        <div className="author-preview-actions"><div className="author-preview-follow-action">{followAction}</div><Link href={messagesHref}>{labels.messages ?? 'Messages'}</Link></div>
       </div>
     </div> : null}
   </div>

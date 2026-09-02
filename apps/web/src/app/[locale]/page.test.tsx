@@ -90,7 +90,7 @@ describe('home feed query navigation', () => {
     expect(optionalAccess).toHaveBeenCalledOnce()
     expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({kind: 'for_you'}))
     expect(screen.queryByRole('button', {name: 'Like'})).toBeNull()
-    expect(screen.getByRole('heading', {name: 'Home'})).toHaveClass('home-title')
+    expect(screen.getByRole('heading', {name: 'For You'})).toHaveClass('home-title')
     expect(screen.getByRole('navigation', {name: 'Home'})).toHaveClass('mobile-feed-tabs')
   })
 })

@@ -6,4 +6,5 @@ export {
   Search as AifansSearchIcon,
   Settings as AifansSettingsIcon,
   User as AifansProfileIcon,
+  Users as AifansFollowingIcon,
 } from 'lucide-react'

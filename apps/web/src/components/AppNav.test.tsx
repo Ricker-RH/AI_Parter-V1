@@ -13,12 +13,14 @@ const labels = en
 
 describe('AppNav', () => {
   it('keeps Home feed choices in the desktop sidebar without a human composer', () => {
-    render(<AppNav labels={labels} locale="en" />)
+    const {container} = render(<AppNav labels={labels} locale="en" />)
 
     expect(screen.getByRole('link', {name: 'For You'})).toHaveAttribute('href', '/en')
     expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?feed=following')
     expect(screen.queryByRole('button', {name: /post|compose|publish/i})).toBeNull()
     expect(screen.queryByRole('link', {name: 'Settings'})).toBeNull()
+    expect(container.querySelector('.nav-title')).toBeNull()
+    expect(screen.getByRole('link', {name: 'For You'}).querySelector('svg')?.outerHTML).not.toBe(screen.getByRole('link', {name: 'Following'}).querySelector('svg')?.outerHTML)
   })
 
   it('keeps the ordinary desktop order and excludes Creator Center', () => {

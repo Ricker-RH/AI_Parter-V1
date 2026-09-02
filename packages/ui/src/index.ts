@@ -1,6 +1,7 @@
 export {EmptyState, type EmptyStateProps} from './components/EmptyState.js'
 export {
   AifansBookmarkIcon,
+  AifansFollowingIcon,
   AifansHomeIcon,
   AifansMessageIcon,
   AifansNotificationIcon,
