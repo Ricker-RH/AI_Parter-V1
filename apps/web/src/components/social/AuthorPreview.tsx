@@ -59,7 +59,7 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
   }, [open])
 
   useEffect(() => {
-    if (!open || profileState !== 'idle' || profile) return
+    if (!open || profile) return
     const controller = new AbortController()
     setProfileState('loading')
     void fetch(`/api/social/profiles/${author.id}`, {credentials: 'include', signal: controller.signal})
@@ -71,7 +71,7 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
       })
       .catch(() => { if (!controller.signal.aborted) setProfileState('error') })
     return () => controller.abort()
-  }, [author.id, open, profile, profileState])
+  }, [author.id, open, profile])
 
   const followAction = canMutate && followsAuthor !== undefined
     ? <ProfileFollowButton following={followsAuthor} labels={labels} locale={locale} profileId={author.id}/>

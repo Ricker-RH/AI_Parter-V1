@@ -235,4 +235,20 @@ describe("PostCard public interaction hierarchy", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(trigger).toHaveFocus();
   });
+
+  it("keeps a delayed profile request alive until follower data resolves", async () => {
+    let resolveProfile!: (response: Response) => void;
+    const request = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveProfile = resolve; }));
+    vi.stubGlobal("fetch", request);
+    render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
+    await act(async () => undefined);
+
+    const signal = request.mock.calls[0]![1].signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+
+    await act(async () => resolveProfile(Response.json({profile: post.author, followerCount: 12, posts: {items: [], nextCursor: null}})));
+    expect(await screen.findByText("12 followers")).toBeVisible();
+  });
 });
