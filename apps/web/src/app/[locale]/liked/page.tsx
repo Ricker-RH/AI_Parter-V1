@@ -11,10 +11,10 @@ export default async function LikedPage({params, searchParams}: {params: Promise
   const returnTo = `/${locale}/liked${cursor ? `?${new URLSearchParams({cursor})}` : ''}`
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><header className="page-header"><h1 className="page-title">{messages.liked}</h1></header><FeedContent empty="liked" labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
+  if (access.status === 'unavailable') return <main className="collection-page"><header className="page-header collection-header"><h1 className="page-title">{messages.liked}</h1></header><FeedContent empty="liked" emptyActionHref={`/${locale}`} labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
   const result = await fetchLiked({cursor, token: access.token})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/liked?${new URLSearchParams({cursor: nextCursor})}` : undefined
-  return <main><header className="page-header"><h1 className="page-title">{messages.liked}</h1></header><FeedContent canMutate empty="liked" labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
+  return <main className="collection-page"><header className="page-header collection-header"><h1 className="page-title">{messages.liked}</h1></header><FeedContent canMutate empty="liked" emptyActionHref={`/${locale}`} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
 }

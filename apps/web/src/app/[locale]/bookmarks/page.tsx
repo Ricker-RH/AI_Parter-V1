@@ -10,10 +10,10 @@ export default async function BookmarksPage({params, searchParams}: {params: Pro
   const {cursor} = await searchParams
   const access = await requireAuthenticatedPage({locale, returnTo: `/${locale}/bookmarks${cursor ? `?${new URLSearchParams({cursor})}` : ''}`})
   const messages = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><header className="page-header"><h1 className="page-title">{messages.bookmarks}</h1></header><FeedContent empty="bookmarks" labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
+  if (access.status === 'unavailable') return <main className="collection-page"><header className="page-header collection-header"><h1 className="page-title">{messages.bookmarks}</h1></header><FeedContent empty="bookmarks" emptyActionHref={`/${locale}`} labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
   const result = await fetchBookmarks({cursor, token: access.token})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo: `/${locale}/bookmarks${cursor ? `?${new URLSearchParams({cursor})}` : ''}`})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/bookmarks?${new URLSearchParams({cursor: nextCursor})}` : undefined
-  return <main><header className="page-header"><h1 className="page-title">{messages.bookmarks}</h1></header><FeedContent canMutate empty="bookmarks" labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={`/${locale}/bookmarks${cursor ? `?${new URLSearchParams({cursor})}` : ''}`} /></main>
+  return <main className="collection-page"><header className="page-header collection-header"><h1 className="page-title">{messages.bookmarks}</h1></header><FeedContent canMutate empty="bookmarks" emptyActionHref={`/${locale}`} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={`/${locale}/bookmarks${cursor ? `?${new URLSearchParams({cursor})}` : ''}`} /></main>
 }

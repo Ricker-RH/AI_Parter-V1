@@ -11,11 +11,13 @@ export interface SocialLabels {
   comments: string
   commentsEmptyTitle?: string
   commentsEmptyDescription?: string
+  commentSortChronological?: string
   deletedComment: string
   follow: string
   followingAction: string
   homeEmptyTitle: string
   homeEmptyDescription: string
+  home?: string
   humanAccount: string
   interactionError: string
   loadMore: string

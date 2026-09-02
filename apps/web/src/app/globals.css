@@ -358,6 +358,21 @@ button {
   color: var(--shell-muted);
   margin: 0;
 }
+.empty-action {
+  align-items: center;
+  background: var(--shell-text);
+  border-radius: 999px;
+  color: var(--shell-surface);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 650;
+  justify-content: center;
+  margin-top: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  width: fit-content;
+}
+.empty-action:hover { opacity: .84; }
 .feed-list {
   display: grid;
 }
@@ -1949,12 +1964,12 @@ button {
   .mobile-link .nav-icon { height: 24px; width: 24px; }
   .mobile-link span { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .shell[data-shell="public"] .content { height: 100dvh; overflow: hidden; }
-  .home-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100dvh - 56px - env(safe-area-inset-bottom) - 50px); overflow: hidden; }
+  .home-page, .collection-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100dvh - 56px - env(safe-area-inset-bottom) - 50px); overflow: hidden; }
   .home-header { display: block; min-height: 0 !important; padding: 0 !important; }
   .home-title { height: 1px; margin: -1px !important; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .mobile-feed-tabs { background: var(--shell-surface); border-bottom: 1px solid var(--shell-border); gap: 0; margin-top: 4px; overflow: visible; width: 100%; z-index: 24; }
   .mobile-feed-tabs > .tab { align-items: end; display: flex; flex: 1; font-size: 15px; justify-content: center; min-height: 40px; padding: 0 8px 3px; text-align: center; width: 50%; }
-  .home-page > .feed-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .home-page > .feed-list, .collection-page > .feed-list, .collection-page > .empty { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .search-category-tabs { display: block; }
   .search-form { padding-inline: 12px; }
   .search-empty { min-height: 280px; padding-inline: 20px; }
@@ -1991,8 +2006,8 @@ button {
   .shell[data-shell="public"] .rail-expand::after { content: none; }
   .shell[data-shell="public"] .rail-expand svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 2; width: 20px; }
   .shell[data-shell="public"] .desktop-nav[data-expanded] .nav-link-label { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 7px; clip: auto; height: auto; left: 54px; margin: 0; padding: 9px 12px; width: max-content; z-index: 20; }
-  .home-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; overflow: hidden; }
-  .home-page > .feed-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .home-page, .collection-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; overflow: hidden; }
+  .home-page > .feed-list, .collection-page > .feed-list, .collection-page > .empty { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .post-card { padding-inline: 24px; }
 }
 
@@ -2002,8 +2017,8 @@ button {
   .shell[data-shell="public"] .desktop-nav { bottom: 0; left: 0; position: fixed; top: 0; width: 248px; z-index: 10; }
   .mobile-nav, .mobile-top-bar { display: none; }
   .desktop-nav .rail-controls, .mobile-feed-tabs { display: none; }
-  .home-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; overflow: hidden; }
-  .home-page > .feed-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .home-page, .collection-page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; overflow: hidden; }
+  .home-page > .feed-list, .collection-page > .feed-list, .collection-page > .empty { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .desktop-nav .brand-logo-full { display: block; }
   .desktop-nav .brand-logo-compact { display: none; }
   .desktop-nav-compact { display: block; overflow: visible; padding: 24px 10px; position: relative; }

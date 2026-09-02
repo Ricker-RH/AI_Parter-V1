@@ -6,9 +6,9 @@ import {PostCard} from './PostCard'
 import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
 
-export function FeedContent({result, locale, labels, empty = 'home', moreHref, canMutate = false, returnTo}: {result: SocialApiResult<FeedPage>; locale: Locale; labels: SocialLabels; empty?: 'home' | 'bookmarks' | 'liked'; moreHref?: string | undefined; canMutate?: boolean; returnTo?: string}) {
+export function FeedContent({result, locale, labels, empty = 'home', emptyActionHref, moreHref, canMutate = false, returnTo}: {result: SocialApiResult<FeedPage>; locale: Locale; labels: SocialLabels; empty?: 'home' | 'bookmarks' | 'liked'; emptyActionHref?: string; moreHref?: string | undefined; canMutate?: boolean; returnTo?: string}) {
   if (result.status !== 'ok') return <ResultState labels={labels} result={result} />
-  if (result.data.items.length === 0) return <ResultState empty={empty} labels={labels} result={{status: 'not-found'}} />
+  if (result.data.items.length === 0) return <ResultState {...(emptyActionHref ? {actionHref: emptyActionHref} : {})} empty={empty} labels={labels} result={{status: 'not-found'}} />
   const referenceTime = Date.now()
   return <div className="feed-list">{result.data.items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} {...(returnTo ? {returnTo} : {})} />)}{result.data.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}</div>
 }

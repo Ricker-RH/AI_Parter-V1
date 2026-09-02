@@ -19,6 +19,13 @@ describe('liked page', () => {
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/liked?cursor=opaque'})
     expect(fetchLiked).toHaveBeenCalledWith({cursor: 'opaque', token: 'token'})
     expect(screen.getByRole('heading', {name: 'Liked'})).toBeVisible()
+    expect(document.querySelector('.collection-page')).toBeTruthy()
+  })
+
+  it('offers a real return to Home when the liked collection is empty', async () => {
+    render(await LikedPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
+
+    expect(screen.getByRole('link', {name: 'Home'})).toHaveAttribute('href', '/en')
   })
 
   it('does not read private likes for an anonymous visitor', async () => {

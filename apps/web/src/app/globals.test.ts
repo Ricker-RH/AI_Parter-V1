@@ -60,6 +60,13 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.mobile-link span \{[^}]*clip:/)
   })
 
+  it('uses the Home feed frame contract for liked and saved collections at every responsive boundary', () => {
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: calc\(100dvh - 56px - env\(safe-area-inset-bottom\) - 50px\)[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page > \.feed-list, \.collection-page > \.feed-list, \.collection-page > \.empty \{[^}]*overflow-y: auto/)
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*height: 100%[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.home-page > \.feed-list, \.collection-page > \.feed-list, \.collection-page > \.empty \{[^}]*overflow-y: auto/)
+  })
+
   it('constrains one image and makes multi-image posts a snap-scrolling rail without page overflow', () => {
     expect(stylesheet).toMatch(/\.post-media-rail \{[^}]*max-width: 100%[^}]*overflow-x: auto[^}]*scroll-snap-type: x mandatory/)
     expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="single"\] \{[^}]*overflow: hidden/)
@@ -84,5 +91,11 @@ describe('ordinary-user fluid shell CSS contract', () => {
 
   it('uses a single separator between a detail post and its comments', () => {
     expect(stylesheet).toMatch(/\.comments-section \{[^}]*border-top: 0/)
+  })
+
+  it('makes post detail one bounded scroll region beneath opaque fixed chrome', () => {
+    expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*display: grid[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: 100%[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/\.post-detail-content \{[^}]*min-height: 0[^}]*overflow-y: auto[^}]*overscroll-behavior: contain/)
+    expect(stylesheet).toMatch(/\.post-detail-header \{[^}]*background: var\(--shell-surface\)[^}]*position: sticky/)
   })
 })
