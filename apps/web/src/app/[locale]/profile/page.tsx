@@ -9,5 +9,5 @@ export default async function ProfilePage({params}: {params: Promise<{locale: st
   const access = await requireAuthenticatedPage({locale, returnTo: `/${locale}/profile`})
   const m = await getMessages(locale)
   if (access.status === 'unavailable') return <main><h1 className="sr-only">{m.profile}</h1><section className="empty" role="alert"><p>{m.myProfilePanel.unavailable}</p></section></main>
-  return <main><h1 className="sr-only">{m.profile}</h1><MyProfilePanel labels={m.myProfilePanel} locale={locale}/></main>
+  return <main><MyProfilePanel labels={m.myProfilePanel} locale={locale} socialLabels={m}/></main>
 }

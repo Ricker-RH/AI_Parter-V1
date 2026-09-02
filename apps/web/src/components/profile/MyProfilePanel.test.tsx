@@ -4,6 +4,8 @@ import {fileURLToPath} from 'node:url'
 import {StrictMode} from 'react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {MyProfilePanel} from './MyProfilePanel.js'
+vi.mock('./MyProfileTabs.js', () => ({MyProfileTabs: () => <div aria-label="Profile sections" role="tablist"><button role="tab">My IPs</button><button role="tab">Liked</button><button role="tab">Saved</button><button role="tab">Following</button></div>}))
+vi.mock('../GlobalMoreMenu.js', () => ({GlobalMoreMenu: ({labels}: {labels: {more: string}}) => <button aria-label={labels.more} type="button">{labels.more}</button>}))
 
 const labels = {
   loading: 'Loading profile…', authRequired: 'Sign in required', signIn: 'Sign in',
@@ -12,6 +14,7 @@ const labels = {
   displayName: 'Name', username: 'Username', bio: 'Bio', locale: 'Language',
   languageEnglish: 'English', languageChinese: '简体中文', saved: 'Profile saved.',
   saveError: 'Profile could not be saved.', invalidName: 'Enter a name.', invalidUsername: 'Use 3–30 lowercase letters, numbers, or underscores.',
+  back:'Back',search:'Search',more:'More',tabs:'Profile sections',myIps:'My IPs',liked:'Liked',savedTab:'Saved',following:'Following',loadingSection:'Loading section…',unavailableSection:'Unable to load this section.',retrySection:'Try again',myIpsEmpty:'No IPs yet',likedEmpty:'No liked posts yet',savedEmpty:'No saved posts yet',followingEmpty:'Not following anyone yet',
 }
 const account = {id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30', kind: 'human', username: 'rui', displayName: 'Rui', bio: null, preferredLocale: 'en', creatorModeEnabled: false}
 const moduleUrl = import.meta.url
@@ -32,7 +35,10 @@ describe('MyProfilePanel', () => {
       .mockResolvedValueOnce(Response.json({...account, displayName: 'Rui Updated', bio: 'Hello'}))
     vi.stubGlobal('fetch', request)
     render(<MyProfilePanel labels={labels} locale="en" />)
-    expect(await screen.findByText('@rui')).toBeVisible()
+    expect(await screen.findByRole('heading',{level:1,name:'@rui'})).toBeVisible()
+    expect(screen.getByRole('heading',{level:1,name:'@rui'})).toBeVisible()
+    expect(screen.getByRole('link',{name:'Back'})).toHaveAttribute('href','/en')
+    expect(screen.getAllByRole('tab')).toHaveLength(4)
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     fireEvent.change(screen.getByLabelText('Name'), {target: {value: 'Rui Updated'}})
     fireEvent.change(screen.getByLabelText('Bio'), {target: {value: 'Hello'}})
@@ -59,7 +65,7 @@ describe('MyProfilePanel', () => {
   it('validates edits, supports cancel, and does not show a human-post composer', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(account)))
     render(<MyProfilePanel labels={labels} locale="en" />)
-    await screen.findByText('@rui')
+    await screen.findByRole('heading',{level:1,name:'@rui'})
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     fireEvent.change(screen.getByLabelText('Name'), {target: {value: '   '}})
     fireEvent.click(screen.getByRole('button', {name: 'Save changes'}))
@@ -76,7 +82,7 @@ describe('MyProfilePanel', () => {
       .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveSave = resolve }))
     vi.stubGlobal('fetch', request)
     render(<MyProfilePanel labels={labels} locale="en" />)
-    await screen.findByText('@rui')
+    await screen.findByRole('heading',{level:1,name:'@rui'})
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     fireEvent.click(screen.getByRole('button', {name: 'Save changes'}))
     expect(screen.getByRole('button', {name: 'Saving…'})).toBeDisabled()
@@ -89,8 +95,8 @@ describe('MyProfilePanel', () => {
     const {container} = render(<MyProfilePanel labels={labels} locale="en" />)
 
     expect(await screen.findByRole('heading', {level: 2, name: 'A very long profile display name that must wrap safely'})).toBeVisible()
-    const identity = container.querySelector('header')
-    expect(identity?.children[0]).toContainElement(screen.getByText('@rui'))
+    const identity = container.querySelector('section header')
+    expect(identity?.children[0]).toHaveTextContent('@rui')
     expect(identity?.children[1]).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('button', {name: 'Edit profile'}).className).toContain('editAction')
     expect(stylesheet).toMatch(/\.identityRow\s*\{[^}]*justify-content:\s*space-between/s)
@@ -98,10 +104,10 @@ describe('MyProfilePanel', () => {
     expect(stylesheet).toMatch(/overflow-wrap:\s*anywhere/)
   })
 
-  it('uses an edge-to-edge mobile profile and a bounded desktop surface', () => {
+  it('uses an edge-to-edge mobile surface and a bordered desktop surface', () => {
     expect(stylesheet).toMatch(/\.profile\s*\{[^}]*max-width:\s*640px/s)
-    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.profile\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*24px/s)
-    expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.profile\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/s)
+    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/s)
+    expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.surface\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/s)
   })
 
   it('keeps the newest StrictMode profile load when an aborted older request resolves late', async () => {
@@ -150,7 +156,7 @@ describe('MyProfilePanel', () => {
       })
     vi.stubGlobal('fetch', request)
     const view = render(<MyProfilePanel labels={labels} locale="en" />)
-    await screen.findByText('@rui')
+    await screen.findByRole('heading',{level:1,name:'@rui'})
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     fireEvent.click(screen.getByRole('button', {name: 'Save changes'}))
     await waitFor(() => expect(saveSignal).toBeDefined())

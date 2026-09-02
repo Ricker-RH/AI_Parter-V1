@@ -5,11 +5,15 @@ import Link from 'next/link'
 import {useEffect, useRef, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import styles from './MyProfilePanel.module.css'
+import {ProfilePageHeader} from './ProfilePageHeader'
+import {MyProfileTabs} from './MyProfileTabs'
+import type {SocialLabels} from '../social/types'
 
 export type MyProfileLabels = {
   loading: string; authRequired: string; signIn: string; unavailable: string; retry: string; emptyBio: string
   edit: string; save: string; saving: string; cancel: string; displayName: string; username: string; bio: string; locale: string
   languageEnglish: string; languageChinese: string; saved: string; saveError: string; invalidName: string; invalidUsername: string
+  back:string;search:string;more:string;tabs:string;myIps:string;liked:string;savedTab:string;following:string;loadingSection:string;unavailableSection:string;retrySection:string;myIpsEmpty:string;likedEmpty:string;savedEmpty:string;followingEmpty:string
 }
 
 type State = {status: 'loading'} | {status: 'auth'} | {status: 'unavailable'} | {status: 'ready'; account: Account} | {status: 'editing'; account: Account}
@@ -19,7 +23,7 @@ function parseAccount(value: unknown): Account | null {
   return result.success && result.data.kind === 'human' ? result.data : null
 }
 
-export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; locale: Locale}) {
+export function MyProfilePanel({labels, locale, socialLabels}: {labels: MyProfileLabels; locale: Locale; socialLabels?: SocialLabels}) {
   const [state, setState] = useState<State>({status: 'loading'})
   const [draft, setDraft] = useState<UpdateCurrentAccount>({})
   const [pending, setPending] = useState(false)
@@ -112,7 +116,7 @@ export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; local
     finally { if (isCurrentRequest(request)) setPending(false); finishRequest(request) }
   }
 
-  return <section className={styles.profile} aria-labelledby="my-profile-title">
+  return <div className={styles.page}><ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/><div className={styles.surface}><section className={styles.profile} aria-labelledby="my-profile-title">
     <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div><div className={styles.avatar} aria-hidden="true">{account.displayName.slice(0, 1).toUpperCase()}</div></header>
     {!editing ? <><div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p><dl><div><dt>{labels.locale}</dt><dd>{account.preferredLocale === 'zh-CN' ? labels.languageChinese : labels.languageEnglish}</dd></div></dl></div><button className={styles.editAction} onClick={beginEdit} type="button">{labels.edit}</button></> : <form className={styles.form} onSubmit={(event) => {event.preventDefault(); if (!pending) void save()}}>
       <label>{labels.displayName}<input aria-label={labels.displayName} maxLength={80} onChange={(event) => setDraft({...draft, displayName: event.target.value})} value={String(value('displayName'))}/></label>
@@ -125,5 +129,5 @@ export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; local
       {message ? <p role="status">{message}</p> : null}
     </form>}
     {!editing && message ? <p className={styles.message} role="status">{message}</p> : null}
-  </section>
+  </section>{!editing?<MyProfileTabs labels={{tabs:labels.tabs,myIps:labels.myIps,liked:labels.liked,saved:labels.savedTab,following:labels.following,loadingSection:labels.loadingSection,unavailableSection:labels.unavailableSection,retrySection:labels.retrySection,myIpsEmpty:labels.myIpsEmpty,likedEmpty:labels.likedEmpty,savedEmpty:labels.savedEmpty,followingEmpty:labels.followingEmpty}} locale={locale} socialLabels={socialLabels??({} as SocialLabels)}/>:null}</div></div>
 }

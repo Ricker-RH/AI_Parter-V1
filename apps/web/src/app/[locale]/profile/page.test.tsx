@@ -20,20 +20,18 @@ describe('my profile page', () => {
     })))
   })
 
-  it('keeps one accessible page heading without the bulky visible page header', async () => {
+  it('uses the shared contextual profile header without a bulky visible page header', async () => {
     const {container} = render(await ProfilePage({params: Promise.resolve({locale: 'en'})}))
 
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/profile'})
-    expect(screen.getByRole('heading', {level: 1, name: 'Profile'})).toHaveClass('sr-only')
     expect(container.querySelector('.page-header')).toBeNull()
-    expect(await screen.findByText('@rui')).toBeVisible()
+    expect(await screen.findByRole('heading', {level: 1, name: '@rui'})).toBeVisible()
   })
 
-  it('uses the same accessible hierarchy for the honest unavailable state', async () => {
+  it('keeps the same page shell for the honest unavailable state', async () => {
     access.mockResolvedValue({status: 'unavailable'})
     const {container} = render(await ProfilePage({params: Promise.resolve({locale: 'en'})}))
 
-    expect(screen.getByRole('heading', {level: 1, name: 'Profile'})).toHaveClass('sr-only')
     expect(container.querySelector('.page-header')).toBeNull()
     expect(screen.getByRole('alert')).toHaveTextContent('Unable to load your profile')
   })
