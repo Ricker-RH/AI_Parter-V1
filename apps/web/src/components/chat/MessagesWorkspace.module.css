@@ -16,15 +16,14 @@
 .detailHeader { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; min-height: 60px; padding: 0 16px; }
 .detailHeader h2 { font-size: 19px; letter-spacing: -0.015em; margin: 0; }
 .conversationList { display: grid; }
-.conversationRow { display: grid; gap: 10px; grid-template-columns: 42px minmax(0, 1fr); min-height: 72px; padding: 12px 16px; }
+.conversationRow { display: grid; gap: 12px; grid-template-columns: 48px minmax(0, 1fr); min-height: 76px; padding: 14px 16px; }
 .conversationRow:hover, .conversationRow[aria-current="page"] { background: var(--shell-hover); }
-.avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: inline-flex; flex: 0 0 auto; font-size: 14px; font-weight: 700; height: 40px; justify-content: center; width: 40px; }
+.avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: inline-flex; flex: 0 0 auto; font-size: 16px; font-weight: 700; height: 48px; justify-content: center; width: 48px; }
 .conversationCopy { display: grid; min-width: 0; }
 .conversationTitle { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
 .conversationTitle strong { min-width: 0; overflow-wrap: anywhere; }
 .preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conversationTitle time, .username, .preview, .listNotice, .detailNotice, .detailIdentity p, .composerNotice, .composerError { color: var(--shell-muted); font-size: 13px; }
-.username { line-height: 1.25; }
+.preview, .listNotice, .detailNotice, .detailIdentity p, .composerNotice, .composerError { color: var(--shell-muted); font-size: 13px; }
 .preview { margin-top: 3px; }
 .listNotice, .detailNotice { margin: 0; padding: 20px 16px; }
 .searchEmpty { color: var(--shell-muted); margin: 0; padding: 32px 16px; text-align: center; }
@@ -63,5 +62,23 @@
 .composer button:disabled { cursor: not-allowed; opacity: .55; }.composerNotice, .composerError { grid-column: 1 / -1; margin: 0; }.composerError { color: var(--shell-text); }.retry { grid-column: 1 / -1; justify-self: start; }
 .notificationsPage { min-height: 0; min-width: 0; overflow-y: auto; }
 .mobileDetailSectionHeader { display: none; }
-@media (max-width: 699px) { .workspace[data-selected="true"] .listPane, .emptyPane { display: none; }.workspace, .detailPane { min-height: 0; }.mobileDetailSectionHeader { display: block; } }
+@media (max-width: 699px) {
+  :global(.messages-shell[data-mobile-top-bar="hidden"] .mobile-top-bar) { display: none; }
+  :global(.messages-shell[data-mobile-top-bar="hidden"] .content) { grid-template-rows: minmax(0, 1fr); }
+  .workspace { height: 100%; min-height: 0; }
+  .workspace[data-selected="true"] .listPane, .emptyPane { display: none; }
+  .workspace, .detailPane { min-height: 0; }
+  .listPane { min-height: 0; overflow-y: auto; padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .detailPane { height: 100%; }
+  .composer { padding-bottom: calc(12px + 50px + env(safe-area-inset-bottom)); }
+  .notificationsPage { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .sectionTabs { gap: 4px; }
+  .sectionTabs a { background: transparent; border: 0; font-size: 13px; font-weight: 500; isolation: isolate; min-height: 44px; padding: 0 12px; position: relative; }
+  .sectionTabs a::before { background: transparent; border: 1px solid var(--shell-border); border-radius: 999px; content: ""; inset: 7px 0; position: absolute; z-index: -1; }
+  .sectionTabs a:hover { background: transparent; }
+  .sectionTabs a:hover::before { background: var(--shell-hover); }
+  .sectionTabs a[aria-current="page"] { background: transparent; border: 0; font-weight: 650; }
+  .sectionTabs a[aria-current="page"]::before { background: var(--shell-hover); border-color: var(--shell-muted); }
+  .mobileDetailSectionHeader { display: block; }
+}
 @media (min-width: 700px) { .workspace { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) { grid-template-columns: minmax(0, 720px); justify-content: center; }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) .listPane { border-right: 0; }.listPane { border-bottom: 0; border-right: 1px solid var(--shell-border); }.detailPane, .emptyPane { min-height: 100vh; }.back { display: none; }.notificationsPage { margin: 0 auto; max-width: 720px; width: 100%; } }

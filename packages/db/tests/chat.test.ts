@@ -53,6 +53,15 @@ function fakeWithActor(responses: Array<QueryResult<Row>>) {
 }
 
 describe('chat repository', () => {
+  it('excludes conversations with no sent or received messages before applying list pagination', async () => {
+    const fake = fakeWithActor([result([conversationRow()])])
+
+    await createChatRepository(fake.withActor).listConversations(actor, {limit: 20, sendEnabled: true})
+
+    expect(fake.queries[0]?.text).toMatch(/WHERE EXISTS \(\s*SELECT 1\s*FROM public\.chat_messages message\s*WHERE message\.conversation_id = conversation\.id\s*AND message\.delivery_state = 'sent'\s*\)/)
+    expect(fake.queries[0]?.text).toMatch(/EXISTS \([\s\S]*\)\s*AND \(\$1::timestamptz IS NULL/)
+  })
+
   it('lists owner-scoped conversations with contract cursors and no provider ids', async () => {
     const fake = fakeWithActor([result([conversationRow(), conversationRow({id: '00000000-0000-4000-8000-000000000009', updated_at: now})]),])
     const page = await createChatRepository(fake.withActor).listConversations(actor, {limit: 1, sendEnabled: true})

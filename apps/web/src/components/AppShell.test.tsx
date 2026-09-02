@@ -73,6 +73,7 @@ describe('AppShell', () => {
     pathname = '/en/messages'
     render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)
     expect(document.querySelector('[data-shell="messages"]')).toHaveAttribute('data-nav-variant', 'compact')
+    expect(document.querySelector('[data-shell="messages"]')).toHaveAttribute('data-mobile-top-bar', 'hidden')
     expect(document.querySelector('.messages-shell')).toHaveClass('shell')
     expect(document.querySelector('.desktop-nav-compact')).toBeInTheDocument()
     expect(document.querySelector('.messages-shell .mobile-nav')).toBeInTheDocument()

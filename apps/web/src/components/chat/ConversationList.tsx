@@ -11,11 +11,6 @@ import styles from './MessagesWorkspace.module.css'
 
 export type ConversationListLabels = MessagesSectionLabels & {noConversations: string; emptyDescription: string; emptyAction: string; searchLabel: string; searchPlaceholder: string; noSearchResults: string; partialSearchResults: string; loadMore: string; loadingMore: string; loadMoreError: string; emptyHistory?: string; unavailable?: string; unavailableDescription: string; unavailableAction: string; unavailablePending: string}
 
-export function formatConversationStamp(value: string, locale: Locale) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(locale, {month: 'short', day: 'numeric', timeZone: 'UTC'}).format(date)
-}
-
 type ConversationEntry = {conversation: ChatConversationSummary; listCursor?: string | undefined}
 function initialEntries(items: ChatConversationSummary[], initialCursor?: string) { return items.map((conversation) => ({conversation, ...(initialCursor ? {listCursor: initialCursor} : {})})) }
 function appendUnique(current: ConversationEntry[], incoming: ConversationEntry[]) { const seen = new Set(current.map(({conversation}) => conversation.id)); return [...current, ...incoming.filter(({conversation}) => { if (seen.has(conversation.id)) return false; seen.add(conversation.id); return true })] }
@@ -81,7 +76,7 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
       const last = conversation.lastMessage
       return <Link aria-current={conversation.id === selectedId ? 'page' : undefined} className={styles.conversationRow} href={href} key={conversation.id}>
         <span aria-hidden="true" className={styles.avatar}>{conversation.ipProfile.displayName.slice(0, 1).toUpperCase()}</span>
-        <span className={styles.conversationCopy}><span className={styles.conversationTitle}><strong>{conversation.ipProfile.displayName}</strong><time dateTime={conversation.updatedAt}>{formatConversationStamp(conversation.updatedAt, locale)}</time></span><span className={styles.username}>@{conversation.ipProfile.username}</span><span className={styles.preview}>{last?.body ?? labels.emptyHistory ?? ''}</span></span>
+        <span className={styles.conversationCopy}><span className={styles.conversationTitle}><strong>{conversation.ipProfile.displayName}</strong></span><span className={styles.preview}>{last?.body}</span></span>
       </Link>
     })}</nav>
     {loadMoreError ? <p className={styles.paginationError} role="alert">{labels.loadMoreError}</p> : null}

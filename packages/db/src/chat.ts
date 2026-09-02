@@ -121,7 +121,13 @@ export function createChatRepository(runWithActor: WithActor = withActor): ChatR
       const cursor = input.cursor ? decodeChatConversationCursor(input.cursor) : null
       return runWithActor(actor, async (client) => {
         const result = await client.query<ConversationRow>(`${conversationProjection}
-WHERE ($1::timestamptz IS NULL OR (conversation.updated_at, conversation.id) < ($1::timestamptz, $2::uuid))
+WHERE EXISTS (
+  SELECT 1
+  FROM public.chat_messages message
+  WHERE message.conversation_id = conversation.id
+    AND message.delivery_state = 'sent'
+)
+AND ($1::timestamptz IS NULL OR (conversation.updated_at, conversation.id) < ($1::timestamptz, $2::uuid))
 ORDER BY conversation.updated_at DESC, conversation.id DESC
 LIMIT $3`, [cursor?.updatedAt ?? null, cursor?.id ?? null, take + 1])
         const rows = result.rows.slice(0, take)

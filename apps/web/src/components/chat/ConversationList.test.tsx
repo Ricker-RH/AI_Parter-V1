@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs'
 import {afterEach, expect, describe, it, vi} from 'vitest'
 import {encodeChatConversationCursor} from '@aifans/contracts'
 import {StrictMode} from 'react'
-import {ConversationList, formatConversationStamp} from './ConversationList.js'
+import {ConversationList} from './ConversationList.js'
 
 vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
 
@@ -20,8 +20,9 @@ describe('ConversationList', () => {
     const link = screen.getByRole('link', {name: /Luma/})
     expect(link).toHaveAttribute('href', `/en/messages/${item.id}?listCursor=${encodeURIComponent(originCursor)}`)
     expect(link).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByText('@luma')).toBeVisible()
+    expect(screen.queryByText('@luma')).toBeNull()
     expect(screen.getByText('Last real message')).toBeVisible()
+    expect(screen.queryByText('Sep 1')).toBeNull()
   })
 
   it('uses honest empty and pagination states', () => {
@@ -50,18 +51,6 @@ describe('ConversationList', () => {
     fireEvent.change(search, {target: {value: 'missing'}})
     expect(await screen.findByText('No matching conversations')).toBeVisible()
     expect(screen.queryByText('No conversations yet')).toBeNull()
-  })
-
-  it('formats timestamps deterministically across server and browser timezones', () => {
-    const original = process.env.TZ
-    process.env.TZ = 'UTC'
-    const server = formatConversationStamp('2026-09-01T23:30:00.000Z', 'en')
-    process.env.TZ = 'Asia/Shanghai'
-    const browser = formatConversationStamp('2026-09-01T23:30:00.000Z', 'en')
-    if (original === undefined) delete process.env.TZ
-    else process.env.TZ = original
-    expect(server).toBe('Sep 1')
-    expect(browser).toBe(server)
   })
 
   it('keeps pagination mounted through Strict Effects setup-cleanup-setup', async () => {
@@ -166,6 +155,10 @@ describe('ConversationList', () => {
     expect(stylesheet).not.toMatch(/\.sectionTabs a\[aria-current="page"\] \{[^}]*background: var\(--shell-text\)/)
     expect(stylesheet).not.toMatch(/100dvh/)
     expect(stylesheet).toMatch(/\.workspace, \.detailPane \{ min-height: 0; \}/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*:global\(\.messages-shell\[data-mobile-top-bar="hidden"\] \.mobile-top-bar\) \{ display: none; \}/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*\.sectionTabs a \{[\s\S]*min-height: 44px/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*\.sectionTabs a::before \{[\s\S]*inset: 7px 0/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*\.listPane \{[\s\S]*padding-bottom: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
     const shellStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
     expect(shellStylesheet).toMatch(/\.messages-shell \{ display: grid; grid-template-rows: minmax\(0, 1fr\); height: 100dvh; min-height: 0; overflow: hidden; \}/)
     expect(shellStylesheet).toMatch(/\.messages-shell \.content \{ display: grid; grid-template-rows: auto minmax\(0, 1fr\); min-height: 0; \}/)
