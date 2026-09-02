@@ -2,9 +2,10 @@ import {execFileSync} from 'node:child_process'
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
+import {fileURLToPath} from 'node:url'
 import {afterEach, describe, expect, it} from 'vitest'
 
-const verifier = join(process.cwd(), 'scripts/verify-prerender-shell.mjs')
+const verifier = join(dirname(fileURLToPath(import.meta.url)), '../../scripts/verify-prerender-shell.mjs')
 const fixtures: string[] = []
 const fixtureLabels = {primary: 'Primary', forYou: 'For you', following: 'Following', search: 'Search', messages: 'Messages', liked: 'Liked', bookmarks: 'Bookmarks', myProfile: 'Profile', home: 'Home', creatorCenter: 'Creator', collections: 'Collections'}
 
