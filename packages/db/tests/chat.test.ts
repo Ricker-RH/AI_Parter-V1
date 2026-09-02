@@ -58,8 +58,9 @@ describe('chat repository', () => {
 
     await createChatRepository(fake.withActor).listConversations(actor, {limit: 20, sendEnabled: true})
 
-    expect(fake.queries[0]?.text).toMatch(/WHERE EXISTS \(\s*SELECT 1\s*FROM public\.chat_messages message\s*WHERE message\.conversation_id = conversation\.id\s*AND message\.delivery_state = 'sent'\s*\)/)
-    expect(fake.queries[0]?.text).toMatch(/EXISTS \([\s\S]*\)\s*AND \(\$1::timestamptz IS NULL/)
+    expect(fake.queries[0]?.text).toMatch(/JOIN LATERAL \([\s\S]*WHERE conversation_id = conversation\.id\s*AND delivery_state = 'sent'[\s\S]*ORDER BY created_at DESC, id DESC[\s\S]*\) last_message ON TRUE/)
+    expect(fake.queries[0]?.text).not.toContain('WHERE EXISTS')
+    expect(fake.queries[0]?.text).toMatch(/WHERE \(\$1::timestamptz IS NULL/)
   })
 
   it('lists owner-scoped conversations with contract cursors and no provider ids', async () => {

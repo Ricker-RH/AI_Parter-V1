@@ -12,7 +12,7 @@ import styles from './MessagesWorkspace.module.css'
 export type ConversationListLabels = MessagesSectionLabels & {noConversations: string; emptyDescription: string; emptyAction: string; searchLabel: string; searchPlaceholder: string; noSearchResults: string; partialSearchResults: string; loadMore: string; loadingMore: string; loadMoreError: string; emptyHistory?: string; unavailable?: string; unavailableDescription: string; unavailableAction: string; unavailablePending: string}
 
 type ConversationEntry = {conversation: ChatConversationSummary; listCursor?: string | undefined}
-function initialEntries(items: ChatConversationSummary[], initialCursor?: string) { return items.map((conversation) => ({conversation, ...(initialCursor ? {listCursor: initialCursor} : {})})) }
+function initialEntries(items: ChatConversationSummary[], initialCursor?: string) { return items.filter((conversation) => conversation.lastMessage !== null).map((conversation) => ({conversation, ...(initialCursor ? {listCursor: initialCursor} : {})})) }
 function appendUnique(current: ConversationEntry[], incoming: ConversationEntry[]) { const seen = new Set(current.map(({conversation}) => conversation.id)); return [...current, ...incoming.filter(({conversation}) => { if (seen.has(conversation.id)) return false; seen.add(conversation.id); return true })] }
 
 export function ConversationList({items, labels, locale, selectedId, initialCursor, nextCursor: initialNextCursor, unavailable = false}: {items: ChatConversationSummary[]; labels: ConversationListLabels; locale: Locale; selectedId?: string | undefined; initialCursor?: string | undefined; nextCursor?: string | null | undefined; unavailable?: boolean | undefined}) {

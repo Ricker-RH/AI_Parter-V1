@@ -70,18 +70,19 @@ export type CompleteProviderReplyInput = {
 
 const utcTimestamp = (column: string) => `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 
-const conversationProjection = `
+function conversationProjection({sentOnly = false}: {sentOnly?: boolean} = {}) { return `
 SELECT conversation.id, conversation.ip_profile_id, ip.username, ip.display_name, ${utcTimestamp('conversation.updated_at')} AS updated_at,
   last_message.body AS last_body, last_message.role AS last_role, last_message.created_at AS last_created_at
 FROM public.chat_conversations conversation
 JOIN public.profiles ip ON ip.id = conversation.ip_profile_id
-LEFT JOIN LATERAL (
+${sentOnly ? 'JOIN' : 'LEFT JOIN'} LATERAL (
   SELECT body, role, ${utcTimestamp('created_at')} AS created_at
   FROM public.chat_messages
   WHERE conversation_id = conversation.id
+  ${sentOnly ? "AND delivery_state = 'sent'" : ''}
   ORDER BY created_at DESC, id DESC
   LIMIT 1
-) last_message ON TRUE`
+) last_message ON TRUE` }
 
 function iso(value: Date | string): string {
   return typeof value === 'string' ? z.iso.datetime().parse(value) : value.toISOString()
@@ -107,7 +108,7 @@ function conversation(row: ConversationRow, sendEnabled: boolean): ChatConversat
   })
 }
 async function getConversationFromClient(client: QueryClient, conversationId: string, sendEnabled: boolean): Promise<ChatConversationSummary | null> {
-  const result = await client.query<ConversationRow>(`${conversationProjection}
+  const result = await client.query<ConversationRow>(`${conversationProjection()}
 WHERE conversation.id = $1::uuid`, [conversationId])
   const row = result.rows[0]
   return row ? conversation(row, sendEnabled) : null
@@ -120,14 +121,8 @@ export function createChatRepository(runWithActor: WithActor = withActor): ChatR
       const take = limit(input.limit)
       const cursor = input.cursor ? decodeChatConversationCursor(input.cursor) : null
       return runWithActor(actor, async (client) => {
-        const result = await client.query<ConversationRow>(`${conversationProjection}
-WHERE EXISTS (
-  SELECT 1
-  FROM public.chat_messages message
-  WHERE message.conversation_id = conversation.id
-    AND message.delivery_state = 'sent'
-)
-AND ($1::timestamptz IS NULL OR (conversation.updated_at, conversation.id) < ($1::timestamptz, $2::uuid))
+        const result = await client.query<ConversationRow>(`${conversationProjection({sentOnly: true})}
+WHERE ($1::timestamptz IS NULL OR (conversation.updated_at, conversation.id) < ($1::timestamptz, $2::uuid))
 ORDER BY conversation.updated_at DESC, conversation.id DESC
 LIMIT $3`, [cursor?.updatedAt ?? null, cursor?.id ?? null, take + 1])
         const rows = result.rows.slice(0, take)
@@ -149,7 +144,7 @@ LIMIT $3`, [cursor?.updatedAt ?? null, cursor?.id ?? null, take + 1])
            ON CONFLICT (human_profile_id, ip_profile_id) DO NOTHING`,
           [input.humanProfileId, input.ipProfileId],
         )
-        const result = await client.query<ConversationRow>(`${conversationProjection}
+        const result = await client.query<ConversationRow>(`${conversationProjection()}
 WHERE conversation.human_profile_id = $1::uuid AND conversation.ip_profile_id = $2::uuid`, [input.humanProfileId, input.ipProfileId])
         const row = result.rows[0]
         return row ? conversation(row, input.sendEnabled) : null

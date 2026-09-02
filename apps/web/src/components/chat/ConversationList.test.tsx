@@ -34,6 +34,25 @@ describe('ConversationList', () => {
     expect(screen.getByRole('button', {name: 'Load more'})).toBeEnabled()
   })
 
+  it('does not show a conversation until it has a real message', () => {
+    render(<ConversationList items={[{...item, lastMessage: null}]} labels={labels} locale="en"/>)
+
+    expect(screen.queryByRole('link', {name: /Luma/})).toBeNull()
+    expect(screen.getByRole('heading', {name: 'No conversations yet'})).toBeVisible()
+  })
+
+  it('filters empty conversations returned by later pages', async () => {
+    const emptyConversation = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Empty'}, lastMessage: null}
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [emptyConversation], nextCursor: null})))
+    render(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+
+    await waitFor(() => expect(screen.queryByRole('button', {name: 'Load more'})).toBeNull())
+    expect(screen.queryByRole('link', {name: /Empty/})).toBeNull()
+    expect(screen.getByText('Last real message')).toBeVisible()
+  })
+
   it('keeps search active while it accumulates and de-duplicates the next cursor page', async () => {
     const second = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Orion', username: 'night_sky'}, lastMessage: {...item.lastMessage, body: 'A quiet constellation'}}
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [item, second], nextCursor: null})))
