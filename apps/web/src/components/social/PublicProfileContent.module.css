@@ -235,9 +235,3 @@
     padding: 24px 16px;
   }
 }
-
-@media (max-width: 359px) {
-  .profileActions {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}

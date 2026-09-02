@@ -93,5 +93,6 @@ describe('PublicProfileContent', () => {
     expect(stylesheet).toMatch(/@media \(max-width: 699px\)[\s\S]*?\.contextualTitle\s*\{[\s\S]*?clip:\s*rect\(0 0 0 0\)[\s\S]*?position:\s*absolute/)
     expect(stylesheet).toMatch(/overflow-wrap:\s*anywhere/)
     expect(stylesheet).toMatch(/min-height:\s*44px/)
+    expect(stylesheet).not.toMatch(/@media \(max-width: 359px\)[\s\S]*?\.profileActions\s*\{[\s\S]*?grid-template-columns/)
   })
 })
