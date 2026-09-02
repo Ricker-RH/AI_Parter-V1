@@ -8,7 +8,7 @@ export async function fetchCurrentAccountResult({cookie, timeoutMs = CURRENT_ACC
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetchAifansApi('/v1/me', {requestInit: {signal: controller.signal}, ...(token ? {getToken: async () => token} : {})})
+    const response = await fetchAifansApi('/v1/me', {policy: 'private-cache', requestInit: {signal: controller.signal}, ...(token ? {getToken: async () => token} : {})})
     if (response.status === 401) return {status: 'auth-required'}
     if (response.status === 204) return {status: 'anonymous'}
     if (!response.ok) return {status: 'unavailable'}

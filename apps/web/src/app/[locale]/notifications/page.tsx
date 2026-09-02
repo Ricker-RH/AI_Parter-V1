@@ -6,6 +6,8 @@ import {getMessages, isLocale} from '../../../i18n/config'
 import {fetchNotifications} from '../../../lib/social-api'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 
+export const instant = false
+
 export default async function NotificationsPage({params, searchParams}: {params: Promise<{locale: string}>; searchParams: Promise<{cursor?: string | string[]}>}) {
   const {locale} = await params
   if (!isLocale(locale)) notFound()

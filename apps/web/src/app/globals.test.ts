@@ -39,6 +39,10 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.loading-screen \{[^}]*min-height: 100dvh/)
     expect(stylesheet).toMatch(/\.loading-screen-mark \{[^}]*width: clamp\(112px, 24vw, 176px\)[^}]*animation: loading-mark-enter 240ms/)
     expect(stylesheet).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\.loading-screen-mark[^}]*animation: none/)
+    expect(stylesheet).toMatch(/\.route-shell-fallback-public \{[^}]*display: contents/)
+    expect(stylesheet).toMatch(/\.route-shell-fallback-loading \{[^}]*display: none/)
+    expect(stylesheet).toMatch(/html\[data-route-shell="admin"\][\s\S]*?\.route-shell-fallback-public[\s\S]*?display: none/)
+    expect(stylesheet).toMatch(/html\[data-route-shell="admin"\][\s\S]*?\.route-shell-fallback-loading[\s\S]*?display: contents/)
   })
 
   it('keeps every route skeleton and not-found recovery usable across mobile widths', () => {

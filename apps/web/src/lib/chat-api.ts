@@ -24,7 +24,7 @@ async function request<T>(
   try {
     const response = await fetchAifansApi(
       path,
-      token ? { getToken: async () => token } : undefined,
+      {policy: 'private-cache', ...(token ? { getToken: async () => token } : {})},
     );
     if (response.status === 401) return { status: "auth-required" };
     const body: unknown = await response.json();

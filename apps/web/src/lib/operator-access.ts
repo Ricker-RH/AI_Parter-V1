@@ -3,7 +3,7 @@ import {fetchAifansApi} from './server-api'
 export type OperatorPageAccess = 'operator' | 'anonymous' | 'forbidden' | 'unavailable'
 
 export async function getOperatorPageAccess(
-  fetcher: (path: string) => Promise<Response> = fetchAifansApi,
+  fetcher: (path: string) => Promise<Response> = (path) => fetchAifansApi(path, {policy: 'private-cache'}),
 ): Promise<OperatorPageAccess> {
   try {
     const response = await fetcher('/v1/admin/access')

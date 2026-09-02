@@ -8,7 +8,12 @@ import {readAdminReturnTo, readUserReturnTo} from '../../../../lib/auth/return-t
 // The recovery target is request URL data and intentionally remains blocking for now.
 export const instant = false
 
-const authModes = new Set<AuthMode>(['sign-in', 'sign-up', 'forgot-password', 'reset-password'])
+const authModeValues = ['sign-in', 'sign-up', 'forgot-password', 'reset-password'] as const satisfies readonly AuthMode[]
+const authModes = new Set<AuthMode>(authModeValues)
+
+export function generateStaticParams() {
+  return authModeValues.map((view) => ({view}))
+}
 
 export function readResetToken(value: string | string[] | undefined): string | undefined {
   return typeof value === 'string' && value.length >= 16 && value.length <= 2048 && /^[A-Za-z0-9._~-]+$/.test(value)

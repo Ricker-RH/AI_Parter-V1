@@ -5,6 +5,8 @@ import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../lib/auth/
 import {fetchConversations} from '../../../lib/chat-api'
 import {isCanonicalChatConversationCursor} from '../../../lib/auth/return-to'
 
+export const instant = false
+
 export default async function MessagesPage({params, searchParams}: {params: Promise<{locale: string}>; searchParams: Promise<{cursor?: string | string[]; [key: string]: string | string[] | undefined}>}) {
   const {locale} = await params
   if (!isLocale(locale)) notFound()

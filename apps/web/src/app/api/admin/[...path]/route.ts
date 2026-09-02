@@ -64,6 +64,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
     const body = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const upstream = await fetchAifansApi(`/v1/admin/${path}`, {
+      policy: 'live-no-store',
       requestInit: {
         body,
         headers: request.headers,

@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/verify-prerender-shell.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --project web"
+    "test": "vitest run --project web",
+    "verify:prerender-shell": "node scripts/verify-prerender-shell.mjs"
   },
   "dependencies": {
     "@aifans/contracts": "workspace:*",

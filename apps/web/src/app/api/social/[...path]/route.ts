@@ -63,7 +63,7 @@ async function proxy(request: Request, context: RouteContext, method: 'POST' | '
       try{body=await readCommentBody(request)}catch{return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})}
       if (!body.trim() || duplicateTopLevelKey(body)) return Response.json({code:'COMMENT_INVALID'},{status:422})
     }
-    const upstream = await fetchAifansApi(`/v1/${path}`, {requestInit: {method, headers: request.headers, ...(body===undefined?{}:{body})}, trustedClientHeaders: request.headers})
+    const upstream = await fetchAifansApi(`/v1/${path}`, {policy: 'live-no-store', requestInit: {method, headers: request.headers, ...(body===undefined?{}:{body})}, trustedClientHeaders: request.headers})
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'},
@@ -84,7 +84,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const query = cursor ? `?${new URLSearchParams({cursor})}` : ''
     const upstreamPath = profilePath ? `/v1/profiles/${path[1]}` : `/v1/${path[0]}`
-    const upstream = await fetchAifansApi(`${upstreamPath}${query}`, {requestInit: {method: 'GET'}, trustedClientHeaders: request.headers})
+    const upstream = await fetchAifansApi(`${upstreamPath}${query}`, {policy: 'private-cache', requestInit: {method: 'GET'}, trustedClientHeaders: request.headers})
     return new Response(await upstream.arrayBuffer(), {status: upstream.status, headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'}})
   } catch {
     return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})

@@ -20,12 +20,27 @@ export const navItems: ReadonlyArray<NavItem> = [
 ]
 
 function destination(locale: Locale, href: string) { return `/${locale}${href}` }
-function NavLink({item, locale, label, compact, following}: {item: NavItem; locale: Locale; label: string; compact?: boolean; following?: boolean | undefined}) {
-  const pathname = usePathname(); const href = destination(locale, item.href); const Icon = item.icon
-  const active = item.key === 'following' ? pathname === `/${locale}` && following : item.key === 'forYou' ? pathname === href && following === false : item.key === 'messages' ? pathname === href || pathname.startsWith(`${href}/`) || pathname === `/${locale}/notifications` : pathname === href
+function isActive(item: NavItem, locale: Locale, pathname: string, following?: boolean) {
+  const href = destination(locale, item.href)
+  return item.key === 'following' ? pathname === `/${locale}` && following === true : item.key === 'forYou' ? pathname === href && following === false : item.key === 'messages' ? pathname === href || pathname.startsWith(`${href}/`) || pathname === `/${locale}/notifications` : pathname === href
+}
+function NavLinkView({active, item, locale, label, compact}: {active: boolean; item: NavItem; locale: Locale; label: string; compact?: boolean}) {
+  const href = destination(locale, item.href); const Icon = item.icon
   return <Link aria-current={active ? 'page' : undefined} aria-label={label} className="nav-link" href={href}><Icon aria-hidden="true" className="nav-icon"/><span className={compact ? 'nav-link-label sr-only' : 'nav-link-label'}>{label}</span></Link>
 }
-function NavList({items, labels, locale, compact, following}: {items: ReadonlyArray<NavItem>; labels: ShellLabels; locale: Locale; compact: boolean; following?: boolean}) { const label = (key: NavItem['key']) => key === 'forYou' ? labels.forYou ?? labels.home : key === 'following' ? labels.following ?? 'Following' : key === 'liked' ? labels.liked ?? 'Liked' : key === 'collections' ? labels.collections ?? labels.activity ?? labels.bookmarks : key === 'profile' ? labels.myProfile ?? labels.profile : labels[key]; return <div className="nav-list">{items.map((item) => <NavLink compact={compact} following={following} item={item} key={item.key} label={label(item.key)} locale={locale}/>)}</div> }
+function NavLink({item, locale, label, compact, following}: {item: NavItem; locale: Locale; label: string; compact?: boolean; following?: boolean | undefined}) {
+  const pathname = usePathname()
+  return <NavLinkView active={isActive(item, locale, pathname, following)} {...(compact === undefined ? {} : {compact})} item={item} label={label} locale={locale}/>
+}
+function labelFor(labels: ShellLabels, key: NavItem['key']) {
+  return key === 'forYou' ? labels.forYou ?? labels.home : key === 'following' ? labels.following ?? 'Following' : key === 'liked' ? labels.liked ?? 'Liked' : key === 'collections' ? labels.collections ?? labels.activity ?? labels.bookmarks : key === 'profile' ? labels.myProfile ?? labels.profile : labels[key]
+}
+function NavList({items, labels, locale, compact, following}: {items: ReadonlyArray<NavItem>; labels: ShellLabels; locale: Locale; compact: boolean; following?: boolean}) {
+  return <div className="nav-list">{items.map((item) => <NavLink compact={compact} following={following} item={item} key={item.key} label={labelFor(labels, item.key)} locale={locale}/>)}</div>
+}
+function StaticNavList({items, labels, locale, compact}: {items: ReadonlyArray<NavItem>; labels: ShellLabels; locale: Locale; compact: boolean}) {
+  return <div className="nav-list">{items.map((item) => <NavLinkView active={false} compact={compact} item={item} key={item.key} label={labelFor(labels, item.key)} locale={locale}/>)}</div>
+}
 function QueryAwareNavList(props: Omit<Parameters<typeof NavList>[0], 'following'>) { const search = useSearchParams(); return <NavList {...props} following={search.get('feed') === 'following'}/> }
 export function visibleNavItems(_creatorModeEnabled=true) { return navItems.filter((item) => item.key !== 'creatorNav' && item.key !== 'notifications') }
 export const mobileNavItems: ReadonlyArray<NavItem> = [
@@ -36,5 +51,5 @@ export const mobileNavItems: ReadonlyArray<NavItem> = [
 
 export function AppNav({locale, labels, creatorModeEnabled=true, compact=false}: {locale: Locale; labels: ShellLabels; creatorModeEnabled?: boolean; compact?: boolean}) {
   const items = visibleNavItems(creatorModeEnabled)
-  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo className="brand-logo-full"/><Logo className="brand-logo-compact" showWordmark={false}/></Link><Suspense fallback={<NavList compact={compact} items={items} labels={labels} locale={locale}/> }><QueryAwareNavList compact={compact} items={items} labels={labels} locale={locale}/></Suspense><GlobalMoreMenu labels={labels} locale={locale}/></div></nav>
+  return <nav aria-label={labels.primary} className={compact ? 'desktop-nav desktop-nav-compact' : 'desktop-nav'} data-compact={compact ? 'true' : undefined}><div className="nav-sticky"><Link aria-label="AIFANS" className="brand" href={`/${locale}`}><Logo className="brand-logo-full"/><Logo className="brand-logo-compact" showWordmark={false}/></Link><Suspense fallback={<StaticNavList compact={compact} items={items} labels={labels} locale={locale}/> }><QueryAwareNavList compact={compact} items={items} labels={labels} locale={locale}/></Suspense><GlobalMoreMenu labels={labels} locale={locale}/></div></nav>
 }

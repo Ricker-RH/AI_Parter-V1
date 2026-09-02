@@ -122,6 +122,7 @@ export async function GET(request: Request, context: Context) {
   try {
     const upstream = await fetchAifansApi(
       `/v1/chat/conversations/${conversationId}/messages${url.search}`,
+      {policy: 'private-cache'},
     );
     if (!upstream.ok) return upstreamError(upstream);
     const parsed = ChatHistoryPageSchema.safeParse(await upstream.json());
@@ -168,6 +169,7 @@ export async function POST(request: Request, context: Context) {
     const upstream = await fetchAifansApi(
       `/v1/chat/conversations/${conversationId}/messages`,
       {
+        policy: 'live-no-store',
         requestInit: {
           method: "POST",
           headers: request.headers,

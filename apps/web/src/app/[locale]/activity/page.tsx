@@ -5,6 +5,8 @@ import {getMessages, isLocale} from '../../../i18n/config'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 import {fetchBookmarks, fetchLiked} from '../../../lib/social-api'
 
+export const instant = false
+
 type ActivityTab = 'liked' | 'saved'
 type SearchParams = {tab?: string | string[]; cursor?: string | string[]}
 

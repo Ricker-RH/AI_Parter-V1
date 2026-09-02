@@ -15,6 +15,7 @@ export async function GET(request: Request) {
   let upstream: Response
   try {
     upstream = await Promise.resolve().then(() => fetchAifansApi(`/v1/search?${query}`, {
+      policy: 'private-cache',
       requestInit: {method: 'GET', signal: request.signal},
       trustedClientHeaders: request.headers,
     }))

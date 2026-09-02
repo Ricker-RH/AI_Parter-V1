@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
-const {getApiBearerToken}=vi.hoisted(()=>({getApiBearerToken:vi.fn(async()=> 'signed-jwt')}))
+const {getApiBearerToken, fetchCachedPublicFeed}=vi.hoisted(()=>({getApiBearerToken:vi.fn(async()=> 'signed-jwt'),fetchCachedPublicFeed:vi.fn()}))
 vi.mock('./auth/server.js', () => ({getApiBearerToken}))
+vi.mock('./social-cache.js', () => ({fetchCachedPublicFeed}))
 import {
   fetchBookmarks,
   fetchLiked,
@@ -31,6 +32,7 @@ const post = {
 afterEach(() => {
   vi.unstubAllGlobals()
   getApiBearerToken.mockClear()
+  fetchCachedPublicFeed.mockReset()
   delete process.env.AIFANS_API_URL
   delete process.env.NEXT_PUBLIC_AIFANS_API_URL
 })
@@ -49,6 +51,28 @@ describe('social API client', () => {
       'https://server.example/v1/feed?kind=following&locale=en&cursor=next+page',
       expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer signed-jwt'}}),
     )
+  })
+
+  it('uses the tagged public cache only for anonymous For You reads', async () => {
+    fetchCachedPublicFeed.mockResolvedValue({items: [post], nextCursor: null})
+
+    await expect(fetchFeed({kind: 'for_you', locale: 'zh-CN'})).resolves.toEqual({status: 'ok', data: {items: [post], nextCursor: null}})
+
+    expect(fetchCachedPublicFeed).toHaveBeenCalledWith({kind: 'for_you', locale: 'zh-CN'})
+    expect(getApiBearerToken).not.toHaveBeenCalled()
+  })
+
+  it('keeps authenticated For You and Following reads private and request-scoped', async () => {
+    process.env.AIFANS_API_URL = 'https://server.example'
+    const request = vi.fn().mockResolvedValue(Response.json({items: [post], nextCursor: null}))
+    vi.stubGlobal('fetch', request)
+
+    await fetchFeed({kind: 'for_you', locale: 'en', token: 'viewer-jwt'})
+    await fetchFeed({kind: 'following', locale: 'en', token: 'viewer-jwt'})
+
+    expect(fetchCachedPublicFeed).not.toHaveBeenCalled()
+    expect(request).toHaveBeenCalledTimes(2)
+    for (const [, init] of request.mock.calls) expect(init).toEqual(expect.objectContaining({cache: 'no-store', headers: {authorization: 'Bearer viewer-jwt'}}))
   })
 
   it('reuses a protected page token instead of requesting another token', async () => {

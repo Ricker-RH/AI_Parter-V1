@@ -5,6 +5,8 @@ import {fetchFeed, fetchSearch} from '../../../lib/social-api'
 import {getOptionalPageAccess, redirectToUserSignIn} from '../../../lib/auth/access-policy'
 import type {SearchCategory} from '@aifans/contracts'
 
+export const instant = false
+
 const validCategories = new Set<SearchCategory>(['all', 'ips', 'posts'])
 type SearchParams = Record<string, string | string[] | undefined>
 const safeCursor = /^[A-Za-z0-9_-]{1,2048}$/

@@ -85,7 +85,7 @@ async function proxy(request: Request, method: 'GET' | 'PATCH'): Promise<Respons
     if (!body.trim() || duplicateTopLevelKey(body)) return Response.json({code: 'INVALID_REQUEST'}, {status: 422})
   }
   try {
-    const upstream = await fetchAifansApi('/v1/me', {requestInit: {method, headers: request.headers, ...(body === undefined ? {} : {body})}})
+    const upstream = await fetchAifansApi('/v1/me', {policy: method === 'GET' ? 'private-cache' : 'live-no-store', requestInit: {method, headers: request.headers, ...(body === undefined ? {} : {body})}})
     const headers: Record<string, string> = {'content-type': upstream.headers.get('content-type') ?? 'application/json', ...noStore}
     const requestId = upstream.headers.get('x-request-id')
     if (requestId) headers['x-request-id'] = requestId

@@ -4,6 +4,8 @@ import {getMessages,isLocale} from '../../../../i18n/config'
 import {fetchPublicProfile} from '../../../../lib/social-api'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../../lib/auth/access-policy'
 
+export const instant = false
+
 export default async function PublicProfilePage({params,searchParams}:{params:Promise<{locale:string;profileId:string}>;searchParams:Promise<{cursor?:string}>}) {
   const {locale,profileId}=await params
   if(!isLocale(locale))notFound()

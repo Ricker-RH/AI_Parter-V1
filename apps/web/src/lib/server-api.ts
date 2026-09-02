@@ -1,6 +1,16 @@
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 import {createRateLimitIdentity} from './rate-limit-identity'
 
+type SharedRequestOptions = {
+  fetcher?: Fetcher
+  requestInit?: RequestInit
+  timeoutMs?: number
+}
+
+export type AifansApiRequestOptions =
+  | (SharedRequestOptions & {policy: 'public-cache'; getToken?: never; trustedClientHeaders?: never})
+  | (SharedRequestOptions & {policy: 'private-cache' | 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers})
+
 async function defaultToken(): Promise<string | null> {
   const {getApiBearerToken} = await import('./auth/server')
   return getApiBearerToken()
@@ -38,15 +48,18 @@ function outboundHeaders(input: HeadersInit | undefined, token: string | null, t
 
 export async function fetchAifansApi(
   path: string,
-  {
-    fetcher = fetch,
-    getToken = defaultToken,
-    requestInit = {},
-    timeoutMs = 8000,
-    trustedClientHeaders,
-  }: {fetcher?: Fetcher; getToken?: () => Promise<string | null>; requestInit?: RequestInit; timeoutMs?: number; trustedClientHeaders?: Headers} = {},
+  options: AifansApiRequestOptions,
 ): Promise<Response> {
+  if (!options || !['public-cache', 'private-cache', 'live-no-store'].includes(options.policy)) throw new Error('Explicit API request policy required')
   if (!safePath(path)) throw new Error('Invalid API path')
+  if (options.policy === 'public-cache' && ('getToken' in options || 'trustedClientHeaders' in options)) throw new Error('Public API cache cannot use authentication')
+  const fetcher = options.fetcher ?? fetch
+  const requestInit = options.requestInit ?? {}
+  const timeoutMs = options.timeoutMs ?? 8000
+  const trustedClientHeaders = options.policy === 'public-cache' ? undefined : options.trustedClientHeaders
+  const getToken = options.policy === 'public-cache' ? async () => null : (options.getToken ?? defaultToken)
+  const method = (requestInit.method ?? 'GET').toUpperCase()
+  if (options.policy === 'public-cache' && method !== 'GET' && method !== 'HEAD') throw new Error('Public API cache only supports reads')
   const baseUrl = readApiBaseUrl()
   if (!baseUrl) throw new Error('AIFANS API is not configured')
   const controller=new AbortController()
@@ -57,7 +70,7 @@ export async function fetchAifansApi(
   try {
     const timeout=new Promise<never>((_resolve,reject)=>{const rejectOnAbort=()=>reject(controller.signal.reason??new Error('AIFANS API timeout'));if(controller.signal.aborted)rejectOnAbort();else controller.signal.addEventListener('abort',rejectOnAbort,{once:true})})
     const token=await Promise.race([getToken(),timeout])
-    return await fetcher(`${baseUrl}${path}`, {...requestInit,cache:'no-store',headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,trustedClientHeaders)),signal:controller.signal})
+    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,trustedClientHeaders)),signal:controller.signal})
   } finally {
     clearTimeout(timer)
     requestInit.signal?.removeEventListener('abort',onAbort)

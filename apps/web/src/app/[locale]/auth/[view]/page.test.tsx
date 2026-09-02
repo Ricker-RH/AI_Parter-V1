@@ -10,6 +10,15 @@ const AuthPage = authRoute.default
 const {readResetToken} = authRoute
 
 describe('auth recovery route', () => {
+  it('enumerates every supported auth view for concrete prerender artifacts', () => {
+    expect(authRoute.generateStaticParams()).toEqual([
+      {view: 'sign-in'},
+      {view: 'sign-up'},
+      {view: 'forgot-password'},
+      {view: 'reset-password'},
+    ])
+  })
+
   it.each([['en', 'sign-in'], ['zh-CN', 'reset-password']] as const)('waits for a request before reading %s %s URL data', async (locale, view) => {
     const events: string[] = []
     connection.mockReset().mockImplementation(async () => { events.push('connection') })

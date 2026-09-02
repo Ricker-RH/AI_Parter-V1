@@ -5,6 +5,8 @@ import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../../lib/au
 import {fetchConversationHistory, fetchConversations} from '../../../../lib/chat-api'
 import {isCanonicalChatConversationCursor, isCanonicalChatMessageCursor} from '../../../../lib/auth/return-to'
 
+export const instant = false
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export default async function ConversationPage({params, searchParams}: {params: Promise<{locale: string; conversationId: string}>; searchParams: Promise<{cursor?: string | string[]; listCursor?: string | string[]; [key: string]: string | string[] | undefined}>}) {

@@ -5,6 +5,8 @@ import {fetchLiked} from '../../../lib/social-api'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 import {SocialSurface} from '../../../components/social/SocialSurface'
 
+export const instant = false
+
 export default async function LikedPage({params, searchParams}: {params: Promise<{locale: string}>; searchParams: Promise<{cursor?: string}>}) {
   const {locale} = await params
   if (!isLocale(locale)) notFound()

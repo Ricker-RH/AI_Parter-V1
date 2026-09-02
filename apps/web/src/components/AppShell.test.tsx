@@ -5,7 +5,8 @@ import {describe, expect, it, vi} from 'vitest'
 import nextConfig from '../../next.config.js'
 
 let pathname = '/en'
-vi.mock('next/navigation', () => ({usePathname: () => pathname, useSearchParams: () => new URLSearchParams()}))
+let suspendPathname = false
+vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname) throw new Promise(() => undefined); return pathname }, useSearchParams: () => new URLSearchParams()}))
 import {AppShell} from './AppShell.js'
 
 const labels = {
@@ -119,6 +120,14 @@ describe('AppShell', () => {
     render(<AppShell locale="en" labels={labels}><main>Creator</main></AppShell>)
     expect(document.querySelector('[data-shell="creator"]')).toBeInTheDocument()
     expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
+  })
+
+  it('provides both route-kind fallbacks while pathname resolution is pending', () => {
+    suspendPathname = true
+    const {container} = render(<AppShell locale="en" labels={labels}><main>Pending route</main></AppShell>)
+    expect(container.querySelector('.route-shell-fallback-public .desktop-nav')).toBeInTheDocument()
+    expect(container.querySelector('.route-shell-fallback-loading .loading-screen')).toBeInTheDocument()
+    suspendPathname = false
   })
 })
 

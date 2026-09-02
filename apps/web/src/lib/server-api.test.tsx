@@ -11,6 +11,7 @@ describe('authenticated server API transport', () => {
     process.env.AIFANS_API_URL = 'https://api.example/'
     const fetcher = vi.fn().mockResolvedValue(new Response(null, {status: 204}))
     await fetchAifansApi('/v1/me', {
+      policy: 'private-cache',
       fetcher,
       getToken: async () => 'signed-jwt',
       requestInit: {headers: {cookie: 'must-not-cross-boundary', 'x-request-id': 'request-1'}},
@@ -26,27 +27,27 @@ describe('authenticated server API transport', () => {
     expect(readApiBaseUrl()).toBeNull()
     process.env.AIFANS_API_URL = 'https://api.example'
     const fetcher = vi.fn().mockResolvedValue(Response.json({status: 'ok'}))
-    await fetchAifansApi('/health', {fetcher, getToken: async () => null})
+    await fetchAifansApi('/health', {policy: 'public-cache', fetcher})
     expect(fetcher).toHaveBeenCalledWith('https://api.example/health', expect.objectContaining({headers: {}}))
   })
 
   it('rejects absolute or non-API paths before any network request', async () => {
     process.env.AIFANS_API_URL = 'https://api.example'
     const fetcher = vi.fn()
-    await expect(fetchAifansApi('https://attacker.example/v1/me', {fetcher, getToken: async () => null})).rejects.toThrow('Invalid API path')
+    await expect(fetchAifansApi('https://attacker.example/v1/me', {policy: 'public-cache', fetcher})).rejects.toThrow('Invalid API path')
     expect(fetcher).not.toHaveBeenCalled()
   })
 
   it('aborts an upstream request at the bounded transport timeout', async () => {
     process.env.AIFANS_API_URL='https://api.example'
     const fetcher=vi.fn((_url:string|URL|Request,init?:RequestInit)=>new Promise<Response>((_resolve,reject)=>init?.signal?.addEventListener('abort',()=>reject(init.signal?.reason),{once:true})))
-    await expect(fetchAifansApi('/v1/feed',{fetcher,getToken:async()=>null,timeoutMs:1})).rejects.toThrow('timeout')
+    await expect(fetchAifansApi('/v1/feed',{policy:'public-cache',fetcher,timeoutMs:1})).rejects.toThrow('timeout')
   })
 
   it('uses the same deadline while waiting for an auth token', async () => {
     process.env.AIFANS_API_URL='https://api.example'
     const fetcher=vi.fn()
-    await expect(fetchAifansApi('/v1/feed',{fetcher,getToken:()=>new Promise(()=>undefined),timeoutMs:1})).rejects.toThrow('timeout')
+    await expect(fetchAifansApi('/v1/feed',{policy:'private-cache',fetcher,getToken:()=>new Promise(()=>undefined),timeoutMs:1})).rejects.toThrow('timeout')
     expect(fetcher).not.toHaveBeenCalled()
   })
 
@@ -55,6 +56,7 @@ describe('authenticated server API transport', () => {
     process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
     const fetcher = vi.fn().mockResolvedValue(new Response(null, {status: 204}))
     await fetchAifansApi('/v1/chat/11111111-1111-4111-8111-111111111111/messages', {
+      policy: 'live-no-store',
       fetcher,
       getToken: async () => 'signed-jwt',
       trustedClientHeaders: new Headers({'x-vercel-forwarded-for': '203.0.113.7, 10.0.0.1'}),
@@ -70,5 +72,25 @@ describe('authenticated server API transport', () => {
     expect(headers.get('content-type')).toBe('application/json')
     expect(headers.get('x-request-id')).toBe('request-1')
     for (const name of ['cookie', 'x-forwarded-for', 'x-vercel-forwarded-for']) expect(headers.has(name)).toBe(false)
+  })
+
+  it('requires an explicit request policy at runtime', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    await expect(fetchAifansApi('/health', {} as never)).rejects.toThrow('Explicit API request policy required')
+  })
+
+  it('keeps public reads cacheable and prevents authentication from entering a public cache', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, {status: 204}))
+
+    await fetchAifansApi('/v1/feed?kind=for_you&locale=en', {policy: 'public-cache', fetcher})
+
+    expect(fetcher).toHaveBeenCalledWith('https://api.example/v1/feed?kind=for_you&locale=en', expect.objectContaining({headers: {}}))
+    expect((fetcher.mock.calls[0]?.[1] as RequestInit).cache).toBeUndefined()
+    await expect(fetchAifansApi('/v1/feed?kind=for_you&locale=en', {
+      policy: 'public-cache',
+      fetcher,
+      getToken: async () => 'must-not-be-cached',
+    } as never)).rejects.toThrow('Public API cache cannot use authentication')
   })
 })

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     return Response.json({ code: "INVALID_REQUEST" }, { status: 400 });
   try {
     const query = new URL(request.url).search;
-    const upstream = await fetchAifansApi(`/v1/chat/conversations${query}`);
+    const upstream = await fetchAifansApi(`/v1/chat/conversations${query}`, {policy: 'private-cache'});
     if (!upstream.ok) return upstreamError(upstream);
     const parsed = ChatConversationPageSchema.safeParse(await upstream.json());
     return parsed.success
@@ -69,6 +69,7 @@ export async function POST(request: Request) {
   if (!body.success) return invalidRequest();
   try {
     const upstream = await fetchAifansApi("/v1/chat/conversations", {
+      policy: 'live-no-store',
       requestInit: {
         method: "POST",
         headers: request.headers,

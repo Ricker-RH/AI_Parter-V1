@@ -6,6 +6,8 @@ import {getOptionalPageAccess, redirectToUserSignIn} from '../../../../lib/auth/
 import {PostDetailHeader} from '../../../../components/social/PostDetailHeader'
 import {SocialSurface} from '../../../../components/social/SocialSurface'
 
+export const instant = false
+
 export default async function PostPage({params, searchParams}: {params: Promise<{locale: string; postId: string}>; searchParams: Promise<{commentCursor?: string}>}) {
   const {locale, postId} = await params
   if (!isLocale(locale)) notFound()

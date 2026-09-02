@@ -14,6 +14,7 @@ import {
 } from '@aifans/contracts'
 import type {Locale} from '../i18n/config'
 import {fetchAifansApi, readApiBaseUrl} from './server-api'
+import {fetchCachedPublicFeed} from './social-cache'
 
 export type SocialApiResult<T> =
   | {status: 'ok'; data: T}
@@ -27,64 +28,76 @@ export function socialApiBaseUrl(): string | null {
   return readApiBaseUrl()
 }
 
-async function request<T>(path: string, schema: Schema<T>, token?: string): Promise<SocialApiResult<T>> {
+function parseResponse<T>({status, body}: {status: number; body: unknown}, schema: Schema<T>): SocialApiResult<T> {
+  if (status === 401) return {status: 'auth-required'}
+  if (status >= 200 && status < 300) {
+    const parsed = schema.safeParse(body)
+    return parsed.success ? {status: 'ok', data: parsed.data} : {status: 'unavailable'}
+  }
+  const error = ApiErrorSchema.safeParse(body)
+  if (!error.success) return {status: 'unavailable'}
+  if (status === 404 && (error.data.code === 'POST_NOT_FOUND' || error.data.code === 'PROFILE_NOT_FOUND')) return {status: 'not-found'}
+  return {status: 'unavailable'}
+}
+
+async function request<T>(path: string, schema: Schema<T>, policy: 'private-cache' | 'live-no-store', token?: string): Promise<SocialApiResult<T>> {
   try {
-    const response = await fetchAifansApi(path, token ? {getToken: async () => token} : undefined)
+    const response = await fetchAifansApi(path, {policy, ...(token ? {getToken: async () => token} : {})})
     if (response.status === 401) return {status: 'auth-required'}
     const body: unknown = await response.json()
-    if (response.ok) {
-      const parsed = schema.safeParse(body)
-      return parsed.success ? {status: 'ok', data: parsed.data} : {status: 'unavailable'}
-    }
-
-    const error = ApiErrorSchema.safeParse(body)
-    if (!error.success) return {status: 'unavailable'}
-    if (response.status === 404 && (error.data.code === 'POST_NOT_FOUND' || error.data.code === 'PROFILE_NOT_FOUND')) return {status: 'not-found'}
-    return {status: 'unavailable'}
+    return parseResponse({status: response.status, body}, schema)
   } catch {
     return {status: 'unavailable'}
   }
 }
 
-export function fetchFeed({kind, locale, cookie, cursor, token}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined}) {
+export async function fetchFeed({kind, locale, cookie, cursor, token}: {kind: 'for_you' | 'following'; locale: Locale; cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined}): Promise<SocialApiResult<FeedPage>> {
+  if (kind === 'for_you' && token === undefined) {
+    try {
+      const parsed = FeedPageSchema.safeParse(await fetchCachedPublicFeed({kind, locale, ...(cursor ? {cursor} : {})}))
+      return parsed.success ? {status: 'ok', data: parsed.data} : {status: 'unavailable'}
+    } catch {
+      return {status: 'unavailable'} as const
+    }
+  }
   const query = new URLSearchParams({kind, locale})
   if (cursor) query.set('cursor', cursor)
-  return request(`/v1/feed?${query}`, FeedPageSchema, token)
+  return request(`/v1/feed?${query}`, FeedPageSchema, 'private-cache', token)
 }
 
 export function fetchPost(postId: string, {cookie, commentCursor, token}: {cookie?: string | undefined; commentCursor?: string | undefined; token?: string | undefined} = {}) {
   const query = new URLSearchParams()
   if (commentCursor) query.set('commentCursor', commentCursor)
   const suffix = query.size ? `?${query}` : ''
-  return request<PostDetail>(`/v1/posts/${encodeURIComponent(postId)}${suffix}`, PostDetailSchema, token)
+  return request<PostDetail>(`/v1/posts/${encodeURIComponent(postId)}${suffix}`, PostDetailSchema, 'private-cache', token)
 }
 
 export function fetchPublicProfile(profileId: string, {cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<PublicIpProfile>> {
   const query=new URLSearchParams()
   if (cursor) query.set('cursor',cursor)
-  return request(`/v1/profiles/${encodeURIComponent(profileId)}${query.size?`?${query}`:''}`,PublicIpProfileSchema,token)
+  return request(`/v1/profiles/${encodeURIComponent(profileId)}${query.size?`?${query}`:''}`,PublicIpProfileSchema,'private-cache',token)
 }
 
 export function fetchSearch({q, category = 'all', cursor, token}: {q: string; category?: SearchCategory; cursor?: string; token?: string}): Promise<SocialApiResult<SearchPage>> {
   const query = new URLSearchParams({q, category})
   if (cursor) query.set('cursor', cursor)
-  return request(`/v1/search?${query}`, SearchPageSchema, token)
+  return request(`/v1/search?${query}`, SearchPageSchema, 'private-cache', token)
 }
 
 export function fetchBookmarks({cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<FeedPage>> {
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)
-  return request(`/v1/bookmarks${query.size ? `?${query}` : ''}`, FeedPageSchema, token)
+  return request(`/v1/bookmarks${query.size ? `?${query}` : ''}`, FeedPageSchema, 'private-cache', token)
 }
 
 export function fetchLiked({cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<FeedPage>> {
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)
-  return request(`/v1/likes${query.size ? `?${query}` : ''}`, FeedPageSchema, token)
+  return request(`/v1/likes${query.size ? `?${query}` : ''}`, FeedPageSchema, 'private-cache', token)
 }
 
 export function fetchNotifications({cookie, cursor, token}: {cookie?: string | undefined; cursor?: string | undefined; token?: string | undefined} = {}): Promise<SocialApiResult<NotificationPage>> {
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)
-  return request(`/v1/notifications${query.size ? `?${query}` : ''}`, NotificationPageSchema, token)
+  return request(`/v1/notifications${query.size ? `?${query}` : ''}`, NotificationPageSchema, 'private-cache', token)
 }

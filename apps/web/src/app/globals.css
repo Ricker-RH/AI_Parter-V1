@@ -82,6 +82,16 @@ button {
 .navigation-feedback__indicator { background: var(--shell-focus); border-radius: 999px; display: block; height: 3px; width: 56px; animation: navigation-feedback-pulse 900ms ease-in-out infinite; }
 @keyframes navigation-feedback-pulse { 50% { opacity: .45; transform: scaleX(.72); } }
 @media (prefers-reduced-motion: reduce) { .navigation-feedback__indicator { animation: none; } }
+.route-shell-fallback-public { display: contents; }
+.route-shell-fallback-loading { display: none; }
+html[data-route-shell="admin"] .route-shell-fallback-public,
+html[data-route-shell="auth"] .route-shell-fallback-public,
+html[data-route-shell="messages"] .route-shell-fallback-public,
+html[data-route-shell="creator"] .route-shell-fallback-public { display: none; }
+html[data-route-shell="admin"] .route-shell-fallback-loading,
+html[data-route-shell="auth"] .route-shell-fallback-loading,
+html[data-route-shell="messages"] .route-shell-fallback-loading,
+html[data-route-shell="creator"] .route-shell-fallback-loading { display: contents; }
 .loading-screen {
   align-items: center;
   background: var(--shell-canvas);

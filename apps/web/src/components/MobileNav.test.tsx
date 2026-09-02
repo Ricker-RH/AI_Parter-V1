@@ -3,8 +3,8 @@ import {describe, expect, it, vi} from 'vitest'
 import {MobileNav} from './MobileNav.js'
 import en from '../../messages/en.json'
 
-const {pathname} = vi.hoisted(() => ({pathname: {value: '/en'}}))
-vi.mock('next/navigation', () => ({usePathname: () => pathname.value}))
+const {pathname, suspendPathname} = vi.hoisted(() => ({pathname: {value: '/en'}, suspendPathname: {value: false}}))
+vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname.value) throw new Promise(() => undefined); return pathname.value }}))
 
 const labels = en
 
@@ -43,5 +43,13 @@ describe('MobileNav', () => {
     render(<MobileNav labels={labels} locale="en" />)
     expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
     pathname.value = '/en'
+  })
+
+  it('renders complete static links when pathname resolution suspends', () => {
+    suspendPathname.value = true
+    render(<MobileNav labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'Home'})).toHaveAttribute('href', '/en')
+    expect(screen.getByRole('link', {name: 'Collections'})).toHaveAttribute('href', '/en/activity')
+    suspendPathname.value = false
   })
 })

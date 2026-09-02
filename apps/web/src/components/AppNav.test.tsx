@@ -5,8 +5,8 @@ import {AppNav} from './AppNav.js'
 import en from '../../messages/en.json'
 import zhCN from '../../messages/zh-CN.json'
 
-const {search, pathname} = vi.hoisted(() => ({search: new URLSearchParams(), pathname: {value: '/en'}}))
-vi.mock('next/navigation', () => ({usePathname: () => pathname.value, useSearchParams: () => search}))
+const {search, pathname, suspendPathname} = vi.hoisted(() => ({search: new URLSearchParams(), pathname: {value: '/en'}, suspendPathname: {value: false}}))
+vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname.value) throw new Promise(() => undefined); return pathname.value }, useSearchParams: () => search}))
 vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.ReactNode; [key: string]: unknown}) => <a {...props}>{children}</a>}))
 
 const labels = en
@@ -93,5 +93,13 @@ describe('AppNav', () => {
   it('keeps query-aware navigation within an explicit Suspense boundary', () => {
     const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/AppNav.tsx' : 'apps/web/src/components/AppNav.tsx', 'utf8')
     expect(source).toContain('<Suspense')
+  })
+
+  it('renders complete static links when pathname resolution suspends', () => {
+    suspendPathname.value = true
+    render(<AppNav labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'For You'})).toHaveAttribute('href', '/en')
+    expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('href', '/en/messages')
+    suspendPathname.value = false
   })
 })
