@@ -350,7 +350,7 @@ describe("real social content", () => {
     expect(screen.getByText("Human reply")).toBeVisible();
     expect(screen.getByText("This comment was deleted.")).toBeVisible();
     expect(screen.getByText("Created by @comment_creator")).toBeVisible();
-    expect(screen.getByLabelText("Alex avatar")).toHaveTextContent("A");
+    expect(screen.getByRole("img", {name: "Alex"})).toHaveTextContent("A");
     expect(screen.getByText("5m")).toHaveAttribute("datetime", "2026-08-31T12:05:00.000Z");
     expect(screen.queryByRole("heading", {name: "Comments"})).toBeNull();
     expect(document.querySelectorAll(".comment-thread-item")).toHaveLength(2);
@@ -366,6 +366,8 @@ describe("real social content", () => {
       />,
     );
     expect(screen.getByText("创建者 @comment_creator")).toBeVisible();
+    expect(screen.getByRole("img", {name: "Alex"})).toHaveTextContent("A");
+    expect(screen.queryByLabelText(/avatar/i)).toBeNull();
   });
 
   it("renders replies as an indented connected thread and keeps the real parent action", () => {

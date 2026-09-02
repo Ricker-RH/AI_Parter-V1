@@ -13,7 +13,7 @@ async function geometry(page: Page) {
       const element = document.querySelector<HTMLElement>(selector)
       if (!element) return null
       const rect = element.getBoundingClientRect()
-      return {display: getComputedStyle(element).display, left: rect.left, width: rect.width}
+      return {display: getComputedStyle(element).display, left: rect.left, top: rect.top, width: rect.width}
     }
     return {content: box('.content'), desktopNav: box('.desktop-nav'), overflow: document.documentElement.scrollWidth > window.innerWidth, rightRail: box('.right-rail')}
   })
@@ -21,7 +21,7 @@ async function geometry(page: Page) {
 
 test('ordinary public shell keeps its navigation left of content through desktop breakpoints', async ({page}) => {
   const measurements = new Map<number, Awaited<ReturnType<typeof geometry>>>()
-  for (const width of [700, 768, 1024, 1149, 1150, 1255, 1256, 1327, 1328, 1440]) {
+  for (const width of [700, 768, 1024, 1149, 1150, 1183, 1184, 1255, 1256, 1327, 1328, 1440]) {
     await openAt(page, width)
     const current = await geometry(page)
     measurements.set(width, current)
@@ -32,7 +32,7 @@ test('ordinary public shell keeps its navigation left of content through desktop
   }
 
   const primaryLeft = (width: number) => measurements.get(width)?.content?.left ?? Infinity
-  expect(Math.abs(primaryLeft(1150) - primaryLeft(1149)), 'full-navigation breakpoint must not jump the primary column').toBeLessThanOrEqual(20)
+  expect(Math.abs(primaryLeft(1184) - primaryLeft(1183)), 'full-navigation breakpoint must not jump the primary column').toBeLessThanOrEqual(1)
   expect(Math.abs(primaryLeft(1256) - primaryLeft(1255)), 'recommendation threshold preparation must not move the primary column').toBeLessThanOrEqual(1)
   expect(Math.abs(primaryLeft(1328) - primaryLeft(1327)), 'showing recommendations must not move the primary column').toBeLessThanOrEqual(1)
 })
@@ -44,6 +44,19 @@ test('ordinary public shell switches to the five-item mobile navigation below 70
     await expect(page.locator('.mobile-nav')).toBeVisible()
     await expect(page.locator('.desktop-nav')).toBeHidden()
     expect(current.overflow, `unexpected horizontal overflow at ${width}px`).toBe(false)
+  }
+})
+
+test('refresh preserves public content geometry at responsive boundaries', async ({page}) => {
+  for (const width of [430, 699, 700, 1183, 1184, 1440]) {
+    await openAt(page, width)
+    const before = await geometry(page)
+    await page.reload()
+    await waitForHomeShell(page)
+    const after = await geometry(page)
+
+    expect(after.content, `content geometry changed after refresh at ${width}px`).toEqual(before.content)
+    expect(after.overflow, `refresh introduced horizontal overflow at ${width}px`).toBe(false)
   }
 })
 

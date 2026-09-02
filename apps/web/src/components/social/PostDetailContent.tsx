@@ -17,7 +17,7 @@ function CommentThreadItem({authenticated, comment, labels, locale, postId, refe
     : null
 
   return <article className={`comment-thread-item${isReply ? ' comment-thread-item--reply' : ''}`} data-parent-comment-id={comment.parentCommentId ?? undefined}>
-    <span aria-label={`${comment.author.displayName} avatar`} className="comment-avatar" role="img">{comment.author.displayName.slice(0, 1)}</span>
+    <span aria-label={comment.author.displayName} className="comment-avatar" role="img">{comment.author.displayName.slice(0, 1)}</span>
     <div className="comment-thread-content">
       <header className="comment-thread-heading">
         <strong title={comment.author.displayName}>{comment.author.displayName}</strong>

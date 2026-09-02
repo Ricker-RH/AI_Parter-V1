@@ -488,7 +488,7 @@ button {
 .author-preview-actions > a, .author-preview-actions .profile-follow button { align-items: center; border: 1px solid var(--shell-border); border-radius: 10px; display: flex; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; }
 .author-preview-actions .profile-follow { display: contents; }
 .author-preview-actions .author-preview-primary, .author-preview-actions .profile-follow button { background: var(--shell-text); color: var(--shell-surface); }
-.comments-section { border-top: 1px solid var(--shell-border); }
+.comments-section { border-top: 0; }
 .comments-empty {
   border-bottom: 1px solid var(--shell-border);
   color: var(--shell-muted);
@@ -1979,9 +1979,9 @@ button {
   .comment-signin { padding-inline: 12px; }
 }
 
-@media (min-width: 700px) and (max-width: 1149px) {
+@media (min-width: 700px) and (max-width: 1183px) {
   .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
-  .shell[data-shell="public"] .content { margin-left: max(100px, calc((100vw - 640px) / 2)); width: min(640px, calc(100vw - 100px)); }
+  .shell[data-shell="public"] .content { margin-left: max(100px, calc((100% - 640px) / 2)); width: min(640px, calc(100% - 100px)); }
   .mobile-nav, .mobile-top-bar { display: none; }
   .mobile-feed-tabs { display: none; }
   .shell[data-shell="public"] .desktop-nav { bottom: 0; display: block; left: 0; overflow: visible; padding: 24px 10px; position: fixed; top: 0; width: 76px; z-index: 10; }
@@ -2004,9 +2004,9 @@ button {
   .post-card { padding-inline: 24px; }
 }
 
-@media (min-width: 1150px) {
+@media (min-width: 1184px) {
   .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
-  .shell[data-shell="public"] .content { margin-left: max(272px, calc((100vw - 640px) / 2)); width: min(640px, calc(100vw - 272px)); }
+  .shell[data-shell="public"] .content { margin-left: max(272px, calc((100% - 640px) / 2)); width: min(640px, calc(100% - 272px)); }
   .shell[data-shell="public"] .desktop-nav { bottom: 0; left: 0; position: fixed; top: 0; width: 248px; z-index: 10; }
   .mobile-nav, .mobile-top-bar { display: none; }
   .desktop-nav .rail-controls, .mobile-feed-tabs { display: none; }

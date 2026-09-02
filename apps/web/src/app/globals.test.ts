@@ -5,11 +5,11 @@ const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/g
 
 describe('ordinary-user fluid shell CSS contract', () => {
   it('anchors the compact rail while the primary column chooses its own fluid start', () => {
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1149px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[\s\S]*?margin-left: max\(100px, calc\(\(100vw - 640px\) \/ 2\)\)/)
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[\s\S]*?margin-left: max\(100px, calc\(\(100% - 640px\) \/ 2\)\)/)
   })
 
-  it('switches only the public navigation clearance to the full 248px rail at 1150px', () => {
-    expect(stylesheet).toMatch(/@media \(min-width: 1150px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[\s\S]*?margin-left: max\(272px, calc\(\(100vw - 640px\) \/ 2\)\)/)
+  it('switches only after the centered public column clears the full 248px rail at 1184px', () => {
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[\s\S]*?margin-left: max\(272px, calc\(\(100% - 640px\) \/ 2\)\)/)
   })
 
   it('adds recommendations at 1328px without making them a primary-layout column', () => {
@@ -80,5 +80,9 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.search-category-tabs \.tabs \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.search-category-tabs \{[^}]*display: block/)
     expect(stylesheet).toMatch(/\.search-results \{[^}]*min-width: 0/)
+  })
+
+  it('uses a single separator between a detail post and its comments', () => {
+    expect(stylesheet).toMatch(/\.comments-section \{[^}]*border-top: 0/)
   })
 })
