@@ -491,6 +491,54 @@ describe("real social content", () => {
     expect(request).toHaveBeenCalledWith("/api/account", expect.objectContaining({cache: "no-store", credentials: "include"}));
   });
 
+  it.each([204, 503])("does not treat an account response with status %i as authenticated", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {status})));
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+
+    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+    expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
+    expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
+  });
+
+  it("does not treat an invalid account payload as authenticated", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({profileId: "not-a-uuid"}), {status: 200})));
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+
+    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+    expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
+    expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
+  });
+
+  it("keeps comment mutations disabled when account resolution fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network unavailable")));
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+
+    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+    expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
+    expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
+  });
+
+  it("submits a comment after a valid client account resolution", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({profileId: "44444444-4444-4444-8444-444444444444"}), {status: 200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({id: "comment"}), {status: 201}));
+    vi.stubGlobal("fetch", request);
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+
+    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+    fireEvent.change(await screen.findByRole("textbox", {name: "Write a comment"}), {target: {value: "Resolved session"}});
+    fireEvent.click(screen.getByRole("button", {name: "Comment"}));
+
+    await vi.waitFor(() => expect(request).toHaveBeenNthCalledWith(2, `/api/social/posts/${post.id}/comments`, expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({body: "Resolved session"}),
+    })));
+  });
+
   it("keeps guest comment sign-in on the localized post detail route", () => {
     const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
     render(<PostDetailContent authenticated={false} labels={labels} locale="zh-CN" returnTo={`/zh-CN/posts/${post.id}?commentCursor=comments-next`} result={{status: "ok", data: detail}} />);

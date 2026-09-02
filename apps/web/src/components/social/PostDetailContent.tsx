@@ -13,6 +13,16 @@ import {useEffect, useState} from 'react'
 
 type Comment = PostDetail['comments']['items'][number]
 
+const profileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function hasValidProfileId(value: unknown): value is {profileId: string} {
+  return typeof value === 'object'
+    && value !== null
+    && 'profileId' in value
+    && typeof value.profileId === 'string'
+    && profileIdPattern.test(value.profileId)
+}
+
 function CommentThreadItem({authenticated, comment, labels, locale, postId, referenceTime, returnTo}: {authenticated: boolean; comment: Comment; labels: SocialLabels; locale: Locale; postId: string; referenceTime: number; returnTo: string}) {
   const isReply = Boolean(comment.parentCommentId)
   const creatorLabel = comment.author.kind === 'ip' && comment.author.creator
@@ -46,7 +56,17 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
     const controller = new AbortController()
     setCheckingAccess(true)
     void fetch('/api/account', {cache: 'no-store', credentials: 'include', signal: controller.signal})
-      .then((response) => { if (!controller.signal.aborted) setCanMutate(response.ok) })
+      .then(async (response) => {
+        let accountResolved = false
+        if (response.status === 200) {
+          try {
+            accountResolved = hasValidProfileId(await response.json())
+          } catch {
+            accountResolved = false
+          }
+        }
+        if (!controller.signal.aborted) setCanMutate(accountResolved)
+      })
       .catch(() => undefined)
       .finally(() => { if (!controller.signal.aborted) setCheckingAccess(false) })
     return () => controller.abort()
