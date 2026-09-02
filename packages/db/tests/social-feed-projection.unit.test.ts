@@ -1,4 +1,4 @@
-import {decodeFollowedIpCursor} from '@aifans/contracts'
+import {decodeFollowedIpCursor, PublicIpSchema} from '@aifans/contracts'
 import {describe, expect, it, vi} from 'vitest'
 import type {QueryClient} from '../src/session.js'
 import {createSocialRepository} from '../src/social.js'
@@ -40,7 +40,7 @@ describe('social feed follower projection', () => {
     expect(continuation).toEqual({items: [expect.objectContaining({id: secondId, followerCount: 2})], nextCursor: null})
   })
 
-  it('loads follower counts once per page with de-duplicated author ids', async () => {
+  it('keeps legacy feed authors strict-compatible without a follower-count enrichment query', async () => {
     const rows = [
       ['22222222-2222-4222-8222-222222222222', 'First'],
       ['33333333-3333-4333-8333-333333333333', 'Second'],
@@ -65,17 +65,14 @@ describe('social feed follower projection', () => {
       viewer_follows_author: false,
       score: 0,
     }))
-    const query = vi.fn(async (text: string, values?: unknown[]) => text.includes('social_public_ip_profile')
-      ? {rows: [{id: authorId, follower_count: 7}], rowCount: 1}
-      : {rows, rowCount: rows.length})
+    const query = vi.fn(async () => ({rows, rowCount: rows.length}))
     const client = {query: query as QueryClient['query'], release: vi.fn()}
     const repository = createSocialRepository({withPublic: async (callback) => callback(client)})
 
     const page = await repository.listFeed({viewer: null, kind: 'for_you', limit: 2, after: null})
 
-    expect(query).toHaveBeenCalledTimes(2)
-    expect(query.mock.calls[1]?.[0]).toContain('unnest($1::uuid[])')
-    expect(query.mock.calls[1]?.[1]).toEqual([[authorId]])
-    expect(page.items.map((item) => item.author.followerCount)).toEqual([7, 7])
+    expect(query).toHaveBeenCalledOnce()
+    expect(page.items.map((item) => PublicIpSchema.parse(item.author))).toHaveLength(2)
+    expect(page.items.every((item) => !Object.hasOwn(item.author, 'followerCount'))).toBe(true)
   })
 })

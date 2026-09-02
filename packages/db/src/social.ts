@@ -245,13 +245,12 @@ function publicIp(row: PublicIpRow): PublicIp {
   };
 }
 function post(row: PostRow, media: PublicPostMedia[] = []): FeedPost {
-  const author = publicIp(row);
   return {
     id: row.post_id,
     body: row.body,
     languageCode: row.language_code,
     publishedAt: iso(row.published_at),
-    author: row.follower_count === undefined ? author : {...author, followerCount: Number(row.follower_count)},
+    author: publicIp(row),
     media,
     likeCount: Number(row.like_count),
     commentCount: Number(row.comment_count),
@@ -424,19 +423,6 @@ export function createSocialRepository({
       params,
     );
     const rows = result.rows.slice(0, input.limit);
-    const followerCounts = rows.length
-      ? await client.query<{id: string; follower_count: number | string}>(
-          `SELECT projection.id, projection.follower_count
-             FROM unnest($1::uuid[]) AS target(id)
-             CROSS JOIN LATERAL public.social_public_ip_profile(target.id) projection`,
-          [[...new Set(rows.map((row) => row.id))]],
-        )
-      : {rows: [] as Array<{id: string; follower_count: number | string}>};
-    const followerCountByProfile = new Map(followerCounts.rows.map((row) => [row.id, Number(row.follower_count)]));
-    const enrichedRows = rows.map((row) => {
-      const followerCount = followerCountByProfile.get(row.id);
-      return followerCount === undefined ? row : {...row, follower_count: followerCount};
-    });
     const last = rows.at(-1);
     const nextCursor =
       result.rows.length > input.limit && last
@@ -469,7 +455,7 @@ export function createSocialRepository({
         : null;
     return FeedPageSchema.parse({
       items: await Promise.all(
-        enrichedRows.map(async (row) =>
+        rows.map(async (row) =>
           post(row, await publicMedia(client, row.post_id, publicMediaBaseUrl)),
         ),
       ),
