@@ -6,7 +6,7 @@ describe("LoadingScreen", () => {
   it("renders the official mark as a full-screen neutral loading status", () => {
     render(<LoadingScreen />);
 
-    expect(screen.getByRole("status", { name: "AIFANS" })).toHaveClass(
+    expect(screen.getByRole("status", { name: "Loading AIFANS" })).toHaveClass(
       "loading-screen",
     );
     expect(screen.getByRole("img", {name: "AIFANS"})).toHaveClass("loading-screen-mark");

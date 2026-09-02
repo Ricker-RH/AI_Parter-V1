@@ -127,7 +127,8 @@ button {
 .route-skeleton-message-compose,
 .route-skeleton-brand-mark,
 .route-skeleton-submit,
-.route-skeleton-setting-control {
+.route-skeleton-setting-control,
+.route-skeleton-reference-grid > span {
   background: color-mix(in srgb, var(--shell-border) 62%, transparent);
   border-radius: 8px;
   display: block;
@@ -154,6 +155,10 @@ button {
 .route-skeleton-message-bubble { border-radius: 18px; height: 56px; width: 58%; }
 .route-skeleton-message-bubble--mine { align-self: flex-end; width: 48%; }
 .route-skeleton-message-compose { border-radius: 999px; height: 44px; margin-top: auto; width: 100%; }
+.route-skeleton-message-detail-frame { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); min-height: min(720px, calc(100dvh - 40px)); }
+.route-skeleton-conversation-list { border-right: 1px solid var(--shell-border); padding-right: 18px; }
+.route-skeleton-conversation-detail { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; padding-left: 18px; }
+.route-skeleton-conversation-detail .route-skeleton-message-detail { min-height: 420px; }
 .route-skeleton-auth-frame { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 520px); min-height: min(760px, calc(100dvh - 40px)); }
 .route-skeleton-auth-brand,
 .route-skeleton-auth-form { align-content: center; display: grid; gap: 20px; padding: clamp(32px, 6vw, 88px); }
@@ -164,6 +169,17 @@ button {
 .route-skeleton-submit { border-radius: 999px; height: 48px; }
 .route-skeleton-setting { align-items: center; grid-template-columns: minmax(0, 1fr) auto; min-height: 78px; }
 .route-skeleton-setting-control { border-radius: 999px; height: 36px; width: 84px; }
+.route-skeleton-creator-center-frame,
+.route-skeleton-creator-draft-frame { margin: 0 auto; max-width: 960px; width: 100%; }
+.route-skeleton-creator-hero { align-items: end; border-bottom: 1px solid var(--shell-border); display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(132px, 184px); padding: 28px 0 32px; }
+.route-skeleton-creator-hero > span:first-child { display: grid; gap: 14px; }
+.route-skeleton-creator-section { padding-top: 28px; }
+.route-skeleton-creator-section > .route-skeleton-card { min-height: 104px; }
+.route-skeleton-creator-form { display: grid; gap: 18px; padding: 28px 0; }
+.route-skeleton-creator-form > .route-skeleton-field { border-bottom: 0; }
+.route-skeleton-reference-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.route-skeleton-reference-grid > span { aspect-ratio: 1; }
+.route-skeleton-creator-form > .route-skeleton-submit { justify-self: end; min-width: 180px; }
 @keyframes route-skeleton-pulse { 50% { opacity: .58; } }
 
 .route-error { border: 1px solid var(--shell-border); border-radius: 16px; display: grid; gap: 12px; justify-items: start; margin: 24px; max-width: 480px; padding: 28px 24px; }
@@ -1842,10 +1858,18 @@ button {
   .route-skeleton--messages .route-skeleton-message-detail { display: none; }
   .route-skeleton--messages .route-skeleton-messages { display: block; min-height: 0; }
   .route-skeleton--messages .route-skeleton-messages > .route-skeleton-content { border-right: 0; padding-right: 0; }
+  .route-skeleton-message-detail-frame { grid-template-columns: minmax(0, 1fr); min-height: calc(100dvh - 130px); }
+  .route-skeleton-message-detail-frame .route-skeleton-conversation-list { display: none; }
+  .route-skeleton-message-detail-frame .route-skeleton-conversation-detail { padding-left: 0; }
+  .route-skeleton-message-detail-frame .route-skeleton-message-detail { min-height: calc(100dvh - 210px); padding-inline: 4px; }
   .route-skeleton-auth-frame { display: block; min-height: calc(100dvh - 24px); }
   .route-skeleton-auth-brand { align-content: end; min-height: 32dvh; padding: 32px 24px; }
   .route-skeleton-auth-form { border-left: 0; border-top: 1px solid var(--shell-border); padding: 32px 24px; }
   .route-not-found { min-height: calc(100dvh - 106px - env(safe-area-inset-bottom)); }
+  .route-skeleton-creator-hero { align-items: stretch; grid-template-columns: minmax(0, 1fr); }
+  .route-skeleton-creator-hero .route-skeleton-submit { min-height: 44px; }
+  .route-skeleton-reference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .route-skeleton-creator-form > .route-skeleton-submit { justify-self: stretch; min-height: 44px; min-width: 0; }
   .shell { display: block; max-width: none; padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
   .desktop-nav { display: none; }
   .content { border-right: 0; }

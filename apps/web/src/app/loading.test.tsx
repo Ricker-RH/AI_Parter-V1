@@ -6,6 +6,6 @@ describe("root loading boundary", () => {
   it("uses the full-screen loading screen", () => {
     render(<Loading />);
 
-    expect(screen.getByRole("status", { name: "AIFANS" })).toBeVisible();
+    expect(screen.getByRole("status", { name: "Loading AIFANS" })).toBeVisible();
   });
 });

@@ -1,5 +1,5 @@
-import { RouteSkeleton } from "../../components/shell/RouteSkeleton";
+import {LocalizedRouteSkeleton} from '../../components/shell/LocalizedRouteSkeleton'
 
 export default function Loading() {
-  return <RouteSkeleton variant="feed" />;
+  return <LocalizedRouteSkeleton variant="feed" />;
 }

@@ -1,5 +1,5 @@
 import {render} from '@testing-library/react'
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import SearchLoading from './search/loading.js'
 import MessagesLoading from './messages/loading.js'
 import MessageDetailLoading from './messages/[conversationId]/loading.js'
@@ -14,11 +14,13 @@ import AuthLoading from './auth/[view]/loading.js'
 import CreatorLoading from './creator/loading.js'
 import CreatorDraftLoading from './creator/[draftId]/loading.js'
 
+vi.mock('next/navigation', () => ({usePathname: () => '/zh-CN/example'}))
+
 describe('content-shaped route loading boundaries', () => {
   it.each([
     ['search', SearchLoading, 'search'],
     ['messages', MessagesLoading, 'messages'],
-    ['message detail', MessageDetailLoading, 'detail'],
+    ['message detail', MessageDetailLoading, 'message-detail'],
     ['activity', ActivityLoading, 'list'],
     ['liked', LikedLoading, 'list'],
     ['saved', SavedLoading, 'list'],
@@ -27,10 +29,11 @@ describe('content-shaped route loading boundaries', () => {
     ['public profile', PublicProfileLoading, 'profile'],
     ['settings', SettingsLoading, 'settings'],
     ['auth', AuthLoading, 'auth'],
-    ['creator', CreatorLoading, 'settings'],
-    ['creator draft', CreatorDraftLoading, 'settings'],
+    ['creator', CreatorLoading, 'creator-center'],
+    ['creator draft', CreatorDraftLoading, 'creator-draft'],
   ] as const)('uses a %s-specific skeleton', (_name, Loading, variant) => {
     const {container} = render(<Loading />)
     expect(container.querySelector(`.route-skeleton--${variant}`)).toBeTruthy()
+    expect(container.querySelector('[role="status"]')).toHaveAttribute('aria-label', '正在加载 AIFANS')
   })
 })

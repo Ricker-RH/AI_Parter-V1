@@ -43,6 +43,8 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.route-skeleton \{[^}]*max-width: 100%[^}]*overflow: hidden/)
     expect(stylesheet).toMatch(/\.route-not-found a \{[^}]*min-height: 44px/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.route-skeleton--messages \.route-skeleton-message-detail \{[^}]*display: none/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.route-skeleton-message-detail-frame \.route-skeleton-conversation-list \{[^}]*display: none/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.route-skeleton-message-detail-frame \{[^}]*grid-template-columns: minmax\(0, 1fr\)/)
   })
 
   it('uses the compact mobile Home hierarchy with two equal-width feed tabs', () => {
