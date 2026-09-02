@@ -24,4 +24,30 @@ describe('ProfileResult', () => {
     expect(screen.getByText('A quiet moonlit storyteller.')).toBeVisible()
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('renders compact recommendations as handle, name, and real follower count rows', () => {
+    const {container} = render(<ProfileResult
+      compact
+      followerCount={1234}
+      href="/en/profiles/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30"
+      labels={{createdBy: 'Created by', followers: 'followers'} as never}
+      profile={{
+        kind: 'ip',
+        id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30',
+        username: 'luna_ip',
+        displayName: 'Luna',
+        bio: 'A quiet moonlit storyteller.',
+        languages: ['en'],
+        visualType: 'anime',
+      }}
+    />)
+    const card = container.querySelector('.profile-result')!
+    expect(card).toHaveClass('profile-result--compact')
+    expect(card.querySelector('.profile-result-content')?.children).toHaveLength(3)
+    expect(card).toHaveTextContent('@luna_ip')
+    expect(card).toHaveTextContent('Luna')
+    expect(card).toHaveTextContent('1234 followers')
+    expect(card).not.toHaveTextContent('A quiet moonlit storyteller.')
+    expect(card.querySelector('[aria-live]')).toBeNull()
+  })
 })

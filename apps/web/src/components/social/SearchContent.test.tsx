@@ -15,4 +15,10 @@ describe('search navigation contract', () => {
     expect(source).not.toContain('search-results-title')
     expect(source).not.toMatch(/<h2[^>]*>\{labels\.searchResults/)
   })
+
+  it('uses the compact recommendation identity layout', () => {
+    expect(source).toContain('compact {...(profile.followerCount')
+    expect(source).toContain('profile.followerCount')
+    expect(source).not.toContain('ProfileFollowerCount')
+  })
 })

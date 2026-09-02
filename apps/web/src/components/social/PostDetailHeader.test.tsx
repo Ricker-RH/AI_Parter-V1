@@ -5,7 +5,7 @@ import {PostDetailHeader, hasSameOriginAppReferrer} from './PostDetailHeader.js'
 const router = {back: vi.fn(), push: vi.fn(), refresh: vi.fn()}
 vi.mock('next/navigation', () => ({useRouter: () => router}))
 
-const labels = {back: 'Back', copyLink: 'Copy link', copySuccess: 'Link copied.', post: 'Post', postActions: 'Post actions', refresh: 'Refresh', share: 'Share', shareSuccess: 'Shared.'}
+const labels = {back: 'Back', copyLink: 'Copy link', copySuccess: 'Link copied.', post: 'Post', postActions: 'Post actions', refresh: 'Refresh', share: 'Share', shareSuccess: 'Shared.', views: 'views'}
 const postId = '22222222-2222-4222-8222-222222222222'
 
 describe('PostDetailHeader', () => {
@@ -25,12 +25,22 @@ describe('PostDetailHeader', () => {
     expect(router.back).not.toHaveBeenCalled()
   })
 
-  it('uses compact Threads-style chrome with the localized Post title and no divider', () => {
+  it('uses a centered AIFANS mark on phone chrome while retaining an accessible localized heading', () => {
     const {container} = render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" />)
 
-    expect(container.querySelector('.post-detail-brand')).toBeNull()
-    expect(container.querySelector('.post-detail-header')).not.toHaveAttribute('data-titleless')
+    expect(screen.getByRole('link', {name: 'AIFANS'})).toHaveClass('post-detail-brand')
     expect(screen.getByRole('heading', {name: 'Post'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'Back'}).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByRole('button', {name: 'Post actions'}).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('renders a locale-formatted view count only when a positive authoritative count is supplied', () => {
+    const {rerender} = render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" viewCount={12345} />)
+
+    expect(screen.getByText('12,345 views')).toBeVisible()
+
+    rerender(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" />)
+    expect(screen.queryByText(/views$/)).toBeNull()
   })
 
   it('uses app history when the referrer is same-origin and in the selected locale', () => {

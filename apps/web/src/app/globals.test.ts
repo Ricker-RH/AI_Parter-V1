@@ -59,7 +59,7 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*flex: 1[^}]*width: 50%/)
     expect(stylesheet).not.toContain('.mobile-feed-menu')
     expect(stylesheet).toMatch(/\.mobile-top-bar \{[^}]*height: 56px/)
-    expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*align-items: end[^}]*min-height: 40px[^}]*padding: 0 8px 3px/)
+    expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*align-items: end[^}]*min-height: 40px[^}]*padding: 0 8px 8px/)
     expect(stylesheet).toMatch(/\.post-card \{[^}]*padding: 12px/)
     expect(stylesheet).toMatch(/\.post-action \{[^}]*min-height: 36px/)
     expect(stylesheet).toMatch(/\.mobile-nav \{[^}]*height: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
@@ -137,6 +137,33 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*height: 100%/)
     expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%/)
     expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*overflow-y:\s*auto/)
+  })
+
+  it('keeps 430/768/1024/1440 detail-post alignment isolated from the Home feed card layout', () => {
+    expect(stylesheet).toMatch(/\.post-card--detail \.post-detail-post-header \{[^}]*display:\s*grid[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)/)
+    expect(stylesheet).toMatch(/\.post-card--detail \.post-detail-post-content \{[^}]*margin-top:\s*10px[^}]*min-width:\s*0/)
+    expect(stylesheet).toMatch(/\.post-layout \{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-card \{[^}]*padding:\s*12px/)
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.post-card \{[^}]*padding-inline:\s*24px/)
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
+  })
+
+  it('docks only the detail composer at 430/768/1024/1440 with a measured content reserve and no nested scroll region', () => {
+    expect(stylesheet).toMatch(/\.post-detail-content \.post-detail-composer-dock \{[^}]*bottom:\s*0[^}]*position:\s*sticky/)
+    expect(stylesheet).toMatch(/\.post-detail-content \.post-detail-comments-content \{[^}]*padding-bottom:\s*var\(--post-detail-composer-reserve\)/)
+    expect(stylesheet).not.toMatch(/\.post-detail-content \.post-detail-composer-dock\s*\{[^}]*overflow(?:-y)?:/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-content \.post-detail-composer-dock \{[^}]*bottom:\s*0/)
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
+  })
+
+  it('uses a centered brand at 430px and a left-contextual post title at 768px, 1024px, and 1440px', () => {
+    expect(stylesheet).toMatch(/\.post-detail-header \{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\) 44px/)
+    expect(stylesheet).toMatch(/\.post-detail-back, \.post-detail-menu-trigger \{[^}]*min-height:\s*44px[^}]*width:\s*44px/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-brand \{[^}]*display:\s*flex[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-title \{[^}]*clip:/)
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.post-detail-title \{[^}]*justify-self:\s*start/)
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-title \{[^}]*justify-self:\s*start/)
   })
 
   it('keeps the desktop left navigation free of a right frame edge', () => {

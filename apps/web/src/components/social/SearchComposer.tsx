@@ -9,6 +9,7 @@ import styles from './SearchComposer.module.css'
 
 type SearchComposerLabels = {
   input: string
+  placeholder?: string
   submit: string
   suggestions: string
   searchForQuery?: string
@@ -99,7 +100,7 @@ export function SearchComposer({category = 'all', initialQuery = '', labels, loc
           onChange={(event) => {setInteracting(true); setValue(event.target.value)}}
           onFocus={() => {setInteracting(true); if (suggestions.length) setOpen(true)}}
           onKeyDown={onKeyDown}
-          placeholder={labels.input}
+          placeholder={labels.placeholder ?? labels.input}
           role="combobox"
           type="search"
           value={value}

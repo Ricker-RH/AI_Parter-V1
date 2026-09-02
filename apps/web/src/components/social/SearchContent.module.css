@@ -4,13 +4,17 @@
 .tab[aria-selected="true"] { border-color: currentColor; color: inherit; font-weight: 700; }
 .recommendations { min-height: 100%; }
 .recommendations h2 { font-size: 16px; margin: 0; padding: 18px 20px 10px; }
-.recommendations :global(.profile-result-heading) { justify-content: space-between; }
-.recommendations :global(.profile-result-heading) > h3 { flex: 1; min-width: 0; }
-.recommendations :global(.profile-follow button), .followLink { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: inline-flex; font-size: 14px; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 14px; }
+.recommendations :global(.profile-result--compact) { align-items: center; display: grid; gap: 10px; grid-template-columns: 40px minmax(0, 1fr) auto; padding: 10px 20px; }
+.recommendations :global(.profile-result--compact .profile-result-avatar) { height: 40px; width: 40px; }
+.recommendations :global(.profile-result--compact .profile-result-content) { display: grid; gap: 0; min-width: 0; }
+.recommendations :global(.profile-result--compact .profile-result-handle), .recommendations :global(.profile-result--compact .profile-result-name), .recommendations :global(.profile-result--compact .profile-result-followers) { line-height: 1.25; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recommendations :global(.profile-result--compact .profile-result-handle), .recommendations :global(.profile-result--compact .profile-result-followers) { color: var(--shell-muted); font-size: 12px; }
+.recommendations :global(.profile-result--compact .profile-result-name) { font-size: 14px; font-weight: 650; }
+.recommendations :global(.profile-result--compact .profile-follow button), .followLink { align-items: center; background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 999px; color: var(--shell-surface); display: inline-flex; font-size: 13px; font-weight: 700; justify-content: center; min-height: 32px; padding: 0 12px; white-space: nowrap; }
 .empty { align-content: center; display: grid; justify-items: center; min-height: 100%; padding: 56px 24px 80px; text-align: center; }
 .emptyIcon { color: var(--shell-muted); height: 48px; margin-bottom: 18px; width: 48px; }
 .empty section { max-width: 360px; }
 .empty h2 { font-size: 20px; letter-spacing: -0.02em; margin: 0; }
 .empty p { color: var(--shell-muted); font-size: 14px; line-height: 1.5; margin: 8px 0 0; }
 .results { min-width: 0; }
-@media (max-width: 699px) { .recommendations h2 { padding-inline: 12px; } }
+@media (max-width: 699px) { .recommendations h2 { padding-inline: 12px; } .recommendations :global(.profile-result--compact) { gap: 8px; padding-inline: 12px; } .recommendations :global(.profile-result--compact .profile-result-avatar) { height: 36px; width: 36px; } }

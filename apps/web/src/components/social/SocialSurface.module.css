@@ -7,6 +7,7 @@
 }
 
 .header { min-width: 0; }
+.header :global(.page-header) { border-bottom: 0; }
 
 .viewport {
   -ms-overflow-style: none;

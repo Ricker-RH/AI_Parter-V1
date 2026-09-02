@@ -24,18 +24,22 @@ export function PostCard({
   locale,
   labels,
   linked = true,
+  commentCountOverride,
   referenceTime,
   returnTo,
   canMutate = false,
+  variant = 'feed',
   viewerScope,
 }: {
   post: FeedPost;
   locale: Locale;
   labels: SocialLabels;
   linked?: boolean;
+  commentCountOverride?: number;
   referenceTime: number;
   returnTo?: string;
   canMutate?: boolean;
+  variant?: 'feed' | 'detail';
   viewerScope?: string;
 }) {
   const analytics = useAnalytics();
@@ -44,23 +48,47 @@ export function PostCard({
   const mediaItems = post.media ?? [];
   const postHref = `/${locale}/posts/${post.id}`;
   const trackView = () => trackPostViewed(analytics, { locale, postId: post.id });
+  const creatorLabel = post.author.creator ? `${labels.createdBy} @${post.author.creator.username}` : null
   function openCard(event: MouseEvent<HTMLElement>) {
     if (!linked) return
     if (isInteractiveTarget(event.target)) return
     navigationTarget.current?.click()
   }
   return (
-    <article className="post-card" onClick={openCard} {...(linked ? {
+    <article className={`post-card${variant === 'detail' ? ' post-card--detail' : ''}`} onClick={openCard} {...(linked ? {
       onPointerEnter: (event) => { if (!isInteractiveTarget(event.target)) prefetch(postHref) },
       onTouchStart: (event) => { if (!isInteractiveTarget(event.target)) prefetch(postHref) },
     } : {})}>
       {linked ? <Link aria-label={`${labels.posts}: ${post.author.displayName}`} className="post-card-navigation-target" href={postHref} onClick={trackView} prefetch={false} ref={navigationTarget} {...intentHandlers(postHref)}/> : null}
-      <div className="post-layout">
+      {variant === 'detail' ? <><div className="post-detail-post-header">
+        <AuthorPreview author={post.author} canMutate={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(viewerScope ? {viewerScope} : {})} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
+        <header className="post-author">
+        <div className="post-author-line"><Link {...intentHandlers(`/${locale}/profiles/${post.author.id}`)} href={`/${locale}/profiles/${post.author.id}`} prefetch={false} title={post.author.displayName}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{formatRelativeDuration(post.publishedAt, locale, referenceTime)}</time></div>
+      </header>
+      </div><div className="post-detail-post-content">
+      {creatorLabel ? <span className="creator-attribution">{creatorLabel}</span> : null}
+      {linked && post.body ? (
+        <Link
+          aria-label={post.body}
+          className="post-link"
+          href={postHref}
+          onClick={trackView}
+          prefetch={false}
+          {...intentHandlers(postHref)}
+        >
+          <p className="post-body">{post.body}</p>
+        </Link>
+      ) : (
+        post.body ? <p className="post-body">{post.body}</p> : null
+      )}
+      <PostMedia authorName={post.author.displayName} items={mediaItems} label={labels.postMedia} {...(linked ? {onPostIntent: () => prefetch(postHref), onPostOpen: trackView, postHref} : {})}/>
+      <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={commentCountOverride ?? post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} variant={variant} {...(viewerScope ? {viewerScope} : {})}/>
+      </div></> : <div className="post-layout">
         <AuthorPreview author={post.author} canMutate={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(viewerScope ? {viewerScope} : {})} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
         <div className="post-content">
       <header className="post-author">
         <div className="post-author-line"><Link {...intentHandlers(`/${locale}/profiles/${post.author.id}`)} href={`/${locale}/profiles/${post.author.id}`} prefetch={false} title={post.author.displayName}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{formatRelativeDuration(post.publishedAt, locale, referenceTime)}</time></div>
-        {post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}
+        {creatorLabel ? <span className="creator-attribution">{creatorLabel}</span> : null}
       </header>
       {linked && post.body ? (
         <Link
@@ -77,9 +105,9 @@ export function PostCard({
         post.body ? <p className="post-body">{post.body}</p> : null
       )}
       <PostMedia authorName={post.author.displayName} items={mediaItems} label={labels.postMedia} {...(linked ? {onPostIntent: () => prefetch(postHref), onPostOpen: trackView, postHref} : {})}/>
-      <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} {...(viewerScope ? {viewerScope} : {})}/>
+      <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={commentCountOverride ?? post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} variant={variant} {...(viewerScope ? {viewerScope} : {})}/>
         </div>
-      </div>
+      </div>}
     </article>
   );
 }

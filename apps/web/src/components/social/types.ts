@@ -70,6 +70,7 @@ export interface SocialLabels {
   profile?: string
   share?: string
   searchInput?: string
+  searchPlaceholder?: string
   searchSubmit?: string
   searchCategory?: string
   searchAll?: string

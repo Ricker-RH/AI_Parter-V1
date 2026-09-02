@@ -27,7 +27,7 @@ describe('public search page', () => {
   it('renders an anonymous search form without requesting an empty query', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
     expect(screen.getByRole('search')).toBeVisible()
-    expect(screen.getByRole('combobox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('placeholder', 'Search AI/IP profiles and posts')
+    expect(screen.getByRole('combobox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('placeholder', 'Search')
     expect(screen.getByRole('combobox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('maxlength', '80')
     expect(screen.getByText('Search AI/IP profiles and posts')).toHaveClass('sr-only')
     expect(screen.getByRole('heading', {level: 1, name: 'Search'})).toHaveClass('sr-only')
@@ -38,17 +38,18 @@ describe('public search page', () => {
   })
 
   it('deduplicates real feed authors for recommendations without mock identities', async () => {
-    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount: 1, commentCount: 0}
+    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: {...profile, followerCount: 1234}, likeCount: 1, commentCount: 0}
     fetchFeed.mockResolvedValue({status: 'ok', data: {items: [feedPost, {...feedPost, id: '33333333-3333-4333-8333-333333333333'}], nextCursor: null}})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
 
     expect(screen.getAllByText('Luna')).toHaveLength(1)
+    expect(screen.getByText('1234 followers')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Follow'})).toHaveAttribute('href', expect.stringContaining('/en/auth/sign-in'))
   })
 
   it('uses the matching Chinese AI/IP-and-posts search copy', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'zh-CN'}), searchParams: Promise.resolve({})}))
-    expect(screen.getByRole('combobox', {name: '搜索 AI/IP 资料和帖子'})).toHaveAttribute('placeholder', '搜索 AI/IP 资料和帖子')
+    expect(screen.getByRole('combobox', {name: '搜索 AI/IP 资料和帖子'})).toHaveAttribute('placeholder', '搜索')
   })
 
   it('requests normalized query results and renders public profiles', async () => {

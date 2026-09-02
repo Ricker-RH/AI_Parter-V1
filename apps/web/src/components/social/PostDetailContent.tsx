@@ -9,7 +9,7 @@ import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
 import {CommentComposer} from './CommentComposer'
 import {formatRelativeDuration} from '../../lib/relative-time'
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState, type CSSProperties} from 'react'
 import {AuthorPreview} from './AuthorPreview'
 
 type Comment = PostDetail['comments']['items'][number]
@@ -64,6 +64,8 @@ function CommentThreadItem({authenticated, comment, labels, locale, onCommentCre
 export function PostDetailContent({result, locale, labels, moreHref, authenticated=false, authResolutionNeeded=false, returnTo, referenceTime=Date.now(), viewerScope: serverViewerScope}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined;authenticated?:boolean; authResolutionNeeded?: boolean; returnTo?: string; referenceTime?: number; viewerScope?: string}) {
   const [canMutate, setCanMutate] = useState(authenticated)
   const [resolvedViewerScope, setResolvedViewerScope] = useState<string | undefined>(serverViewerScope)
+  const composerDock = useRef<HTMLDivElement>(null)
+  const [composerDockHeight, setComposerDockHeight] = useState(65)
   if (authenticated && resolvedViewerScope !== serverViewerScope) setResolvedViewerScope(serverViewerScope)
   const [checkingAccess, setCheckingAccess] = useState(!authenticated && authResolutionNeeded)
   const currentResult = result.status === 'ok' ? result.data : null
@@ -108,6 +110,17 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
     return () => controller.abort()
   }, [authResolutionNeeded, authenticated, serverViewerScope])
 
+  useEffect(() => {
+    const element = composerDock.current
+    if (!element) return
+    const updateHeight = () => setComposerDockHeight(Math.ceil(element.getBoundingClientRect().height) || 65)
+    updateHeight()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [result.status])
+
   function appendComment(comment: Comment) {
     if (!currentResult || !pageScope || comment.postId !== currentResult.id) return
     setStoredComments((current) => {
@@ -120,13 +133,15 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
   if (result.status !== 'ok') return <div className="post-detail-content social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result} /></div>
   const resolvedPostReturnTo = postReturnTo ?? `/${locale}/posts/${result.data.id}`
   return <div className="post-detail-content">
-    <PostCard canMutate={canMutate} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})} />
-    <section aria-label={labels.comments} className="comments-section">
-      {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})} />}
+    <PostCard canMutate={canMutate} commentCountOverride={result.data.commentCount + storedComments.localIds.length} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} variant="detail" {...(viewerScope ? {viewerScope} : {})} />
+    <section aria-label={labels.comments} className="comments-section" style={{'--post-detail-composer-reserve': `${composerDockHeight}px`} as CSSProperties}>
+      <div className="post-detail-comments-content">
       <div className="comments-toolbar"><h2>{labels.comments}</h2><span>{labels.commentSortChronological ?? labels.comments}</span></div>
       {comments.length === 0 ? <div className="comments-empty"><h3>{labels.commentsEmptyTitle ?? labels.comments}</h3>{labels.commentsEmptyDescription ? <p>{labels.commentsEmptyDescription}</p> : null}</div> : null}
       <div className="comment-thread">{comments.map((comment) => <CommentThreadItem authenticated={canMutate} comment={comment} key={comment.id} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})}/>)}</div>
       {result.data.comments.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}
+      </div>
+      <div className="post-detail-composer-dock" ref={composerDock}>{checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})} />}</div>
     </section>
   </div>
 }

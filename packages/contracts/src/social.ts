@@ -253,6 +253,9 @@ export const PublicIpSchema = z.strictObject({
   visualType: CreatorVisualTypeSchema,
   creator: PublicCreatorSchema.optional(),
 });
+const FeedIpSchema = PublicIpSchema.extend({
+  followerCount: z.number().int().nonnegative().optional(),
+});
 export const PublicHumanSchema = z.strictObject({
   kind: z.literal("human"),
   id: uuid,
@@ -282,7 +285,7 @@ export const FeedPostSchema = z.strictObject({
   body: z.string().max(5000),
   languageCode: z.string().nullable(),
   publishedAt: dateTime,
-  author: PublicIpSchema,
+  author: FeedIpSchema,
   media: z.array(PublicPostMediaSchema).max(4).optional(),
   likeCount: z.number().int().nonnegative(),
   commentCount: z.number().int().nonnegative(),

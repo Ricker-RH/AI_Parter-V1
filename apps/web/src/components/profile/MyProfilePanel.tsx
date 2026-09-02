@@ -13,7 +13,7 @@ export type MyProfileLabels = {
   loading: string; authRequired: string; signIn: string; unavailable: string; retry: string; emptyBio: string
   edit: string; save: string; saving: string; cancel: string; displayName: string; username: string; bio: string; locale: string
   languageEnglish: string; languageChinese: string; saved: string; saveError: string; invalidName: string; invalidUsername: string
-  back:string;search:string;more:string;tabs:string;myIps:string;liked:string;savedTab:string;following:string;loadingSection:string;unavailableSection:string;retrySection:string;myIpsEmpty:string;likedEmpty:string;savedEmpty:string;followingEmpty:string
+  back:string;search:string;more:string;tabs:string;myIps:string;liked:string;savedTab:string;following:string;loadingSection:string;unavailableSection:string;retrySection:string;myIpsEmpty:string;likedEmpty:string;savedEmpty:string;followingEmpty:string;close?: string
 }
 
 type State = {status: 'loading'} | {status: 'auth'} | {status: 'unavailable'} | {status: 'ready'; account: Account} | {status: 'editing'; account: Account}
@@ -29,6 +29,10 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [fieldError, setFieldError] = useState<'name' | 'username' | null>(null)
+  const editTrigger = useRef<HTMLButtonElement>(null)
+  const editDialog = useRef<HTMLDivElement>(null)
+  const firstEditField = useRef<HTMLInputElement>(null)
+  const dismissingEdit = useRef(false)
   const lifecycle = useRef<{mounted: boolean; generation: number; controller: AbortController | null}>({mounted: false, generation: 0, controller: null})
 
   function startRequest() {
@@ -81,6 +85,34 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
     }
   }, [])
 
+  function closeEditor() {
+    if (state.status !== 'editing') return
+    dismissingEdit.current = true
+    invalidateRequest(); setPending(false); setFieldError(null); setMessage(null); setDraft({}); setState({status: 'ready', account: state.account})
+    editTrigger.current?.focus()
+  }
+
+  useEffect(() => {
+    if (state.status !== 'editing') return
+    firstEditField.current?.focus()
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') { event.preventDefault(); closeEditor(); return }
+      if (event.key !== 'Tab') return
+      const items = [...(editDialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), textarea:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])') ?? [])]
+      if (!items.length) return
+      const first = items[0]
+      const last = items.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    function onFocusIn(event: FocusEvent) {
+      if (!dismissingEdit.current && !editDialog.current?.contains(event.target as Node)) firstEditField.current?.focus()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('focusin', onFocusIn)
+    return () => { document.removeEventListener('keydown', onKeyDown); document.removeEventListener('focusin', onFocusIn) }
+  }, [state.status])
+
   if (state.status === 'loading') return <section className={styles.state} role="status">{labels.loading}</section>
   if (state.status === 'auth') return <section className={styles.state} role="alert"><p>{labels.authRequired}</p><Link href={`/${locale}/auth/sign-in`}>{labels.signIn}</Link></section>
   if (state.status === 'unavailable') return <section className={styles.state} role="alert"><p>{labels.unavailable}</p><button onClick={() => void load()} type="button">{labels.retry}</button></section>
@@ -89,10 +121,10 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
   const editing = state.status === 'editing'
   const value = (key: keyof UpdateCurrentAccount) => draft[key] === undefined ? key === 'bio' ? account.bio ?? '' : account[key === 'displayName' ? 'displayName' : key === 'preferredLocale' ? 'preferredLocale' : 'username'] : draft[key]
   function beginEdit() {
+    dismissingEdit.current = false
     setDraft({username: account.username, displayName: account.displayName, bio: account.bio ?? null, preferredLocale: account.preferredLocale})
     setFieldError(null); setMessage(null); setState({status: 'editing', account})
   }
-  function cancel() { invalidateRequest(); setPending(false); setFieldError(null); setMessage(null); setState({status: 'ready', account}) }
   async function save() {
     const parsed = UpdateCurrentAccountSchema.safeParse(draft)
     if (!parsed.success) {
@@ -111,23 +143,28 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
       const next = parseAccount(await response.json())
       if (!isCurrentRequest(request)) return
       if (!next) { setMessage(labels.saveError); return }
-      setState({status: 'ready', account: next}); setDraft({}); setMessage(labels.saved)
+      dismissingEdit.current = true
+      setState({status: 'ready', account: next}); setDraft({}); setMessage(labels.saved); editTrigger.current?.focus()
     } catch { if (isCurrentRequest(request)) setMessage(labels.saveError) }
     finally { if (isCurrentRequest(request)) setPending(false); finishRequest(request) }
   }
 
-  return <div className={styles.page}><ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/><div className={styles.surface}><section className={styles.profile} aria-labelledby="my-profile-title">
+  return <div className={styles.page}><div aria-hidden={editing || undefined}><ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/><div className={styles.surface}><section className={styles.profile} aria-labelledby="my-profile-title">
     <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div><div className={styles.avatar} aria-hidden="true">{account.displayName.slice(0, 1).toUpperCase()}</div></header>
-    {!editing ? <><div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p><dl><div><dt>{labels.locale}</dt><dd>{account.preferredLocale === 'zh-CN' ? labels.languageChinese : labels.languageEnglish}</dd></div></dl></div><button className={styles.editAction} onClick={beginEdit} type="button">{labels.edit}</button></> : <form className={styles.form} onSubmit={(event) => {event.preventDefault(); if (!pending) void save()}}>
-      <label>{labels.displayName}<input aria-label={labels.displayName} maxLength={80} onChange={(event) => setDraft({...draft, displayName: event.target.value})} value={String(value('displayName'))}/></label>
+    <div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p></div><button className={styles.editAction} onClick={beginEdit} ref={editTrigger} type="button">{labels.edit}</button>
+    {!editing && message ? <p className={styles.message} role="status">{message}</p> : null}
+  </section><MyProfileTabs labels={{tabs:labels.tabs,myIps:labels.myIps,liked:labels.liked,saved:labels.savedTab,following:labels.following,loadingSection:labels.loadingSection,unavailableSection:labels.unavailableSection,retrySection:labels.retrySection,myIpsEmpty:labels.myIpsEmpty,likedEmpty:labels.likedEmpty,savedEmpty:labels.savedEmpty,followingEmpty:labels.followingEmpty}} locale={locale} socialLabels={socialLabels??({} as SocialLabels)} {...(viewerScope ? {viewerScope} : {})}/></div></div>
+  {editing ? <div className={styles.editOverlay} data-my-profile-edit-backdrop onPointerDown={(event) => { if (event.target === event.currentTarget) closeEditor() }}><div aria-labelledby="my-profile-edit-title" aria-modal="true" className={styles.editDialog} onPointerDown={(event) => event.stopPropagation()} ref={editDialog} role="dialog">
+    <header className={styles.editHeader}><h2 id="my-profile-edit-title">{labels.edit}</h2><button aria-label={labels.close ?? `${labels.cancel} ${labels.edit}`} className={styles.editClose} onClick={closeEditor} type="button">×</button></header>
+    <form className={styles.form} onSubmit={(event) => {event.preventDefault(); if (!pending) void save()}}>
+      <label>{labels.displayName}<input aria-label={labels.displayName} maxLength={80} onChange={(event) => setDraft({...draft, displayName: event.target.value})} ref={firstEditField} value={String(value('displayName'))}/></label>
       {fieldError === 'name' ? <p role="alert">{labels.invalidName}</p> : null}
       <label>{labels.username}<input aria-label={labels.username} maxLength={30} onChange={(event) => setDraft({...draft, username: event.target.value})} value={String(value('username'))}/></label>
       {fieldError === 'username' ? <p role="alert">{labels.invalidUsername}</p> : null}
       <label>{labels.bio}<textarea aria-label={labels.bio} maxLength={500} onChange={(event) => setDraft({...draft, bio: event.target.value || null})} value={String(value('bio'))}/></label>
       <label>{labels.locale}<select aria-label={labels.locale} onChange={(event) => setDraft({...draft, preferredLocale: event.target.value as Locale})} value={String(value('preferredLocale'))}><option value="en">{labels.languageEnglish}</option><option value="zh-CN">{labels.languageChinese}</option></select></label>
-      <div className={styles.actions}><button disabled={pending} type="submit">{pending ? labels.saving : labels.save}</button><button disabled={pending} onClick={cancel} type="button">{labels.cancel}</button></div>
+      <div className={styles.actions}><button disabled={pending} type="submit">{pending ? labels.saving : labels.save}</button><button disabled={pending} onClick={closeEditor} type="button">{labels.cancel}</button></div>
       {message ? <p role="status">{message}</p> : null}
-    </form>}
-    {!editing && message ? <p className={styles.message} role="status">{message}</p> : null}
-  </section>{!editing?<MyProfileTabs labels={{tabs:labels.tabs,myIps:labels.myIps,liked:labels.liked,saved:labels.savedTab,following:labels.following,loadingSection:labels.loadingSection,unavailableSection:labels.unavailableSection,retrySection:labels.retrySection,myIpsEmpty:labels.myIpsEmpty,likedEmpty:labels.likedEmpty,savedEmpty:labels.savedEmpty,followingEmpty:labels.followingEmpty}} locale={locale} socialLabels={socialLabels??({} as SocialLabels)} {...(viewerScope ? {viewerScope} : {})}/>:null}</div></div>
+    </form>
+  </div></div> : null}</div>
 }

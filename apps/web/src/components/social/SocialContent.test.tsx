@@ -186,6 +186,30 @@ describe("real social content", () => {
     );
   });
 
+  it("uses a detail-only post structure that keeps identity together and aligns post content to the detail edge", () => {
+    const detail: PostDetail = {...post, media: [
+      {id: "33333333-3333-4333-8333-333333333333", type: "image", url: "https://media.example/one.webp", altText: "First detail image", width: 1200, height: 800, aspectRatio: null},
+      {id: "44444444-4444-4444-8444-444444444444", type: "image", url: "https://media.example/two.webp", altText: "Second detail image", width: 800, height: 1200, aspectRatio: null},
+    ], comments: {items: [], nextCursor: null}}
+    const {container, rerender} = render(<PostDetailContent labels={labels} locale="en" referenceTime={Date.parse("2026-08-31T12:10:00.000Z")} result={{status: "ok", data: detail}} />)
+
+    const detailCard = container.querySelector('.post-card--detail')
+    expect(detailCard).not.toBeNull()
+    expect(detailCard?.querySelector('.post-detail-post-header > .author-preview')).not.toBeNull()
+    expect(detailCard?.querySelector('.post-detail-post-header > .post-author')).not.toBeNull()
+    expect(detailCard?.querySelector('.post-detail-post-content > .post-body')).toHaveTextContent(post.body)
+    expect(detailCard?.querySelector('.post-detail-post-content > [data-testid="post-media-rail"]')).toHaveAttribute('data-count', '2')
+    expect(detailCard?.querySelector('.post-detail-post-content > .post-actions')).not.toBeNull()
+    expect(detailCard?.querySelector('.post-layout')).toBeNull()
+    expect(screen.getByRole('button', {name: 'Profile: Luma'})).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(screen.getByRole('region', {name: labels.postMedia})).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('link', {name: 'Like 4'})).toBeVisible()
+
+    rerender(<PostDetailContent labels={labels} locale="en" result={{status: "ok", data: {...detail, media: [], comments: {items: [], nextCursor: null}}}} />)
+    expect(container.querySelector('.post-card--detail [data-testid="post-media-rail"]')).toBeNull()
+    expect(container.querySelector('.post-card--detail .post-detail-post-content > .post-actions')).not.toBeNull()
+  });
+
   it("captures a post-view intent from the real feed link without its body", () => {
     render(
       <FeedContent
@@ -474,6 +498,43 @@ describe("real social content", () => {
     expect(screen.getByRole("button", {name: "Comment"})).toBeDisabled();
   });
 
+  it("docks the detail composer in the shared viewport and reserves its measured height while optimistic comments update the action count", async () => {
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+    const created = {id: "33333333-3333-4333-8333-833333333333", postId: post.id, parentCommentId: null, state: "published" as const, body: "Fresh reply", createdAt: "2026-09-02T12:00:00.000Z", author: {kind: "human" as const, id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}};
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(created, {status: 201})));
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
+
+    const comments = container.querySelector<HTMLElement>('.comments-section')!;
+    expect(comments.style.getPropertyValue('--post-detail-composer-reserve')).toBe('65px');
+    expect(comments.querySelector('.post-detail-composer-dock > .comment-composer--primary')).not.toBeNull();
+    expect(screen.getByRole('link', {name: 'Comments 2'})).toBeVisible();
+
+    fireEvent.change(screen.getByRole('textbox', {name: 'Write a comment'}), {target: {value: created.body}});
+    fireEvent.click(screen.getByRole('button', {name: 'Comment'}));
+    expect(await screen.findByRole('link', {name: 'Comments 3'})).toBeVisible();
+    expect(comments.querySelector('.post-detail-composer-dock')).not.toHaveStyle({overflowY: 'auto'});
+  });
+
+  it("starts measuring the dock when a detail result resolves after the initial render", () => {
+    const observe = vi.fn();
+    class TestResizeObserver {
+      constructor(_callback: ResizeObserverCallback) {}
+      disconnect() {}
+      observe = observe;
+    }
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    try {
+      const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+      const {container, rerender} = render(<PostDetailContent labels={labels} locale="en" result={{status: "unavailable"}} />);
+
+      rerender(<PostDetailContent labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+      expect(observe).toHaveBeenCalledWith(container.querySelector('.post-detail-composer-dock'));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders real notification rows and safe empty/auth states", () => {
     const notification: Notification = {
       id: "66666666-6666-4666-8666-666666666666",
@@ -568,7 +629,7 @@ describe("real social content", () => {
     expect(await screen.findByText("Hello IP", {selector: ".comment-thread-content > p"})).toBeVisible();
     rerender(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: {...detail, comments: {...detail.comments, items: [...detail.comments.items]}}}} viewerScope="viewer-a"/>);
     expect(screen.getByText("Hello IP", {selector: ".comment-thread-content > p"})).toBeVisible();
-    const primaryComposer = screen.getAllByRole("textbox", {name: "Write a comment"})[0]!;
+    const primaryComposer = within(document.querySelector('.post-detail-composer-dock')!).getByRole("textbox", {name: "Write a comment"});
     expect(primaryComposer).toHaveValue("");
     expect(primaryComposer).toHaveFocus();
     expect(routerRefresh).not.toHaveBeenCalled();

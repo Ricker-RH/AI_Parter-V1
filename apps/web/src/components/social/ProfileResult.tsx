@@ -3,7 +3,16 @@ import Link from 'next/link'
 import type {ReactNode} from 'react'
 import type {SocialLabels} from './types'
 
-export function ProfileResult({action, href, labels, profile}: {action?: ReactNode; href: string; labels: SocialLabels; profile: PublicIp}) {
+export function ProfileResult({action, compact = false, followerCount, href, labels, profile}: {action?: ReactNode; compact?: boolean; followerCount?: number; href: string; labels: SocialLabels; profile: PublicIp}) {
+  if (compact) return <article className="profile-result profile-result--compact">
+    <Link aria-label={profile.displayName} className="profile-result-avatar" href={href}>{profile.displayName.slice(0, 1)}</Link>
+    <div className="profile-result-content">
+      <p className="profile-result-handle"><Link href={href}>@{profile.username}</Link></p>
+      <h3 className="profile-result-name"><Link href={href}>{profile.displayName}</Link></h3>
+      <p className="profile-result-followers">{followerCount === undefined ? `— ${labels.followers}` : `${followerCount} ${labels.followers}`}</p>
+    </div>
+    {action}
+  </article>
   return <article className="profile-result">
     <Link aria-label={profile.displayName} className="profile-result-avatar" href={href}>{profile.displayName.slice(0, 1)}</Link>
     <div className="profile-result-content">

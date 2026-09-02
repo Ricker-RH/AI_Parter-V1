@@ -48,7 +48,7 @@ function Recommendations({canMutate, labels, locale, result, viewerScope}: {canM
       const action = canMutate && follows !== undefined
         ? viewerScope ? <ProfileFollowButton following={follows} labels={labels} locale={locale} profileId={profile.id} viewerScope={viewerScope}/> : null
         : !canMutate ? <Link aria-label={labels.follow} className={styles.followLink} href={authHref(locale, returnTo)}>{labels.follow}</Link> : null
-      return <ProfileResult {...(action ? {action} : {})} href={href} key={profile.id} labels={labels} profile={profile}/>
+      return <ProfileResult {...(action ? {action} : {})} compact {...(profile.followerCount === undefined ? {} : {followerCount: profile.followerCount})} href={href} key={profile.id} labels={labels} profile={profile}/>
     })}
   </section>
 }
@@ -71,7 +71,7 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
   const profileHref = (profileId: string) => canMutate ? `/${locale}/profiles/${profileId}` : authHref(locale, `/${locale}/profiles/${profileId}`)
   const header = <header className={styles.header}>
     <h1 className="sr-only">{searchLabel}</h1>
-    <SearchComposer category={category} initialQuery={normalized} labels={{input: labels.searchInput ?? labels.search ?? 'Search', submit: labels.searchSubmit ?? labels.search ?? 'Search', suggestions: labels.searchSuggestions ?? labels.search ?? 'Search suggestions', ...(labels.searchForQuery ? {searchForQuery: labels.searchForQuery} : {})}} locale={locale}/>
+    <SearchComposer category={category} initialQuery={normalized} labels={{input: labels.searchInput ?? labels.search ?? 'Search', placeholder: labels.searchPlaceholder ?? (locale === 'zh-CN' ? '搜索' : 'Search'), submit: labels.searchSubmit ?? labels.search ?? 'Search', suggestions: labels.searchSuggestions ?? labels.search ?? 'Search suggestions', ...(labels.searchForQuery ? {searchForQuery: labels.searchForQuery} : {})}} locale={locale}/>
     {normalized ? <nav aria-label={labels.searchCategory ?? labels.search} className={styles.tabs} role="tablist">
       {categories.map((item) => <Link aria-selected={category === item.key} className={styles.tab} href={searchHref(locale, normalized, item.key)} key={item.key} role="tab">{labels[item.label] ?? item.key}</Link>)}
     </nav> : null}

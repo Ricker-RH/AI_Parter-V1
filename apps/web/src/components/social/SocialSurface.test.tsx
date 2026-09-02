@@ -42,4 +42,11 @@ describe('SocialSurface', () => {
     expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*?\.viewport\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/)
     expect(stylesheet).toMatch(/\[data-social-surface-fill\]\s*\{[^}]*min-height:\s*100%/)
   })
+
+  it('removes the inherited page-header divider before the desktop frame', () => {
+    const root = process.cwd().endsWith('/apps/web') ? 'src/components/social' : 'apps/web/src/components/social'
+    const stylesheet = readFileSync(`${root}/SocialSurface.module.css`, 'utf8')
+
+    expect(stylesheet).toMatch(/\.header\s+:global\(\.page-header\)\s*\{[^}]*border-bottom:\s*0/)
+  })
 })

@@ -1,4 +1,4 @@
-import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import {StrictMode} from 'react'
@@ -44,7 +44,75 @@ describe('MyProfilePanel', () => {
     fireEvent.change(screen.getByLabelText('Bio'), {target: {value: 'Hello'}})
     fireEvent.click(screen.getByRole('button', {name: 'Save changes'}))
     await waitFor(() => expect(screen.getByText('Profile saved.')).toBeVisible())
+    expect(screen.queryByRole('dialog', {name: 'Edit profile'})).toBeNull()
+    expect(screen.getByRole('heading', {level: 2, name: 'Rui Updated'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'Edit profile'})).toHaveFocus()
     expect(request).toHaveBeenLastCalledWith('/api/me', expect.objectContaining({method: 'PATCH'}))
+  })
+
+  it('keeps the edit modal open and reports save failures', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(Response.json(account))
+      .mockResolvedValueOnce(new Response(null, {status: 503}))
+    vi.stubGlobal('fetch', request)
+    render(<MyProfilePanel labels={labels} locale="en" />)
+    await screen.findByRole('heading', {level: 2, name: 'Rui'})
+    fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
+    fireEvent.click(screen.getByRole('button', {name: 'Save changes'}))
+    expect(await screen.findByRole('status')).toHaveTextContent('Profile could not be saved.')
+    expect(screen.getByRole('dialog', {name: 'Edit profile'})).toBeVisible()
+  })
+
+  it('keeps the self profile free of the contextual language row', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({...account, preferredLocale: 'zh-CN'})))
+    const {container} = render(<MyProfilePanel labels={labels} locale="zh-CN" />)
+
+    await screen.findByRole('heading', {level: 2, name: 'Rui'})
+    expect(container.querySelector('.details dl')).toBeNull()
+    expect(screen.queryByText('Language')).toBeNull()
+    expect(screen.queryByText('简体中文')).toBeNull()
+  })
+
+  it('opens editing in an accessible modal, traps focus, and restores focus on dismissal', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(account)))
+    render(<MyProfilePanel labels={labels} locale="en" />)
+    await screen.findByRole('heading', {level: 2, name: 'Rui'})
+
+    const trigger = screen.getByRole('button', {name: 'Edit profile'})
+    trigger.focus()
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', {name: 'Edit profile'})
+    const first = within(dialog).getByLabelText('Name')
+    const close = within(dialog).getByRole('button', {name: 'Cancel Edit profile'})
+    const buttons = within(dialog).getAllByRole('button')
+    const last = buttons.at(-1)
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(first).toHaveFocus()
+    close.focus()
+    fireEvent.keyDown(dialog, {key: 'Tab', shiftKey: true})
+    expect(last).toHaveFocus()
+    last?.focus()
+    fireEvent.keyDown(dialog, {key: 'Tab'})
+    expect(close).toHaveFocus()
+    first.focus()
+    fireEvent.focusIn(document.body)
+    expect(first).toHaveFocus()
+
+    fireEvent.keyDown(document, {key: 'Escape'})
+    expect(screen.queryByRole('dialog', {name: 'Edit profile'})).toBeNull()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('closes the edit modal from its backdrop without changing the profile', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(account)))
+    const {container} = render(<MyProfilePanel labels={labels} locale="en" />)
+    await screen.findByRole('heading', {level: 2, name: 'Rui'})
+    fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
+    const backdrop = container.querySelector('[data-my-profile-edit-backdrop]')
+    expect(backdrop).not.toBeNull()
+    fireEvent.pointerDown(backdrop!)
+    expect(screen.queryByRole('dialog', {name: 'Edit profile'})).toBeNull()
+    expect(screen.getByRole('heading', {level: 2, name: 'Rui'})).toBeVisible()
   })
 
   it('shows sign-in for 401 and an unavailable state for 503 or malformed data', async () => {
@@ -108,6 +176,9 @@ describe('MyProfilePanel', () => {
     expect(stylesheet).toMatch(/\.profile\s*\{[^}]*max-width:\s*640px/s)
     expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/s)
     expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.surface\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/s)
+    expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.page\s*>\s*div:first-child\s*>\s*header:first-child\s*\{[^}]*display:\s*none/s)
+    expect(stylesheet).toMatch(/\.editDialog\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*border:\s*1px solid var\(--shell-border\)/s)
+    expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.editDialog\s*\{[^}]*border-radius:\s*0[^}]*min-height:\s*100dvh/s)
   })
 
   it('keeps the newest StrictMode profile load when an aborted older request resolves late', async () => {

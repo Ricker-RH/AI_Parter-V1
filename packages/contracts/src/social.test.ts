@@ -206,6 +206,27 @@ describe("social contracts", () => {
     ).toThrow();
   });
 
+  it("allows the feed projection to carry its authoritative public follower count", () => {
+    const feedAuthor = {
+      kind: "ip" as const,
+      id,
+      username: "aifans_ip",
+      displayName: "AIFANS IP",
+      languages: ["en" as const],
+      visualType: "hybrid" as const,
+      followerCount: 3,
+    };
+    expect(FeedPostSchema.parse({
+      id,
+      body: "Hello",
+      languageCode: "en",
+      publishedAt: timestamp,
+      author: feedAuthor,
+      likeCount: 0,
+      commentCount: 0,
+    }).author.followerCount).toBe(3);
+  });
+
   it("round trips cursors and rejects invalid query inputs", () => {
     const cursor = {
       v: 1 as const,
