@@ -5,12 +5,14 @@
 .header {
   border-bottom: 1px solid var(--shell-border);
   padding: 20px 24px 16px;
+  position: relative;
 }
 
 .identityRow {
   align-items: flex-start;
   display: flex;
   gap: 12px;
+  padding-right: 240px;
 }
 
 .avatar {
@@ -60,10 +62,12 @@
 }
 
 .profileActions {
-  margin-left: auto;
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
+  position: absolute;
+  right: 24px;
+  top: 20px;
 }
 
 .followAction,
@@ -102,6 +106,14 @@
   font-size: 12px;
   margin-top: 4px;
   max-width: 120px;
+}
+
+.followAction > a,
+.followAction :global(.profile-follow button),
+.chatAction > a,
+.chatAction :global(.profile-start-chat button) {
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
 }
 
 .bio {
@@ -154,6 +166,10 @@
     padding: 16px;
   }
 
+  .identityRow {
+    padding-right: 0;
+  }
+
   .avatar {
     font-size: 18px;
     height: 52px;
@@ -173,7 +189,12 @@
   }
 
   .profileActions {
+    flex: 0 0 100%;
+    flex-wrap: wrap;
     gap: 6px;
+    margin-top: 12px;
+    position: static;
+    width: 100%;
   }
 
   .tabList {

@@ -1,9 +1,11 @@
-import {render, screen} from '@testing-library/react'
+import {fireEvent, render, screen} from '@testing-library/react'
+import {readFileSync} from 'node:fs'
 import type {AnchorHTMLAttributes, ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
 import type {FeedPost} from '@aifans/contracts'
 import {PublicProfileContent} from './PublicProfileContent.js'
 import type {SocialLabels} from './types.js'
+import styles from './PublicProfileContent.module.css'
 
 vi.mock('next/link', () => ({
   default: ({children, ...props}: AnchorHTMLAttributes<HTMLAnchorElement> & {children: ReactNode}) => <a {...props}>{children}</a>,
@@ -55,5 +57,23 @@ describe('PublicProfileContent', () => {
     rerender(<PublicProfileContent labels={labels} locale="en" result={{status: 'not-found'}} />)
     expect(screen.queryByRole('link', {name: 'Chat'})).toBeNull()
     expect(screen.queryByRole('button', {name: 'Chat'})).toBeNull()
+  })
+
+  it('keeps long profile text and chat pending or errors in a dedicated mobile action row', async () => {
+    let resolve!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
+    const longProfile = {...profile, displayName: 'Luma the exceptionally long profile name that must wrap without overlapping actions'}
+    const {container} = render(<PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile: longProfile, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}}} />)
+    const header = container.querySelector(`.${styles.header}`)
+    const actions = container.querySelector(`.${styles.profileActions}`)
+
+    expect(screen.getByRole('heading', {name: longProfile.displayName})).toBeVisible()
+    expect(actions?.parentElement).toBe(header)
+    fireEvent.click(screen.getByRole('button', {name: 'Chat'}))
+    expect(screen.getByRole('button', {name: 'Opening…'})).toBeDisabled()
+
+    resolve(Response.json({invalid: true}))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to start a conversation.')
+    expect(readFileSync('src/components/social/PublicProfileContent.module.css', 'utf8')).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.profileActions\s*\{[\s\S]*?flex:\s*0 0 100%[\s\S]*?flex-wrap:\s*wrap[\s\S]*?position:\s*static/s)
   })
 })

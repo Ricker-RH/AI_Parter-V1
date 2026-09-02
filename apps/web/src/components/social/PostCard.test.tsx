@@ -31,6 +31,7 @@ const labels: SocialLabels = {
   commentPlaceholder: "Write a comment", commentSubmit: "Comment", commentSending: "Posting", commentSuccess: "Posted", reply: "Reply",
   signInToComment: "Sign in to comment", markRead: "Mark as read", markingRead: "Marking", profileNotFoundTitle: "Profile not found",
   profileNotFoundDescription: "Not public", followers: "followers", posts: "Posts", signInToInteract: "Sign in to like, save, or follow",
+  startChat: "Chat", startingChat: "Opening…", chatStartError: "Unable to start a conversation.",
   messages: "Messages", profile: "Profile", share: "Share",
 };
 

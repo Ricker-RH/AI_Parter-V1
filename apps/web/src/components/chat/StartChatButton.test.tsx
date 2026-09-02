@@ -47,4 +47,41 @@ describe('StartChatButton', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Unable to start a conversation.')
     expect(push).not.toHaveBeenCalled()
   })
+
+  it('aborts an in-flight request and ignores its response after unmount', async () => {
+    let resolve!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
+    const {unmount} = render(<StartChatButton authenticated ipProfileId={ipProfileId} labels={labels} locale="en"/>)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Chat'}))
+    const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    unmount()
+    expect((init.signal as AbortSignal).aborted).toBe(true)
+
+    resolve(Response.json({id: conversationId, ipProfile: {id: ipProfileId, username: 'luma', displayName: 'Luma'}, lastMessage: null, updatedAt: '2026-09-02T00:00:00.000Z', sendEnabled: true}))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('aborts the previous profile operation and ignores its stale response after a profile change', async () => {
+    let resolve!: (response: Response) => void
+    const nextIpProfileId = '33333333-3333-4333-8333-333333333333'
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
+    const {rerender} = render(<StartChatButton authenticated ipProfileId={ipProfileId} labels={labels} locale="en"/>)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Chat'}))
+    const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    rerender(<StartChatButton authenticated ipProfileId={nextIpProfileId} labels={labels} locale="en"/>)
+    expect((init.signal as AbortSignal).aborted).toBe(true)
+
+    resolve(Response.json({invalid: true}))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(push).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('button', {name: 'Chat'})).not.toBeDisabled()
+  })
 })

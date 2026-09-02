@@ -50,9 +50,9 @@ export interface SocialLabels {
   followers: string
   posts: string
   signInToInteract: string
-  startChat?: string
-  startingChat?: string
-  chatStartError?: string
+  startChat: string
+  startingChat: string
+  chatStartError: string
   messages?: string
   profile?: string
   share?: string
