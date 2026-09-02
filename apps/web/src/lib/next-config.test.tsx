@@ -1,10 +1,27 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {readFile} from 'node:fs/promises'
+import {dirname, join} from 'node:path'
 
 const environment = process.env as Record<string, string | undefined>
 const originalNodeEnv = environment.NODE_ENV
 const originalSecret = environment.WEB_API_RATE_LIMIT_SIGNING_SECRET
 const originalDistDir = environment.AIFANS_NEXT_DIST_DIR
+
+async function readWorkspaceTurboConfig() {
+  let directory = process.cwd()
+
+  while (true) {
+    try {
+      return await readFile(join(directory, 'turbo.json'), 'utf8')
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+    }
+
+    const parent = dirname(directory)
+    if (parent === directory) throw new Error('Unable to locate the workspace turbo.json')
+    directory = parent
+  }
+}
 
 afterEach(() => {
   vi.resetModules()
@@ -18,7 +35,7 @@ afterEach(() => {
 
 describe('Web production configuration', () => {
   it('passes the private rate-limit signing secret through Turborepo builds', async () => {
-    const turbo = JSON.parse(await readFile('../../turbo.json', 'utf8')) as {tasks?: {build?: {env?: string[]}}}
+    const turbo = JSON.parse(await readWorkspaceTurboConfig()) as {tasks?: {build?: {env?: string[]}}}
 
     expect(turbo.tasks?.build?.env).toContain('WEB_API_RATE_LIMIT_SIGNING_SECRET')
   })
