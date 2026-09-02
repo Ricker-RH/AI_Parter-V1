@@ -7,6 +7,8 @@ import {PublicProfileContent} from './PublicProfileContent.js'
 import type {SocialLabels} from './types.js'
 import styles from './PublicProfileContent.module.css'
 
+const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/PublicProfileContent.module.css' : 'apps/web/src/components/social/PublicProfileContent.module.css', 'utf8')
+
 vi.mock('next/link', () => ({
   default: ({children, ...props}: AnchorHTMLAttributes<HTMLAnchorElement> & {children: ReactNode}) => <a {...props}>{children}</a>,
 }))
@@ -74,6 +76,6 @@ describe('PublicProfileContent', () => {
 
     resolve(Response.json({invalid: true}))
     expect(await screen.findByRole('alert')).toHaveTextContent('Unable to start a conversation.')
-    expect(readFileSync('src/components/social/PublicProfileContent.module.css', 'utf8')).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.profileActions\s*\{[\s\S]*?flex:\s*0 0 100%[\s\S]*?flex-wrap:\s*wrap[\s\S]*?position:\s*static/s)
+    expect(stylesheet).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.profileActions\s*\{[\s\S]*?flex:\s*0 0 100%[\s\S]*?flex-wrap:\s*wrap[\s\S]*?position:\s*static/s)
   })
 })
