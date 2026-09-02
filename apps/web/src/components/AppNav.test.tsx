@@ -24,7 +24,7 @@ describe('AppNav', () => {
   it('keeps the ordinary desktop order and excludes Creator Center', () => {
     render(<AppNav labels={labels} locale="en" />)
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label'))).toEqual([
-      'AIFANS', 'For You', 'Following', 'Search', 'Messages', 'Notifications', 'Liked', 'Saved', 'My Profile',
+      'AIFANS', 'For You', 'Following', 'Search', 'Messages', 'Liked', 'Saved', 'My Profile',
     ])
     expect(screen.queryByRole('link', {name: 'Creator Center'})).toBeNull()
   })
@@ -60,6 +60,14 @@ describe('AppNav', () => {
     pathname.value = '/en/messages/11111111-1111-4111-8111-111111111111'
     render(<AppNav compact labels={labels} locale="en" />)
     expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
+    pathname.value = '/en'
+  })
+
+  it('groups Notifications under the Messages destination', () => {
+    pathname.value = '/en/notifications'
+    render(<AppNav compact labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('link', {name: 'Notifications'})).toBeNull()
     pathname.value = '/en'
   })
 

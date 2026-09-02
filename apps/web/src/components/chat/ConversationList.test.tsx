@@ -1,9 +1,9 @@
-import {render, screen} from '@testing-library/react'
+import {fireEvent, render, screen} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
 import {expect, describe, it} from 'vitest'
 import {ConversationList} from './ConversationList.js'
 
-const labels = {title: 'Messages', noConversations: 'No conversations yet', loadMore: 'Load more'}
+const labels = {title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications', noConversations: 'No conversations yet', emptyDescription: 'Conversations with AI/IP profiles appear here.', emptyAction: 'Explore home', searchLabel: 'Search conversations', searchPlaceholder: 'Search', noSearchResults: 'No matching conversations', loadMore: 'Load more'}
 const item = {id: '11111111-1111-4111-8111-111111111111', ipProfile: {id: '22222222-2222-4222-8222-222222222222', displayName: 'Luma', username: 'luma'}, lastMessage: {body: 'Last real message', role: 'assistant' as const, createdAt: '2026-09-01T00:00:00.000Z'}, updatedAt: '2026-09-01T00:00:00.000Z', sendEnabled: true}
 
 describe('ConversationList', () => {
@@ -18,14 +18,30 @@ describe('ConversationList', () => {
 
   it('uses honest empty and pagination states', () => {
     const {rerender} = render(<ConversationList items={[]} labels={labels} locale="en"/>)
-    expect(screen.getByText('No conversations yet')).toBeVisible()
+    expect(screen.getByRole('heading', {name: 'No conversations yet'})).toBeVisible()
+    expect(screen.getByText('Conversations with AI/IP profiles appear here.')).toBeVisible()
+    expect(screen.getByRole('link', {name: 'Explore home'})).toHaveAttribute('href', '/en')
     rerender(<ConversationList items={[item]} labels={labels} locale="en" moreHref="/en/messages?cursor=next"/>)
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/messages?cursor=next')
+  })
+
+  it('filters loaded conversation summaries without changing pagination links', () => {
+    const second = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Orion', username: 'night_sky'}, lastMessage: {...item.lastMessage, body: 'A quiet constellation'}}
+    render(<ConversationList items={[item, second]} labels={labels} locale="en" moreHref="/en/messages?cursor=next"/>)
+    const search = screen.getByRole('searchbox', {name: 'Search conversations'})
+    fireEvent.change(search, {target: {value: 'NIGHT'}})
+    expect(screen.queryByRole('link', {name: /Luma/})).toBeNull()
+    expect(screen.getByRole('link', {name: /Orion/})).toBeVisible()
+    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/messages?cursor=next')
+    fireEvent.change(search, {target: {value: 'missing'}})
+    expect(screen.getByText('No matching conversations')).toBeVisible()
+    expect(screen.queryByText('No conversations yet')).toBeNull()
   })
 
   it('keeps unbroken display names within the conversation pane', () => {
     const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/chat/MessagesWorkspace.module.css' : 'apps/web/src/components/chat/MessagesWorkspace.module.css', 'utf8')
     expect(stylesheet).toMatch(/\.conversationTitle strong \{[^}]*overflow-wrap: anywhere/)
+    expect(stylesheet).toMatch(/\.listPane \{[^}]*display: flex[^}]*flex-direction: column/)
     expect(stylesheet).not.toMatch(/100dvh/)
     expect(stylesheet).toMatch(/\.workspace, \.detailPane \{ min-height: 0; \}/)
     const shellStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')

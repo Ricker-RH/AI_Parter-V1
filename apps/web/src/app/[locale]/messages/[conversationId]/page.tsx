@@ -15,7 +15,7 @@ export default async function ConversationPage({params}: {params: Promise<{local
   const returnTo = `/${locale}/messages/${conversationId}`
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><p role="alert">{messages.chat.unavailable}</p></main>
+  if (access.status === 'unavailable') return <MessagesWorkspace items={[]} labels={messages.chat} listUnavailable locale={locale}/>
   const [list, history] = await Promise.all([fetchConversations({token: access.token}), fetchConversationHistory(conversationId, {token: access.token})])
   if (list.status === 'auth-required' || history.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   if (history.status === 'not-found') notFound()

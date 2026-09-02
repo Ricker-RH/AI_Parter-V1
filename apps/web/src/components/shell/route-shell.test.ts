@@ -6,6 +6,7 @@ describe('route shell resolver', () => {
     ['/en', 'public'],
     ['/en/auth/sign-in', 'auth'],
     ['/en/messages', 'messages'],
+    ['/en/notifications', 'messages'],
     ['/en/creator', 'creator'],
     ['/en/admin', 'admin'],
   ] as const)('resolves %s as %s', (pathname, shell) => {

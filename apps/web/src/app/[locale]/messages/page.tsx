@@ -12,7 +12,7 @@ export default async function MessagesPage({params, searchParams}: {params: Prom
   const returnTo = `/${locale}/messages${cursor ? `?${new URLSearchParams({cursor})}` : ''}`
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><p role="alert">{messages.chat.unavailable}</p></main>
+  if (access.status === 'unavailable') return <MessagesWorkspace items={[]} labels={messages.chat} listUnavailable locale={locale}/>
   const result = await fetchConversations({token: access.token, ...(cursor ? {cursor} : {})})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const items = result.status === 'ok' ? result.data.items : []

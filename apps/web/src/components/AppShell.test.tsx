@@ -83,6 +83,13 @@ describe('AppShell', () => {
     expect(screen.queryByText('Recommendations')).toBeNull()
   })
 
+  it('keeps Notifications inside the compact Messages shell', () => {
+    pathname = '/en/notifications'
+    render(<AppShell locale="en" labels={labels}><main>Notifications</main></AppShell>)
+    expect(document.querySelector('[data-shell="messages"]')).toHaveAttribute('data-nav-variant', 'compact')
+    expect(screen.getAllByRole('link', {name: 'Messages'})[0]).toHaveAttribute('aria-current', 'page')
+  })
+
   it('selects the isolated creator shell', () => {
     pathname = '/en/creator'
     render(<AppShell locale="en" labels={labels}><main>Creator</main></AppShell>)

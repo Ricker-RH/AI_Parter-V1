@@ -37,4 +37,11 @@ describe('MobileNav', () => {
     expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
     pathname.value = '/en'
   })
+
+  it('groups Notifications under the Messages destination', () => {
+    pathname.value = '/en/notifications'
+    render(<MobileNav labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
+    pathname.value = '/en'
+  })
 })

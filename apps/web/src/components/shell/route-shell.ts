@@ -7,7 +7,7 @@ export function resolveShellKind(pathname: string): ShellKind {
   const rest = match[2] || ''
   if (rest === '/admin' || rest.startsWith('/admin/')) return 'admin'
   if (rest === '/creator' || rest.startsWith('/creator/')) return 'creator'
-  if (rest === '/messages' || rest.startsWith('/messages/')) return 'messages'
+  if (rest === '/messages' || rest.startsWith('/messages/') || rest === '/notifications') return 'messages'
   if (rest === '/auth' || rest.startsWith('/auth/')) return 'auth'
   return 'public'
 }

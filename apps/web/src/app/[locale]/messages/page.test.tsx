@@ -23,6 +23,9 @@ describe('persistent messages list page', () => {
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/messages'})
     expect(conversations).toHaveBeenCalledWith({token: 'token'})
     expect(screen.getByRole('heading', {name: 'Messages'})).toBeVisible()
+    expect(screen.getByRole('link', {name: 'Chats'})).toHaveAttribute('href', '/en/messages')
+    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/notifications')
+    expect(screen.getByRole('searchbox', {name: 'Search conversations'})).toBeVisible()
     expect(screen.getByRole('link', {name: /Luma/})).toHaveAttribute('href', '/en/messages/11111111-1111-4111-8111-111111111111')
     expect(screen.getByText('Select a conversation')).toBeVisible()
   })
@@ -43,7 +46,7 @@ describe('persistent messages list page', () => {
 
   it('keeps the persistent-messages copy exactly aligned in both locales', () => {
     expect(Object.keys(en.chat).sort()).toEqual(Object.keys(zh.chat).sort())
-    expect(en.chat).toMatchObject({title: 'Messages', noConversations: 'No conversations yet', selectConversation: 'Select a conversation', back: 'Back', loadMore: 'Load more', loadEarlierMessages: 'Load earlier messages', messagePlaceholder: 'Write a message…', send: 'Send', sending: 'Sending…', messageFailed: 'Message failed', retry: 'Retry', providerUnavailable: 'The chat provider is unavailable.', unavailable: 'Messages are unavailable right now.', invalidResponse: 'The chat service returned an invalid response.', emptyHistory: 'No messages yet'})
+    expect(en.chat).toMatchObject({title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications', searchLabel: 'Search conversations', noConversations: 'Your inbox is empty', emptyAction: 'Explore home', selectConversation: 'Select a conversation', back: 'Back', loadMore: 'Load more', loadEarlierMessages: 'Load earlier messages', messagePlaceholder: 'Write a message…', send: 'Send', sending: 'Sending…', messageFailed: 'Message failed', retry: 'Retry', providerUnavailable: 'The chat provider is unavailable.', unavailable: 'Messages are unavailable right now.', invalidResponse: 'The chat service returned an invalid response.', emptyHistory: 'No messages yet'})
     expect(JSON.stringify(en.chat)).not.toMatch(/UUID|session|demo/i)
   })
 })
