@@ -73,9 +73,17 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('uses one fixed rounded desktop surface instead of attaching frame edges to content children', () => {
-    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.viewport\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
+    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
+    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*overflow:\s*hidden/)
     expect(stylesheet).not.toMatch(/\.home-page > \.feed-list > :(?:first|last|only)-child/)
     expect(stylesheet).not.toMatch(/\.post-detail-content > :(?:first|last|only)-child/)
+  })
+
+  it('keeps post action feedback transparent while preserving hover and keyboard cues', () => {
+    expect(stylesheet).toMatch(/\.post-action\s*\{[^}]*background:\s*transparent/)
+    expect(stylesheet).toMatch(/\.post-action:hover\s*\{[^}]*background:\s*transparent[^}]*color:\s*var\(--shell-muted\)/)
+    expect(stylesheet).not.toMatch(/\.post-action(?::hover|\[aria-pressed="true"\])[^\{]*\{[^}]*background:\s*var\(--shell-hover\)/)
+    expect(stylesheet).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--shell-focus\)/)
   })
 
   it('keeps scrolling on the shared clipped viewport with a hidden scrollbar and inset focus ring', () => {
@@ -135,7 +143,7 @@ describe('ordinary-user fluid shell CSS contract', () => {
 
   it('makes post detail one bounded scroll region beneath opaque fixed chrome', () => {
     expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*height: 100%/)
-    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%/)
+    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*overflow:\s*hidden/)
     expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*overflow-y:\s*auto/)
   })
 

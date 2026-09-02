@@ -56,6 +56,18 @@ describe('PostActions', () => {
     expect(stylesheet).not.toMatch(/\.post-action\[aria-pressed="true"\][^{]*\{[^}]*background:/)
   })
 
+  it('uses foreground-only hover feedback without a gray action plate', () => {
+    const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
+    const baseRule = stylesheet.match(/\.post-action\s*\{([^}]*)\}/)?.[1] ?? ''
+    const hoverRule = stylesheet.match(/\.post-action:hover\s*\{([^}]*)\}/)?.[1] ?? ''
+
+    expect(baseRule).toContain('background: transparent')
+    expect(hoverRule).toContain('background: transparent')
+    expect(hoverRule).toContain('color: var(--shell-muted)')
+    expect(hoverRule).not.toContain('var(--shell-hover)')
+    expect(stylesheet).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--shell-focus\)/)
+  })
+
   it('formats only authoritative like and comment counts in the Detail variant', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
     render(<PostActions bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)

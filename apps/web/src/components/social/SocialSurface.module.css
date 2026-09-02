@@ -4,10 +4,15 @@
   height: 100%;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
-.header { min-width: 0; }
-.header :global(.page-header) { border-bottom: 0; }
+.header {
+  background: var(--shell-surface);
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
 
 .viewport {
   -ms-overflow-style: none;
@@ -22,16 +27,15 @@
 .viewport > [data-social-surface-fill] { min-height: 100%; }
 
 @media (min-width: 700px) {
-  .viewport {
+  .surface {
     background: var(--shell-surface);
     border: 1px solid var(--shell-border);
     border-radius: 16px;
-    overflow: hidden auto;
   }
 }
 
 @media (max-width: 699px) {
-  .viewport {
+  .surface {
     border: 0;
     border-radius: 0;
   }
