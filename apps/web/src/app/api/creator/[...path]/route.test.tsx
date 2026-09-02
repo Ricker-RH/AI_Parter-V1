@@ -47,6 +47,40 @@ describe('same-origin creator proxy', () => {
     expect(response.headers.get('x-request-id')).toBe('upstream-id')
   })
 
+  it.each([
+    'drafts',
+    `drafts/${id}`,
+    `drafts/${id}/references/${id}/read-intent`,
+    'submissions',
+    `submissions/${id}`,
+    'ips',
+    `ips/${id}`,
+    `ips/${id}/analytics`,
+    'requests',
+    `requests/${id}`,
+    'admin/submissions',
+    `admin/submissions/${id}`,
+    'admin/requests',
+  ])('prevents private creator GET /%s responses from being cached', async path => {
+    process.env.AIFANS_API_URL='https://api.internal'
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({items:[]})))
+
+    const response=await route.GET(request(path,'GET'),{params:Promise.resolve({path:path.split('/')})})
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('does not apply the private no-store policy to public profile GET responses',async()=>{
+    process.env.AIFANS_API_URL='https://api.internal'
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({id})))
+
+    const response=await route.GET(request(`public/profiles/${id}`,'GET'),{params:Promise.resolve({path:['public','profiles',id]})})
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBeNull()
+  })
+
   it('rejects unknown paths, queries, cross-origin mutations, duplicate JSON, and oversized bodies', async () => {
     process.env.AIFANS_API_URL='https://api.internal'; const upstream=vi.fn(); vi.stubGlobal('fetch',upstream)
     expect((await route.GET(request('drafts/extra/path','GET'),{params:Promise.resolve({path:['drafts','extra','path']})})).status).toBe(404)

@@ -56,6 +56,7 @@ async function proxy(request:Request,context:RouteContext,method:Method){
   try{
     const upstream=await fetchAifansApi(`/v1/${path}${query}`,{policy:method==='GET'?'private-cache':'live-no-store',requestInit:{method,headers:request.headers,...(body===undefined?{}:{body})},...(method==='GET'?{}:{trustedClientHeaders:request.headers})})
     const headers:Record<string,string>={'content-type':upstream.headers.get('content-type')??'application/json'};const requestId=upstream.headers.get('x-request-id');if(requestId)headers['x-request-id']=requestId
+    if(method==='GET'&&upstream.ok&&!path.startsWith('profiles/'))headers['cache-control']='private, no-store'
     return new Response(await upstream.arrayBuffer(),{status:upstream.status,headers})
   }catch{return Response.json({code:'CREATOR_UNAVAILABLE'},{status:503})}
 }
