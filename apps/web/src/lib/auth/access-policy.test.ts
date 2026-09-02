@@ -33,14 +33,14 @@ describe('getOptionalPageAccess', () => {
     await expect(getOptionalPageAccess({getToken: async () => 'token'})).resolves.toEqual({status: 'authenticated', token: 'token'})
   })
 
-  it('downgrades a token provider timeout to anonymous and clears its timer', async () => {
+  it('keeps a token provider timeout unresolved rather than misclassifying the viewer as anonymous', async () => {
     vi.useFakeTimers()
     try {
       const access = getOptionalPageAccess({getToken: () => new Promise<string>(() => undefined), timeoutMs: 25})
 
       await vi.advanceTimersByTimeAsync(25)
 
-      await expect(access).resolves.toEqual({status: 'anonymous'})
+      await expect(access).resolves.toEqual({status: 'unavailable'})
       expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
@@ -57,7 +57,7 @@ describe('getOptionalPageAccess', () => {
       await vi.advanceTimersByTimeAsync(25)
       reject(new Error('late provider rejection'))
 
-      await expect(access).resolves.toEqual({status: 'anonymous'})
+      await expect(access).resolves.toEqual({status: 'unavailable'})
       await Promise.resolve()
     } finally {
       vi.useRealTimers()

@@ -7,6 +7,7 @@ import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import {ProfileFollowButton} from './ProfileFollowButton'
 import type {SocialLabels} from './types'
+import {StartChatButton} from '../chat/StartChatButton'
 
 type AuthorPreviewProps = {
   author: FeedPost['author']
@@ -75,7 +76,6 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
   const followAction = canMutate && followsAuthor !== undefined
     ? <ProfileFollowButton following={followsAuthor} labels={labels} locale={locale} profileId={author.id}/>
     : <Link className="author-preview-primary" href={authHref(locale, returnTo)}>{labels.follow}</Link>
-  const messagesHref = canMutate ? `/${locale}/messages` : authHref(locale, returnTo)
 
   return <div className="author-preview">
     <button aria-expanded={open} aria-haspopup="dialog" aria-label={`${profileLabel}: ${author.displayName}`} className="post-avatar-trigger" onClick={() => setOpen(true)} ref={trigger} type="button">
@@ -91,7 +91,7 @@ export function AuthorPreview({author, canMutate, followsAuthor, labels, locale,
         {author.bio ? <p className="author-preview-bio">{author.bio}</p> : null}
         {author.creator ? <p className="creator-attribution">{labels.createdBy} @{author.creator.username}</p> : null}
         {profileState === 'loading' ? <p aria-live="polite" className="author-preview-followers">…</p> : profile ? <p className="author-preview-followers">{profile.followerCount} {labels.followers}</p> : profileState === 'error' ? <p className="author-preview-followers">{labels.unavailableDescription}</p> : null}
-        <div className="author-preview-actions"><div className="author-preview-follow-action">{followAction}</div><Link href={messagesHref}>{labels.messages ?? 'Messages'}</Link></div>
+        <div className="author-preview-actions"><div className="author-preview-follow-action">{followAction}</div><StartChatButton authenticated={canMutate} ipProfileId={author.id} labels={{startChat: labels.startChat, startingChat: labels.startingChat, chatStartError: labels.chatStartError}} locale={locale}/></div>
       </div>
     </div> : null}
   </div>

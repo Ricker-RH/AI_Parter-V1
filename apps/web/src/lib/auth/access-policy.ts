@@ -34,7 +34,9 @@ export async function getOptionalPageAccess({
         () => resolve({type: 'failed'}),
       )
     })
-    if (outcome.type === 'timed-out') return {status: 'anonymous'}
+    // A timeout is not proof that the visitor is anonymous. Public routes may
+    // render without personalization, then resolve the session client-side.
+    if (outcome.type === 'timed-out') return {status: 'unavailable'}
     if (outcome.type === 'failed') return {status: 'unavailable'}
     const {token} = outcome
     return typeof token === 'string' && token.length > 0 ? {status: 'authenticated', token} : {status: 'anonymous'}

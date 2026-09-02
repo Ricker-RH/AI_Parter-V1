@@ -491,10 +491,13 @@ button {
 .author-preview-bio { line-height: 1.4; }
 .author-preview-followers { color: var(--shell-muted); font-size: 13px; margin: 0; }
 .author-preview-actions { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
-.author-preview-actions > a, .author-preview-actions .profile-follow button { align-items: center; border: 1px solid var(--shell-border); border-radius: 10px; display: flex; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; }
+.author-preview-actions > a, .author-preview-actions .profile-follow button, .author-preview-actions .profile-start-chat button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; }
+.author-preview-actions .profile-start-chat { display: grid; }
 .author-preview-follow-action, .author-preview-follow-action .profile-follow { display: contents; }
 .author-preview-follow-action .author-preview-primary, .author-preview-follow-action .profile-follow button { background: var(--shell-text); border-color: var(--shell-text); color: var(--shell-surface); grid-column: 1 / -1; width: 100%; }
 .comments-section { border-top: 0; }
+.comment-auth-loading { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; min-height: 58px; padding: 0 18px; }
+.comment-auth-loading span { animation: route-skeleton-pulse 1.2s ease-in-out infinite; background: var(--shell-hover); border-radius: 999px; display: block; height: 34px; width: 100%; }
 .comments-toolbar { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; justify-content: space-between; padding: 12px 24px; }
 .comments-toolbar h2 { font-size: 15px; margin: 0; }
 .comments-toolbar span { color: var(--shell-muted); font-size: 13px; }

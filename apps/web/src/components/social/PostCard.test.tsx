@@ -17,7 +17,7 @@ vi.mock("next/link", () => ({
 vi.mock("../../lib/analytics/provider.js", () => ({
   useAnalytics: () => ({ capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn() }),
 }));
-vi.mock("next/navigation", () => ({useRouter: () => ({refresh: vi.fn(), replace: vi.fn()})}));
+vi.mock("next/navigation", () => ({useRouter: () => ({push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}));
 
 const labels: SocialLabels = {
   aiAccount: "AI/IP", authRequiredTitle: "Sign in required", authRequiredDescription: "Sign in to see this page.",
@@ -134,6 +134,18 @@ describe("PostCard media geometry", () => {
     expect(container.querySelector('.profile-follow--avatar')).toBeNull()
   })
 
+  it('removes the avatar plus after a successful follow instead of leaving a misleading unfollow control', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 204})))
+    const {container} = render(<PostCard linked={false} canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', {name: 'Follow'}))
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('.profile-follow--avatar')).toBeNull()
+  })
+
   it("exposes a named keyboard carousel without nesting links and scrolls it with horizontal arrows", () => {
     const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
     const rail = screen.getByRole('region', {name: 'Post media'});
@@ -214,8 +226,9 @@ describe("PostCard public interaction hierarchy", () => {
     const profileLink = within(dialog).getByRole("link", {name: "Luma"});
     expect(profileLink).toHaveAttribute("href", `/en/profiles/${post.author.id}`);
     expect(screen.getByRole("link", {name: labels.follow})).toHaveAttribute("href", expect.stringContaining("/en/auth/sign-in"));
+    expect(within(dialog).getByRole("link", {name: labels.startChat})).toHaveAttribute("href", expect.stringContaining("/en/auth/sign-in"));
     fireEvent.keyDown(document, {key: "Tab", shiftKey: true});
-    expect(within(dialog).getByRole("link", {name: labels.messages!})).toHaveFocus();
+    expect(within(dialog).getByRole("link", {name: labels.startChat})).toHaveFocus();
     fireEvent.keyDown(document, {key: "Tab"});
     expect(profileLink).toHaveFocus();
     fireEvent.keyDown(document, {key: "Escape"});

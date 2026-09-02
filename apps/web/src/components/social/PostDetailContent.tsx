@@ -1,3 +1,5 @@
+'use client'
+
 import type {PostDetail} from '@aifans/contracts'
 import type {Locale} from '../../i18n/config'
 import type {SocialApiResult} from '../../lib/social-api'
@@ -7,6 +9,7 @@ import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
 import {CommentComposer} from './CommentComposer'
 import {formatRelativeDuration} from '../../lib/relative-time'
+import {useEffect, useState} from 'react'
 
 type Comment = PostDetail['comments']['items'][number]
 
@@ -30,16 +33,34 @@ function CommentThreadItem({authenticated, comment, labels, locale, postId, refe
   </article>
 }
 
-export function PostDetailContent({result, locale, labels, moreHref, authenticated=false, returnTo, referenceTime=Date.now()}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined;authenticated?:boolean; returnTo?: string; referenceTime?: number}) {
+export function PostDetailContent({result, locale, labels, moreHref, authenticated=false, authResolutionNeeded=false, returnTo, referenceTime=Date.now()}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined;authenticated?:boolean; authResolutionNeeded?: boolean; returnTo?: string; referenceTime?: number}) {
+  const [canMutate, setCanMutate] = useState(authenticated)
+  const [checkingAccess, setCheckingAccess] = useState(!authenticated && authResolutionNeeded)
+
+  useEffect(() => {
+    setCanMutate(authenticated)
+    if (authenticated || !authResolutionNeeded) {
+      setCheckingAccess(false)
+      return
+    }
+    const controller = new AbortController()
+    setCheckingAccess(true)
+    void fetch('/api/account', {cache: 'no-store', credentials: 'include', signal: controller.signal})
+      .then((response) => { if (!controller.signal.aborted) setCanMutate(response.ok) })
+      .catch(() => undefined)
+      .finally(() => { if (!controller.signal.aborted) setCheckingAccess(false) })
+    return () => controller.abort()
+  }, [authResolutionNeeded, authenticated])
+
   if (result.status !== 'ok') return <ResultState labels={labels} result={result} />
   const postReturnTo = returnTo ?? `/${locale}/posts/${result.data.id}`
   return <div className="post-detail-content">
-    <PostCard canMutate={authenticated} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={postReturnTo} />
+    <PostCard canMutate={canMutate} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={postReturnTo} />
     <section aria-label={labels.comments} className="comments-section">
-      <CommentComposer authenticated={authenticated} labels={labels} locale={locale} postId={result.data.id} returnTo={postReturnTo} />
+      {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate} labels={labels} locale={locale} postId={result.data.id} returnTo={postReturnTo} />}
       <div className="comments-toolbar"><h2>{labels.comments}</h2><span>{labels.commentSortChronological ?? labels.comments}</span></div>
       {result.data.comments.items.length === 0 ? <div className="comments-empty"><h3>{labels.commentsEmptyTitle ?? labels.comments}</h3>{labels.commentsEmptyDescription ? <p>{labels.commentsEmptyDescription}</p> : null}</div> : null}
-      <div className="comment-thread">{result.data.comments.items.map((comment) => <CommentThreadItem authenticated={authenticated} comment={comment} key={comment.id} labels={labels} locale={locale} postId={result.data.id} referenceTime={referenceTime} returnTo={postReturnTo}/>)}</div>
+      <div className="comment-thread">{result.data.comments.items.map((comment) => <CommentThreadItem authenticated={canMutate} comment={comment} key={comment.id} labels={labels} locale={locale} postId={result.data.id} referenceTime={referenceTime} returnTo={postReturnTo}/>)}</div>
       {result.data.comments.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}
     </section>
   </div>

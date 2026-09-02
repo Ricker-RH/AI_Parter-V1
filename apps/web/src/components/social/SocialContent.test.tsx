@@ -479,6 +479,18 @@ describe("real social content", () => {
     );
   });
 
+  it("resolves an inconclusive server session before hiding the real comment composer", async () => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({profileId: "44444444-4444-4444-8444-444444444444"}), {status: 200}));
+    vi.stubGlobal("fetch", request);
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+
+    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+    expect(screen.getByRole("status", {name: "Comments"})).toHaveAttribute("aria-busy", "true");
+    expect(await screen.findByRole("textbox", {name: "Write a comment"})).toBeVisible();
+    expect(request).toHaveBeenCalledWith("/api/account", expect.objectContaining({cache: "no-store", credentials: "include"}));
+  });
+
   it("keeps guest comment sign-in on the localized post detail route", () => {
     const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
     render(<PostDetailContent authenticated={false} labels={labels} locale="zh-CN" returnTo={`/zh-CN/posts/${post.id}?commentCursor=comments-next`} result={{status: "ok", data: detail}} />);

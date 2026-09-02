@@ -26,10 +26,10 @@ describe('post detail route', () => {
     expect(screen.getByRole('heading', {name: '动态'})).toBeVisible()
   })
 
-  it('waits for the bounded authenticated session check before deciding whether comments are interactive', async () => {
+  it('uses the short public-page session budget and lets the client resolve an inconclusive session', async () => {
     await PostPage({params: Promise.resolve({locale: 'en', postId}), searchParams: Promise.resolve({})})
 
-    expect(getOptionalPageAccess).toHaveBeenCalledWith({timeoutMs: 1500})
+    expect(getOptionalPageAccess).toHaveBeenCalledWith()
   })
 
   it('drops an unsafe comment cursor from the request and return path', async () => {

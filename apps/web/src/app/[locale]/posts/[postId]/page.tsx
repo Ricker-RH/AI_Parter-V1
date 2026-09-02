@@ -12,13 +12,10 @@ export default async function PostPage({params, searchParams}: {params: Promise<
   const safeCommentCursor = typeof commentCursor === 'string' && /^[A-Za-z0-9_-]{1,2048}$/.test(commentCursor) ? commentCursor : undefined
   const returnTo = `/${locale}/posts/${postId}${safeCommentCursor ? `?${new URLSearchParams({commentCursor: safeCommentCursor})}` : ''}`
   const messages = await getMessages(locale)
-  // A detail page is the only public route whose primary action is a write.
-  // Do not render a signed-in reader as a guest just because a cold session
-  // token exceeds the short feed-personalization budget.
-  const access = await getOptionalPageAccess({timeoutMs: 1500})
+  const access = await getOptionalPageAccess()
   const result = await fetchPost(postId, {commentCursor: safeCommentCursor, ...(access.status === 'authenticated' ? {token: access.token} : {})})
   if (result.status === 'auth-required' && access.status === 'authenticated') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.comments.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/posts/${postId}?${new URLSearchParams({commentCursor: nextCursor})}` : undefined
-  return <main className="post-detail-page"><PostDetailHeader labels={messages} locale={locale} postId={postId}/><PostDetailContent authenticated={access.status==='authenticated'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} /></main>
+  return <main className="post-detail-page"><PostDetailHeader labels={messages} locale={locale} postId={postId}/><PostDetailContent authenticated={access.status==='authenticated'} authResolutionNeeded={access.status==='unavailable'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} /></main>
 }
