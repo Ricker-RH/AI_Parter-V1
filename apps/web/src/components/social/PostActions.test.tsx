@@ -1,4 +1,5 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
+import {readFileSync} from 'node:fs'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {PostActions} from './PostActions.js'
 
@@ -8,6 +9,19 @@ vi.mock('next/navigation', () => ({useRouter: () => ({refresh, replace})}))
 afterEach(() => { vi.unstubAllGlobals(); refresh.mockReset(); replace.mockReset() })
 
 describe('PostActions', () => {
+  it('uses only a currentColor solid icon for active like and bookmark feedback', () => {
+    const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
+    render(<PostActions bookmarked labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked locale="en" postId="22222222-2222-4222-8222-222222222222" />)
+
+    const unlike = screen.getByRole('button', {name: 'Unlike'})
+    const removeBookmark = screen.getByRole('button', {name: 'Remove bookmark'})
+    expect(unlike).toHaveAttribute('aria-pressed', 'true')
+    expect(removeBookmark).toHaveAttribute('aria-pressed', 'true')
+    expect(unlike.querySelector('svg')).toHaveAttribute('fill', 'currentColor')
+    expect(removeBookmark.querySelector('svg')).toHaveAttribute('fill', 'currentColor')
+    expect(stylesheet).not.toMatch(/\.post-action\[aria-pressed="true"\][^{]*\{[^}]*background:/)
+  })
+
   it('waits for the real mutation before updating pressed state and never invents a count', async () => {
     let finish!: (value: Response) => void
     const request = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { finish = resolve }))

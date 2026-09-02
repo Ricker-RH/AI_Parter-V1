@@ -1,7 +1,8 @@
 "use client";
 
-import type { FeedPost, PublicPostMedia } from "@aifans/contracts";
+import type { FeedPost } from "@aifans/contracts";
 import Link from "next/link";
+import {useRef, type MouseEvent} from 'react'
 import type { Locale } from "../../i18n/config";
 import { trackPostViewed } from "../../lib/analytics/events";
 import { useAnalytics } from "../../lib/analytics/provider";
@@ -9,27 +10,7 @@ import {formatRelativeDuration} from '../../lib/relative-time'
 import type { SocialLabels } from "./types";
 import { PostActions } from "./PostActions";
 import { AuthorPreview } from "./AuthorPreview";
-
-function isPositiveNumber(value: number | null): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
-
-function mediaGeometry(media: PublicPostMedia) {
-  const width = media.width;
-  const height = media.height;
-  const aspectRatio = media.aspectRatio;
-  const hasDimensions = isPositiveNumber(width) && isPositiveNumber(height);
-
-  return {
-    aspectRatio: hasDimensions
-      ? width / height
-      : isPositiveNumber(aspectRatio)
-        ? aspectRatio
-        : 4 / 5,
-    height: hasDimensions ? height : undefined,
-    width: hasDimensions ? width : undefined,
-  };
-}
+import {PostMedia} from './PostMedia'
 
 export function PostCard({
   post,
@@ -49,49 +30,19 @@ export function PostCard({
   canMutate?: boolean;
 }) {
   const analytics = useAnalytics();
+  const navigationTarget = useRef<HTMLAnchorElement>(null)
   const mediaItems = post.media ?? [];
   const postHref = `/${locale}/posts/${post.id}`;
   const trackView = () => trackPostViewed(analytics, { locale, postId: post.id });
-  const mediaRail = mediaItems.length ? (
-    <div
-      aria-label={labels.postMedia}
-      className="post-media-rail"
-      data-count={mediaItems.length}
-      data-layout={mediaItems.length === 1 ? 'single' : 'rail'}
-      onKeyDown={(event) => {
-        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-        event.preventDefault();
-        const direction = event.key === 'ArrowRight' ? 1 : -1;
-        event.currentTarget.scrollBy({
-          behavior: 'smooth',
-          left: direction * Math.max(event.currentTarget.clientWidth * 0.82, 240),
-        });
-      }}
-      role="region"
-      tabIndex={mediaItems.length > 1 ? 0 : undefined}
-    >
-      {mediaItems.map((media, index) => {
-        const geometry = mediaGeometry(media);
-        const image = <img
-          alt={media.altText ?? `${post.author.displayName} ${index + 1}/${mediaItems.length}`}
-          height={geometry.height}
-          loading="lazy"
-          src={media.url}
-          width={geometry.width}
-        />;
-        const frameProps = {
-          className: 'post-media-frame',
-          style: {aspectRatio: geometry.aspectRatio},
-        };
-
-        return linked
-          ? <Link {...frameProps} href={postHref} key={media.id} onClick={trackView}>{image}</Link>
-          : <div {...frameProps} key={media.id}>{image}</div>;
-      })}
-    </div>
-  ) : null;
+  function openCard(event: MouseEvent<HTMLElement>) {
+    if (!linked) return
+    const target = event.target instanceof Element ? event.target : null
+    if (target?.closest('a, button, input, textarea, select, summary, [role="button"], [role="link"], [contenteditable="true"]')) return
+    navigationTarget.current?.click()
+  }
   return (
-    <article className="post-card">
+    <article className="post-card" onClick={openCard}>
+      {linked ? <Link aria-label={`${labels.posts}: ${post.author.displayName}`} className="post-card-navigation-target" href={postHref} onClick={trackView} ref={navigationTarget}/> : null}
       <div className="post-layout">
         <AuthorPreview author={post.author} canMutate={canMutate} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
         <div className="post-content">
@@ -111,7 +62,7 @@ export function PostCard({
       ) : (
         post.body ? <p className="post-body">{post.body}</p> : null
       )}
-      {mediaRail}
+      <PostMedia authorName={post.author.displayName} items={mediaItems} label={labels.postMedia} {...(linked ? {onPostOpen: trackView, postHref} : {})}/>
       <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`}/>
         </div>
       </div>

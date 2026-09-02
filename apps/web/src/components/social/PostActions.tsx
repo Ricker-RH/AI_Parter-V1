@@ -117,8 +117,8 @@ function AuthenticatedActions({bookmarked, commentCount, labels, liked, likeCoun
   const commentsLabel = labels.comments ?? 'Comments'
   const likeLabel = state.like ? labels.unlike : labels.like
   const bookmarkLabel = state.bookmark ? labels.removeBookmark : labels.bookmark
-  const likeAction = <button aria-busy={pending === 'like'} aria-label={likeLabel} aria-pressed={state.like} className="post-action" disabled={pending !== null} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true"/><Count>{likeCount}</Count></button>
-  const bookmarkAction = <><button aria-busy={pending === 'bookmark'} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={pending !== null} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true"/></button>{error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
+  const likeAction = <button aria-busy={pending === 'like'} aria-label={likeLabel} aria-pressed={state.like} className="post-action" disabled={pending !== null} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count>{likeCount}</Count></button>
+  const bookmarkAction = <><button aria-busy={pending === 'bookmark'} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={pending !== null} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/></button>{error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
 
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={commentsLabel} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'}/>
 }

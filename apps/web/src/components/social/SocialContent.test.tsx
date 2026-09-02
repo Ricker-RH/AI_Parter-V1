@@ -119,7 +119,7 @@ const post: FeedPost = {
 };
 
 describe("real social content", () => {
-  it("makes feed and detail scroll containers named keyboard regions", () => {
+  it("leaves scrolling and keyboard-region semantics to the shared social surface", () => {
     const {container, rerender} = render(
       <FeedContent
         labels={labels}
@@ -127,8 +127,8 @@ describe("real social content", () => {
         result={{ status: "ok", data: { items: [post], nextCursor: null } }}
       />,
     );
-    expect(container.querySelector(".feed-list")).toHaveAttribute("tabindex", "0");
-    expect(screen.getByRole("region", {name: "Posts"})).toBeVisible();
+    expect(container.querySelector(".feed-list")).not.toHaveAttribute("tabindex");
+    expect(container.querySelector(".feed-list")).not.toHaveAttribute("role");
 
     rerender(
       <PostDetailContent
@@ -137,20 +137,23 @@ describe("real social content", () => {
         result={{status: "ok", data: {...post, comments: {items: [], nextCursor: null}}}}
       />,
     );
-    expect(container.querySelector(".post-detail-content")).toHaveAttribute("tabindex", "0");
-    expect(screen.getByRole("region", {name: "Posts"})).toBeVisible();
+    expect(container.querySelector(".post-detail-content")).not.toHaveAttribute("tabindex");
+    expect(container.querySelector(".post-detail-content")).not.toHaveAttribute("role");
   });
 
-  it("keeps an unavailable post detail inside the same named scroll region", () => {
-    const {container} = render(
+  it("marks unavailable feed and detail states as the only fill-height surface content", () => {
+    const {container, rerender} = render(
       <PostDetailContent
         labels={labels}
         locale="en"
         result={{status: "unavailable"}}
       />,
     );
-    expect(container.querySelector(".post-detail-content")).toHaveAttribute("tabindex", "0");
-    expect(screen.getByRole("region", {name: "Posts"})).toContainElement(screen.getByRole("alert"));
+    expect(container.querySelector(".post-detail-content")).toHaveAttribute("data-social-surface-fill");
+    expect(container.querySelector(".post-detail-content")).toContainElement(screen.getByRole("alert"));
+
+    rerender(<FeedContent labels={labels} locale="en" result={{status: "unavailable"}} />);
+    expect(container.firstElementChild).toHaveAttribute("data-social-surface-fill");
   });
 
   it("renders API post fields and preserves the locale in the detail URL", () => {

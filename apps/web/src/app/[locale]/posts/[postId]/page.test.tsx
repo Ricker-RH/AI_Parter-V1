@@ -24,6 +24,7 @@ describe('post detail route', () => {
     expect(fetchPost).toHaveBeenCalledWith(postId, {commentCursor: 'comments_next-1'})
     expect(screen.getByRole('link', {name: '登录后参与讨论'})).toHaveAttribute('href', `/zh-CN/auth/sign-in?next=${encodeURIComponent(`/zh-CN/posts/${postId}?commentCursor=comments_next-1`)}`)
     expect(screen.getByRole('heading', {name: '动态'})).toBeVisible()
+    expect(document.querySelector('[data-social-surface-viewport]')).toBeTruthy()
   })
 
   it('uses the short public-page session budget and lets the client resolve an inconclusive session', async () => {

@@ -1,0 +1,42 @@
+.rail {
+  --post-media-height: clamp(240px, 30vw, 300px);
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-padding-inline: 1px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+.frame {
+  aspect-ratio: var(--post-media-ratio);
+  border: 1px solid var(--shell-border);
+  border-radius: 14px;
+  display: block;
+  flex: 0 0 auto;
+  height: var(--post-media-height);
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+
+.image {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  width: 100%;
+}
+
+@media (max-width: 699px) {
+  .rail {
+    --post-media-height: clamp(210px, 58vw, 250px);
+  }
+}

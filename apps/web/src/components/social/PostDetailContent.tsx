@@ -76,9 +76,9 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
     return () => controller.abort()
   }, [authResolutionNeeded, authenticated])
 
-  if (result.status !== 'ok') return <div aria-label={labels.posts} className="post-detail-content" role="region" tabIndex={0}><ResultState labels={labels} result={result} /></div>
+  if (result.status !== 'ok') return <div className="post-detail-content social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result} /></div>
   const postReturnTo = returnTo ?? `/${locale}/posts/${result.data.id}`
-  return <div aria-label={labels.posts} className="post-detail-content" role="region" tabIndex={0}>
+  return <div className="post-detail-content">
     <PostCard canMutate={canMutate} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={postReturnTo} />
     <section aria-label={labels.comments} className="comments-section">
       {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate} labels={labels} locale={locale} postId={result.data.id} returnTo={postReturnTo} />}

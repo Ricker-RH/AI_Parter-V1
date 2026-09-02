@@ -18,6 +18,7 @@ describe('bookmarks page', () => {
 
     expect(screen.getByRole('heading', {name: 'Saved'})).toBeVisible()
     expect(document.querySelector('.collection-page')).toBeTruthy()
+    expect(document.querySelector('[data-social-surface-viewport]')).toBeTruthy()
     expect(screen.getByRole('link', {name: 'Home'})).toHaveAttribute('href', '/en')
   })
 })

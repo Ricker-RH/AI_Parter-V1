@@ -8,6 +8,8 @@ import type { FeedPost } from "@aifans/contracts";
 import { PostCard } from "./PostCard.js";
 import type { SocialLabels } from "./types.js";
 
+const {capture} = vi.hoisted(() => ({capture: vi.fn()}));
+
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { children: ReactNode }) => (
     <a {...props}>{children}</a>
@@ -15,7 +17,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("../../lib/analytics/provider.js", () => ({
-  useAnalytics: () => ({ capture: vi.fn(), identify: vi.fn(), page: vi.fn(), reset: vi.fn() }),
+  useAnalytics: () => ({ capture, identify: vi.fn(), page: vi.fn(), reset: vi.fn() }),
 }));
 vi.mock("next/navigation", () => ({useRouter: () => ({push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}));
 
@@ -63,7 +65,7 @@ function staticMediaFrames(count: 1 | 2 | 3 | 4) {
   );
   const template = document.createElement("template");
   template.innerHTML = markup;
-  return template.content.querySelectorAll<HTMLElement>(".post-media-frame");
+  return template.content.querySelectorAll<HTMLElement>('[data-testid="post-media-frame"]');
 }
 
 function requiredFrame(frames: NodeListOf<HTMLElement>, index: number) {
@@ -81,7 +83,7 @@ describe("PostCard media geometry", () => {
 
     const frames = staticMediaFrames(4);
     expect(frames).toHaveLength(4);
-    expect([...frames].every((frame) => frame.classList.contains('post-media-frame'))).toBe(true);
+    expect([...frames].every((frame) => frame.dataset.testid === 'post-media-frame')).toBe(true);
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("width", "1200");
     expect(screen.getByRole("img", { name: "Wide moon" })).toHaveAttribute("height", "800");
     expect(screen.getByRole("img", { name: "Contract ratio" })).not.toHaveAttribute("width");
@@ -104,16 +106,16 @@ describe("PostCard media geometry", () => {
       />,
     );
 
-    const rail = container.querySelector(".post-media-rail");
+    const rail = container.querySelector('[data-testid="post-media-rail"]');
     expect(rail).toHaveAttribute("data-count", String(count));
     expect(rail).toHaveAttribute("data-layout", count === 1 ? "single" : "rail");
     const frames = staticMediaFrames(count);
     expect(frames).toHaveLength(count);
     expect(rail?.querySelectorAll("img")).toHaveLength(count);
-    expect([...frames].map((frame) => frame.getAttribute("style"))).toEqual(
-      ratios.map((ratio) => `aspect-ratio:${ratio}`),
+    expect([...frames].map((frame) => frame.style.getPropertyValue('--post-media-ratio'))).toEqual(
+      ratios,
     );
-    expect([...frames].every((frame) => !frame.classList.contains("post-media-frame--featured"))).toBe(true);
+    expect([...frames].every((frame) => frame.dataset.testid === 'post-media-frame')).toBe(true);
   });
 
   it("shows compact relative time without an AI/IP badge", () => {
@@ -143,7 +145,7 @@ describe("PostCard media geometry", () => {
 
     expect(rail).toHaveAttribute('tabindex', '0');
     expect(within(rail).getAllByRole('link')).toHaveLength(4);
-    expect(container.querySelector('.post-link .post-media-rail')).toBeNull();
+    expect(container.querySelector('.post-link [data-testid="post-media-rail"]')).toBeNull();
     fireEvent.keyDown(rail, {key: 'ArrowRight'});
     fireEvent.keyDown(rail, {key: 'ArrowLeft'});
     expect(scrollBy).toHaveBeenNthCalledWith(1, {behavior: 'smooth', left: 328});
@@ -191,6 +193,54 @@ describe("PostCard media geometry", () => {
 });
 
 describe("PostCard public interaction hierarchy", () => {
+  beforeEach(() => {capture.mockClear()});
+
+  it('opens linked post details from body, media, and non-interactive card space exactly once', () => {
+    const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime}/>);
+    const article = screen.getByRole('article');
+    const navigationTarget = container.querySelector<HTMLAnchorElement>('.post-card-navigation-target')!
+    const open = vi.spyOn(navigationTarget, 'click')
+
+    fireEvent.click(container.querySelector('.post-content')!);
+    expect(navigationTarget).toHaveAttribute('href', `/en/posts/${post.id}`)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledTimes(1);
+
+    open.mockClear(); capture.mockClear();
+    fireEvent.click(screen.getByRole('link', {name: post.body}));
+    expect(open).not.toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledTimes(1);
+
+    open.mockClear(); capture.mockClear();
+    fireEvent.click(within(article).getByRole('img', {name: 'Wide moon'}));
+    expect(open).not.toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledTimes(1);
+
+    open.mockClear(); capture.mockClear();
+    fireEvent.click(navigationTarget)
+    expect(capture).toHaveBeenCalledTimes(1)
+  });
+
+  it('leaves avatar, profile, and action controls independent and never nests interactive elements', () => {
+    const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime}/>);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Profile: Luma'}));
+    fireEvent.keyDown(document, {key: 'Escape'});
+    fireEvent.click(screen.getByRole('link', {name: 'Luma'}));
+    fireEvent.click(screen.getByRole('link', {name: labels.like}));
+
+    expect(container.querySelector('.post-card-navigation-target')).toHaveAttribute('href', `/en/posts/${post.id}`)
+    expect(capture).not.toHaveBeenCalled();
+    expect(container.querySelector('a a, a button, button a, button button')).toBeNull();
+  });
+
+  it('does not add whole-card navigation to a detail card', () => {
+    const {container} = render(<PostCard linked={false} labels={labels} locale="en" post={post} referenceTime={cardReferenceTime}/>);
+    fireEvent.click(container.querySelector('.post-content')!);
+    expect(container.querySelector('.post-card-navigation-target')).toBeNull();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
   it("shows the same icon action row to guests and gates only protected actions", () => {
     render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} returnTo="/en" />);
 

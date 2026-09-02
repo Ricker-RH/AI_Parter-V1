@@ -2,6 +2,8 @@ import {readFileSync} from 'node:fs'
 import {describe, expect, it} from 'vitest'
 
 const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
+const surfaceStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/SocialSurface.module.css' : 'apps/web/src/components/social/SocialSurface.module.css', 'utf8')
+const mediaStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/PostMedia.module.css' : 'apps/web/src/components/social/PostMedia.module.css', 'utf8')
 
 describe('ordinary-user fluid shell CSS contract', () => {
   it('anchors the compact rail while the primary column chooses its own fluid start', () => {
@@ -61,40 +63,21 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('uses the Home feed frame contract for liked and saved collections at every responsive boundary', () => {
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: calc\(100dvh - 56px - env\(safe-area-inset-bottom\) - 50px\)[^}]*overflow: hidden/)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page > \.feed-list, \.collection-page > \.feed-list, \.collection-page > \.empty \{[^}]*overflow-y: auto/)
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*height: 100%[^}]*overflow: hidden/)
-    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.home-page > \.feed-list, \.collection-page > \.feed-list, \.collection-page > \.empty \{[^}]*overflow-y: auto/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: calc\(100dvh - 56px - env\(safe-area-inset-bottom\) - 50px\)/)
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
   })
 
-  it('keeps non-phone titles outside a rounded scrolling content frame shared by feeds and post detail', () => {
-    const desktopContentRules = [...stylesheet.matchAll(/\.shell\[data-shell="public"\] \.content \{([^}]*)\}/g)]
-      .map((match) => match[1] ?? '')
-      .filter((declarations) => declarations.includes('height: calc(100dvh - 32px)'))
-    expect(desktopContentRules).toHaveLength(2)
-    expect(desktopContentRules.every((declarations) => !declarations.includes('border:'))).toBe(true)
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.page-header \{[^}]*border-bottom: 0/)
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.home-page > \.feed-list > :first-child,[\s\S]*?\.post-detail-content > :first-child \{[^}]*border-top: 1px solid var\(--shell-border\)[^}]*border-radius: 16px 16px 0 0/)
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.home-page > \.feed-list > \*,[\s\S]*?\.post-detail-content > \* \{[^}]*border-inline: 1px solid var\(--shell-border\)/)
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.home-page > \.empty,[\s\S]*?\.post-detail-content > \.empty \{[^}]*border: 1px solid var\(--shell-border\)[^}]*border-radius: 16px/)
+  it('uses one fixed rounded desktop surface instead of attaching frame edges to content children', () => {
+    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
+    expect(stylesheet).not.toMatch(/\.home-page > \.feed-list > :(?:first|last|only)-child/)
+    expect(stylesheet).not.toMatch(/\.post-detail-content > :(?:first|last|only)-child/)
   })
 
-  it('moves the non-empty frame closing edge to the true end of its scrollable content', () => {
-    expect(stylesheet).toMatch(/@media \(min-width: 700px\) \{[\s\S]*?\.home-page > \.feed-list > :last-child,[\s\S]*?\.collection-page > \.feed-list > :last-child,[\s\S]*?\.post-detail-content > :last-child \{[^}]*border-bottom: 1px solid var\(--shell-border\)[^}]*border-radius: 0 0 16px 16px/)
-    expect(stylesheet).not.toMatch(/(?:^|\n)\s*\.feed-list > :last-child,/)
-  })
-
-  it('keeps a single post and every post-detail empty state rounded on all four corners', () => {
-    const lastChildRule = stylesheet.indexOf('.home-page > .feed-list > :last-child')
-    const onlyChildRule = stylesheet.indexOf('.home-page > .feed-list > :only-child')
-    expect(lastChildRule).toBeGreaterThan(-1)
-    expect(onlyChildRule).toBeGreaterThan(lastChildRule)
-    expect(stylesheet).toMatch(/\.home-page > \.feed-list > :only-child,[\s\S]*?\.collection-page > \.feed-list > :only-child,[\s\S]*?\.post-detail-content > :only-child \{[^}]*border-radius: 16px/)
-    expect(stylesheet).toMatch(/\.post-detail-content > \.empty \{[^}]*border: 1px solid var\(--shell-border\)[^}]*border-radius: 16px/)
-  })
-
-  it('uses an inset focus ring that cannot be clipped by the public content viewport', () => {
-    expect(stylesheet).toMatch(/\.feed-list:focus-visible,[\s\S]*?\.post-detail-content:focus-visible \{[^}]*outline: 2px solid[^}]*outline-offset: -3px/)
+  it('keeps scrolling on the shared clipped viewport with a hidden scrollbar and inset focus ring', () => {
+    expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*none/)
+    expect(surfaceStylesheet).toMatch(/\.viewport::-webkit-scrollbar\s*\{[^}]*display:\s*none/)
+    expect(surfaceStylesheet).toMatch(/\.viewport:focus-visible\s*\{[^}]*outline-offset:\s*-3px/)
   })
 
   it('keeps the phone feed as a continuous separator-only flow without an outer frame', () => {
@@ -104,25 +87,13 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.post-card \{[^}]*border-bottom: 1px solid var\(--shell-border\)/)
   })
 
-  it('hides vertical scrollbars without disabling internal scrolling at any public breakpoint', () => {
-    const hiddenScrollbarRule = stylesheet.match(/\.home-page > \.feed-list,[\s\S]*?\.collection-page > \.empty,[\s\S]*?\.post-detail-content \{([^}]*)\}/)?.[1] ?? ''
-    expect(hiddenScrollbarRule).toContain('scrollbar-width: none')
-    expect(hiddenScrollbarRule).toContain('-ms-overflow-style: none')
-    expect(hiddenScrollbarRule).toContain('overflow-y: auto')
-    expect(stylesheet).toMatch(/\.home-page > \.feed-list::-webkit-scrollbar,[\s\S]*?\.post-detail-content::-webkit-scrollbar \{[^}]*display: none/)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page > \.feed-list, \.collection-page > \.feed-list, \.collection-page > \.empty \{[^}]*overflow-y: auto/)
-    expect(stylesheet).toMatch(/\.post-detail-content \{[^}]*overflow-y: auto/)
-  })
-
-  it('scales every image into a 260px viewport without cropping or distortion', () => {
-    expect(stylesheet).toMatch(/\.post-media-rail \{[^}]*max-width: 100%[^}]*overflow-x: auto[^}]*scroll-snap-type: x mandatory/)
-    expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="single"\] \{[^}]*overflow: hidden/)
-    expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="rail"\] \.post-media-frame \{[^}]*flex: 0 0 min\(82%, 440px\)[^}]*scroll-snap-align: start/)
-    expect(stylesheet).toMatch(/\.post-media-frame \{[^}]*height: 260px/)
-    expect(stylesheet).toMatch(/\.post-media-frame \{[^}]*background: var\(--shell-hover\)/)
-    expect(stylesheet).toMatch(/\.post-media-rail img \{[^}]*width: 100%[^}]*height: 100%[^}]*object-fit: contain[^}]*object-position: center/)
-    expect(stylesheet).not.toMatch(/\.post-media-rail img \{[^}]*object-fit: cover/)
-    expect(stylesheet).not.toContain('background: #f4f4f4')
+  it('keeps responsive intrinsic-ratio post media in its focused module', () => {
+    expect(stylesheet).not.toContain('.post-media-rail')
+    expect(stylesheet).not.toContain('.post-media-frame')
+    expect(mediaStylesheet).toMatch(/\.rail\s*\{[^}]*--post-media-height:\s*clamp\([^}]*overflow-x:\s*auto[^}]*scroll-snap-type:\s*x mandatory/s)
+    expect(mediaStylesheet).toMatch(/\.frame\s*\{[^}]*aspect-ratio:\s*var\(--post-media-ratio\)[^}]*flex:\s*0 0 auto[^}]*height:\s*var\(--post-media-height\)/s)
+    expect(mediaStylesheet).toMatch(/\.image\s*\{[^}]*object-fit:\s*contain[^}]*object-position:\s*center/s)
+    expect(mediaStylesheet).not.toMatch(/background(?:-color)?:/)
   })
 
   it('lets long post author names shrink while keeping the time visible', () => {
@@ -159,8 +130,8 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('makes post detail one bounded scroll region beneath opaque fixed chrome', () => {
-    expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*display: grid[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: 100%[^}]*overflow: hidden/)
-    expect(stylesheet).toMatch(/\.post-detail-content \{[^}]*min-height: 0[^}]*overflow-y: auto[^}]*overscroll-behavior: contain/)
-    expect(stylesheet).toMatch(/\.post-detail-header \{[^}]*background: var\(--shell-surface\)[^}]*position: sticky/)
+    expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*height: 100%/)
+    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*overflow:\s*hidden/)
+    expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*overflow-y:\s*auto/)
   })
 })

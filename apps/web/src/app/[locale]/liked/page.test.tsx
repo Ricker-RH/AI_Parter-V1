@@ -20,6 +20,7 @@ describe('liked page', () => {
     expect(fetchLiked).toHaveBeenCalledWith({cursor: 'opaque', token: 'token'})
     expect(screen.getByRole('heading', {name: 'Liked'})).toBeVisible()
     expect(document.querySelector('.collection-page')).toBeTruthy()
+    expect(document.querySelector('[data-social-surface-viewport]')).toBeTruthy()
   })
 
   it('offers a real return to Home when the liked collection is empty', async () => {

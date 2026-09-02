@@ -7,8 +7,8 @@ import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
 
 export function FeedContent({result, locale, labels, empty = 'home', emptyActionHref, moreHref, canMutate = false, returnTo}: {result: SocialApiResult<FeedPage>; locale: Locale; labels: SocialLabels; empty?: 'home' | 'bookmarks' | 'liked'; emptyActionHref?: string; moreHref?: string | undefined; canMutate?: boolean; returnTo?: string}) {
-  if (result.status !== 'ok') return <ResultState labels={labels} result={result} />
-  if (result.data.items.length === 0) return <ResultState {...(emptyActionHref ? {actionHref: emptyActionHref} : {})} empty={empty} labels={labels} result={{status: 'not-found'}} />
+  if (result.status !== 'ok') return <div className="social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result} /></div>
+  if (result.data.items.length === 0) return <div className="social-surface-state" data-social-surface-fill><ResultState {...(emptyActionHref ? {actionHref: emptyActionHref} : {})} empty={empty} labels={labels} result={{status: 'not-found'}} /></div>
   const referenceTime = Date.now()
-  return <div aria-label={labels.posts} className="feed-list" role="region" tabIndex={0}>{result.data.items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} {...(returnTo ? {returnTo} : {})} />)}{result.data.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}</div>
+  return <div className="feed-list">{result.data.items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} {...(returnTo ? {returnTo} : {})} />)}{result.data.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}</div>
 }

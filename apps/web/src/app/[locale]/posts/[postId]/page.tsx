@@ -4,6 +4,7 @@ import {getMessages, isLocale} from '../../../../i18n/config'
 import {fetchPost} from '../../../../lib/social-api'
 import {getOptionalPageAccess, redirectToUserSignIn} from '../../../../lib/auth/access-policy'
 import {PostDetailHeader} from '../../../../components/social/PostDetailHeader'
+import {SocialSurface} from '../../../../components/social/SocialSurface'
 
 export default async function PostPage({params, searchParams}: {params: Promise<{locale: string; postId: string}>; searchParams: Promise<{commentCursor?: string}>}) {
   const {locale, postId} = await params
@@ -17,5 +18,5 @@ export default async function PostPage({params, searchParams}: {params: Promise<
   if (result.status === 'auth-required' && access.status === 'authenticated') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.comments.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/posts/${postId}?${new URLSearchParams({commentCursor: nextCursor})}` : undefined
-  return <main className="post-detail-page"><PostDetailHeader labels={messages} locale={locale} postId={postId}/><PostDetailContent authenticated={access.status==='authenticated'} authResolutionNeeded={access.status==='unavailable'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} /></main>
+  return <SocialSurface className="post-detail-page" header={<PostDetailHeader labels={messages} locale={locale} postId={postId}/>} label={messages.posts}><PostDetailContent authenticated={access.status==='authenticated'} authResolutionNeeded={access.status==='unavailable'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} /></SocialSurface>
 }

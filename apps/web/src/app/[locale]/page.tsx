@@ -4,6 +4,7 @@ import {FeedContent} from '../../components/social/FeedContent'
 import {FeedTabs} from '../../components/social/FeedTabs'
 import {fetchFeed} from '../../lib/social-api'
 import {getOptionalPageAccess, redirectToUserSignIn, requireAuthenticatedPage} from '../../lib/auth/access-policy'
+import {SocialSurface} from '../../components/social/SocialSurface'
 
 type HomeSearchParams = Record<string, string | string[] | undefined>
 
@@ -29,11 +30,12 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   currentQueryParams.delete('visualType')
   const currentQuery = currentQueryParams.toString()
   const returnTo = following ? `/${candidate}?feed=following` : `/${candidate}`
+  const header = <header className="page-header home-header"><h1 className="page-title home-title">{feedTitle}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header>
   let token: string | undefined
   let canMutate = false
   if (following) {
     const access = await requireAuthenticatedPage({locale: candidate, returnTo})
-    if (access.status === 'unavailable') return <main className="home-page"><header className="page-header home-header"><h1 className="page-title home-title">{feedTitle}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent labels={messages} locale={candidate} result={{status: 'unavailable'}} /></main>
+    if (access.status === 'unavailable') return <SocialSurface className="home-page" header={header} label={messages.posts}><FeedContent labels={messages} locale={candidate} result={{status: 'unavailable'}} /></SocialSurface>
     token = access.token
     canMutate = true
   } else {
@@ -50,5 +52,5 @@ export default async function HomePage({params, searchParams}: {params: Promise<
   if (following) pageQuery.set('feed', 'following')
   if (nextCursor) pageQuery.set('cursor', nextCursor)
   const moreHref = nextCursor ? `/${candidate}?${pageQuery}` : undefined
-  return <main className="home-page"><header className="page-header home-header"><h1 className="page-title home-title">{feedTitle}</h1><FeedTabs currentQuery={currentQuery} following={following} labels={messages} locale={candidate}/></header><FeedContent canMutate={canMutate} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
+  return <SocialSurface className="home-page" header={header} label={messages.posts}><FeedContent canMutate={canMutate} labels={messages} locale={candidate} moreHref={moreHref} result={result} returnTo={returnTo} /></SocialSurface>
 }
