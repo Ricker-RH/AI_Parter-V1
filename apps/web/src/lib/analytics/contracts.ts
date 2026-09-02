@@ -14,7 +14,7 @@ export type AnalyticsRouteName = typeof ANALYTICS_ROUTE_NAMES[number]
 export type AnalyticsActionSource = 'landing' | 'navigation' | 'social_link'
 export type AnalyticsCreationStep = 'identity' | 'persona' | 'appearance' | 'review'
 export type AnalyticsVisualType = 'realistic' | 'anime' | 'hybrid'
-export type AnalyticsPerformanceMetric = 'INP' | 'LCP' | 'CLS' | 'navigation' | 'interaction' | 'skeleton'
+export type AnalyticsPerformanceMetric = 'INP' | 'LCP' | 'CLS' | 'navigation' | 'interaction' | 'shell'
 export type AnalyticsPerformanceRating = 'good' | 'needs-improvement' | 'poor'
 export type AnalyticsDeviceType = 'desktop' | 'tablet' | 'mobile'
 
@@ -56,7 +56,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const actionSources: readonly AnalyticsActionSource[] = ['landing', 'navigation', 'social_link']
 const creationSteps: readonly AnalyticsCreationStep[] = ['identity', 'persona', 'appearance', 'review']
 const visualTypes: readonly AnalyticsVisualType[] = ['realistic', 'anime', 'hybrid']
-const performanceMetrics: readonly AnalyticsPerformanceMetric[] = ['INP', 'LCP', 'CLS', 'navigation', 'interaction', 'skeleton']
+const performanceMetrics: readonly AnalyticsPerformanceMetric[] = ['INP', 'LCP', 'CLS', 'navigation', 'interaction', 'shell']
 const performanceRatings: readonly AnalyticsPerformanceRating[] = ['good', 'needs-improvement', 'poor']
 const deviceTypes: readonly AnalyticsDeviceType[] = ['desktop', 'tablet', 'mobile']
 const safePerformanceId = /^[A-Za-z0-9._-]{1,128}$/

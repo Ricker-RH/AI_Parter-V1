@@ -25,14 +25,14 @@ afterEach(() => vi.unstubAllGlobals())
 describe('analytics event contract', () => {
   it('uses the navigation budgets and never lets performance capture throw into navigation', () => {
     expect(performanceBudget('interaction')).toBe(100)
-    expect(performanceBudget('skeleton')).toBe(150)
+    expect(performanceBudget('shell')).toBe(150)
     expect(performanceBudget('navigation')).toBe(800)
     const analytics: AnalyticsClient = {
       capture: () => { throw new Error('analytics unavailable') },
       identify: vi.fn(), page: vi.fn(), reset: vi.fn(),
     }
     expect(() => trackPerformanceMeasured(analytics, {
-      locale: 'en', route_name: '/[locale]', metric: 'navigation', metric_id: 'navigation-1-navigation',
+      locale: 'en', route_name: '/[locale]', metric: 'shell', metric_id: 'navigation-1-shell',
       value: 12, rating: 'good', device_type: 'desktop', release: 'test',
     })).not.toThrow()
   })

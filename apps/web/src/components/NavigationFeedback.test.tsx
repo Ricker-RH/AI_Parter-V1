@@ -1,5 +1,6 @@
 import {act, fireEvent, render, screen} from '@testing-library/react'
-import {describe, expect, it, vi} from 'vitest'
+import {useLayoutEffect} from 'react'
+import {afterEach, describe, expect, it, vi} from 'vitest'
 
 let pathname = '/en'
 let search = ''
@@ -10,13 +11,15 @@ vi.mock('../lib/analytics/provider.js', () => ({
 }))
 vi.mock('../lib/analytics/performance.js', () => ({
   deviceType: () => 'desktop',
-  performanceBudget: (metric: string) => metric === 'interaction' ? 100 : metric === 'skeleton' ? 150 : 800,
+  performanceBudget: (metric: string) => metric === 'interaction' ? 100 : metric === 'shell' ? 150 : 800,
   trackPerformanceMeasured: vi.fn(),
 }))
 import {NavigationFeedback} from './NavigationFeedback.js'
 import {trackPerformanceMeasured} from '../lib/analytics/performance.js'
 
 describe('NavigationFeedback', () => {
+  afterEach(() => { pathname = '/en'; search = ''; vi.clearAllMocks(); vi.unstubAllGlobals() })
+
   it('records interaction, destination fallback, and ready timing for every route generation', () => {
     const frames: FrameRequestCallback[] = []
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
@@ -43,11 +46,68 @@ describe('NavigationFeedback', () => {
     act(() => { frames.forEach((frame) => frame(100)) })
 
     const metrics = vi.mocked(trackPerformanceMeasured).mock.calls.map(([_, properties]) => properties)
-    expect(metrics.map(({metric}) => metric)).toEqual(['interaction', 'skeleton', 'navigation', 'interaction', 'skeleton', 'navigation'])
+    expect(metrics.map(({metric}) => metric)).toEqual(['interaction', 'shell', 'navigation', 'interaction', 'shell', 'navigation'])
     expect(metrics.map(({metric_id}) => metric_id)).toEqual([
-      'navigation-1-interaction', 'navigation-1-skeleton', 'navigation-1-navigation',
-      'navigation-2-interaction', 'navigation-2-skeleton', 'navigation-2-navigation',
+      'navigation-1-interaction', 'navigation-1-shell', 'navigation-1-navigation',
+      'navigation-2-interaction', 'navigation-2-shell', 'navigation-2-navigation',
     ])
+    vi.unstubAllGlobals()
+  })
+
+  it('records shell and ready timing when pathname changes without an interaction start', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    pathname = '/en'
+    search = ''
+    const view = render(<><NavigationFeedback locale="en" release="test"/><main>Home</main></>)
+    pathname = '/en/messages'
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    view.rerender(<><NavigationFeedback locale="en" release="test"/><main>Home</main><main className="route-skeleton">Loading</main></>)
+    act(() => { document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 1, route: '/en/messages'}})) })
+    view.rerender(<><NavigationFeedback locale="en" release="test"/><main>Messages</main></>)
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+    const metrics = vi.mocked(trackPerformanceMeasured).mock.calls.map(([_, properties]) => properties)
+    expect(metrics.map(({metric}) => metric)).toEqual(['shell', 'navigation'])
+    expect(metrics.every(({metric_id}) => metric_id.startsWith('navigation-1-'))).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('acknowledges a route-ready event emitted before the passive pending effect', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    pathname = '/en'
+    function ReadyBeforePassive() {
+      useLayoutEffect(() => {
+        document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 1, route: '/en/messages'}}))
+      }, [])
+      return null
+    }
+    const view = render(<><ReadyBeforePassive/><NavigationFeedback locale="en" release="test"/><main>Home</main></>)
+    pathname = '/en/messages'
+    view.rerender(<><ReadyBeforePassive/><NavigationFeedback locale="en" release="test"/><main>Messages</main></>)
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(vi.mocked(trackPerformanceMeasured).mock.calls.map(([_, properties]) => properties.metric)).toContain('navigation')
+    vi.unstubAllGlobals()
+  })
+
+  it('ignores delayed older route-ready generations without corrupting the current destination', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    pathname = '/en'
+    const view = render(<><NavigationFeedback locale="en" release="test"/><main>Home</main></>)
+    pathname = '/en/messages'
+    view.rerender(<><NavigationFeedback locale="en" release="test"/><main>Messages</main></>)
+    act(() => {
+      document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 2, route: '/en/messages'}}))
+      document.dispatchEvent(new CustomEvent('aifans:route-ready', {detail: {generation: 1, route: '/en'}}))
+    })
+    act(() => { frames.forEach((frame) => frame(performance.now())) })
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(vi.mocked(trackPerformanceMeasured).mock.calls.at(-1)?.[1]).toMatchObject({metric: 'navigation', metric_id: 'navigation-1-navigation'})
     vi.unstubAllGlobals()
   })
 

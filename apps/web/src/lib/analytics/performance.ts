@@ -5,7 +5,7 @@ import {trackPerformanceMeasured as capturePerformanceMeasured} from './events'
 export type PerformanceMeasurement = {locale: Locale; route_name: AnalyticsRouteName; metric: AnalyticsPerformanceMetric; metric_id: string; value: number; rating: AnalyticsPerformanceRating; device_type: AnalyticsDeviceType; release: string}
 
 export function performanceBudget(metric: AnalyticsPerformanceMetric) {
-  return metric === 'interaction' ? 100 : metric === 'skeleton' ? 150 : 800
+  return metric === 'interaction' ? 100 : metric === 'shell' ? 150 : 800
 }
 
 export function trackPerformanceMeasured(analytics: AnalyticsClient, properties: PerformanceMeasurement) {

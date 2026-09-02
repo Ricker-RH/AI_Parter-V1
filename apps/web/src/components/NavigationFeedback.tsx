@@ -1,6 +1,6 @@
 'use client'
 
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useInsertionEffect, useRef, useState} from 'react'
 import {flushSync} from 'react-dom'
 import {usePathname, useSearchParams} from 'next/navigation'
 import type {Locale} from '../i18n/config'
@@ -8,7 +8,7 @@ import {routeNameForPath, useAnalytics} from '../lib/analytics/provider'
 import {deviceType, performanceBudget, trackPerformanceMeasured} from '../lib/analytics/performance'
 import type {AnalyticsPerformanceMetric, AnalyticsPerformanceRating} from '../lib/analytics/contracts'
 
-type PendingNavigation = {generation: number; readyGeneration: number; startedAt: number; targetPathname: string; targetRoute: string}
+type PendingNavigation = {generation: number; readyGeneration: number; readyObservedBeforeStart: boolean; reportedMetrics: Set<string>; startedAt: number; targetPathname: string; targetRoute: string}
 type RouteReady = {generation: number; route: string}
 
 function rating(metric: AnalyticsPerformanceMetric, value: number): AnalyticsPerformanceRating {
@@ -37,16 +37,16 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
   const currentRoute = `${pathname}${searchParams.size ? `?${searchParams}` : ''}`
   const sequence = useRef(0)
   const latestReadyGeneration = useRef(0)
-  const reportedMetrics = useRef(new Set<string>())
+  const latestReadyRoute = useRef<string | null>(null)
+  const lastRoute = useRef(currentRoute)
   const [pending, setPending] = useState<PendingNavigation | null>(null)
-  const [routeReady, setRouteReady] = useState<RouteReady | null>(null)
 
   const measure = useCallback((metric: AnalyticsPerformanceMetric, active: PendingNavigation) => {
     const routeName = routeNameForPath(active.targetPathname)
     if (!routeName) return
     const measurementKey = `${active.generation}-${metric}`
-    if (reportedMetrics.current.has(measurementKey)) return
-    reportedMetrics.current.add(measurementKey)
+    if (active.reportedMetrics.has(measurementKey)) return
+    active.reportedMetrics.add(measurementKey)
     const value = Math.max(0, performance.now() - active.startedAt)
     trackPerformanceMeasured(analytics, {
       locale,
@@ -60,13 +60,14 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     })
   }, [analytics, locale, release])
 
-  useEffect(() => {
+  useInsertionEffect(() => {
     function onRouteReady(event: Event) {
       if (!(event instanceof CustomEvent)) return
       const detail = event.detail as Partial<RouteReady> | null
       if (!detail || typeof detail.generation !== 'number' || typeof detail.route !== 'string') return
-      latestReadyGeneration.current = Math.max(latestReadyGeneration.current, detail.generation)
-      setRouteReady({generation: detail.generation, route: detail.route})
+      if (detail.generation <= latestReadyGeneration.current) return
+      latestReadyGeneration.current = detail.generation
+      latestReadyRoute.current = detail.route
     }
     document.addEventListener('aifans:route-ready', onRouteReady)
     return () => document.removeEventListener('aifans:route-ready', onRouteReady)
@@ -76,7 +77,7 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     function start(target: EventTarget | null) {
       const destination = destinationFrom(target)
       if (!destination) return
-      const active = {generation: ++sequence.current, readyGeneration: latestReadyGeneration.current, startedAt: performance.now(), ...destination}
+      const active = {generation: ++sequence.current, readyGeneration: latestReadyGeneration.current, readyObservedBeforeStart: false, reportedMetrics: new Set<string>(), startedAt: performance.now(), ...destination}
       flushSync(() => setPending(active))
       measure('interaction', active)
     }
@@ -100,16 +101,16 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
 
   useEffect(() => {
     if (!pending) return
-    let skeletonReported = false
-    const reportSkeleton = () => {
-      if (skeletonReported || !document.querySelector('.route-skeleton')) return
-      skeletonReported = true
-      measure('skeleton', pending)
+    let shellReported = false
+    const reportShell = () => {
+      if (shellReported || !document.querySelector('.route-skeleton')) return
+      shellReported = true
+      measure('shell', pending)
     }
     const targetReadyMain = () => {
       const main = document.querySelector<HTMLElement>('main:not(.route-skeleton)')
       if (!main || document.querySelector('.route-skeleton')) return null
-      if (!routeReady || routeReady.route !== pending.targetRoute || routeReady.generation <= pending.readyGeneration) return null
+      if (latestReadyRoute.current !== pending.targetRoute || latestReadyGeneration.current < pending.readyGeneration || (latestReadyGeneration.current === pending.readyGeneration && !pending.readyObservedBeforeStart)) return null
       return main
     }
     const reportReady = () => {
@@ -117,9 +118,9 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
       measure('navigation', pending)
       setPending(null)
     }
-    reportSkeleton()
+    reportShell()
     const observer = new MutationObserver(() => {
-      reportSkeleton()
+      reportShell()
       reportReady()
     })
     observer.observe(document.body, {childList: true, subtree: true})
@@ -130,7 +131,16 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
       window.clearTimeout(timeout)
       observer.disconnect()
     }
-  }, [currentRoute, measure, pending, routeReady])
+  }, [currentRoute, measure, pending])
+
+  useEffect(() => {
+    if (currentRoute === lastRoute.current) return
+    lastRoute.current = currentRoute
+    if (pending?.targetRoute === currentRoute) return
+    const destination = new URL(currentRoute, window.location.origin)
+    const active = {generation: ++sequence.current, readyGeneration: latestReadyGeneration.current, readyObservedBeforeStart: latestReadyRoute.current === currentRoute, reportedMetrics: new Set<string>(), startedAt: performance.now(), targetPathname: destination.pathname, targetRoute: currentRoute}
+    setPending(active)
+  }, [currentRoute, pending])
 
   return pending ? <div aria-atomic="true" aria-live="polite" className="navigation-feedback" data-navigation-pending="true" role="status"><span className="navigation-feedback__indicator" aria-hidden="true"/><span className="sr-only">{pendingLabel(locale)}</span></div> : null
 }
