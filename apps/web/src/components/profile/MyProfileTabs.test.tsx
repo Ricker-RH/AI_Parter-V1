@@ -3,6 +3,8 @@ import {afterEach, describe, expect, it, vi} from 'vitest'
 import type {SocialLabels} from '../social/types.js'
 import {MyProfileTabs} from './MyProfileTabs.js'
 
+vi.mock('next/navigation', () => ({useRouter: () => ({prefetch: vi.fn(), push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}))
+
 const labels = {tabs:'Profile sections',myIps:'My IPs',liked:'Liked',saved:'Saved',following:'Following',loadingSection:'Loading section…',unavailableSection:'Unable to load this section.',retrySection:'Try again',myIpsEmpty:'No IPs yet',likedEmpty:'No liked posts yet',savedEmpty:'No saved posts yet',followingEmpty:'Not following anyone yet'}
 const socialLabels = {posts:'Posts',postMedia:'Post media',createdBy:'Created by',like:'Like',unlike:'Unlike',bookmark:'Save',removeBookmark:'Remove save',comments:'Comments',share:'Share',interactionError:'Action failed'} as SocialLabels
 const refs=['avatar','cover','portrait','full_body','supporting_1'].map((role,index)=>({id:`33333333-3333-4333-8333-33333333333${index}`,role}))

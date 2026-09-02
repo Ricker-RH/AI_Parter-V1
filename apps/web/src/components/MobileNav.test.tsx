@@ -5,6 +5,7 @@ import en from '../../messages/en.json'
 
 const {pathname, suspendPathname} = vi.hoisted(() => ({pathname: {value: '/en'}, suspendPathname: {value: false}}))
 vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname.value) throw new Promise(() => undefined); return pathname.value }}))
+vi.mock('next/link', () => ({default: ({children, prefetch, ...props}: {children: React.ReactNode; prefetch?: boolean | null; [key: string]: unknown}) => <a {...props} data-prefetch={prefetch === false ? 'false' : 'shell'}>{children}</a>}))
 
 const labels = en
 
@@ -15,6 +16,13 @@ describe('MobileNav', () => {
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label')))
       .toEqual(['Home', 'Messages', 'Creator Center', 'Collections', 'My Profile'])
     expect(screen.getByRole('link', {name: 'Collections'})).toHaveAttribute('href', '/en/activity')
+  })
+
+  it('leaves each visible mobile destination eligible for the shared App Shell prefetch', () => {
+    render(<MobileNav labels={labels} locale="en" />)
+
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('data-prefetch')))
+      .toEqual(['shell', 'shell', 'shell', 'shell', 'shell'])
   })
 
   it('does not show Creator when creator mode is disabled', () => {

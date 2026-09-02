@@ -7,7 +7,7 @@ import zhCN from '../../messages/zh-CN.json'
 
 const {search, pathname, suspendPathname} = vi.hoisted(() => ({search: new URLSearchParams(), pathname: {value: '/en'}, suspendPathname: {value: false}}))
 vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname.value) throw new Promise(() => undefined); return pathname.value }, useSearchParams: () => search}))
-vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.ReactNode; [key: string]: unknown}) => <a {...props}>{children}</a>}))
+vi.mock('next/link', () => ({default: ({children, prefetch, ...props}: {children: React.ReactNode; prefetch?: boolean | null; [key: string]: unknown}) => <a {...props} data-prefetch={prefetch === false ? 'false' : 'shell'}>{children}</a>}))
 
 const labels = en
 
@@ -29,6 +29,16 @@ describe('AppNav', () => {
       'AIFANS', 'For You', 'Following', 'Search', 'Messages', 'Liked', 'Saved', 'My Profile',
     ])
     expect(screen.queryByRole('link', {name: 'Creator Center'})).toBeNull()
+  })
+
+  it('leaves every visible primary destination eligible for the shared App Shell prefetch', () => {
+    render(<AppNav labels={labels} locale="en" />)
+
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('data-prefetch'))).toEqual([
+      'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell',
+    ])
+    expect(screen.getByRole('link', {name: 'For You'})).toHaveAttribute('href', '/en')
+    expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?feed=following')
   })
 
   it.each([

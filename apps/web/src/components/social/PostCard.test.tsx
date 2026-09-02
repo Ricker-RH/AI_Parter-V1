@@ -8,18 +8,18 @@ import type { FeedPost } from "@aifans/contracts";
 import { PostCard } from "./PostCard.js";
 import type { SocialLabels } from "./types.js";
 
-const {capture} = vi.hoisted(() => ({capture: vi.fn()}));
+const {capture, routerPrefetch} = vi.hoisted(() => ({capture: vi.fn(), routerPrefetch: vi.fn()}));
 
 vi.mock("next/link", () => ({
-  default: ({ children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { children: ReactNode }) => (
-    <a {...props}>{children}</a>
+  default: ({ children, prefetch, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { children: ReactNode; prefetch?: boolean | null }) => (
+    <a {...props} data-prefetch={prefetch === false ? 'false' : 'shell'}>{children}</a>
   ),
 }));
 
 vi.mock("../../lib/analytics/provider.js", () => ({
   useAnalytics: () => ({ capture, identify: vi.fn(), page: vi.fn(), reset: vi.fn() }),
 }));
-vi.mock("next/navigation", () => ({useRouter: () => ({push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}));
+vi.mock("next/navigation", () => ({useRouter: () => ({prefetch: routerPrefetch, push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}));
 
 const labels: SocialLabels = {
   aiAccount: "AI/IP", authRequiredTitle: "Sign in required", authRequiredDescription: "Sign in to see this page.",
@@ -193,7 +193,69 @@ describe("PostCard media geometry", () => {
 });
 
 describe("PostCard public interaction hierarchy", () => {
-  beforeEach(() => {capture.mockClear()});
+  beforeEach(() => {capture.mockClear(); routerPrefetch.mockClear()});
+
+  it('defers post and profile prefetches until pointer, keyboard, or touch intent and de-duplicates URLs', () => {
+    const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime}/>);
+    const article = screen.getByRole('article');
+    const cardContent = container.querySelector('.post-content');
+    const postLink = screen.getByRole('link', {name: post.body});
+    const profileLink = screen.getByRole('link', {name: 'Luma'});
+    const mediaLink = screen.getByRole('img', {name: 'Wide moon'}).closest('a');
+
+    expect(routerPrefetch).not.toHaveBeenCalled();
+    expect(container.querySelector('.post-card-navigation-target')).toHaveAttribute('data-prefetch', 'false');
+    expect(postLink).toHaveAttribute('data-prefetch', 'false');
+    expect(profileLink).toHaveAttribute('data-prefetch', 'false');
+    expect(mediaLink).toHaveAttribute('data-prefetch', 'false');
+
+    fireEvent.pointerEnter(cardContent!);
+    fireEvent.touchStart(cardContent!);
+    expect(routerPrefetch).toHaveBeenCalledTimes(1);
+    expect(routerPrefetch).toHaveBeenLastCalledWith(`/en/posts/${post.id}`, expect.any(Object));
+
+    fireEvent.pointerEnter(postLink);
+    fireEvent.focus(postLink);
+    fireEvent.touchStart(postLink);
+    expect(routerPrefetch).toHaveBeenCalledTimes(1);
+    expect(routerPrefetch).toHaveBeenLastCalledWith(`/en/posts/${post.id}`, expect.any(Object));
+
+    fireEvent.focus(profileLink);
+    fireEvent.touchStart(profileLink);
+    expect(routerPrefetch).toHaveBeenCalledTimes(2);
+    expect(routerPrefetch).toHaveBeenLastCalledWith(`/en/profiles/${post.author.id}`, expect.any(Object));
+  });
+
+  it('shares intent prefetches across cards and retries after Next invalidates a URL', () => {
+    const author = {...post.author, id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'};
+    const first = {...post, author, id: '88888888-8888-4888-8888-888888888888'};
+    const second = {...post, author, id: '99999999-9999-4999-8999-999999999999'};
+    render(<><PostCard labels={labels} locale="en" post={first} referenceTime={cardReferenceTime}/><PostCard labels={labels} locale="en" post={second} referenceTime={cardReferenceTime}/></>);
+    const profileLinks = screen.getAllByRole('link', {name: 'Luma'});
+
+    fireEvent.focus(profileLinks[0]!);
+    fireEvent.touchStart(profileLinks[1]!);
+    expect(routerPrefetch).toHaveBeenCalledTimes(1);
+    expect(routerPrefetch).toHaveBeenLastCalledWith(`/en/profiles/${author.id}`, expect.any(Object));
+
+    const options = routerPrefetch.mock.calls[0]?.[1] as {onInvalidate?: () => void};
+    expect(options.onInvalidate).toEqual(expect.any(Function));
+    options.onInvalidate?.();
+    fireEvent.pointerEnter(profileLinks[1]!);
+    expect(routerPrefetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('prefetches a whole-card navigation target when its keyboard-focusable overlay shows intent', () => {
+    const cardPost = {...post, id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'};
+    render(<PostCard labels={labels} locale="en" post={cardPost} referenceTime={cardReferenceTime}/>);
+    const overlay = screen.getByRole('link', {name: `${labels.posts}: ${post.author.displayName}`});
+
+    expect(overlay).toHaveAttribute('data-prefetch', 'false');
+    fireEvent.focus(overlay);
+    fireEvent.touchStart(overlay);
+    expect(routerPrefetch).toHaveBeenCalledTimes(1);
+    expect(routerPrefetch).toHaveBeenLastCalledWith(`/en/posts/${cardPost.id}`, expect.any(Object));
+  });
 
   it('opens linked post details from body, media, and non-interactive card space exactly once', () => {
     const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime}/>);

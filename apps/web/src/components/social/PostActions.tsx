@@ -6,6 +6,7 @@ import {useState, type ReactNode, type SVGProps} from 'react'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import type {SocialLabels} from './types'
+import {useIntentPrefetch} from './useIntentPrefetch'
 
 type ActionLabels = Pick<
   SocialLabels,
@@ -78,9 +79,11 @@ function ActionFrame({afterComment, beforeComment, commentsLabel, commentCount, 
   postId: string
   shareLabel: string
 }) {
+  const {intentHandlers} = useIntentPrefetch()
+  const postHref = `/${locale}/posts/${postId}`
   return <footer aria-label={commentsLabel} className="post-actions">
     {beforeComment}
-    <Link aria-label={commentsLabel} className="post-action" href={`/${locale}/posts/${postId}`}><CommentIcon aria-hidden="true"/><Count>{commentCount}</Count></Link>
+    <Link {...intentHandlers(postHref)} aria-label={commentsLabel} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true"/><Count>{commentCount}</Count></Link>
     {afterComment}
     <ShareButton label={shareLabel} locale={locale} postId={postId}/>
   </footer>
@@ -125,8 +128,9 @@ function AuthenticatedActions({bookmarked, commentCount, labels, liked, likeCoun
 
 function GuestActions({commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`}: PostActionsProps) {
   const gatedHref = authHref(locale, returnTo)
-  const likeAction = <Link aria-label={labels.like} className="post-action" href={gatedHref}><HeartIcon aria-hidden="true"/><Count>{likeCount}</Count></Link>
-  const bookmarkAction = <Link aria-label={labels.bookmark} className="post-action" href={gatedHref}><BookmarkIcon aria-hidden="true"/></Link>
+  const {intentHandlers} = useIntentPrefetch()
+  const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={labels.like} className="post-action" href={gatedHref} prefetch={false}><HeartIcon aria-hidden="true"/><Count>{likeCount}</Count></Link>
+  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={labels.bookmark} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/></Link>
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'}/>
 }
 

@@ -18,10 +18,11 @@ function geometry(item: PublicPostMedia) {
   return {height: undefined, ratio: positive(item.aspectRatio) ? item.aspectRatio : 4 / 5, width: undefined}
 }
 
-export function PostMedia({authorName, items, label, onPostOpen, postHref}: {
+export function PostMedia({authorName, items, label, onPostIntent, onPostOpen, postHref}: {
   authorName: string
   items: PublicPostMedia[]
   label: string
+  onPostIntent?: () => void
   onPostOpen?: () => void
   postHref?: string
 }) {
@@ -61,8 +62,9 @@ export function PostMedia({authorName, items, label, onPostOpen, postHref}: {
         'data-testid': 'post-media-frame',
         style: {'--post-media-ratio': String(dimensions.ratio)} as MediaFrameStyle,
       }
+      const intentHandlers = onPostIntent ? {onFocus: onPostIntent, onPointerEnter: onPostIntent, onTouchStart: onPostIntent} : {}
       return postHref
-        ? <Link {...frameProps} href={postHref} key={item.id} {...(onPostOpen ? {onClick: onPostOpen} : {})}>{image}</Link>
+        ? <Link {...frameProps} href={postHref} key={item.id} prefetch={false} {...intentHandlers} {...(onPostOpen ? {onClick: onPostOpen} : {})}>{image}</Link>
         : <div {...frameProps} key={item.id}>{image}</div>
     })}
   </div>

@@ -3,12 +3,37 @@ import {readFileSync} from 'node:fs'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {PostActions} from './PostActions.js'
 
-const {refresh, replace} = vi.hoisted(() => ({refresh: vi.fn(), replace: vi.fn()}))
-vi.mock('next/navigation', () => ({useRouter: () => ({refresh, replace})}))
+const {prefetch, refresh, replace} = vi.hoisted(() => ({prefetch: vi.fn(), refresh: vi.fn(), replace: vi.fn()}))
+vi.mock('next/navigation', () => ({useRouter: () => ({prefetch, refresh, replace})}))
+vi.mock('next/link', () => ({default: ({children, prefetch: linkPrefetch, ...props}: {children: React.ReactNode; prefetch?: boolean | null; [key: string]: unknown}) => <a {...props} data-prefetch={linkPrefetch === false ? 'false' : 'shell'}>{children}</a>}))
 
-afterEach(() => { vi.unstubAllGlobals(); refresh.mockReset(); replace.mockReset() })
+afterEach(() => { vi.unstubAllGlobals(); prefetch.mockReset(); refresh.mockReset(); replace.mockReset() })
 
 describe('PostActions', () => {
+  it('defers comment and guest auth navigation prefetches until intent, then de-duplicates their URLs', () => {
+    const labels = {bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike', comments: 'Comments'}
+    render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" returnTo="/en" />)
+
+    const comments = screen.getByRole('link', {name: 'Comments'})
+    const like = screen.getByRole('link', {name: 'Like'})
+    const bookmark = screen.getByRole('link', {name: 'Bookmark'})
+    expect(prefetch).not.toHaveBeenCalled()
+    expect(comments).toHaveAttribute('data-prefetch', 'false')
+    expect(like).toHaveAttribute('data-prefetch', 'false')
+    expect(bookmark).toHaveAttribute('data-prefetch', 'false')
+
+    fireEvent.pointerEnter(comments)
+    fireEvent.focus(comments)
+    fireEvent.touchStart(comments)
+    expect(prefetch).toHaveBeenCalledTimes(1)
+    expect(prefetch).toHaveBeenLastCalledWith('/en/posts/22222222-2222-4222-8222-222222222222', expect.any(Object))
+
+    fireEvent.focus(like)
+    fireEvent.touchStart(bookmark)
+    expect(prefetch).toHaveBeenCalledTimes(2)
+    expect(prefetch).toHaveBeenLastCalledWith('/en/auth/sign-in?next=%2Fen', expect.any(Object))
+  })
+
   it('uses only a currentColor solid icon for active like and bookmark feedback', () => {
     const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
     render(<PostActions bookmarked labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked locale="en" postId="22222222-2222-4222-8222-222222222222" />)

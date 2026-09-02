@@ -17,10 +17,10 @@ const labels = {
 }
 
 describe('AppShell', () => {
-  it('enables Cache Components with manual instant validation without Partial Prefetching', () => {
+  it('enables Cache Components, Partial Prefetching, and manual instant validation', () => {
     expect(nextConfig.cacheComponents).toBe(true)
     expect(nextConfig.experimental?.instantInsights?.validationLevel).toBe('manual-warning')
-    expect(nextConfig.partialPrefetching).toBeUndefined()
+    expect(nextConfig.partialPrefetching).toBe(true)
   })
 
   it('keeps the shared interactive shell visible while route data is pending', () => {
