@@ -6,6 +6,7 @@ import {PostCard} from './PostCard'
 import {ProfileFollowButton} from './ProfileFollowButton'
 import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
+import {StartChatButton} from '../chat/StartChatButton'
 import {EmptyState} from '@aifans/ui'
 import styles from './PublicProfileContent.module.css'
 
@@ -22,7 +23,10 @@ export function PublicProfileContent({result,locale,labels,moreHref}: {result:So
           <p className={styles.username}>@{profile.username}</p>
           {profile.creator?<p className={styles.creator}>{labels.createdBy} @{profile.creator.username}</p>:null}
         </div>
-        <div className={styles.followAction}>{viewerFollows===undefined?<Link href={`/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`}>{labels.follow}</Link>:<ProfileFollowButton following={viewerFollows} labels={labels} locale={locale} profileId={profile.id}/>}</div>
+        <div className={styles.profileActions}>
+          <div className={styles.followAction}>{viewerFollows===undefined?<Link href={`/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`}>{labels.follow}</Link>:<ProfileFollowButton following={viewerFollows} labels={labels} locale={locale} profileId={profile.id}/>}</div>
+          <div className={styles.chatAction}><StartChatButton authenticated={viewerFollows!==undefined} ipProfileId={profile.id} labels={{startChat: labels.startChat ?? 'Chat', startingChat: labels.startingChat ?? 'Opening…', chatStartError: labels.chatStartError ?? labels.interactionError}} locale={locale}/></div>
+        </div>
       </div>
       {profile.bio?<p className={styles.bio}>{profile.bio}</p>:null}
       <p className={styles.followers}>{followerCount} {labels.followers}</p>

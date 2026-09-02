@@ -21,6 +21,7 @@ const labels: SocialLabels = {
   removeBookmark: 'Remove bookmark', unlike: 'Unlike', unavailableTitle: 'Unable to load', unavailableDescription: 'Try again later.', unavailableRetry: 'Retry', unavailableRetrying: 'Retrying…',
   createdBy: 'Created by', commentPlaceholder: 'Write a comment', commentSubmit: 'Comment', commentSending: 'Posting', commentSuccess: 'Posted', reply: 'Reply', signInToComment: 'Sign in to comment', markRead: 'Mark read', markingRead: 'Marking',
   profileNotFoundTitle: 'Profile not found', profileNotFoundDescription: 'Not public', followers: 'followers', posts: 'Posts', signInToInteract: 'Sign in to interact',
+  startChat: 'Chat', startingChat: 'Opening…', chatStartError: 'Unable to start a conversation.',
 }
 const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', bio: 'A quiet astronomer sharing notes from the night sky.', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
 
@@ -34,6 +35,7 @@ describe('PublicProfileContent', () => {
     expect(screen.getByText(profile.bio)).toBeVisible()
     expect(screen.getByText('12 followers')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Follow'})).toHaveAttribute('href', `/en/auth/sign-in?next=${encodeURIComponent(`/en/profiles/${profile.id}`)}`)
+    expect(screen.getByRole('link', {name: 'Chat'})).toHaveAttribute('href', `/en/auth/sign-in?next=${encodeURIComponent(`/en/profiles/${profile.id}`)}`)
     expect(screen.getByRole('heading', {name: 'Posts'})).toBeVisible()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', {name: 'Nothing here yet'})).toBeVisible()
@@ -47,5 +49,11 @@ describe('PublicProfileContent', () => {
 
     rerender(<PublicProfileContent labels={labels} locale="en" result={{status: 'unavailable'}} />)
     expect(screen.getByRole('alert')).toHaveTextContent('Unable to load')
+    expect(screen.queryByRole('link', {name: 'Chat'})).toBeNull()
+    expect(screen.queryByRole('button', {name: 'Chat'})).toBeNull()
+
+    rerender(<PublicProfileContent labels={labels} locale="en" result={{status: 'not-found'}} />)
+    expect(screen.queryByRole('link', {name: 'Chat'})).toBeNull()
+    expect(screen.queryByRole('button', {name: 'Chat'})).toBeNull()
   })
 })
