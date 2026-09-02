@@ -164,6 +164,7 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-title \{[^}]*clip:/)
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.post-detail-title \{[^}]*justify-self:\s*start/)
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-title \{[^}]*justify-self:\s*start/)
+    expect(stylesheet).not.toContain('.post-detail-view-count')
   })
 
   it('keeps the desktop left navigation free of a right frame edge', () => {

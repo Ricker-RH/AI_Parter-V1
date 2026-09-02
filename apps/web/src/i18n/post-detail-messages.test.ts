@@ -28,4 +28,8 @@ describe('post detail locale parity', () => {
     expect(messages.commentsEmptyTitle).toBeTruthy()
     expect(messages.commentsEmptyDescription).toBeTruthy()
   })
+
+  it.each([en, zhCN])('does not advertise views without an authoritative view-count source', (messages) => {
+    expect(messages).not.toHaveProperty('views')
+  })
 })

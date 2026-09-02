@@ -1,11 +1,12 @@
 import {fireEvent, render, screen} from '@testing-library/react'
+import {readFileSync} from 'node:fs'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {PostDetailHeader, hasSameOriginAppReferrer} from './PostDetailHeader.js'
 
 const router = {back: vi.fn(), push: vi.fn(), refresh: vi.fn()}
 vi.mock('next/navigation', () => ({useRouter: () => router}))
 
-const labels = {back: 'Back', copyLink: 'Copy link', copySuccess: 'Link copied.', post: 'Post', postActions: 'Post actions', refresh: 'Refresh', share: 'Share', shareSuccess: 'Shared.', views: 'views'}
+const labels = {back: 'Back', copyLink: 'Copy link', copySuccess: 'Link copied.', post: 'Post', postActions: 'Post actions', refresh: 'Refresh', share: 'Share', shareSuccess: 'Shared.'}
 const postId = '22222222-2222-4222-8222-222222222222'
 
 describe('PostDetailHeader', () => {
@@ -34,13 +35,12 @@ describe('PostDetailHeader', () => {
     expect(screen.getByRole('button', {name: 'Post actions'}).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
   })
 
-  it('renders a locale-formatted view count only when a positive authoritative count is supplied', () => {
-    const {rerender} = render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" viewCount={12345} />)
+  it('does not expose an unconnected post-view count interface', () => {
+    const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/PostDetailHeader.tsx' : 'apps/web/src/components/social/PostDetailHeader.tsx', 'utf8')
 
-    expect(screen.getByText('12,345 views')).toBeVisible()
-
-    rerender(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" />)
-    expect(screen.queryByText(/views$/)).toBeNull()
+    expect(source).not.toContain('viewCount')
+    expect(source).not.toContain('post-detail-view-count')
+    expect(source).not.toMatch(/\bviews\b/)
   })
 
   it('uses app history when the referrer is same-origin and in the selected locale', () => {

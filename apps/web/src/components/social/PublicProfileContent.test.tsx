@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import type {AnchorHTMLAttributes, ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
-import type {FeedPost} from '@aifans/contracts'
+import type {FeedPage} from '@aifans/contracts'
 import {PublicProfileContent} from './PublicProfileContent.js'
 import {PublicProfileTabs} from './PublicProfileTabs.js'
 import type {SocialLabels} from './types.js'
@@ -11,6 +11,7 @@ import styles from './PublicProfileContent.module.css'
 
 const moduleUrl = import.meta.url
 const stylesheet = readFileSync(fileURLToPath(new URL('./PublicProfileContent.module.css', moduleUrl)), 'utf8')
+type FeedPagePost = FeedPage['items'][number]
 
 vi.mock('next/link', () => ({
   default: ({children, ...props}: AnchorHTMLAttributes<HTMLAnchorElement> & {children: ReactNode}) => <a {...props}>{children}</a>,
@@ -33,11 +34,12 @@ const labels: SocialLabels = {
   back: 'Back', search: 'Search', more: 'More', profileMedia: 'Media', profileMediaEmptyTitle: 'No media yet', profileMediaEmptyDescription: 'Images shared in posts appear here.',
 }
 const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', bio: 'A quiet astronomer sharing notes from the night sky.', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
+const feedProfile = {...profile, followerCount: 0}
 
 describe('PublicProfileContent', () => {
   it('replaces pagination state and aborts stale loads when the profile or viewer changes', async () => {
-    const first: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Profile A post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
-    const next: FeedPost = {id: '33333333-3333-4333-8333-333333333333', body: 'Profile B post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    const first: FeedPagePost = {id: '22222222-2222-4222-8222-222222222222', body: 'Profile A post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0}
+    const next: FeedPagePost = {id: '33333333-3333-4333-8333-333333333333', body: 'Profile B post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0}
     let resolve!: (response: Response) => void
     const request = vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done }))
     vi.stubGlobal('fetch', request)
@@ -58,8 +60,8 @@ describe('PublicProfileContent', () => {
   })
 
   it('replaces the initial cursor page when the server refreshes the same profile', () => {
-    const first: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Older server page', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
-    const refreshed: FeedPost = {id: '33333333-3333-4333-8333-333333333333', body: 'Refreshed server page', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    const first: FeedPagePost = {id: '22222222-2222-4222-8222-222222222222', body: 'Older server page', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0}
+    const refreshed: FeedPagePost = {id: '33333333-3333-4333-8333-333333333333', body: 'Refreshed server page', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0}
     const {rerender} = render(<PublicProfileTabs canMutate={false} labels={labels} locale="en" posts={{items: [first], nextCursor: 'old-cursor'}} profileId={profile.id} referenceTime={0} returnTo="/en" viewerScope="viewer-a"/>)
 
     rerender(<PublicProfileTabs canMutate={false} labels={labels} locale="en" posts={{items: [refreshed], nextCursor: 'new-cursor'}} profileId={profile.id} referenceTime={0} returnTo="/en" viewerScope="viewer-a"/>)
@@ -97,12 +99,12 @@ describe('PublicProfileContent', () => {
   })
 
   it('groups real post images by calendar day and opens an accessible image viewer', () => {
-    const mediaPosts: FeedPost[] = [
-      {id: '22222222-2222-4222-8222-222222222222', body: 'First post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0, media: [
+    const mediaPosts: FeedPagePost[] = [
+      {id: '22222222-2222-4222-8222-222222222222', body: 'First post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0, media: [
         {id: '33333333-3333-4333-8333-333333333333', type: 'image', url: 'https://media.example/one.webp', altText: 'Moon one', width: 800, height: 800, aspectRatio: 1},
         {id: '44444444-4444-4444-8444-444444444444', type: 'image', url: 'https://media.example/two.webp', altText: 'Moon two', width: 1200, height: 800, aspectRatio: 1.5},
       ]},
-      {id: '55555555-5555-4555-8555-555555555555', body: 'Earlier post', languageCode: 'en', publishedAt: '2026-09-01T01:00:00.000Z', author: profile, likeCount: 0, commentCount: 0, media: [
+      {id: '55555555-5555-4555-8555-555555555555', body: 'Earlier post', languageCode: 'en', publishedAt: '2026-09-01T01:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0, media: [
         {id: '66666666-6666-4666-8666-666666666666', type: 'image', url: 'https://media.example/three.webp', altText: 'Moon three', width: 600, height: 900, aspectRatio: 2 / 3},
       ]},
     ]
@@ -150,8 +152,8 @@ describe('PublicProfileContent', () => {
   })
 
   it('appends validated cursor pages without resetting the active media tab or duplicating posts', async () => {
-    const first: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'First post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
-    const next: FeedPost = {id: '55555555-5555-4555-8555-555555555555', body: 'Next post', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0, media: [{id: '66666666-6666-4666-8666-666666666666', type: 'image', url: 'https://media.example/next.webp', altText: 'Next image', width: 600, height: 600, aspectRatio: 1}]}
+    const first: FeedPagePost = {id: '22222222-2222-4222-8222-222222222222', body: 'First post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0}
+    const next: FeedPagePost = {id: '55555555-5555-4555-8555-555555555555', body: 'Next post', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0, media: [{id: '66666666-6666-4666-8666-666666666666', type: 'image', url: 'https://media.example/next.webp', altText: 'Next image', width: 600, height: 600, aspectRatio: 1}]}
     const request = vi.fn().mockResolvedValue(Response.json({profile, followerCount: 0, posts: {items: [first, next], nextCursor: null}}))
     vi.stubGlobal('fetch', request)
     render(<PublicProfileContent labels={labels} locale="en" moreHref="/en/profiles/profile?cursor=next_cursor" result={{status: 'ok', data: {profile, followerCount: 0, posts: {items: [first], nextCursor: 'next_cursor'}}}} />)
@@ -166,7 +168,7 @@ describe('PublicProfileContent', () => {
   })
 
   it('closes the viewer from the backdrop and pulls escaped focus back into the dialog', () => {
-    const post: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0, media: [{id: '33333333-3333-4333-8333-333333333333', type: 'image', url: 'https://media.example/one.webp', altText: 'Moon one', width: 800, height: 800, aspectRatio: 1}]}
+    const post: FeedPagePost = {id: '22222222-2222-4222-8222-222222222222', body: 'Post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0, media: [{id: '33333333-3333-4333-8333-333333333333', type: 'image', url: 'https://media.example/one.webp', altText: 'Moon one', width: 800, height: 800, aspectRatio: 1}]}
     const {container} = render(<><button type="button">Outside</button><PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile, followerCount: 0, posts: {items: [post], nextCursor: null}}}} /></>)
     fireEvent.click(screen.getByRole('tab', {name: 'Media'}))
     fireEvent.click(screen.getByRole('button', {name: 'Moon one'}))
@@ -185,7 +187,7 @@ describe('PublicProfileContent', () => {
   })
 
   it('uses PostCard for posts and preserves the unavailable result state', () => {
-    const post: FeedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', author: profile, likeCount: 0, commentCount: 0}
+    const post: FeedPagePost = {id: '22222222-2222-4222-8222-222222222222', body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0}
     const {rerender} = render(<PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile, followerCount: 0, posts: {items: [post], nextCursor: null}}}} />)
     expect(screen.getByText('A real post').closest('article')).toHaveClass('post-card')
 

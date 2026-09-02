@@ -70,15 +70,11 @@ function actionLabel(label: string, count: number | undefined, locale: Locale, v
   return variant === 'detail' && count !== undefined ? `${label} ${formatCount(count, locale)}` : label
 }
 
-function displayedCount(value: number | undefined, variant: 'feed' | 'detail') {
-  return variant === 'detail' ? value ?? 0 : value
-}
-
 function Count({children, locale, variant='feed'}: {children: number | undefined; locale: Locale; variant?: 'feed' | 'detail'}) {
   return children === undefined ? null : <span aria-hidden="true">{variant === 'detail' ? formatCount(children, locale) : children}</span>
 }
 
-function ShareButton({label, postId, locale, variant}: {label: string; postId: string; locale: Locale; variant: 'feed' | 'detail'}) {
+function ShareButton({label, postId, locale}: {label: string; postId: string; locale: Locale}) {
   async function share() {
     const path = `/${locale}/posts/${postId}`
     const url = typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString()
@@ -89,8 +85,7 @@ function ShareButton({label, postId, locale, variant}: {label: string; postId: s
       // Native share cancellation is not an error.
     }
   }
-  const shareCount = variant === 'detail' ? 0 : undefined
-  return <button aria-label={actionLabel(label, shareCount, locale, variant)} className="post-action" onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{shareCount}</Count></button>
+  return <button aria-label={label} className="post-action" onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/></button>
 }
 
 function ActionFrame({afterComment, beforeComment, commentsLabel, commentCount, locale, postId, shareLabel, variant}: {
@@ -105,12 +100,11 @@ function ActionFrame({afterComment, beforeComment, commentsLabel, commentCount, 
 }) {
   const {intentHandlers} = useIntentPrefetch()
   const postHref = `/${locale}/posts/${postId}`
-  const displayedCommentCount = displayedCount(commentCount, variant)
   return <footer aria-label={commentsLabel} className="post-actions">
     {beforeComment}
-    <Link {...intentHandlers(postHref)} aria-label={actionLabel(commentsLabel, displayedCommentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{displayedCommentCount}</Count></Link>
+    <Link {...intentHandlers(postHref)} aria-label={actionLabel(commentsLabel, commentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
     {afterComment}
-    <ShareButton label={shareLabel} locale={locale} postId={postId} variant={variant}/>
+    <ShareButton label={shareLabel} locale={locale} postId={postId}/>
   </footer>
 }
 
@@ -121,7 +115,7 @@ function AuthenticatedActions({bookmarked, commentCount, labels, liked, likeCoun
 
 function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, likeCount, locale, postId, variant}: Pick<PostActionsProps, 'bookmarked' | 'commentCount' | 'labels' | 'liked' | 'likeCount' | 'locale' | 'postId' | 'variant'> & {variant: 'feed' | 'detail'}) {
   const router = useRouter()
-  const authoritative: ActionState = {like: liked, bookmark: bookmarked, likeCount: displayedCount(likeCount, variant), pending: {like: false, bookmark: false}, error: null}
+  const authoritative: ActionState = {like: liked, bookmark: bookmarked, likeCount, pending: {like: false, bookmark: false}, error: null}
   const [state, setState] = useState(authoritative)
   const mutationId = useRef<Record<MutationAction, number>>({like: 0, bookmark: 0})
   const controllers = useRef<Partial<Record<MutationAction, AbortController>>>({})
@@ -169,9 +163,8 @@ function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, li
   const commentsLabel = labels.comments ?? 'Comments'
   const likeLabel = state.like ? labels.unlike : labels.like
   const bookmarkLabel = state.bookmark ? labels.removeBookmark : labels.bookmark
-  const bookmarkCount = variant === 'detail' ? 0 : undefined
   const likeAction = <button aria-busy={state.pending.like} aria-label={actionLabel(likeLabel, state.likeCount, locale, variant)} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.likeCount}</Count></button>
-  const bookmarkAction = <><button aria-busy={state.pending.bookmark} aria-label={actionLabel(bookmarkLabel, bookmarkCount, locale, variant)} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{bookmarkCount}</Count></button>{state.error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
+  const bookmarkAction = <><button aria-busy={state.pending.bookmark} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/></button>{state.error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
 
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={commentsLabel} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
 }
@@ -179,10 +172,8 @@ function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, li
 function GuestActions({commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`, variant='feed'}: PostActionsProps) {
   const gatedHref = authHref(locale, returnTo)
   const {intentHandlers} = useIntentPrefetch()
-  const bookmarkCount = variant === 'detail' ? 0 : undefined
-  const likeCountDisplay = displayedCount(likeCount, variant)
-  const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCountDisplay, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCountDisplay}</Count></Link>
-  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.bookmark, bookmarkCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{bookmarkCount}</Count></Link>
+  const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCount}</Count></Link>
+  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={labels.bookmark} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/></Link>
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
 }
 

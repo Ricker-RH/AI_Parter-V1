@@ -256,6 +256,9 @@ export const PublicIpSchema = z.strictObject({
 const FeedIpSchema = PublicIpSchema.extend({
   followerCount: z.number().int().nonnegative().optional(),
 });
+const FeedPageIpSchema = PublicIpSchema.extend({
+  followerCount: z.number().int().nonnegative(),
+});
 export const PublicHumanSchema = z.strictObject({
   kind: z.literal("human"),
   id: uuid,
@@ -320,7 +323,7 @@ export const NotificationSchema = z.strictObject({
   readAt: dateTime.nullable(),
 });
 export const FeedPageSchema = z.strictObject({
-  items: z.array(FeedPostSchema),
+  items: z.array(FeedPostSchema.extend({author: FeedPageIpSchema})),
   nextCursor: z.string().nullable(),
 });
 export const SearchResultSchema = z.discriminatedUnion("type", [

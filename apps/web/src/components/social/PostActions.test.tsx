@@ -56,24 +56,28 @@ describe('PostActions', () => {
     expect(stylesheet).not.toMatch(/\.post-action\[aria-pressed="true"\][^{]*\{[^}]*background:/)
   })
 
-  it('renders all four detail actions with locale-formatted counts in their accessible names', () => {
+  it('formats only authoritative like and comment counts in the Detail variant', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
     render(<PostActions bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
 
     expect(screen.getByRole('link', {name: 'Like 12,345'})).toHaveTextContent('12,345')
     expect(screen.getByRole('link', {name: 'Comments 5,678'})).toHaveTextContent('5,678')
-    expect(screen.getByRole('link', {name: 'Bookmark 0'})).toHaveTextContent('0')
-    expect(screen.getByRole('button', {name: 'Share 0'})).toHaveTextContent('0')
+    expect(screen.getByRole('link', {name: 'Bookmark'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('button', {name: 'Share'}).querySelector('span')).toBeNull()
   })
 
-  it('falls back to zero for every detail action when a backward-compatible caller omits public counts', () => {
+  it('does not fabricate Detail counts when an authoritative total is unavailable', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
-    render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
+    const {rerender} = render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
 
-    expect(screen.getByRole('link', {name: 'Like 0'})).toHaveTextContent('0')
-    expect(screen.getByRole('link', {name: 'Comments 0'})).toHaveTextContent('0')
-    expect(screen.getByRole('link', {name: 'Bookmark 0'})).toHaveTextContent('0')
-    expect(screen.getByRole('button', {name: 'Share 0'})).toHaveTextContent('0')
+    expect(screen.getByRole('link', {name: 'Like'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('link', {name: 'Comments'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('link', {name: 'Bookmark'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('button', {name: 'Share'}).querySelector('span')).toBeNull()
+
+    rerender(<PostActions bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" viewerScope="viewer-a" />)
+    expect(screen.getByRole('button', {name: 'Like'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('button', {name: 'Bookmark'}).querySelector('span')).toBeNull()
   })
 
   it('keeps raw action counts and labels in the Feed variant', () => {

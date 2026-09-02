@@ -24,7 +24,7 @@ const post = {
   body: 'A real post',
   languageCode: 'en',
   publishedAt: '2026-08-31T12:00:00.000Z',
-  author: ip,
+  author: {...ip, followerCount: 2},
   likeCount: 4,
   commentCount: 2,
 }

@@ -4,6 +4,7 @@ import {
   decodeCursor,
   encodeCursor,
   FeedQuerySchema,
+  FeedPageSchema,
   PublicCommentSchema,
   PublicIpSchema,
   FeedPostSchema,
@@ -225,6 +226,31 @@ describe("social contracts", () => {
       likeCount: 0,
       commentCount: 0,
     }).author.followerCount).toBe(3);
+  });
+
+  it("requires every feed-page author to carry its authoritative follower count", () => {
+    const post = {
+      id,
+      body: "Hello",
+      languageCode: "en",
+      publishedAt: timestamp,
+      author: {
+        kind: "ip" as const,
+        id,
+        username: "aifans_ip",
+        displayName: "AIFANS IP",
+        languages: ["en" as const],
+        visualType: "hybrid" as const,
+      },
+      likeCount: 0,
+      commentCount: 0,
+    };
+
+    expect(() => FeedPageSchema.parse({items: [post], nextCursor: null})).toThrow();
+    expect(FeedPageSchema.parse({
+      items: [{...post, author: {...post.author, followerCount: 3}}],
+      nextCursor: null,
+    }).items[0]?.author.followerCount).toBe(3);
   });
 
   it("round trips cursors and rejects invalid query inputs", () => {

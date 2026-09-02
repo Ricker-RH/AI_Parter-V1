@@ -538,7 +538,6 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 .post-detail-heading { justify-self: start; margin-left: 8px; min-width: 0; }
 .post-detail-title { font-size: 17px; font-weight: 700; justify-self: start; letter-spacing: -0.015em; margin: 0; }
-.post-detail-view-count { color: var(--shell-muted); font-size: 13px; margin: 2px 0 0; }
 .post-detail-brand { display: none; }
 .post-detail-back, .post-detail-menu-trigger, .post-detail-menu-list button { align-items: center; background: transparent; border: 0; border-radius: 8px; color: inherit; cursor: pointer; display: flex; font: inherit; font-weight: 600; justify-content: center; min-height: 44px; padding: 0; }
 .post-detail-back, .post-detail-menu-trigger { min-height: 44px; width: 44px; }
@@ -1975,7 +1974,6 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .post-detail-header { min-height: calc(56px + env(safe-area-inset-top)); padding: max(6px, env(safe-area-inset-top)) 12px 6px; }
   .post-detail-content .post-detail-composer-dock { bottom: 0; }
   .post-detail-title { clip: rect(0, 0, 0, 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
-  .post-detail-view-count { display: none; }
   .post-detail-brand { align-items: center; display: flex; height: 44px; justify-content: center; left: 50%; position: absolute; transform: translateX(-50%); width: 44px; }
   .post-detail-brand svg { color: currentColor; display: block; height: 30px; width: 30px; }
   .post-detail-brand svg path:first-of-type { fill: currentColor; }

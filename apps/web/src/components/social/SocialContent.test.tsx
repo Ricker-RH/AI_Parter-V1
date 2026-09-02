@@ -3,7 +3,7 @@ import {flushSync} from "react-dom";
 import {createRoot} from "react-dom/client";
 import type { AnchorHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { FeedPost, Notification, PostDetail } from "@aifans/contracts";
+import type { FeedPage, Notification, PostDetail } from "@aifans/contracts";
 import { FeedContent } from "./FeedContent.js";
 import { NotificationsContent } from "./NotificationsContent.js";
 import { PostDetailContent } from "./PostDetailContent.js";
@@ -107,12 +107,14 @@ const ip = {
     displayName: "Luma Creator",
   },
 };
-const post: FeedPost = {
+type FeedPagePost = FeedPage['items'][number];
+
+const post: FeedPagePost = {
   id: "22222222-2222-4222-8222-222222222222",
   body: "A real post",
   languageCode: "en",
   publishedAt: "2026-08-31T12:00:00.000Z",
-  author: ip,
+  author: {...ip, followerCount: 12},
   likeCount: 4,
   commentCount: 2,
   viewerHasLiked: true,
@@ -229,7 +231,7 @@ describe("real social content", () => {
   });
 
   it("renders safe ordered post images with accessible alternative text", () => {
-    const mediaPost: FeedPost = {
+    const mediaPost: FeedPagePost = {
       ...post,
       media: [
         {
