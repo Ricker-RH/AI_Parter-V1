@@ -88,6 +88,7 @@ const labels: SocialLabels = {
   profileNotFoundDescription: "Not public",
   followers: "followers",
   posts: "Posts",
+  postMedia: "Post media",
   signInToInteract: "Sign in to like, save, or follow",
 };
 const ip = {

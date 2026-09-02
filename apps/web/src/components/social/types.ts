@@ -49,6 +49,7 @@ export interface SocialLabels {
   profileNotFoundDescription: string
   followers: string
   posts: string
+  postMedia: string
   signInToInteract: string
   startChat: string
   startingChat: string

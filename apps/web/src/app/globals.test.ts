@@ -50,6 +50,8 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="single"\] \{[^}]*overflow: hidden/)
     expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="rail"\] \.post-media-frame \{[^}]*flex: 0 0 min\(82%, 440px\)[^}]*scroll-snap-align: start/)
     expect(stylesheet).toMatch(/\.post-media-frame \{[^}]*max-height: 560px/)
+    expect(stylesheet).toMatch(/\.post-media-frame \{[^}]*background: var\(--shell-hover\)/)
+    expect(stylesheet).not.toContain('background: #f4f4f4')
   })
 
   it('gives search profile results their own compact row instead of a post-card layout', () => {

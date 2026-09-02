@@ -26,7 +26,7 @@ const labels: SocialLabels = {
   notificationsEmptyTitle: 'No notifications', notificationsEmptyDescription: 'Updates appear here.', postNotFoundTitle: 'Post not found', postNotFoundDescription: 'Removed.',
   removeBookmark: 'Remove bookmark', unlike: 'Unlike', unavailableTitle: 'Unable to load', unavailableDescription: 'Try again later.', unavailableRetry: 'Retry', unavailableRetrying: 'Retrying…',
   createdBy: 'Created by', commentPlaceholder: 'Write a comment', commentSubmit: 'Comment', commentSending: 'Posting', commentSuccess: 'Posted', reply: 'Reply', signInToComment: 'Sign in to comment', markRead: 'Mark read', markingRead: 'Marking',
-  profileNotFoundTitle: 'Profile not found', profileNotFoundDescription: 'Not public', followers: 'followers', posts: 'Posts', signInToInteract: 'Sign in to interact',
+  profileNotFoundTitle: 'Profile not found', profileNotFoundDescription: 'Not public', followers: 'followers', posts: 'Posts', postMedia: 'Post media', signInToInteract: 'Sign in to interact',
   startChat: 'Chat', startingChat: 'Opening…', chatStartError: 'Unable to start a conversation.',
 }
 const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', bio: 'A quiet astronomer sharing notes from the night sky.', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}

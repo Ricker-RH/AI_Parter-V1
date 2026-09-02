@@ -47,34 +47,47 @@ export function PostCard({
   canMutate?: boolean;
 }) {
   const analytics = useAnalytics();
-  const body = (
-    <>
-      {post.body ? <p className="post-body">{post.body}</p> : null}
-      {post.media?.length ? (
-        <div className="post-media-rail" data-count={post.media.length} data-layout={post.media.length === 1 ? 'single' : 'rail'}>
-          {post.media.map((media) => {
-            const geometry = mediaGeometry(media);
+  const mediaItems = post.media ?? [];
+  const postHref = `/${locale}/posts/${post.id}`;
+  const trackView = () => trackPostViewed(analytics, { locale, postId: post.id });
+  const mediaRail = mediaItems.length ? (
+    <div
+      aria-label={labels.postMedia}
+      className="post-media-rail"
+      data-count={mediaItems.length}
+      data-layout={mediaItems.length === 1 ? 'single' : 'rail'}
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        event.currentTarget.scrollBy({
+          behavior: 'smooth',
+          left: direction * Math.max(event.currentTarget.clientWidth * 0.82, 240),
+        });
+      }}
+      role="region"
+      tabIndex={mediaItems.length > 1 ? 0 : undefined}
+    >
+      {mediaItems.map((media, index) => {
+        const geometry = mediaGeometry(media);
+        const image = <img
+          alt={media.altText ?? `${post.author.displayName} ${index + 1}/${mediaItems.length}`}
+          height={geometry.height}
+          loading="lazy"
+          src={media.url}
+          width={geometry.width}
+        />;
+        const frameProps = {
+          className: 'post-media-frame',
+          style: {aspectRatio: geometry.aspectRatio},
+        };
 
-            return (
-              <div
-                className="post-media-frame"
-                key={media.id}
-                style={{ aspectRatio: geometry.aspectRatio }}
-              >
-                <img
-                  alt={media.altText ?? ""}
-                  height={geometry.height}
-                  loading="lazy"
-                  src={media.url}
-                  width={geometry.width}
-                />
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-    </>
-  );
+        return linked
+          ? <Link {...frameProps} href={postHref} key={media.id} onClick={trackView}>{image}</Link>
+          : <div {...frameProps} key={media.id}>{image}</div>;
+      })}
+    </div>
+  ) : null;
   return (
     <article className="post-card">
       <div className="post-layout">
@@ -84,20 +97,19 @@ export function PostCard({
         <div className="post-author-line"><Link href={`/${locale}/profiles/${post.author.id}`}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{formatRelativeDuration(post.publishedAt, locale)}</time><span className="account-kind">{labels.aiAccount}</span></div>
         {post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}
       </header>
-      {linked ? (
+      {linked && post.body ? (
         <Link
-          aria-label={post.body || post.author.displayName}
+          aria-label={post.body}
           className="post-link"
-          href={`/${locale}/posts/${post.id}`}
-          onClick={() =>
-            trackPostViewed(analytics, { locale, postId: post.id })
-          }
+          href={postHref}
+          onClick={trackView}
         >
-          {body}
+          <p className="post-body">{post.body}</p>
         </Link>
       ) : (
-        body
+        post.body ? <p className="post-body">{post.body}</p> : null
       )}
+      {mediaRail}
       <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`}/>
         </div>
       </div>

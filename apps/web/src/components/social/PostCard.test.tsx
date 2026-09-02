@@ -33,6 +33,7 @@ const labels: SocialLabels = {
   profileNotFoundDescription: "Not public", followers: "followers", posts: "Posts", signInToInteract: "Sign in to like, save, or follow",
   startChat: "Chat", startingChat: "Opening…", chatStartError: "Unable to start a conversation.",
   messages: "Messages", profile: "Profile", share: "Share",
+  postMedia: "Post media",
 };
 
 const post: FeedPost = {
@@ -120,6 +121,32 @@ describe("PostCard media geometry", () => {
     expect(container.querySelector('.author-meta')).toBeNull();
     expect(screen.getByRole('article')).not.toHaveTextContent('@luma');
     expect(container.querySelector('.post-author-line .account-kind')).toHaveTextContent(labels.aiAccount);
+  });
+
+  it("exposes a named keyboard carousel without nesting links and scrolls it with horizontal arrows", () => {
+    const {container} = render(<PostCard labels={labels} locale="en" post={post} />);
+    const rail = screen.getByRole('region', {name: 'Post media'});
+    const scrollBy = vi.fn();
+    Object.defineProperties(rail, {
+      clientWidth: {configurable: true, value: 400},
+      scrollBy: {configurable: true, value: scrollBy},
+    });
+
+    expect(rail).toHaveAttribute('tabindex', '0');
+    expect(within(rail).getAllByRole('link')).toHaveLength(4);
+    expect(container.querySelector('.post-link .post-media-rail')).toBeNull();
+    fireEvent.keyDown(rail, {key: 'ArrowRight'});
+    fireEvent.keyDown(rail, {key: 'ArrowLeft'});
+    expect(scrollBy).toHaveBeenNthCalledWith(1, {behavior: 'smooth', left: 328});
+    expect(scrollBy).toHaveBeenNthCalledWith(2, {behavior: 'smooth', left: -328});
+  });
+
+  it("keeps detail media non-linked while retaining the keyboard-reachable rail", () => {
+    render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
+
+    const rail = screen.getByRole('region', {name: 'Post media'});
+    expect(within(rail).queryByRole('link')).toBeNull();
+    expect(rail).toHaveAttribute('tabindex', '0');
   });
 });
 
