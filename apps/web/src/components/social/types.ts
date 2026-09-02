@@ -82,4 +82,12 @@ export interface SocialLabels {
   search?: string
   searchEmptyTitle?: string
   searchEmptyDescription?: string
+  searchPopular?: string
+  searchRecent?: string
+  searchProfiles?: string
+  searchRecommended?: string
+  searchSuggestions?: string
+  searchForQuery?: string
+  recommendations?: string
+  recommendationsEmpty?: string
 }

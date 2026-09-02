@@ -1,12 +1,13 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {access, optionalAccess, redirect, authRedirect, currentAccount, fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile, fetchAifansApi} = vi.hoisted(() => ({
+const {access, optionalAccess, redirect, authRedirect, currentAccount, fetchBookmarks, fetchFeed, fetchNotifications, fetchPost, fetchPublicProfile, fetchAifansApi} = vi.hoisted(() => ({
   access: vi.fn(),
   optionalAccess: vi.fn(),
   redirect: vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`) }),
   authRedirect: vi.fn(({locale, returnTo}: {locale: string; returnTo: string}) => { throw new Error(`REDIRECT:/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`) }),
   currentAccount: vi.fn(async () => ({status: 'anonymous'})),
   fetchBookmarks: vi.fn(async () => ({status: 'unavailable'})),
+  fetchFeed: vi.fn(async () => ({status: 'unavailable'})),
   fetchNotifications: vi.fn(async () => ({status: 'unavailable'})),
   fetchPost: vi.fn(async () => ({status: 'unavailable'})),
   fetchPublicProfile: vi.fn(async () => ({status: 'unavailable'})),
@@ -17,7 +18,7 @@ vi.mock('next/navigation', () => ({notFound: vi.fn(() => { throw new Error('NOT_
 vi.mock('../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess, requireAuthenticatedPage: access, redirectToUserSignIn: authRedirect}))
 vi.mock('../lib/request-cookie.js', () => ({requestCookie: vi.fn(async () => undefined)}))
 vi.mock('../lib/current-account.js', () => ({fetchCurrentAccountResult: currentAccount}))
-vi.mock('../lib/social-api.js', () => ({fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile}))
+vi.mock('../lib/social-api.js', () => ({fetchBookmarks, fetchFeed, fetchNotifications, fetchPost, fetchPublicProfile}))
 vi.mock('../lib/server-api.js', () => ({fetchAifansApi}))
 
 import BookmarksPage from './[locale]/bookmarks/page.js'
@@ -38,7 +39,7 @@ describe('protected user pages', () => {
     optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'})
     authRedirect.mockReset()
     currentAccount.mockReset().mockResolvedValue({status: 'anonymous'})
-    for (const fn of [fetchBookmarks, fetchNotifications, fetchPost, fetchPublicProfile]) fn.mockReset().mockResolvedValue({status: 'unavailable'})
+    for (const fn of [fetchBookmarks, fetchFeed, fetchNotifications, fetchPost, fetchPublicProfile]) fn.mockReset().mockResolvedValue({status: 'unavailable'})
     fetchAifansApi.mockReset().mockResolvedValue(new Response(null, {status: 503}))
   })
 
@@ -93,6 +94,7 @@ describe('protected user pages', () => {
 
     expect(access).not.toHaveBeenCalled()
     expect(optionalAccess).toHaveBeenCalledTimes(2)
+    expect(fetchFeed).toHaveBeenCalledWith({kind: 'for_you', locale: 'en'})
     expect(fetchPost).toHaveBeenCalledWith('post-1', {commentCursor: undefined})
     expect(authRedirect).not.toHaveBeenCalled()
   })

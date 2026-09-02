@@ -1,7 +1,7 @@
 import {notFound} from 'next/navigation'
 import {getMessages, isLocale} from '../../../i18n/config'
 import {SearchContent} from '../../../components/social/SearchContent'
-import {fetchSearch} from '../../../lib/social-api'
+import {fetchFeed, fetchSearch} from '../../../lib/social-api'
 import {getOptionalPageAccess, redirectToUserSignIn} from '../../../lib/auth/access-policy'
 import type {SearchCategory} from '@aifans/contracts'
 
@@ -30,8 +30,10 @@ export default async function SearchPage({params, searchParams}: {params: Promis
   const access = await getOptionalPageAccess()
   const canMutate = access.status === 'authenticated'
   const result = query ? await fetchSearch({q: query, category, ...(cursor ? {cursor} : {}), ...(canMutate ? {token: access.token} : {})}) : undefined
+  const recommendationResult = query ? undefined : await fetchFeed({kind: 'for_you', locale, ...(canMutate ? {token: access.token} : {})})
   const returnParams = new URLSearchParams({q: query, category, ...(cursor ? {cursor} : {})})
   const returnTo = query ? `/${locale}/search?${returnParams}` : `/${locale}/search`
   if (result?.status === 'auth-required' && canMutate) redirectToUserSignIn({locale, returnTo})
-  return <main className="search-page"><h1 className="sr-only">{messages.search}</h1><SearchContent canMutate={canMutate} category={category} labels={messages} locale={locale} query={query} {...(cursor === undefined ? {} : {cursor})} {...(result === undefined ? {} : {result})} /></main>
+  if (recommendationResult?.status === 'auth-required' && canMutate) redirectToUserSignIn({locale, returnTo})
+  return <SearchContent canMutate={canMutate} category={category} labels={messages} locale={locale} query={query} {...(cursor === undefined ? {} : {cursor})} {...(result === undefined ? {} : {result})} {...(recommendationResult === undefined ? {} : {recommendationResult})}/>
 }

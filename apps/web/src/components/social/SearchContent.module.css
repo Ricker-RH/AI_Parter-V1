@@ -1,0 +1,16 @@
+.header { background: var(--shell-surface); }
+.tabs { border-top: 1px solid var(--shell-border); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tab { align-items: center; border-bottom: 2px solid transparent; color: var(--shell-muted); display: flex; font-size: 14px; justify-content: center; min-height: 44px; padding: 0 8px; }
+.tab[aria-selected="true"] { border-color: currentColor; color: inherit; font-weight: 700; }
+.recommendations { min-height: 100%; }
+.recommendations h2 { font-size: 16px; margin: 0; padding: 18px 20px 10px; }
+.recommendations :global(.profile-result-heading) { justify-content: space-between; }
+.recommendations :global(.profile-result-heading) > h3 { flex: 1; min-width: 0; }
+.recommendations :global(.profile-follow button), .followLink { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: inline-flex; font-size: 14px; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 14px; }
+.empty { align-content: center; display: grid; justify-items: center; min-height: 100%; padding: 56px 24px 80px; text-align: center; }
+.emptyIcon { color: var(--shell-muted); height: 48px; margin-bottom: 18px; width: 48px; }
+.empty section { max-width: 360px; }
+.empty h2 { font-size: 20px; letter-spacing: -0.02em; margin: 0; }
+.empty p { color: var(--shell-muted); font-size: 14px; line-height: 1.5; margin: 8px 0 0; }
+.results { min-width: 0; }
+@media (max-width: 699px) { .recommendations h2 { padding-inline: 12px; } }

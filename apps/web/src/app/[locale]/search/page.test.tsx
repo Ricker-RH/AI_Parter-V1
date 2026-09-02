@@ -1,9 +1,10 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {fetchSearch, optionalAccess, authRedirect} = vi.hoisted(() => ({fetchSearch: vi.fn(), optionalAccess: vi.fn(), authRedirect: vi.fn()}))
-vi.mock('../../../lib/social-api.js', () => ({fetchSearch}))
+const {fetchFeed, fetchSearch, optionalAccess, authRedirect} = vi.hoisted(() => ({fetchFeed: vi.fn(), fetchSearch: vi.fn(), optionalAccess: vi.fn(), authRedirect: vi.fn()}))
+vi.mock('../../../lib/social-api.js', () => ({fetchFeed, fetchSearch}))
 vi.mock('../../../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess, redirectToUserSignIn: authRedirect}))
+vi.mock('next/navigation', async (importOriginal) => ({...(await importOriginal<typeof import('next/navigation')>()), useRouter: () => ({push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}))
 
 import SearchPage from './page.js'
 
@@ -18,22 +19,36 @@ const profile = {
 }
 
 describe('public search page', () => {
-  beforeEach(() => { fetchSearch.mockReset(); optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'}); authRedirect.mockReset() })
+  beforeEach(() => {
+    fetchFeed.mockReset().mockResolvedValue({status: 'ok', data: {items: [], nextCursor: null}})
+    fetchSearch.mockReset(); optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'}); authRedirect.mockReset()
+  })
 
   it('renders an anonymous search form without requesting an empty query', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
     expect(screen.getByRole('search')).toBeVisible()
-    expect(screen.getByRole('searchbox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('placeholder', 'Search AI/IP profiles and posts')
-    expect(screen.getByRole('searchbox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('maxlength', '80')
+    expect(screen.getByRole('combobox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('placeholder', 'Search AI/IP profiles and posts')
+    expect(screen.getByRole('combobox', {name: 'Search AI/IP profiles and posts'})).toHaveAttribute('maxlength', '80')
     expect(screen.getByText('Search AI/IP profiles and posts')).toHaveClass('sr-only')
     expect(screen.getByRole('heading', {level: 1, name: 'Search'})).toHaveClass('sr-only')
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['All', 'AI/IP', 'Posts'])
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(screen.getByRole('heading', {name: 'Recommended follows'})).toBeVisible()
     expect(fetchSearch).not.toHaveBeenCalled()
+    expect(fetchFeed).toHaveBeenCalledWith(expect.objectContaining({kind: 'for_you', locale: 'en'}))
+  })
+
+  it('deduplicates real feed authors for recommendations without mock identities', async () => {
+    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount: 1, commentCount: 0}
+    fetchFeed.mockResolvedValue({status: 'ok', data: {items: [feedPost, {...feedPost, id: '33333333-3333-4333-8333-333333333333'}], nextCursor: null}})
+    render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
+
+    expect(screen.getAllByText('Luna')).toHaveLength(1)
+    expect(screen.getByRole('link', {name: 'Follow'})).toHaveAttribute('href', expect.stringContaining('/en/auth/sign-in'))
   })
 
   it('uses the matching Chinese AI/IP-and-posts search copy', async () => {
     render(await SearchPage({params: Promise.resolve({locale: 'zh-CN'}), searchParams: Promise.resolve({})}))
-    expect(screen.getByRole('searchbox', {name: '搜索 AI/IP 资料和帖子'})).toHaveAttribute('placeholder', '搜索 AI/IP 资料和帖子')
+    expect(screen.getByRole('combobox', {name: '搜索 AI/IP 资料和帖子'})).toHaveAttribute('placeholder', '搜索 AI/IP 资料和帖子')
   })
 
   it('requests normalized query results and renders public profiles', async () => {
@@ -49,6 +64,7 @@ describe('public search page', () => {
     expect(screen.getByText('A quiet moonlit storyteller.')).toBeVisible()
     expect(screen.queryByText('Anime')).toBeNull()
     expect(screen.queryByRole('button', {name: 'Follow'})).toBeNull()
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Popular', 'Recent', 'Profiles'])
   })
 
   it('renders the no-results state', async () => {
