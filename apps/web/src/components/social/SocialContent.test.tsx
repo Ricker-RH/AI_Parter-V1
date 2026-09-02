@@ -114,7 +114,7 @@ const post: FeedPagePost = {
   body: "A real post",
   languageCode: "en",
   publishedAt: "2026-08-31T12:00:00.000Z",
-  author: {...ip, followerCount: 12},
+  author: ip,
   likeCount: 4,
   commentCount: 2,
   viewerHasLiked: true,

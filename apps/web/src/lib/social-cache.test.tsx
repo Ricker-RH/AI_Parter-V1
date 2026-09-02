@@ -50,13 +50,17 @@ describe('public social cache', () => {
     expect(fetchAifansApi).toHaveBeenCalledWith('/v1/feed?kind=for_you&locale=en&cursor=next+page', {policy: 'public-cache'})
   })
 
-  it.each([
-    ['an old payload without followerCount', cachedPost],
-    ['a new payload with followerCount', {...cachedPost, author: {...cachedPost.author, followerCount: 7}}],
-  ])('replays %s through the public cache contract', async (_description, post) => {
-    fetchAifansApi.mockResolvedValue(Response.json({items: [post], nextCursor: null}))
+  it('replays a strict legacy feed payload through the public cache contract', async () => {
+    fetchAifansApi.mockResolvedValue(Response.json({items: [cachedPost], nextCursor: null}))
 
-    await expect(fetchCachedPublicFeed({kind: 'for_you', locale: 'en'})).resolves.toEqual({items: [post], nextCursor: null})
+    await expect(fetchCachedPublicFeed({kind: 'for_you', locale: 'en'})).resolves.toEqual({items: [cachedPost], nextCursor: null})
+  })
+
+  it('rejects a follower-count-enriched feed payload instead of caching it', async () => {
+    const enrichedPost = {...cachedPost, author: {...cachedPost.author, followerCount: 7}}
+    fetchAifansApi.mockResolvedValue(Response.json({items: [enrichedPost], nextCursor: null}))
+
+    await expect(fetchCachedPublicFeed({kind: 'for_you', locale: 'en'})).rejects.toThrow()
   })
 
   it.each([401, 429, 503])('rejects a %s response instead of caching a transient failure', async (status) => {

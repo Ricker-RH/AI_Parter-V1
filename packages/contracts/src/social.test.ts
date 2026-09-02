@@ -243,7 +243,7 @@ describe("social contracts", () => {
     ).toThrow();
   });
 
-  it("allows the feed projection to carry its authoritative public follower count", () => {
+  it("keeps legacy feed-post authors on the strict public IP shape", () => {
     const feedAuthor = {
       kind: "ip" as const,
       id,
@@ -253,7 +253,7 @@ describe("social contracts", () => {
       visualType: "hybrid" as const,
       followerCount: 3,
     };
-    expect(FeedPostSchema.parse({
+    expect(() => FeedPostSchema.parse({
       id,
       body: "Hello",
       languageCode: "en",
@@ -261,10 +261,10 @@ describe("social contracts", () => {
       author: feedAuthor,
       likeCount: 0,
       commentCount: 0,
-    }).author.followerCount).toBe(3);
+    })).toThrow();
   });
 
-  it("accepts feed pages from both sides of the follower-count rollout", () => {
+  it("accepts legacy feed pages and rejects follower-count-enriched authors", () => {
     const post = {
       id,
       body: "Hello",
@@ -283,10 +283,10 @@ describe("social contracts", () => {
     };
 
     expect(FeedPageSchema.parse({items: [post], nextCursor: null})).toEqual({items: [post], nextCursor: null});
-    expect(FeedPageSchema.parse({
+    expect(() => FeedPageSchema.parse({
       items: [{...post, author: {...post.author, followerCount: 3}}],
       nextCursor: null,
-    }).items[0]?.author.followerCount).toBe(3);
+    })).toThrow();
   });
 
   it("round trips cursors and rejects invalid query inputs", () => {

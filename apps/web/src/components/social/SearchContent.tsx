@@ -48,7 +48,7 @@ function Recommendations({canMutate, labels, locale, result, viewerScope}: {canM
       const action = canMutate && follows !== undefined
         ? viewerScope ? <ProfileFollowButton following={follows} labels={labels} locale={locale} profileId={profile.id} viewerScope={viewerScope}/> : null
         : !canMutate ? <Link aria-label={labels.follow} className={styles.followLink} href={authHref(locale, returnTo)}>{labels.follow}</Link> : null
-      return <ProfileResult {...(action ? {action} : {})} compact {...(profile.followerCount === undefined ? {} : {followerCount: profile.followerCount})} href={href} key={profile.id} labels={labels} profile={profile}/>
+      return <ProfileResult {...(action ? {action} : {})} compact href={href} key={profile.id} labels={labels} profile={profile}/>
     })}
   </section>
 }

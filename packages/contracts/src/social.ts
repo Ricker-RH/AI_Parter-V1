@@ -278,12 +278,6 @@ export const PublicIpSchema = z.strictObject({
   visualType: CreatorVisualTypeSchema,
   creator: PublicCreatorSchema.optional(),
 });
-const FeedIpSchema = PublicIpSchema.extend({
-  followerCount: z.number().int().nonnegative().optional(),
-});
-const FeedPageIpSchema = PublicIpSchema.extend({
-  followerCount: z.number().int().nonnegative().optional(),
-});
 export const FollowedIpSchema = PublicIpSchema.extend({
   followerCount: z.number().int().nonnegative(),
 });
@@ -316,7 +310,7 @@ export const FeedPostSchema = z.strictObject({
   body: z.string().max(5000),
   languageCode: z.string().nullable(),
   publishedAt: dateTime,
-  author: FeedIpSchema,
+  author: PublicIpSchema,
   media: z.array(PublicPostMediaSchema).max(4).optional(),
   likeCount: z.number().int().nonnegative(),
   commentCount: z.number().int().nonnegative(),
@@ -351,7 +345,7 @@ export const NotificationSchema = z.strictObject({
   readAt: dateTime.nullable(),
 });
 export const FeedPageSchema = z.strictObject({
-  items: z.array(FeedPostSchema.extend({author: FeedPageIpSchema})),
+  items: z.array(FeedPostSchema),
   nextCursor: z.string().nullable(),
 });
 export const FollowedIpPageSchema = z.strictObject({

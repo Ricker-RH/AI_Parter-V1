@@ -34,7 +34,7 @@ const labels: SocialLabels = {
   back: 'Back', search: 'Search', more: 'More', profileMedia: 'Media', profileMediaEmptyTitle: 'No media yet', profileMediaEmptyDescription: 'Images shared in posts appear here.',
 }
 const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', bio: 'A quiet astronomer sharing notes from the night sky.', languages: ['en' as const], visualType: 'anime' as const, creator: {id: '77777777-7777-4777-8777-777777777777', username: 'luma_creator', displayName: 'Luma Creator'}}
-const feedProfile = {...profile, followerCount: 0}
+const feedProfile = profile
 
 describe('PublicProfileContent', () => {
   it('replaces pagination state and aborts stale loads when the profile or viewer changes', async () => {

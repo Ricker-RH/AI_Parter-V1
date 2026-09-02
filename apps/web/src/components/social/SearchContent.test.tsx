@@ -16,9 +16,9 @@ describe('search navigation contract', () => {
     expect(source).not.toMatch(/<h2[^>]*>\{labels\.searchResults/)
   })
 
-  it('uses the compact recommendation identity layout', () => {
-    expect(source).toContain('compact {...(profile.followerCount')
-    expect(source).toContain('profile.followerCount')
+  it('uses the compact recommendation identity layout without a feed-derived follower count', () => {
+    expect(source).toContain('<ProfileResult {...(action ? {action} : {})} compact href=')
+    expect(source).not.toContain('profile.followerCount')
     expect(source).not.toContain('ProfileFollowerCount')
   })
 })

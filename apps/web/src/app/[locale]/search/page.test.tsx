@@ -38,12 +38,12 @@ describe('public search page', () => {
   })
 
   it('deduplicates real feed authors for recommendations without mock identities', async () => {
-    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: {...profile, followerCount: 1234}, likeCount: 1, commentCount: 0}
+    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount: 1, commentCount: 0}
     fetchFeed.mockResolvedValue({status: 'ok', data: {items: [feedPost, {...feedPost, id: '33333333-3333-4333-8333-333333333333'}], nextCursor: null}})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
 
     expect(screen.getAllByText('Luna')).toHaveLength(1)
-    expect(screen.getByText('1234 followers')).toBeVisible()
+    expect(screen.getByText('— followers')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Follow'})).toHaveAttribute('href', expect.stringContaining('/en/auth/sign-in'))
   })
 
