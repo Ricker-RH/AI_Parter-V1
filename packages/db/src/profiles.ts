@@ -183,7 +183,7 @@ export function createProfileRepository({
       return runWithActor(actor, async (client) => {
         const result = await client.query<CurrentAccountRow>(
           `SELECT public.current_account() AS current_account,
-                  (SELECT bio FROM public.profiles WHERE auth_subject = app.current_auth_subject()) AS bio`,
+                  (SELECT bio FROM public.profiles WHERE id = public.current_profile_id()) AS bio`,
         )
         const row = result.rows[0]
         return normalizeCurrentAccount(row?.current_account ?? null, row?.bio)
@@ -205,13 +205,13 @@ export function createProfileRepository({
         if (input.preferredLocale !== undefined) add('preferred_locale', input.preferredLocale)
         const updated = await client.query(
           `UPDATE public.profiles SET ${assignments.join(', ')}
-           WHERE auth_subject = app.current_auth_subject() AND account_kind = 'human'`,
+           WHERE id = public.current_profile_id() AND account_kind = 'human'`,
           values,
         )
         if (updated.rowCount !== 1) return null
         const result = await client.query<CurrentAccountRow>(
           `SELECT public.current_account() AS current_account,
-                  (SELECT bio FROM public.profiles WHERE auth_subject = app.current_auth_subject()) AS bio`,
+                  (SELECT bio FROM public.profiles WHERE id = public.current_profile_id()) AS bio`,
         )
         const row = result.rows[0]
         return normalizeCurrentAccount(row?.current_account ?? null, row?.bio)

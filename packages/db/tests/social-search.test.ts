@@ -30,6 +30,11 @@ describe('mixed public search pagination', () => {
     expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
   })
 
+  it('grants callers usage on the public visual type returned by search functions', () => {
+    const migration = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../migrations/202609020003_public_projection_type_grants.sql'), 'utf8')
+    expect(migration).toContain('GRANT USAGE ON TYPE public.creator_visual_type TO aifans_anon, aifans_authenticated')
+  })
+
   it('does not query posts when profiles exceed the page limit', () => {
     expect(searchPostFetchLimit({category: 'all', profileCount: 4, limit: 3})).toBe(0)
     const page = paginateSearchResults({category: 'all', query: 'luna', profiles: [profile(1), profile(2), profile(3), profile(4)], posts: [], limit: 3})
