@@ -8,6 +8,7 @@ import {
   type AnalyticsClient,
 } from './contracts.js'
 import {trackChatOpened, trackFeedTabSelected} from './events.js'
+import {performanceBudget, trackPerformanceMeasured} from './performance.js'
 import {AnalyticsProvider, createPostHogAnalytics, routeNameForPath, useAnalytics, type PostHogSdk} from './provider.js'
 
 vi.mock('next/navigation', () => ({usePathname: () => '/en'}))
@@ -22,6 +23,20 @@ function flush() {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('analytics event contract', () => {
+  it('uses the navigation budgets and never lets performance capture throw into navigation', () => {
+    expect(performanceBudget('interaction')).toBe(100)
+    expect(performanceBudget('skeleton')).toBe(150)
+    expect(performanceBudget('navigation')).toBe(800)
+    const analytics: AnalyticsClient = {
+      capture: () => { throw new Error('analytics unavailable') },
+      identify: vi.fn(), page: vi.fn(), reset: vi.fn(),
+    }
+    expect(() => trackPerformanceMeasured(analytics, {
+      locale: 'en', route_name: '/[locale]', metric: 'navigation', metric_id: 'navigation-1-navigation',
+      value: 12, rating: 'good', device_type: 'desktop', release: 'test',
+    })).not.toThrow()
+  })
+
   it('has exactly the approved initial custom-event allow-list and event version', () => {
     expect(ANALYTICS_EVENT_NAMES).toEqual([
       'landing_viewed',

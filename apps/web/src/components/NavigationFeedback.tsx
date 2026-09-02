@@ -5,14 +5,14 @@ import {flushSync} from 'react-dom'
 import {usePathname, useSearchParams} from 'next/navigation'
 import type {Locale} from '../i18n/config'
 import {routeNameForPath, useAnalytics} from '../lib/analytics/provider'
-import {deviceType, trackPerformanceMeasured} from '../lib/analytics/performance'
+import {deviceType, performanceBudget, trackPerformanceMeasured} from '../lib/analytics/performance'
 import type {AnalyticsPerformanceMetric, AnalyticsPerformanceRating} from '../lib/analytics/contracts'
 
-type PendingNavigation = {id: number; readyGeneration: number; startedAt: number; targetPathname: string; targetRoute: string}
+type PendingNavigation = {generation: number; readyGeneration: number; startedAt: number; targetPathname: string; targetRoute: string}
 type RouteReady = {generation: number; route: string}
 
 function rating(metric: AnalyticsPerformanceMetric, value: number): AnalyticsPerformanceRating {
-  const budget = metric === 'interaction' ? 100 : metric === 'skeleton' ? 150 : 800
+  const budget = performanceBudget(metric)
   return value <= budget ? 'good' : value <= budget * 2 ? 'needs-improvement' : 'poor'
 }
 
@@ -37,18 +37,22 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
   const currentRoute = `${pathname}${searchParams.size ? `?${searchParams}` : ''}`
   const sequence = useRef(0)
   const latestReadyGeneration = useRef(0)
+  const reportedMetrics = useRef(new Set<string>())
   const [pending, setPending] = useState<PendingNavigation | null>(null)
   const [routeReady, setRouteReady] = useState<RouteReady | null>(null)
 
   const measure = useCallback((metric: AnalyticsPerformanceMetric, active: PendingNavigation) => {
     const routeName = routeNameForPath(active.targetPathname)
     if (!routeName) return
+    const measurementKey = `${active.generation}-${metric}`
+    if (reportedMetrics.current.has(measurementKey)) return
+    reportedMetrics.current.add(measurementKey)
     const value = Math.max(0, performance.now() - active.startedAt)
     trackPerformanceMeasured(analytics, {
       locale,
       route_name: routeName,
       metric,
-      metric_id: `navigation-${active.id}-${metric}`,
+      metric_id: `navigation-${active.generation}-${metric}`,
       value,
       rating: rating(metric, value),
       device_type: deviceType(navigator.userAgent, navigator.maxTouchPoints),
@@ -72,7 +76,7 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     function start(target: EventTarget | null) {
       const destination = destinationFrom(target)
       if (!destination) return
-      const active = {id: ++sequence.current, readyGeneration: latestReadyGeneration.current, startedAt: performance.now(), ...destination}
+      const active = {generation: ++sequence.current, readyGeneration: latestReadyGeneration.current, startedAt: performance.now(), ...destination}
       flushSync(() => setPending(active))
       measure('interaction', active)
     }
@@ -119,7 +123,7 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
       reportReady()
     })
     observer.observe(document.body, {childList: true, subtree: true})
-    const timeout = window.setTimeout(() => setPending((current) => current?.id === pending.id ? null : current), 1500)
+    const timeout = window.setTimeout(() => setPending((current) => current?.generation === pending.generation ? null : current), 1500)
     const frame = requestAnimationFrame(reportReady)
     return () => {
       cancelAnimationFrame(frame)
