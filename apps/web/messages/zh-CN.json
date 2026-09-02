@@ -200,6 +200,9 @@
     "retry": "重试",
     "providerUnavailable": "聊天服务提供方暂时不可用，请稍后重试。",
     "unavailable": "消息暂时不可用。",
+    "unavailableDescription": "无法加载你的对话，请检查网络后重试。",
+    "unavailableAction": "重试",
+    "unavailablePending": "正在重试…",
     "invalidResponse": "聊天服务返回了无效响应。"
   },
   "creator": {

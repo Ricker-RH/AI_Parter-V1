@@ -4,7 +4,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 const {access, conversations, history, redirectToUserSignIn, notFound} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn(), history: vi.fn(), redirectToUserSignIn: vi.fn(), notFound: vi.fn()}))
 vi.mock('../../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn}))
 vi.mock('../../../../lib/chat-api.js', () => ({fetchConversations: conversations, fetchConversationHistory: history}))
-vi.mock('next/navigation', () => ({notFound}))
+vi.mock('next/navigation', () => ({notFound, useRouter: () => ({refresh: vi.fn()})}))
 import ConversationPage from './page.js'
 
 const id = '11111111-1111-4111-8111-111111111111'

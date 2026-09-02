@@ -200,6 +200,9 @@
     "retry": "Retry",
     "providerUnavailable": "The chat provider is unavailable.",
     "unavailable": "Messages are unavailable right now.",
+    "unavailableDescription": "We could not load your conversations. Check your connection and try again.",
+    "unavailableAction": "Try again",
+    "unavailablePending": "Trying again…",
     "invalidResponse": "The chat service returned an invalid response."
   },
   "creator": {

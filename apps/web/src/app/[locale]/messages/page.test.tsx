@@ -6,7 +6,7 @@ import zh from '../../../../messages/zh-CN.json'
 const {access, conversations} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn()}))
 vi.mock('../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn: vi.fn()}))
 vi.mock('../../../lib/chat-api.js', () => ({fetchConversations: conversations}))
-vi.mock('next/navigation', () => ({notFound: vi.fn()}))
+vi.mock('next/navigation', () => ({notFound: vi.fn(), useRouter: () => ({refresh: vi.fn()})}))
 import MessagesPage from './page.js'
 
 const conversation = {id: '11111111-1111-4111-8111-111111111111', ipProfile: {id: '22222222-2222-4222-8222-222222222222', displayName: 'Luma', username: 'luma'}, lastMessage: {body: 'Hello', role: 'assistant' as const, createdAt: '2026-09-01T00:00:00.000Z'}, updatedAt: '2026-09-01T00:00:00.000Z', sendEnabled: true}
@@ -36,6 +36,10 @@ describe('persistent messages list page', () => {
 
     expect(conversations).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(en.chat.unavailable)
+    expect(screen.getByRole('button', {name: en.chat.unavailableAction})).toBeEnabled()
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(screen.queryByText(en.chat.selectConversation)).toBeNull()
+    expect(screen.queryByText(en.chat.noConversations)).toBeNull()
   })
 
   it('ignores repeated query values instead of passing an array to chat reads', async () => {
