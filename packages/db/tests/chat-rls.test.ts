@@ -137,8 +137,10 @@ describeIntegration('persistent chat authorization and constraints', () => {
         .resolves.toMatchObject({ rowCount: 0 })
 
       await become(client, 'aifans_anon')
-      await expect(client.query('SELECT id FROM public.chat_conversations')).rejects.toThrow(/permission denied/i)
-      await expect(client.query('SELECT id FROM public.chat_messages')).rejects.toThrow(/permission denied/i)
+      await expect(rejected(client, () => client.query('SELECT id FROM public.chat_conversations')))
+        .resolves.toMatchObject({ code: '42501' })
+      await expect(rejected(client, () => client.query('SELECT id FROM public.chat_messages')))
+        .resolves.toMatchObject({ code: '42501' })
     })
   })
 

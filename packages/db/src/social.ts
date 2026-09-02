@@ -206,7 +206,7 @@ type PostRow = PublicIpRow & {
   viewer_has_bookmarked?: boolean;
   viewer_follows_author?: boolean;
   score?: number | string;
-  liked_at?: Date | string;
+  liked_at?: string;
 };
 const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at,
   p.id, p.username, p.display_name, p.bio, p.languages, p.visual_type,
@@ -218,7 +218,7 @@ const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at
   CROSS JOIN LATERAL public.social_post_metrics(p.post_id, p.author_profile_id, NULL::text) metrics`;
 const likedPostSql = publicPostSql.replace(
   " FROM public.social_public_posts() p",
-  ", liked.created_at AS liked_at FROM public.social_public_posts() p JOIN public.post_likes liked ON liked.post_id = p.post_id AND liked.profile_id = public.current_profile_id()",
+  ", to_char(liked.created_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS liked_at FROM public.social_public_posts() p JOIN public.post_likes liked ON liked.post_id = p.post_id AND liked.profile_id = public.current_profile_id()",
 );
 
 function iso(value: Date | string): string {
@@ -444,7 +444,7 @@ export function createSocialRepository({
           ? encodeLikedCursor({
               v: 1,
               kind: "liked",
-              likedAt: iso(last.liked_at!),
+              likedAt: last.liked_at!,
               id: last.post_id,
             })
           : Buffer.from(

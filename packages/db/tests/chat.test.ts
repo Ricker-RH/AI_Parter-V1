@@ -208,13 +208,13 @@ async function inIntegrationTransaction<T>(callback: (client: PoolClient) => Pro
 async function createIntegrationHuman(client: PoolClient): Promise<IntegrationHuman> {
   const id = randomUUID()
   const subject = `chat-cursor-${id}`
-  await client.query("INSERT INTO public.profiles(id,auth_subject,account_kind,username,display_name) VALUES($1,$2,'human',$3,'Chat cursor human')", [id, subject, `chat_cursor_h_${id.replaceAll('-', '').slice(0, 18)}`])
+  await client.query("INSERT INTO public.profiles(id,auth_subject,account_kind,username,display_name) VALUES($1,$2,'human',$3,'Chat cursor human')", [id, subject, `chat_cursor_h_${id.replaceAll('-', '').slice(0, 16)}`])
   return {id, subject}
 }
 async function createIntegrationIp(client: PoolClient): Promise<string> {
   const id = randomUUID()
   const revisionId = randomUUID()
-  await client.query("INSERT INTO public.profiles(id,account_kind,username,display_name) VALUES($1,'ip',$2,'Chat cursor IP')", [id, `chat_cursor_i_${id.replaceAll('-', '').slice(0, 18)}`])
+  await client.query("INSERT INTO public.profiles(id,account_kind,username,display_name) VALUES($1,'ip',$2,'Chat cursor IP')", [id, `chat_cursor_i_${id.replaceAll('-', '').slice(0, 16)}`])
   await client.query("INSERT INTO public.ip_profiles(profile_id,source,public_state,operation_enabled) VALUES($1,'platform','draft',false)", [id])
   await client.query("INSERT INTO public.ip_identity_revisions(id,ip_profile_id,version,display_name,languages) VALUES($1,$2,1,'Chat cursor IP',ARRAY['en'])", [revisionId, id])
   await client.query("UPDATE public.ip_profiles SET current_identity_revision_id=$2,public_state='published',operation_enabled=true WHERE profile_id=$1", [id, revisionId])
