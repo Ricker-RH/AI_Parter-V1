@@ -743,6 +743,21 @@ button {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.auth-home {
+  border-top: 1px solid var(--shell-border);
+  margin: 32px 0 0;
+  padding-top: 20px;
+}
+.auth-home a {
+  color: var(--shell-muted);
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-home a:hover {
+  color: var(--shell-text);
+}
 @media (max-width: 899px) {
   .auth-page {
     padding: 0;
@@ -1465,214 +1480,6 @@ button {
   color: var(--shell-text);
 }
 
-.chat-page {
-  display: grid;
-  grid-template-rows: auto auto minmax(260px, 1fr) auto;
-  min-height: 100vh;
-}
-.chat-header {
-  border-bottom: 1px solid var(--shell-border);
-  padding: 30px 28px 24px;
-}
-.chat-eyebrow {
-  color: var(--shell-muted);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.14em;
-  margin: 0 0 10px;
-  text-transform: uppercase;
-}
-.chat-header h1 {
-  font-size: clamp(28px, 5vw, 38px);
-  font-weight: 590;
-  letter-spacing: -0.035em;
-  line-height: 1.08;
-  margin: 0;
-}
-.chat-header > p:last-child {
-  color: var(--shell-muted);
-  margin: 10px 0 0;
-}
-.chat-context {
-  border-bottom: 1px solid var(--shell-border);
-  display: grid;
-  gap: 7px;
-  padding: 18px 28px;
-}
-.chat-target-row {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-.chat-target-row label,
-.chat-composer label {
-  font-size: 12px;
-  font-weight: 720;
-  letter-spacing: 0.025em;
-}
-.chat-target-row button {
-  background: transparent;
-  border: 0;
-  color: var(--shell-muted);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 3px 0;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.chat-context > input,
-.chat-composer textarea {
-  background: var(--shell-surface);
-  border: 1px solid var(--shell-border);
-  border-radius: 7px;
-  color: inherit;
-  font: inherit;
-  padding: 10px 11px;
-  width: 100%;
-}
-.chat-context > input {
-  min-height: 42px;
-}
-.chat-context > input:disabled {
-  background: var(--shell-hover);
-  color: var(--shell-muted);
-}
-.chat-context > input:focus,
-.chat-composer textarea:focus {
-  border-color: var(--shell-text);
-  outline: 1px solid var(--shell-text);
-  outline-offset: 0;
-}
-.chat-context > p {
-  color: var(--shell-muted);
-  font-size: 12px;
-  margin: 0;
-}
-.chat-conversation {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 5px !important;
-}
-.chat-conversation span {
-  font-weight: 700;
-}
-.chat-conversation code {
-  color: var(--shell-text);
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  overflow-wrap: anywhere;
-}
-.chat-session-notice {
-  border-left: 2px solid var(--shell-border);
-  margin-top: 5px !important;
-  padding-left: 9px;
-}
-.chat-transcript {
-  min-height: 260px;
-  padding: 24px 28px;
-}
-.chat-transcript ol {
-  display: grid;
-  gap: 18px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.chat-empty {
-  color: var(--shell-muted);
-  max-width: 410px;
-  padding: 28px 0;
-}
-.chat-empty h2 {
-  color: var(--shell-text);
-  font-size: 19px;
-  margin: 0 0 6px;
-}
-.chat-empty p {
-  margin: 0;
-}
-.chat-message {
-  display: grid;
-  gap: 5px;
-  max-width: 88%;
-}
-.chat-message > span {
-  color: var(--shell-muted);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-.chat-message > p {
-  border: 1px solid var(--shell-border);
-  border-radius: 8px;
-  margin: 0;
-  overflow-wrap: anywhere;
-  padding: 11px 13px;
-  white-space: pre-wrap;
-}
-.chat-message-user {
-  justify-self: end;
-}
-.chat-message-user > span {
-  text-align: right;
-}
-.chat-message-user > p {
-  background: var(--shell-text);
-  border-color: var(--shell-text);
-  color: var(--shell-surface);
-}
-.chat-message-assistant {
-  justify-self: start;
-}
-.chat-request-status {
-  color: var(--shell-muted);
-  font-size: 13px;
-  margin: 18px 0 0;
-}
-.chat-request-error {
-  border-left: 2px solid var(--shell-text);
-  padding-left: 10px;
-}
-.chat-composer {
-  align-items: end;
-  background: var(--shell-surface);
-  border-top: 1px solid var(--shell-border);
-  bottom: 0;
-  display: grid;
-  gap: 8px 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 18px 28px 22px;
-  position: sticky;
-}
-.chat-composer label {
-  grid-column: 1 / -1;
-}
-.chat-composer textarea {
-  line-height: 1.45;
-  min-height: 76px;
-  resize: vertical;
-}
-.chat-composer button {
-  background: var(--shell-text);
-  border: 1px solid var(--shell-text);
-  border-radius: 7px;
-  color: var(--shell-surface);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 720;
-  min-height: 42px;
-  padding: 0 18px;
-}
-.chat-composer button:hover {
-  opacity: 0.86;
-}
-.chat-composer button:disabled {
-  cursor: wait;
-  opacity: 0.58;
-}
-
 @media (max-width: 699px) {
   .admin-shell {
     display: block;
@@ -1755,19 +1562,6 @@ button {
   .reference-list strong {
     grid-column: 3;
   }
-  .chat-header,
-  .chat-context,
-  .chat-transcript {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-  .chat-composer {
-    grid-template-columns: 1fr;
-    padding: 14px 20px calc(18px + env(safe-area-inset-bottom));
-  }
-  .chat-composer button {
-    width: 100%;
-  }
   .empty,
   .settings {
     padding-left: 20px;
@@ -1790,7 +1584,7 @@ button {
   .messages-shell {
     column-gap: 24px;
     grid-template-columns: 76px minmax(0, 1fr);
-    max-width: 740px;
+    max-width: none;
     width: 100%;
   }
   .messages-shell .desktop-nav-compact {
@@ -1923,6 +1717,8 @@ button {
   .shell { display: block; max-width: none; padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
   .desktop-nav { display: none; }
   .content { border-right: 0; }
+  .messages-shell { display: grid; grid-template-rows: minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
+  .messages-shell .content { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
   .mobile-top-bar { align-items: center; display: grid; grid-template-columns: 44px 1fr 44px; height: 60px; padding: max(4px, env(safe-area-inset-top)) 12px 4px; }
   .mobile-top-bar .global-more { margin: 0; }
   .mobile-top-bar .more-trigger { justify-content: center; min-height: 44px; padding: 0; width: 44px; }

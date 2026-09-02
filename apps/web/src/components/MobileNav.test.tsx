@@ -30,4 +30,11 @@ describe('MobileNav', () => {
     expect(screen.getByRole('link', {name: 'Activity'})).toHaveAttribute('aria-current', 'page')
     pathname.value = '/en'
   })
+
+  it('keeps Messages selected on a conversation detail route', () => {
+    pathname.value = '/en/messages/11111111-1111-4111-8111-111111111111'
+    render(<MobileNav labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
+    pathname.value = '/en'
+  })
 })

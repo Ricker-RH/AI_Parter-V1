@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {encodeSearchCursor} from '@aifans/contracts'
+import {encodeChatConversationCursor, encodeChatMessageCursor, encodeCursor, encodeLikedCursor, encodeNotificationCursor, encodeSearchCursor} from '@aifans/contracts'
 import {authHref, readAdminReturnTo, readUserReturnTo} from './return-to.js'
 
 describe('admin auth return target', () => {
@@ -37,6 +37,24 @@ describe('user auth return target', () => {
     expect(authHref('en', '/en/messages')).toBe('/en/auth/sign-in?next=%2Fen%2Fmessages')
     expect(authHref('en', 'https://attacker.example')).toBe('/en/auth/sign-in?next=%2Fen')
   })
+  it('preserves canonical persistent-message list and detail targets in the real login href', () => {
+    const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
+    const listCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id})
+    const detailCursor = encodeChatMessageCursor({v: 1, kind: 'chat-messages', createdAt: '2026-09-01T00:00:00.000Z', id})
+    expect(authHref('en', `/en/messages?cursor=${listCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages?cursor=${listCursor}`)}`)
+    expect(authHref('en', `/en/messages/${id}?cursor=${detailCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${id}?cursor=${detailCursor}`)}`)
+  })
+  it('preserves protected liked, settings, and canonical activity targets in the real login href', () => {
+    const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
+    const likedCursor = encodeLikedCursor({v: 1, kind: 'liked', likedAt: '2026-09-01T00:00:00.000Z', id})
+    const notificationCursor = encodeNotificationCursor({v: 1, kind: 'notifications', createdAt: '2026-09-01T00:00:00.000Z', id})
+    const savedCursor = encodeCursor({v: 1, kind: 'chronological', publishedAt: '2026-09-01T00:00:00.000Z', id})
+    expect(authHref('en', `/en/liked?cursor=${likedCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/liked?cursor=${likedCursor}`)}`)
+    expect(authHref('en', '/en/settings')).toBe('/en/auth/sign-in?next=%2Fen%2Fsettings')
+    expect(authHref('en', `/en/activity?tab=notifications&cursor=${notificationCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/activity?tab=notifications&cursor=${notificationCursor}`)}`)
+    expect(authHref('en', `/en/activity?tab=liked&cursor=${likedCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/activity?tab=liked&cursor=${likedCursor}`)}`)
+    expect(authHref('en', `/en/activity?tab=saved&cursor=${savedCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/activity?tab=saved&cursor=${savedCursor}`)}`)
+  })
   it.each([
     ['en', '/en/messages'],
     ['en', '/en?feed=following'],
@@ -64,6 +82,19 @@ describe('user auth return target', () => {
     ['en', '/en/search?q='],
     ['en', '/en/search?q=luna&q=moon'],
     ['en', '/en/search?q=luna&cursor=bad.cursor'],
+    ['en', '/en/messages?cursor=not-a-chat-cursor'],
+    ['en', '/en/messages?cursor=one&cursor=two'],
+    ['en', '/en/messages?unknown=value'],
+    ['en', '/en/messages/not-a-uuid'],
+    ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?cursor=one&cursor=two'],
+    ['en', '/en/liked?cursor=not-canonical'],
+    ['en', '/en/liked?cursor=one&cursor=two'],
+    ['en', '/en/settings?appearance=dark'],
+    ['en', '/en/activity?tab=other'],
+    ['en', '/en/activity?tab=liked&cursor=not-canonical'],
+    ['en', '/en/activity?tab=liked&tab=saved'],
+    ['en', '/en/activity?tab=notifications&cursor=one&cursor=two'],
+    ['en', '/en/activity?tab=saved&unknown=value'],
   ] as const)('rejects unsafe, malformed, or unsupported user target %#', (locale, target) => {
     expect(readUserReturnTo(locale, target)).toBeUndefined()
   })

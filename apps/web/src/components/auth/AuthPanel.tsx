@@ -33,6 +33,7 @@ type Labels = {
   switchLink: Record<'sign-in' | 'sign-up', string>
   forgotLink: string
   backToSignIn: string
+  backToHome: string
   notConfigured: string
   error: string
   resetError: string
@@ -70,7 +71,7 @@ const translations: Record<Locale, Labels> = {
     or: 'OR',
     switchText: {'sign-in': 'New to AIFANS?', 'sign-up': 'Already have an account?'},
     switchLink: {'sign-in': 'Create account', 'sign-up': 'Sign in'},
-    forgotLink: 'Forgot password?', backToSignIn: 'Back to sign in',
+    forgotLink: 'Forgot password?', backToSignIn: 'Back to sign in', backToHome: 'Return to Home',
     notConfigured: 'Authentication is not configured yet.',
     error: 'Authentication could not be completed. Please try again.',
     resetError: 'The password could not be updated. Request a new reset link and try again.',
@@ -106,7 +107,7 @@ const translations: Record<Locale, Labels> = {
     or: '或',
     switchText: {'sign-in': '第一次使用 AIFANS？', 'sign-up': '已经有账户？'},
     switchLink: {'sign-in': '创建账户', 'sign-up': '登录'},
-    forgotLink: '忘记密码？', backToSignIn: '返回登录',
+    forgotLink: '忘记密码？', backToSignIn: '返回登录', backToHome: '返回首页',
     notConfigured: '登录服务尚未配置',
     error: '暂时无法完成身份验证，请重试。',
     resetError: '暂时无法更新密码，请重新申请重置链接后再试。',
@@ -250,6 +251,7 @@ export function AuthPanel({
         {liveStatus && <p aria-live="polite" className="auth-status" id="auth-status" role="status">{liveStatus}</p>}
         {mode === 'sign-in' && <p className="auth-switch"><Link href={forgotHref}>{labels.forgotLink}</Link></p>}
         {standard ? <p className="auth-switch">{labels.switchText[mode]} <Link href={authSwitchHref}>{labels.switchLink[mode]}</Link></p> : <p className="auth-switch"><Link href={backToSignInHref}>{labels.backToSignIn}</Link></p>}
+        <p className="auth-home"><Link href={`/${locale}`}>{labels.backToHome}</Link></p>
       </section>
     </div>
   </main>

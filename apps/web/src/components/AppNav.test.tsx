@@ -5,8 +5,8 @@ import {AppNav} from './AppNav.js'
 import en from '../../messages/en.json'
 import zhCN from '../../messages/zh-CN.json'
 
-const {search} = vi.hoisted(() => ({search: new URLSearchParams()}))
-vi.mock('next/navigation', () => ({usePathname: () => '/en', useSearchParams: () => search}))
+const {search, pathname} = vi.hoisted(() => ({search: new URLSearchParams(), pathname: {value: '/en'}}))
+vi.mock('next/navigation', () => ({usePathname: () => pathname.value, useSearchParams: () => search}))
 vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.ReactNode; [key: string]: unknown}) => <a {...props}>{children}</a>}))
 
 const labels = en
@@ -54,6 +54,13 @@ describe('AppNav', () => {
   it('marks Messages navigation as permanently compact for CSS contracts', () => {
     const {container} = render(<AppNav compact labels={labels} locale="en" />)
     expect(container.querySelector('.desktop-nav-compact[data-compact="true"]')).toBeTruthy()
+  })
+
+  it('keeps Messages selected throughout a conversation detail route', () => {
+    pathname.value = '/en/messages/11111111-1111-4111-8111-111111111111'
+    render(<AppNav compact labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'Messages'})).toHaveAttribute('aria-current', 'page')
+    pathname.value = '/en'
   })
 
   it('keeps expanded labels available for the compact rail at desktop widths', () => {

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import styles from './ActivityTabs.module.css'
 
 type ActivityTab = 'notifications' | 'liked' | 'saved'
@@ -18,12 +19,12 @@ export function ActivityTabs({locale, selected, labels}: {locale: string; select
 
   return <nav aria-label={labels.activity ?? labels.notifications} className={styles.tabs}>
     <div className={styles.list}>
-      {tabs.map(([tab, label]) => <a
+      {tabs.map(([tab, label]) => <Link
         aria-current={selected === tab ? 'page' : undefined}
         className={styles.tab}
         href={`/${locale}/activity?tab=${tab}`}
         key={tab}
-      >{label}</a>)}
+      >{label}</Link>)}
     </div>
   </nav>
 }

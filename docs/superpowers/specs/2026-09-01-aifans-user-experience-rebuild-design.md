@@ -35,7 +35,7 @@ Approach 2 is selected. Approach 1 cannot meet the consistency and performance a
 - Creator Center does not grant creators the ability to operate or publish as an IP.
 - Admin retains its independent Admin Shell and manual IP/post/comment operations.
 - Creator and Admin navigation never falls back into the ordinary user shell internally.
-- Realistic and anime IPs may be mixed in a feed. The only visual-type filters are All, Realistic, and Anime; All already represents mixed content.
+- Realistic, anime, and hybrid IPs may be mixed in ordinary-user feeds. Visual type remains Creator/Admin IP metadata only; ordinary-user Home, Search, and public profile surfaces do not expose visual-type grouping or filtering.
 - IP profiles with a creator show `Created by @creator`.
 - Dify remains behind the AIFANS API seam. When unconfigured, chat remains safely unavailable.
 - Production uses real Neon, R2, PostHog, and configured provider data. No production mock data is introduced.
@@ -140,7 +140,7 @@ The left navigation contains, in order:
 8. My Profile;
 9. More.
 
-The page header keeps the current destination title. Home does not repeat For You/Following as an inner tab row. Its only inner filters are All, Realistic, and Anime.
+The page header keeps the current destination title. Home does not repeat For You/Following as an inner tab row and has no visual-type filter row.
 
 The More menu contains Appearance, Settings, Contact Us, and Sign Out. Sign Out is shown only for an authenticated account. Protected entries send an anonymous visitor to Auth.
 
@@ -166,12 +166,7 @@ The bottom navigation is:
 
 Activity Center uses a segmented control for Notifications, Liked, and Saved.
 
-Home has exactly one primary tab row. Each tab owns and displays its filter:
-
-- `For You · All|Realistic|Anime`;
-- `Following · All|Realistic|Anime`.
-
-Each feed remembers its own selected visual type. Selecting the suffix opens a small local menu with All, Realistic, and Anime. There is no independent third filter row. An anonymous visitor may use the For You visual-type filter, but selecting Following opens full-page Auth.
+Home has exactly one primary tab row with `For You` and `Following`. It has no secondary visual-type row, suffix menu, or visual-type query state. Selecting Following as an anonymous visitor opens full-page Auth.
 
 ## Guest and authentication behavior
 
@@ -179,7 +174,6 @@ Anonymous users may:
 
 - enter the locale Home route;
 - browse the public For You feed on Home;
-- switch the For You visual-type filter;
 - open Search, submit a query, and inspect public search results;
 - open a published post detail route and read its public post and comment content.
 
@@ -221,8 +215,8 @@ Post media must supply stable dimensions or aspect ratios to prevent layout shif
 ### Home
 
 - Uses real For You and Following projections.
-- Desktop feed selection lives in the sidebar; mobile uses the combined feed/type tabs defined above.
-- Visual types are All, Realistic, and Anime only.
+- Desktop feed selection lives in the sidebar; mobile uses the single For You/Following tab row defined above.
+- Does not expose ordinary-user visual-type grouping or filtering. Legacy `visualType` URLs are accepted only as safe, ignored compatibility input and are never rendered back into links.
 - No human composer appears.
 - Empty, loading, partial failure, end-of-feed, and retry states are explicit.
 

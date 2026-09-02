@@ -413,15 +413,15 @@ expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label')
 
 Assert desktop destination order for currently functional capabilities and a navigation model that can enable Liked only when Slice 2 lands. Assert no compose/post/publish control exists for a human.
 
-For mobile Home, assert there is one tab row and two combined labels:
+For mobile Home, assert there is one tab row with the two feed destinations and no visual-type grouping:
 
 ```ts
-expect(screen.getByRole('tab', {name: 'For You · All'})).toBeVisible()
-expect(screen.getByRole('tab', {name: 'Following · All'})).toBeVisible()
+expect(screen.getByRole('tab', {name: 'For You'})).toBeVisible()
+expect(screen.getByRole('tab', {name: 'Following'})).toBeVisible()
 expect(screen.queryByLabelText('IP style')).toBeNull()
 ```
 
-Each feed owns an independent type value. The allowed menu values are All, Realistic, and Anime. Legacy `visualType=hybrid` normalizes to All and is never rendered as a fourth choice.
+No ordinary-user feed owns visual-type state. Legacy `visualType` input is ignored, removed from generated links, and never rendered as a grouping or filter.
 
 - [ ] **Step 2: Run focused UI tests and verify RED**
 
@@ -431,7 +431,7 @@ Run:
 pnpm --dir apps/web exec vitest run src/components/AppNav.test.tsx src/components/MobileNav.test.tsx src/components/MobileTopBar.test.tsx src/components/GlobalMoreMenu.test.tsx src/components/auth/AuthPanel.test.tsx src/components/social/FeedTabs.test.tsx src/components/social/SocialContent.test.tsx 'src/app/[locale]/page.test.tsx'
 ```
 
-Expected: FAIL against the old generic shell, four-style filter, and card-style Auth.
+Expected: FAIL against the old generic shell, legacy visual-type filter, and card-style Auth.
 
 - [ ] **Step 3: Implement navigation behavior**
 
@@ -441,19 +441,7 @@ Global More contains Appearance, Settings, Contact Us, and authenticated Sign Ou
 
 - [ ] **Step 4: Implement Home selectors and full-page Auth styling**
 
-Desktop uses For You and Following sidebar destinations and one All/Realistic/Anime row in the content column. It does not repeat For You/Following inside the feed.
-
-Mobile represents selection with query state:
-
-```ts
-type MobileFeedSelection = {
-  forYou: 'all' | 'realistic' | 'anime'
-  following: 'all' | 'realistic' | 'anime'
-  active: 'for_you' | 'following'
-}
-```
-
-Changing a filter removes `cursor`, retains locale, and does not overwrite the other feed's selection. Since only the active feed can be encoded in the server URL, preserve the inactive value in component state and initialize it to All on a new session. Anonymous selection of Following invokes the safe Auth return path before any Following request.
+Desktop uses For You and Following sidebar destinations and no visual-type row in the content column. It does not repeat For You/Following inside the feed. Mobile uses a single For You/Following tab row. Changing feeds removes `cursor`, retains locale, and removes legacy `visualType` input. Anonymous selection of Following invokes the safe Auth return path before any Following request.
 
 Auth becomes a spacious full-page form with the existing email/password, Google, forgot/reset, sign-up, configured/unconfigured, pending, success, and failure behavior. Do not change Neon Auth semantics.
 
@@ -470,7 +458,7 @@ Use these CSS gates and values:
 @media (max-width: 699px) { .post-card { padding-inline: 12px; } }
 ```
 
-Use a 36px avatar and approximately 12px avatar/content gap. Fix the undefined `--shell-bg` and `--border` references with existing AIFANS tokens. Remove Hybrid only from the ordinary Home filter; do not change Creator visual-type semantics. Add matching English and Chinese keys for Liked, Saved, Activity, Appearance, Contact, sign-out, filters, menu states, and Auth return copy.
+Use a 36px avatar and approximately 12px avatar/content gap. Fix the undefined `--shell-bg` and `--border` references with existing AIFANS tokens. Remove the entire ordinary-user visual-type grouping without changing Creator/Admin visual-type metadata semantics. Add matching English and Chinese keys for Liked, Saved, Activity, Appearance, Contact, sign-out, menu states, and Auth return copy.
 
 - [ ] **Step 6: Run UI verification and commit**
 
@@ -483,7 +471,7 @@ node -e "const fs=require('fs');const en=JSON.parse(fs.readFileSync('apps/web/me
 git diff --check
 ```
 
-Expected: all Web tests and typecheck pass; locale keys are identical; no Hybrid ordinary-feed choice or human composer is rendered.
+Expected: all Web tests and typecheck pass; locale keys are identical; no ordinary-user visual-type grouping or human composer is rendered.
 
 Commit:
 
@@ -643,11 +631,11 @@ Run the functional and performance suites, then inspect `375`, `430`, `699`, `70
 
 Verify:
 
-- anonymous For You and All/Realistic/Anime;
+- anonymous For You with no visual-type grouping;
 - Following or protected route to full-page Auth;
 - Auth has no Public shell;
 - Messages always uses compact rail on non-mobile widths;
-- mobile tab labels are `For You · X` and `Following · X` with no third row;
+- mobile tab labels are `For You` and `Following` with no visual-type row or suffix menu;
 - desktop and compact navigation order and expansion;
 - no horizontal overflow or bottom-nav content obstruction;
 - More menu Escape, outside click, focus restoration, and 44px targets;

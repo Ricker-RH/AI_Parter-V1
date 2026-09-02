@@ -47,12 +47,13 @@ async function activateNavigation({expectSkeleton=false, page, href, link}: {exp
   return {feedbackMs, navigationMs, skeletonMs}
 }
 
+// This test is run only by playwright.production.config.ts against a built Next production server.
 test('anonymous Home and Search navigation meets production feedback budgets', async ({page}, testInfo) => {
-  const feedbackSamples: number[] = []
-  const navigationSamples: number[] = []
-  const skeletonSamples: number[] = []
+  const warmFeedbackSamples: number[] = []
+  const warmNavigationSamples: number[] = []
   await page.goto('/en')
   await waitForHomeShell(page)
+  await expect(page.locator('a[href*="visualType"]')).toHaveCount(0)
   await page.evaluate(() => {
     ;(window as Window & {__aifansCls?: number}).__aifansCls = 0
     new PerformanceObserver((entries) => {
@@ -65,38 +66,38 @@ test('anonymous Home and Search navigation meets production feedback budgets', a
   const coldSearchTransition = {href: '/en/search', link: () => page.locator('a[href="/en/search"]:visible').first(), ready: () => page.getByRole('heading', {exact: true, name: 'Search'}).waitFor()}
   const coldSearchSample = await activateNavigation({expectSkeleton: true, page, href: coldSearchTransition.href, link: coldSearchTransition.link()})
   await coldSearchTransition.ready()
-  feedbackSamples.push(coldSearchSample.feedbackMs)
-  navigationSamples.push(coldSearchSample.navigationMs)
   expect(coldSearchSample.skeletonMs).not.toBeNull()
-  skeletonSamples.push(coldSearchSample.skeletonMs!)
+  expect(coldSearchSample.feedbackMs).toBeLessThanOrEqual(100)
+  expect(coldSearchSample.navigationMs).toBeLessThanOrEqual(800)
+  expect(coldSearchSample.skeletonMs!).toBeLessThanOrEqual(150)
 
-  const transitions = [
-    {href: '/en', link: () => page.locator('a[href="/en"]:visible').first(), ready: () => waitForHomeShell(page)},
-    {href: '/en?visualType=anime', link: () => page.locator('a[role="tab"][href="/en?visualType=anime"]:visible').first(), ready: () => waitForHomeShell(page)},
-    {href: '/en', link: () => page.locator('a[role="tab"][href="/en"]:visible').first(), ready: () => waitForHomeShell(page)},
-  ]
+  const warmTransitions = Array.from({length: 10}, (_value, index) => index % 2 === 0
+    ? {href: '/en', link: () => page.locator('a[href="/en"]:visible').first(), ready: () => waitForHomeShell(page)}
+    : {href: '/en/search', link: () => page.locator('a[href="/en/search"]:visible').first(), ready: () => page.getByRole('heading', {exact: true, name: 'Search'}).waitFor()})
 
-  for (const transition of transitions) {
+  for (const transition of warmTransitions) {
     const sample = await activateNavigation({page, href: transition.href, link: transition.link()})
     await transition.ready()
-    feedbackSamples.push(sample.feedbackMs)
-    navigationSamples.push(sample.navigationMs)
+    warmFeedbackSamples.push(sample.feedbackMs)
+    warmNavigationSamples.push(sample.navigationMs)
   }
 
   const cls = await page.evaluate(() => (window as Window & {__aifansCls?: number}).__aifansCls ?? 0)
   const metrics = {
-    feedback: {p50: percentile(feedbackSamples, .5), p75: percentile(feedbackSamples, .75), p95: percentile(feedbackSamples, .95)},
-    navigation: {p50: percentile(navigationSamples, .5), p75: percentile(navigationSamples, .75), p95: percentile(navigationSamples, .95)},
-    skeleton: {p50: percentile(skeletonSamples, .5), p75: percentile(skeletonSamples, .75), p95: percentile(skeletonSamples, .95)},
+    productionPlaywrightConfig: 'playwright.production.config.ts',
+    coldSearch: {feedback: coldSearchSample.feedbackMs, navigation: coldSearchSample.navigationMs, skeleton: coldSearchSample.skeletonMs},
+    warm: {
+      sampleCount: warmNavigationSamples.length,
+      feedback: {p50: percentile(warmFeedbackSamples, .5), p75: percentile(warmFeedbackSamples, .75), p95: percentile(warmFeedbackSamples, .95)},
+      navigation: {p50: percentile(warmNavigationSamples, .5), p75: percentile(warmNavigationSamples, .75), p95: percentile(warmNavigationSamples, .95)},
+    },
     cls,
   }
   testInfo.annotations.push({type: 'navigation-performance', description: JSON.stringify(metrics)})
 
-  expect(feedbackSamples).toHaveLength(transitions.length + 1)
-  expect(navigationSamples).toHaveLength(transitions.length + 1)
-  expect(skeletonSamples).toHaveLength(1)
-  expect(metrics.feedback.p75).toBeLessThanOrEqual(100)
-  expect(metrics.navigation.p75).toBeLessThanOrEqual(800)
-  expect(metrics.skeleton.p75).toBeLessThanOrEqual(150)
+  expect(warmFeedbackSamples).toHaveLength(10)
+  expect(warmNavigationSamples).toHaveLength(10)
+  expect(metrics.warm.feedback.p75).toBeLessThanOrEqual(100)
+  expect(metrics.warm.navigation.p75).toBeLessThanOrEqual(800)
   expect(metrics.cls).toBeLessThan(.1)
 })

@@ -1,4 +1,5 @@
 import type {Locale} from '../../i18n/config'
+import {decodeChatConversationCursor, decodeChatMessageCursor, decodeCursor, decodeLikedCursor, decodeNotificationCursor, encodeChatConversationCursor, encodeChatMessageCursor, encodeCursor, encodeLikedCursor, encodeNotificationCursor} from '@aifans/contracts'
 
 export function authHref(locale: Locale, returnTo: string): string {
   const safeReturn = readUserReturnTo(locale, returnTo) ?? `/${locale}`
@@ -20,6 +21,37 @@ function hasOnlyQueryKeys(query: string, keys: readonly string[]): boolean {
   if (!queryIsWellFormed(query)) return false
   const params = new URLSearchParams(query)
   return [...params].every(([key, value]) => keys.includes(key) && value.length > 0)
+}
+
+function isCanonicalCursor(cursor: string, kind: 'conversation' | 'message' | 'liked' | 'notifications' | 'saved'): boolean {
+  try {
+    if (kind === 'conversation') return encodeChatConversationCursor(decodeChatConversationCursor(cursor)) === cursor
+    if (kind === 'message') return encodeChatMessageCursor(decodeChatMessageCursor(cursor)) === cursor
+    if (kind === 'liked') return encodeLikedCursor(decodeLikedCursor(cursor)) === cursor
+    if (kind === 'notifications') return encodeNotificationCursor(decodeNotificationCursor(cursor)) === cursor
+    return encodeCursor(decodeCursor(cursor, 'following')) === cursor
+  } catch { return false }
+}
+
+function hasCanonicalCursor(query: string, kind: 'conversation' | 'message' | 'liked'): boolean {
+  if (!query) return true
+  if (!queryIsWellFormed(query)) return false
+  const params = new URLSearchParams(query)
+  if ([...params.keys()].some((key) => key !== 'cursor') || params.getAll('cursor').length !== 1) return false
+  const cursor = params.get('cursor')
+  if (!cursor) return false
+  return isCanonicalCursor(cursor, kind)
+}
+
+function hasCanonicalActivityQuery(query: string): boolean {
+  if (!query) return true
+  if (!queryIsWellFormed(query)) return false
+  const params = new URLSearchParams(query)
+  if ([...params.keys()].some((key) => key !== 'tab' && key !== 'cursor') || params.getAll('tab').length > 1 || params.getAll('cursor').length > 1) return false
+  const tab = params.get('tab') ?? 'notifications'
+  if (tab !== 'notifications' && tab !== 'liked' && tab !== 'saved') return false
+  const cursor = params.get('cursor')
+  return cursor === null || (cursor.length > 0 && isCanonicalCursor(cursor, tab))
 }
 
 function hasSafeSearchQuery(query: string): boolean {
@@ -54,7 +86,14 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
 
   if (pathname === `${base}/search`) return hasSafeSearchQuery(query) ? value : undefined
 
-  const exactPaths = new Set([`${base}/messages`, `${base}/profile`, `${base}/creator`])
+  if (pathname === `${base}/messages`) return hasCanonicalCursor(query, 'conversation') ? value : undefined
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+  if (new RegExp(`^${base}/messages/${uuid}$`, 'i').test(pathname)) return hasCanonicalCursor(query, 'message') ? value : undefined
+  if (pathname === `${base}/liked`) return hasCanonicalCursor(query, 'liked') ? value : undefined
+  if (pathname === `${base}/settings`) return hasOnlyQueryKeys(query, []) ? value : undefined
+  if (pathname === `${base}/activity`) return hasCanonicalActivityQuery(query) ? value : undefined
+
+  const exactPaths = new Set([`${base}/profile`, `${base}/creator`])
   if (exactPaths.has(pathname)) return hasOnlyQueryKeys(query, []) ? value : undefined
 
   const cursorPaths = new Set([`${base}/notifications`, `${base}/bookmarks`])

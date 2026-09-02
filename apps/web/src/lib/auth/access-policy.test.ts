@@ -32,4 +32,35 @@ describe('getOptionalPageAccess', () => {
   it('reuses a non-empty token for optional personalized reads', async () => {
     await expect(getOptionalPageAccess({getToken: async () => 'token'})).resolves.toEqual({status: 'authenticated', token: 'token'})
   })
+
+  it('downgrades a token provider timeout to anonymous and clears its timer', async () => {
+    vi.useFakeTimers()
+    try {
+      const access = getOptionalPageAccess({getToken: () => new Promise<string>(() => undefined), timeoutMs: 25})
+
+      await vi.advanceTimersByTimeAsync(25)
+
+      await expect(access).resolves.toEqual({status: 'anonymous'})
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('handles a provider rejection that arrives after the optional timeout', async () => {
+    vi.useFakeTimers()
+    let reject!: (error: Error) => void
+    const provider = new Promise<string>((_resolve, rejectProvider) => { reject = rejectProvider })
+    try {
+      const access = getOptionalPageAccess({getToken: () => provider, timeoutMs: 25})
+
+      await vi.advanceTimersByTimeAsync(25)
+      reject(new Error('late provider rejection'))
+
+      await expect(access).resolves.toEqual({status: 'anonymous'})
+      await Promise.resolve()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

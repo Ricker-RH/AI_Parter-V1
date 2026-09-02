@@ -77,6 +77,17 @@ describe('AIFANS auth panel', () => {
     expect(screen.queryByText(/Luna/)).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['en', 'sign-in', undefined, 'Return to Home', '/en'],
+    ['en', 'sign-up', undefined, 'Return to Home', '/en'],
+    ['zh-CN', 'forgot-password', undefined, '返回首页', '/zh-CN'],
+    ['zh-CN', 'reset-password', 'reset-token', '返回首页', '/zh-CN'],
+  ] as const)('keeps a locale public-Home return link available for %s %s', (locale, mode, resetToken, label, href) => {
+    render(<AuthPanel configured={false} locale={locale} mode={mode} {...(resetToken ? {resetToken} : {})} />)
+
+    expect(screen.getByRole('link', {name: label})).toHaveAttribute('href', href)
+  })
+
   it('submits email/password sign-in and offers Google OAuth', async () => {
     const client = actions()
     render(<AuthPanel actions={client} configured locale="en" mode="sign-in" returnTo="/en/admin" />)
