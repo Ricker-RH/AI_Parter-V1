@@ -30,15 +30,16 @@ describe('SocialSurface', () => {
     expect(viewport).not.toContainElement(screen.getByRole('heading', {name: 'For You'}))
   })
 
-  it('uses a fixed desktop frame, a clipped hidden-scrollbar viewport, and no phone frame', () => {
+  it('puts the desktop frame on the scrolling viewport while leaving the header unframed', () => {
     const root = process.cwd().endsWith('/apps/web') ? 'src/components/social' : 'apps/web/src/components/social'
     const stylesheet = readFileSync(`${root}/SocialSurface.module.css`, 'utf8')
 
-    expect(stylesheet).toMatch(/\.surface\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*overflow:\s*hidden/)
+    expect(stylesheet).toMatch(/\.surface\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%/)
+    expect(stylesheet).not.toMatch(/\.surface\s*\{[^}]*\bborder(?:-radius)?\s*:/)
     expect(stylesheet).toMatch(/\.viewport\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*none/)
     expect(stylesheet).toMatch(/\.viewport::-webkit-scrollbar\s*\{[^}]*display:\s*none/)
-    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
-    expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*?\.surface\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/)
+    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.viewport\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px[^}]*overflow:\s*hidden auto/)
+    expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*?\.viewport\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/)
     expect(stylesheet).toMatch(/\[data-social-surface-fill\]\s*\{[^}]*min-height:\s*100%/)
   })
 })

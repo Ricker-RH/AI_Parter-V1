@@ -223,6 +223,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 
 .desktop-nav {
+  border-right: 0;
   padding: 24px 20px;
 }
 .nav-sticky,

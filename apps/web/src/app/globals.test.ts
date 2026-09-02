@@ -73,7 +73,7 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('uses one fixed rounded desktop surface instead of attaching frame edges to content children', () => {
-    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
+    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.viewport\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
     expect(stylesheet).not.toMatch(/\.home-page > \.feed-list > :(?:first|last|only)-child/)
     expect(stylesheet).not.toMatch(/\.post-detail-content > :(?:first|last|only)-child/)
   })
@@ -135,7 +135,11 @@ describe('ordinary-user fluid shell CSS contract', () => {
 
   it('makes post detail one bounded scroll region beneath opaque fixed chrome', () => {
     expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*height: 100%/)
-    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*overflow:\s*hidden/)
+    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%/)
     expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*overflow-y:\s*auto/)
+  })
+
+  it('keeps the desktop left navigation free of a right frame edge', () => {
+    expect(stylesheet).toMatch(/\.desktop-nav\s*\{[^}]*border-right:\s*0/)
   })
 })
