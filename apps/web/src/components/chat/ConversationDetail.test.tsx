@@ -1,6 +1,7 @@
 import {StrictMode} from 'react'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
+import {encodeChatConversationCursor, encodeChatMessageCursor} from '@aifans/contracts'
 import {ConversationDetail} from './ConversationDetail.js'
 import {MessagesSectionHeader} from './MessagesSectionHeader.js'
 
@@ -80,11 +81,13 @@ describe('ConversationDetail', () => {
 
   it('redirects an expired earlier-history read to full-page sign-in', async () => {
     const assign = vi.fn()
+    const listCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id: first.conversation.id})
+    const historyCursor = encodeChatMessageCursor({v: 1, kind: 'chat-messages', createdAt: '2026-08-31T00:00:00.000Z', id: first.items[0]!.id})
     vi.stubGlobal('location', {assign})
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
-    render(<ConversationDetail history={{...first, nextCursor: 'older-page'}} labels={labels} locale="en" />)
+    render(<ConversationDetail history={{...first, nextCursor: historyCursor}} labels={labels} listCursor={listCursor} locale="en" />)
     fireEvent.click(screen.getByRole('button', {name: 'Load earlier messages'}))
-    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${first.conversation.id}`)}`))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${first.conversation.id}?listCursor=${listCursor}&cursor=${historyCursor}`)}`))
   })
 
   it('does not merge a late older-history response into a newly selected conversation', async () => {

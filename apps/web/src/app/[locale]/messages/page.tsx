@@ -3,12 +3,14 @@ import {MessagesWorkspace} from '../../../components/chat/MessagesWorkspace'
 import {getMessages, isLocale} from '../../../i18n/config'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 import {fetchConversations} from '../../../lib/chat-api'
+import {isCanonicalChatConversationCursor} from '../../../lib/auth/return-to'
 
-export default async function MessagesPage({params, searchParams}: {params: Promise<{locale: string}>; searchParams: Promise<{cursor?: string | string[]}>}) {
+export default async function MessagesPage({params, searchParams}: {params: Promise<{locale: string}>; searchParams: Promise<{cursor?: string | string[]; [key: string]: string | string[] | undefined}>}) {
   const {locale} = await params
   if (!isLocale(locale)) notFound()
-  const {cursor: candidateCursor} = await searchParams
-  const cursor = typeof candidateCursor === 'string' ? candidateCursor : undefined
+  const query = await searchParams
+  const candidateCursor = query.cursor
+  const cursor = Object.keys(query).every((key) => key === 'cursor') && typeof candidateCursor === 'string' && isCanonicalChatConversationCursor(candidateCursor) ? candidateCursor : undefined
   const returnTo = `/${locale}/messages${cursor ? `?${new URLSearchParams({cursor})}` : ''}`
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)

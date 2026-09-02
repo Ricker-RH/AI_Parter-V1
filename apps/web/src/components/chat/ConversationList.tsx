@@ -42,17 +42,28 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
     if (!cursor || loadingRef.current) return
     loadingRef.current = true; setLoadingMore(true); setLoadMoreError(false)
     const request = new AbortController(); controller.current = request
+    const current = () => mounted.current && controller.current === request && !request.signal.aborted
     try {
       const response = await fetch(`/api/conversations?${new URLSearchParams({cursor})}`, {method: 'GET', signal: request.signal})
-      if (!mounted.current || request.signal.aborted) { await cancelBody(response); return }
-      if (response.status === 401) { await cancelBody(response); globalThis.location.assign(authHref(locale, `/${locale}/messages${initialCursor ? `?${new URLSearchParams({cursor: initialCursor})}` : ''}`)); return }
+      if (!current()) { await cancelBody(response); return }
+      if (response.status === 401) {
+        await cancelBody(response)
+        if (!current()) return
+        const returnTo = selectedId
+          ? `/${locale}/messages/${selectedId}${initialCursor ? `?${new URLSearchParams({listCursor: initialCursor})}` : ''}`
+          : `/${locale}/messages${initialCursor ? `?${new URLSearchParams({cursor: initialCursor})}` : ''}`
+        globalThis.location.assign(authHref(locale, returnTo))
+        return
+      }
       if (!response.ok) { await cancelBody(response); throw Error('unavailable') }
-      const parsed = ChatConversationPageSchema.safeParse(await response.json())
+      const value: unknown = await response.json()
+      const parsed = ChatConversationPageSchema.safeParse(value)
+      if (!current()) return
       if (!parsed.success) throw Error('unavailable')
       setEntries((current) => appendUnique(current, initialEntries(parsed.data.items, cursor)))
       setNextCursor(parsed.data.nextCursor)
     } catch (error) {
-      if (mounted.current && (error as Error).name !== 'AbortError') setLoadMoreError(true)
+      if (current() && (error as Error).name !== 'AbortError') setLoadMoreError(true)
     } finally {
       if (controller.current !== request) return
       controller.current = null

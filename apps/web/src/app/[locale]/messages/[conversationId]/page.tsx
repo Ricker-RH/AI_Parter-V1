@@ -23,7 +23,7 @@ export default async function ConversationPage({params, searchParams}: {params: 
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
   if (access.status === 'unavailable') return <MessagesWorkspace items={[]} labels={messages.chat} listUnavailable locale={locale}/>
-  const [list, history] = await Promise.all([fetchConversations({token: access.token, ...(listCursor ? {cursor: listCursor} : {})}), fetchConversationHistory(conversationId, {token: access.token})])
+  const [list, history] = await Promise.all([fetchConversations({token: access.token, ...(listCursor ? {cursor: listCursor} : {})}), fetchConversationHistory(conversationId, {token: access.token, ...(historyCursor ? {cursor: historyCursor} : {})})])
   if (list.status === 'auth-required' || history.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   if (history.status === 'not-found') notFound()
   const items = list.status === 'ok' ? list.data.items : []

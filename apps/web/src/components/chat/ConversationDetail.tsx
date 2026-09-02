@@ -68,7 +68,16 @@ function ConversationDetailContent({history, labels, listCursor, locale, section
     try {
       const response = await fetch(`/api/conversations/${encodeURIComponent(targetConversationId)}/messages?${new URLSearchParams({cursor})}`, {method: 'GET', signal: request.signal})
       if (!current()) { await cancelBody(response); return }
-      if (response.status === 401) { await cancelBody(response); if (current()) globalThis.location.assign(authHref(locale, `/${locale}/messages/${targetConversationId}${listCursor ? `?${new URLSearchParams({listCursor})}` : ''}`)); return }
+      if (response.status === 401) {
+        await cancelBody(response)
+        if (current()) {
+          const returnQuery = new URLSearchParams()
+          if (listCursor) returnQuery.set('listCursor', listCursor)
+          returnQuery.set('cursor', cursor)
+          globalThis.location.assign(authHref(locale, `/${locale}/messages/${targetConversationId}?${returnQuery}`))
+        }
+        return
+      }
       if (!response.ok) { await cancelBody(response); if (!current()) return; throw Error('unavailable') }
       const value: unknown = await response.json()
       if (!current()) return

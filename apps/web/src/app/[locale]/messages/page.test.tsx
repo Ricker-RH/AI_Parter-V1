@@ -1,5 +1,6 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {encodeChatConversationCursor, encodeChatMessageCursor} from '@aifans/contracts'
 import en from '../../../../messages/en.json'
 import zh from '../../../../messages/zh-CN.json'
 
@@ -44,6 +45,27 @@ describe('persistent messages list page', () => {
 
   it('ignores repeated query values instead of passing an array to chat reads', async () => {
     render(await MessagesPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({cursor: ['first', 'second']})}))
+    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/messages'})
+    expect(conversations).toHaveBeenCalledWith({token: 'token'})
+  })
+
+  it('uses only a canonical conversation cursor for the list read and auth return path', async () => {
+    const cursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id: conversation.id})
+    render(await MessagesPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({cursor})}))
+
+    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: `/en/messages?cursor=${encodeURIComponent(cursor)}`})
+    expect(conversations).toHaveBeenCalledWith({cursor, token: 'token'})
+    expect(screen.getByRole('link', {name: /Luma/})).toHaveAttribute('href', `/en/messages/${conversation.id}?listCursor=${encodeURIComponent(cursor)}`)
+  })
+
+  it.each([
+    {name: 'malformed', query: {cursor: 'not-a-cursor'}},
+    {name: 'message-kind', query: {cursor: encodeChatMessageCursor({v: 1, kind: 'chat-messages', createdAt: '2026-09-01T00:00:00.000Z', id: conversation.id})}},
+    {name: 'duplicate', query: {cursor: ['first', 'second']}},
+    {name: 'unknown-key', query: {cursor: encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id: conversation.id}), unknown: 'value'}},
+  ])('drops an invalid $name query before access and list reads', async ({query}) => {
+    render(await MessagesPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve(query)}))
+
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/messages'})
     expect(conversations).toHaveBeenCalledWith({token: 'token'})
   })

@@ -1,6 +1,6 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
-import {encodeChatConversationCursor} from '@aifans/contracts'
+import {encodeChatConversationCursor, encodeChatMessageCursor} from '@aifans/contracts'
 
 const {access, conversations, history, redirectToUserSignIn, notFound} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn(), history: vi.fn(), redirectToUserSignIn: vi.fn(), notFound: vi.fn()}))
 vi.mock('../../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn}))
@@ -36,6 +36,16 @@ describe('persistent conversation detail page', () => {
     expect(screen.getByRole('link', {name: 'Back'})).toHaveAttribute('href', `/en/messages?cursor=${encodeURIComponent(listCursor)}`)
   })
 
+  it('keeps conversation-list and message-history cursor kinds separate', async () => {
+    const listCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id})
+    const historyCursor = encodeChatMessageCursor({v: 1, kind: 'chat-messages', createdAt: '2026-08-31T00:00:00.000Z', id})
+    render(await ConversationPage({params: Promise.resolve({locale: 'en', conversationId: id}), searchParams: Promise.resolve({listCursor, cursor: historyCursor})}))
+
+    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: `/en/messages/${id}?listCursor=${encodeURIComponent(listCursor)}&cursor=${encodeURIComponent(historyCursor)}`})
+    expect(conversations).toHaveBeenCalledWith({cursor: listCursor, token: 'token'})
+    expect(history).toHaveBeenCalledWith(id, {cursor: historyCursor, token: 'token'})
+  })
+
   it('sends bad ids and unavailable conversations to the not-found boundary', async () => {
     await ConversationPage({params: Promise.resolve({locale: 'en', conversationId: 'not-an-id'}), searchParams: Promise.resolve({})})
     expect(notFound).toHaveBeenCalled()
@@ -62,7 +72,7 @@ describe('persistent conversation detail page', () => {
     expect(screen.getByRole('button', {name: 'Load earlier messages'})).toBeVisible()
   })
 
-  it('always renders the latest transcript page instead of replacing it with a cursor page', async () => {
+  it('ignores a noncanonical history cursor instead of poisoning the history read', async () => {
     history.mockResolvedValue({status: 'ok', data: {conversation, items: [], nextCursor: null}})
     render(await ConversationPage({params: Promise.resolve({locale: 'en', conversationId: id}), searchParams: Promise.resolve({cursor: 'older'})}))
     expect(history).toHaveBeenCalledWith(id, {token: 'token'})

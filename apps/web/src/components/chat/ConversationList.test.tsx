@@ -104,6 +104,50 @@ describe('ConversationList', () => {
     resolvers[1]!(Response.json({items: [], nextCursor: null}))
   })
 
+  it('returns a selected desktop detail to sign-in with its conversation-list cursor on 401', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('location', {assign})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
+    render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor} selectedId={item.id}/>)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${item.id}?listCursor=${originCursor}`)}`))
+  })
+
+  it('ignores a pagination body that finishes parsing after the list was reset', async () => {
+    let resolveJson!: (value: unknown) => void
+    const stale = {...item, id: '44444444-4444-4444-8444-444444444444', ipProfile: {...item.ipProfile, displayName: 'Stale after JSON'}}
+    const current = {...item, id: '55555555-5555-4555-8555-555555555555', ipProfile: {...item.ipProfile, displayName: 'Current after reset'}}
+    const json = vi.fn().mockReturnValue(new Promise<unknown>((resolve) => { resolveJson = resolve }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({status: 200, ok: true, body: null, json} as unknown as Response))
+    const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    await waitFor(() => expect(json).toHaveBeenCalledOnce())
+
+    rerender(<ConversationList items={[current]} labels={labels} locale="en" nextCursor={null}/>)
+    resolveJson({items: [stale], nextCursor: null})
+
+    await waitFor(() => expect(screen.getByRole('link', {name: /Current after reset/})).toBeVisible())
+    expect(screen.queryByRole('link', {name: /Stale after JSON/})).toBeNull()
+  })
+
+  it('ignores a pagination body parse failure after the list was reset', async () => {
+    let rejectJson!: (reason: Error) => void
+    const current = {...item, id: '55555555-5555-4555-8555-555555555555', ipProfile: {...item.ipProfile, displayName: 'Current after rejected JSON'}}
+    const json = vi.fn().mockReturnValue(new Promise<unknown>((_resolve, reject) => { rejectJson = reject }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({status: 200, ok: true, body: null, json} as unknown as Response))
+    const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    await waitFor(() => expect(json).toHaveBeenCalledOnce())
+
+    rerender(<ConversationList items={[current]} labels={labels} locale="en" nextCursor={null}/>)
+    rejectJson(new Error('stale body parse failure'))
+
+    await waitFor(() => expect(screen.getByRole('link', {name: /Current after rejected JSON/})).toBeVisible())
+    expect(screen.queryByText(labels.loadMoreError)).toBeNull()
+  })
+
   it('renders an exclusive unavailable state without an active search or empty-inbox copy', () => {
     render(<ConversationList items={[]} labels={labels} locale="en" unavailable/>)
     expect(screen.getByRole('alert')).toHaveTextContent('Messages are unavailable right now.')
