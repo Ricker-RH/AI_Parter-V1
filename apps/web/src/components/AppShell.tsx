@@ -23,5 +23,5 @@ export function AppShell({authConfigured=false, creatorModeEnabled=true, locale,
     case 'creator': shell = <CreatorShell>{children}</CreatorShell>; break
     default: shell = <PublicShell creatorModeEnabled={creatorModeEnabled} labels={labels} locale={locale} suppressMobileTopBar={/^\/(?:en|zh-CN)\/(?:posts|profiles)\/[^/]+$/.test(pathname)}>{children}</PublicShell>
   }
-  return <>{shell}<RouteReadySignal content={children}/><NavigationFeedback locale={locale} release={release}/></>
+  return <div data-app-shell="shared-interactive" style={{display: 'contents'}}>{shell}<RouteReadySignal content={children}/><NavigationFeedback locale={locale} release={release}/></div>
 }

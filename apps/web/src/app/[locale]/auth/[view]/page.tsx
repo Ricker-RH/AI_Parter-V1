@@ -1,10 +1,12 @@
 import {notFound} from 'next/navigation'
+import {connection} from 'next/server'
 import {AuthPanel, type AuthMode} from '../../../../components/auth/AuthPanel'
 import {isLocale} from '../../../../i18n/config'
 import {readWebAuthEnv} from '../../../../lib/auth/env'
 import {readAdminReturnTo, readUserReturnTo} from '../../../../lib/auth/return-to'
 
-export const dynamic = 'force-dynamic'
+// The recovery target is request URL data and intentionally remains blocking for now.
+export const instant = false
 
 const authModes = new Set<AuthMode>(['sign-in', 'sign-up', 'forgot-password', 'reset-password'])
 
@@ -21,6 +23,7 @@ export default async function AuthPage({
   params: Promise<{locale: string; view: string}>
   searchParams: Promise<{token?: string | string[]; next?: string | string[]}>
 }) {
+  await connection()
   const {locale, view} = await params
   if (!isLocale(locale) || !authModes.has(view as AuthMode)) notFound()
   const configuration = readWebAuthEnv(process.env)

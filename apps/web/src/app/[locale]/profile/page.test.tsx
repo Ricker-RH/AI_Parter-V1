@@ -1,14 +1,18 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {access} = vi.hoisted(() => ({access: vi.fn()}))
+const {access, connection} = vi.hoisted(() => ({access: vi.fn(), connection: vi.fn()}))
 vi.mock('../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access}))
+vi.mock('next/server', () => ({connection}))
 
-import ProfilePage from './page.js'
+import * as profileRoute from './page.js'
+
+const ProfilePage = profileRoute.default
 
 describe('my profile page', () => {
   beforeEach(() => {
     access.mockReset().mockResolvedValue({status: 'authenticated', token: 'token'})
+    connection.mockReset().mockResolvedValue(undefined)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
       id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30',
       kind: 'human',
@@ -18,6 +22,14 @@ describe('my profile page', () => {
       preferredLocale: 'en',
       creatorModeEnabled: false,
     })))
+  })
+
+  it('keeps private profile access non-instant and waits for a request before auth', async () => {
+    await ProfilePage({params: Promise.resolve({locale: 'en'})})
+
+    expect(profileRoute.instant).toBe(false)
+    expect(connection).toHaveBeenCalledOnce()
+    expect(connection.mock.invocationCallOrder[0]).toBeLessThan(access.mock.invocationCallOrder[0] ?? Infinity)
   })
 
   it('uses the shared contextual profile header without a bulky visible page header', async () => {

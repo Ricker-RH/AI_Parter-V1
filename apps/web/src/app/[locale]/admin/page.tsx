@@ -1,11 +1,14 @@
 import {notFound, redirect} from 'next/navigation'
+import {connection} from 'next/server'
 import {AdminConsole} from '../../../components/admin/AdminConsole'
 import {getMessages, isLocale} from '../../../i18n/config'
 import {getOperatorPageAccess} from '../../../lib/operator-access'
 
-export const dynamic = 'force-dynamic'
+// Authorization is request-scoped and has not been migrated to a streaming boundary.
+export const instant = false
 
 export default async function AdminPage({params}: {params: Promise<{locale: string}>}) {
+  await connection()
   const {locale} = await params
   if (!isLocale(locale)) notFound()
   const messages = await getMessages(locale)

@@ -1,10 +1,11 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-const {access, optionalAccess, redirect, authRedirect, currentAccount, fetchBookmarks, fetchFeed, fetchNotifications, fetchPost, fetchPublicProfile, fetchAifansApi} = vi.hoisted(() => ({
+const {access, optionalAccess, redirect, authRedirect, connection, currentAccount, fetchBookmarks, fetchFeed, fetchNotifications, fetchPost, fetchPublicProfile, fetchAifansApi} = vi.hoisted(() => ({
   access: vi.fn(),
   optionalAccess: vi.fn(),
   redirect: vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`) }),
   authRedirect: vi.fn(({locale, returnTo}: {locale: string; returnTo: string}) => { throw new Error(`REDIRECT:/${locale}/auth/sign-in?next=${encodeURIComponent(returnTo)}`) }),
+  connection: vi.fn(),
   currentAccount: vi.fn(async () => ({status: 'anonymous'})),
   fetchBookmarks: vi.fn(async () => ({status: 'unavailable'})),
   fetchFeed: vi.fn(async () => ({status: 'unavailable'})),
@@ -15,6 +16,7 @@ const {access, optionalAccess, redirect, authRedirect, currentAccount, fetchBook
 }))
 
 vi.mock('next/navigation', () => ({notFound: vi.fn(() => { throw new Error('NOT_FOUND') }), redirect}))
+vi.mock('next/server', () => ({connection}))
 vi.mock('../lib/auth/access-policy.js', () => ({getOptionalPageAccess: optionalAccess, requireAuthenticatedPage: access, redirectToUserSignIn: authRedirect}))
 vi.mock('../lib/request-cookie.js', () => ({requestCookie: vi.fn(async () => undefined)}))
 vi.mock('../lib/current-account.js', () => ({fetchCurrentAccountResult: currentAccount}))
@@ -22,7 +24,7 @@ vi.mock('../lib/social-api.js', () => ({fetchBookmarks, fetchFeed, fetchNotifica
 vi.mock('../lib/server-api.js', () => ({fetchAifansApi}))
 
 import BookmarksPage from './[locale]/bookmarks/page.js'
-import CreatorDraftPage from './[locale]/creator/[draftId]/page.js'
+import * as creatorDraftRoute from './[locale]/creator/[draftId]/page.js'
 import CreatorPage from './[locale]/creator/page.js'
 import NotificationsPage from './[locale]/notifications/page.js'
 import PostPage from './[locale]/posts/[postId]/page.js'
@@ -31,6 +33,7 @@ import PublicProfilePage from './[locale]/profiles/[profileId]/page.js'
 import SearchPage from './[locale]/search/page.js'
 
 const draftId = '11111111-1111-4111-8111-111111111111'
+const CreatorDraftPage = creatorDraftRoute.default
 
 describe('protected user pages', () => {
   beforeEach(() => {
@@ -38,12 +41,21 @@ describe('protected user pages', () => {
     access.mockReset().mockResolvedValue({status: 'unavailable'})
     optionalAccess.mockReset().mockResolvedValue({status: 'anonymous'})
     authRedirect.mockReset()
+    connection.mockReset().mockResolvedValue(undefined)
     currentAccount.mockReset().mockResolvedValue({status: 'anonymous'})
     for (const fn of [fetchBookmarks, fetchFeed, fetchNotifications, fetchPost, fetchPublicProfile]) fn.mockReset().mockResolvedValue({status: 'unavailable'})
     fetchAifansApi.mockReset().mockResolvedValue(new Response(null, {status: 503}))
   })
 
   afterEach(() => { delete process.env.CREATOR_MODE_ENABLED })
+
+  it('keeps a private creator draft non-instant and waits for a request before auth', async () => {
+    await CreatorDraftPage({params: Promise.resolve({locale: 'en', draftId})})
+
+    expect(creatorDraftRoute.instant).toBe(false)
+    expect(connection).toHaveBeenCalledOnce()
+    expect(connection.mock.invocationCallOrder[0]).toBeLessThan(access.mock.invocationCallOrder[0] ?? Infinity)
+  })
 
   it.each([
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/bookmarks'],

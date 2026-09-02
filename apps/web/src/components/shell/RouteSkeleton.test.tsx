@@ -13,6 +13,9 @@ describe("RouteSkeleton", () => {
     expect(
       screen.getByRole("status", { name: "正在加载 AIFANS" }),
     ).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("status", { name: "正在加载 AIFANS" }),
+    ).toHaveAttribute("data-navigation-mode", "non-instant");
     expect(container.querySelector(`.route-skeleton--${variant}`)).toBeTruthy();
     expect(container.querySelectorAll(".route-skeleton-card")).toHaveLength(
       cardCount,

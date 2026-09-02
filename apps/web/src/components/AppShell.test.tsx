@@ -1,5 +1,8 @@
 import {fireEvent, render, screen} from '@testing-library/react'
+import type {ReactNode} from 'react'
+import {Suspense} from 'react'
 import {describe, expect, it, vi} from 'vitest'
+import nextConfig from '../../next.config.js'
 
 let pathname = '/en'
 vi.mock('next/navigation', () => ({usePathname: () => pathname, useSearchParams: () => new URLSearchParams()}))
@@ -13,6 +16,20 @@ const labels = {
 }
 
 describe('AppShell', () => {
+  it('enables Cache Components with manual instant validation without Partial Prefetching', () => {
+    expect(nextConfig.cacheComponents).toBe(true)
+    expect(nextConfig.experimental?.instantInsights?.validationLevel).toBe('manual-warning')
+    expect(nextConfig.partialPrefetching).toBeUndefined()
+  })
+
+  it('keeps the shared interactive shell visible while route data is pending', () => {
+    pathname = '/en'
+    render(<AppShell locale="en" labels={labels}><PendingRouteData/></AppShell>)
+    expect(document.querySelector('[data-app-shell="shared-interactive"]')).toBeVisible()
+    expect(screen.getAllByRole('navigation').length).toBeGreaterThan(0)
+    expect(screen.getByText('Route data fallback')).toBeVisible()
+  })
+
   it('renders complete social navigation without a human compose action', () => {
     render(<AppShell locale="en" labels={labels}><main>Feed</main></AppShell>)
     expect(screen.getAllByRole('navigation').length).toBeGreaterThan(0)
@@ -104,3 +121,11 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
   })
 })
+
+function PendingRouteData() {
+  return <Suspense fallback={<main>Route data fallback</main>}><DeferredRouteData/></Suspense>
+}
+
+function DeferredRouteData(): ReactNode {
+  throw new Promise(() => undefined)
+}

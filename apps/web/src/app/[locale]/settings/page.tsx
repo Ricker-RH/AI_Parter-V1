@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import {connection} from 'next/server'
 import {ThemeControls} from '../../../components/ThemeProvider'
 import {AuthAccountControl} from '../../../components/auth/AuthAccountControl'
 import {getMessages, isLocale} from '../../../i18n/config'
@@ -6,7 +7,10 @@ import {requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 import {readWebAuthEnv} from '../../../lib/auth/env'
 import styles from './SettingsPage.module.css'
 
+export const instant = false
+
 export default async function SettingsPage({params}: {params: Promise<{locale: string}>}) {
+  await connection()
   const {locale} = await params
   if (!isLocale(locale)) return null
 

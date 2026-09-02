@@ -3,15 +3,27 @@ import {beforeEach,describe,expect,it,vi} from 'vitest'
 import en from '../../../../messages/en.json'
 import zh from '../../../../messages/zh-CN.json'
 
-const {access}=vi.hoisted(()=>({access:vi.fn()}))
+const {access,connection}=vi.hoisted(()=>({access:vi.fn(),connection:vi.fn()}))
 vi.mock('../../../lib/auth/access-policy.js',()=>({requireAuthenticatedPage:access}))
+vi.mock('next/server',()=>({connection}))
 vi.mock('next/navigation',()=>({notFound:vi.fn()}))
 
-import CreatorPage from './page.js'
+import * as creatorRoute from './page.js'
+
+const CreatorPage = creatorRoute.default
 
 describe('creator center page',()=>{
   beforeEach(()=>{
     access.mockReset().mockResolvedValue({status:'unavailable'})
+    connection.mockReset().mockResolvedValue(undefined)
+  })
+
+  it('keeps private creator access non-instant and waits for a request before auth',async()=>{
+    await CreatorPage({params:Promise.resolve({locale:'en'})})
+
+    expect(creatorRoute.instant).toBe(false)
+    expect(connection).toHaveBeenCalledOnce()
+    expect(connection.mock.invocationCallOrder[0]).toBeLessThan(access.mock.invocationCallOrder[0]??Infinity)
   })
 
   it.each([

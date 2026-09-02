@@ -1,9 +1,13 @@
 import {MyProfilePanel} from '../../../components/profile/MyProfilePanel'
 import {notFound} from 'next/navigation'
+import {connection} from 'next/server'
 import {getMessages, isLocale} from '../../../i18n/config'
 import {requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 
+export const instant = false
+
 export default async function ProfilePage({params}: {params: Promise<{locale: string}>}) {
+  await connection()
   const {locale} = await params
   if (!isLocale(locale)) notFound()
   const access = await requireAuthenticatedPage({locale, returnTo: `/${locale}/profile`})

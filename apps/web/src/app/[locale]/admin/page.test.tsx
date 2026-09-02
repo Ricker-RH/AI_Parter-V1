@@ -3,20 +3,33 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 import en from '../../../../messages/en.json'
 import zh from '../../../../messages/zh-CN.json'
 
-const access = vi.hoisted(() => vi.fn())
+const {access, connection} = vi.hoisted(() => ({access: vi.fn(), connection: vi.fn()}))
 vi.mock('../../../lib/operator-access.js', () => ({getOperatorPageAccess: access}))
+vi.mock('next/server', () => ({connection}))
 vi.mock('next/navigation', () => ({
   notFound: vi.fn(() => { throw new Error('NOT_FOUND') }),
   redirect: vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`) }),
 }))
 
-import AdminPage, {dynamic} from './page.js'
+import * as adminRoute from './page.js'
+
+const AdminPage = adminRoute.default
 
 describe('localized operator console page', () => {
-  beforeEach(() => access.mockReset().mockResolvedValue('operator'))
+  beforeEach(() => {
+    access.mockReset().mockResolvedValue('operator')
+    connection.mockReset().mockResolvedValue(undefined)
+  })
 
-  it('forces request-time authorization instead of prerendering the console', () => {
-    expect(dynamic).toBe('force-dynamic')
+  it('keeps request-time authorization explicitly non-instant', () => {
+    expect(adminRoute.instant).toBe(false)
+  })
+
+  it('waits for a request before reading operator access', async () => {
+    await AdminPage({params: Promise.resolve({locale: 'en'})})
+
+    expect(connection).toHaveBeenCalledOnce()
+    expect(connection.mock.invocationCallOrder[0]).toBeLessThan(access.mock.invocationCallOrder[0] ?? Infinity)
   })
 
   it('keeps complete bilingual admin copy parity', () => {

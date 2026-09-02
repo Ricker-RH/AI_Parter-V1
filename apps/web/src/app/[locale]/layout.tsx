@@ -10,6 +10,10 @@ import {readWebAuthEnv} from '../../lib/auth/env'
 import {isCreatorModeEnabled} from '../../lib/creator-mode'
 import {analyticsRelease} from '../../lib/analytics/release'
 
+// Route data has not yet been migrated to cache/streaming boundaries.
+// Keep the whole locale tree honest until each route opts into instant validation.
+export const instant = false
+
 export function generateStaticParams() {
   return locales.map((locale) => ({locale}))
 }
