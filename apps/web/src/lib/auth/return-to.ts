@@ -1,5 +1,5 @@
 import type {Locale} from '../../i18n/config'
-import {decodeChatConversationCursor, decodeChatMessageCursor, decodeCursor, decodeLikedCursor, decodeNotificationCursor, encodeChatConversationCursor, encodeChatMessageCursor, encodeCursor, encodeLikedCursor, encodeNotificationCursor} from '@aifans/contracts'
+import {decodeChatConversationCursor, decodeChatMessageCursor, decodeCursor, decodeLikedCursor, encodeChatConversationCursor, encodeChatMessageCursor, encodeCursor, encodeLikedCursor} from '@aifans/contracts'
 
 export function authHref(locale: Locale, returnTo: string): string {
   const safeReturn = readUserReturnTo(locale, returnTo) ?? `/${locale}`
@@ -23,12 +23,11 @@ function hasOnlyQueryKeys(query: string, keys: readonly string[]): boolean {
   return [...params].every(([key, value]) => keys.includes(key) && value.length > 0)
 }
 
-function isCanonicalCursor(cursor: string, kind: 'conversation' | 'message' | 'liked' | 'notifications' | 'saved'): boolean {
+function isCanonicalCursor(cursor: string, kind: 'conversation' | 'message' | 'liked' | 'saved'): boolean {
   try {
     if (kind === 'conversation') return encodeChatConversationCursor(decodeChatConversationCursor(cursor)) === cursor
     if (kind === 'message') return encodeChatMessageCursor(decodeChatMessageCursor(cursor)) === cursor
     if (kind === 'liked') return encodeLikedCursor(decodeLikedCursor(cursor)) === cursor
-    if (kind === 'notifications') return encodeNotificationCursor(decodeNotificationCursor(cursor)) === cursor
     return encodeCursor(decodeCursor(cursor, 'following')) === cursor
   } catch { return false }
 }
@@ -48,8 +47,8 @@ function hasCanonicalActivityQuery(query: string): boolean {
   if (!queryIsWellFormed(query)) return false
   const params = new URLSearchParams(query)
   if ([...params.keys()].some((key) => key !== 'tab' && key !== 'cursor') || params.getAll('tab').length > 1 || params.getAll('cursor').length > 1) return false
-  const tab = params.get('tab') ?? 'notifications'
-  if (tab !== 'notifications' && tab !== 'liked' && tab !== 'saved') return false
+  const tab = params.get('tab') ?? 'liked'
+  if (tab !== 'liked' && tab !== 'saved') return false
   const cursor = params.get('cursor')
   return cursor === null || (cursor.length > 0 && isCanonicalCursor(cursor, tab))
 }

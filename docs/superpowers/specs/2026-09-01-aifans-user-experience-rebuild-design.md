@@ -161,10 +161,10 @@ The bottom navigation is:
 1. Home;
 2. Messages;
 3. `+` for Creator Center/IP creation;
-4. Activity Center;
+4. Collections;
 5. My Profile.
 
-Activity Center uses a segmented control for Notifications, Liked, and Saved.
+Collections uses compact segmented tabs for Liked and Saved, defaulting to Liked. Notifications remains a separate destination.
 
 Home has exactly one primary tab row with `For You` and `Following`. It has no secondary visual-type row, suffix menu, or visual-type query state. Selecting Following as an anonymous visitor opens full-page Auth.
 
@@ -377,7 +377,7 @@ Performance runs use both normal network conditions and a controlled Slow 4G plu
 6. conversation list, send/stream/retry/history, and Dify-unconfigured behavior;
 7. human notification delivery and read state without creator/IP leakage;
 8. report submission, deduplication/rate limiting, and authorized moderation review;
-9. mobile Activity Center switching among independent Notifications, Liked, and Saved data;
+9. mobile Collections switching between independent Liked and Saved data while Notifications remains separate;
 10. Auth, Creator, and Admin shell isolation.
 
 ### Real-browser review

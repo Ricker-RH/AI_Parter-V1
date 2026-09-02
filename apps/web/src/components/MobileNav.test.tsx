@@ -13,8 +13,8 @@ describe('MobileNav', () => {
     render(<MobileNav labels={labels} locale="en" />)
 
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label')))
-      .toEqual(['Home', 'Messages', 'Creator Center', 'Activity', 'My Profile'])
-    expect(screen.getByRole('link', {name: 'Activity'})).toHaveAttribute('href', '/en/activity')
+      .toEqual(['Home', 'Messages', 'Creator Center', 'Collections', 'My Profile'])
+    expect(screen.getByRole('link', {name: 'Collections'})).toHaveAttribute('href', '/en/activity')
   })
 
   it('does not show Creator when creator mode is disabled', () => {
@@ -23,11 +23,11 @@ describe('MobileNav', () => {
     expect(container.querySelector('.mobile-nav')).toHaveAttribute('data-count', '4')
   })
 
-  it('marks Activity as the active destination on the activity route', () => {
+  it('marks Collections as the active destination on the activity route', () => {
     pathname.value = '/en/activity'
     render(<MobileNav labels={labels} locale="en" />)
-    expect(screen.getByRole('link', {name: 'Activity'})).toHaveAttribute('href', '/en/activity')
-    expect(screen.getByRole('link', {name: 'Activity'})).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', {name: 'Collections'})).toHaveAttribute('href', '/en/activity')
+    expect(screen.getByRole('link', {name: 'Collections'})).toHaveAttribute('aria-current', 'page')
     pathname.value = '/en'
   })
 

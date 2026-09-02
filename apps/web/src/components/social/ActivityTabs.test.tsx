@@ -6,12 +6,12 @@ vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.Re
 import {ActivityTabs} from './ActivityTabs.js'
 
 describe('ActivityTabs', () => {
-  it('uses Next links for each internal activity destination', () => {
-    render(<ActivityTabs labels={{activity: 'Activity', bookmarks: 'Saved', liked: 'Liked', notifications: 'Notifications'}} locale="en" selected="notifications" />)
+  it('uses Next links for the compact Liked and Saved collection destinations', () => {
+    render(<ActivityTabs labels={{collections: 'Collections', bookmarks: 'Saved', liked: 'Liked'}} locale="en" selected="liked" />)
 
-    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('data-next-link', 'true')
-    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/activity?tab=notifications')
     expect(screen.getByRole('link', {name: 'Liked'})).toHaveAttribute('data-next-link', 'true')
+    expect(screen.getByRole('link', {name: 'Liked'})).toHaveAttribute('href', '/en/activity?tab=liked')
     expect(screen.getByRole('link', {name: 'Saved'})).toHaveAttribute('data-next-link', 'true')
+    expect(screen.queryByRole('link', {name: 'Notifications'})).toBeNull()
   })
 })

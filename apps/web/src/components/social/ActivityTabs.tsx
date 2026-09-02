@@ -1,23 +1,21 @@
 import Link from 'next/link'
 import styles from './ActivityTabs.module.css'
 
-type ActivityTab = 'notifications' | 'liked' | 'saved'
+type ActivityTab = 'liked' | 'saved'
 
 type Labels = {
-  activity?: string
+  collections?: string
   bookmarks: string
   liked: string
-  notifications: string
 }
 
 export function ActivityTabs({locale, selected, labels}: {locale: string; selected: ActivityTab; labels: Labels}) {
   const tabs: Array<[ActivityTab, string]> = [
-    ['notifications', labels.notifications],
     ['liked', labels.liked],
     ['saved', labels.bookmarks],
   ]
 
-  return <nav aria-label={labels.activity ?? labels.notifications} className={styles.tabs}>
+  return <nav aria-label={labels.collections ?? labels.liked} className={styles.tabs}>
     <div className={styles.list}>
       {tabs.map(([tab, label]) => <Link
         aria-current={selected === tab ? 'page' : undefined}

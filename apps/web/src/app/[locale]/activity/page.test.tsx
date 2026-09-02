@@ -28,6 +28,15 @@ describe('activity center', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
+  it('defaults to Liked and ignores repeated activity query values', async () => {
+    render(await ActivityPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({tab: ['saved', 'liked'], cursor: ['one', 'two']})}))
+    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/activity?tab=liked'})
+    expect(fetchLiked).toHaveBeenCalledWith({cursor: undefined, token: 'token'})
+    expect(fetchBookmarks).not.toHaveBeenCalled()
+    expect(fetchNotifications).not.toHaveBeenCalled()
+    expect(screen.getByRole('link', {name: 'Liked'})).toHaveAttribute('aria-current', 'page')
+  })
+
   it('does not read any activity dataset for an anonymous visitor', async () => {
     access.mockResolvedValue({status: 'unavailable'})
     await ActivityPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({tab: 'saved'})})
@@ -36,9 +45,10 @@ describe('activity center', () => {
     expect(fetchNotifications).not.toHaveBeenCalled()
   })
 
-  it('redirects a stale notification session with its independent cursor', async () => {
-    fetchNotifications.mockResolvedValue({status: 'auth-required'})
-    await ActivityPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({tab: 'notifications', cursor: 'opaque'})})
-    expect(authRedirect).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/activity?tab=notifications&cursor=opaque'})
+  it('redirects a stale Saved session with its independent cursor', async () => {
+    fetchBookmarks.mockResolvedValue({status: 'auth-required'})
+    await ActivityPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({tab: 'saved', cursor: 'opaque'})})
+    expect(authRedirect).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/activity?tab=saved&cursor=opaque'})
+    expect(fetchNotifications).not.toHaveBeenCalled()
   })
 })

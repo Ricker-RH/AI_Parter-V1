@@ -1,21 +1,23 @@
 .tabs {
   border-bottom: 1px solid var(--shell-border);
-  overflow-x: auto;
-  scrollbar-width: thin;
+  padding: 12px 20px;
 }
 
 .list {
+  border: 1px solid var(--shell-border);
+  border-radius: 999px;
   display: flex;
-  min-width: 100%;
-  padding-inline: 24px;
+  margin-inline: auto;
+  max-width: 280px;
+  padding: 2px;
 }
 
 .tab {
   align-items: center;
-  border-bottom: 2px solid transparent;
+  border-radius: 999px;
   color: inherit;
   display: flex;
-  flex: 1 0 0;
+  flex: 1 1 0;
   font-size: 15px;
   justify-content: center;
   min-height: 48px;
@@ -26,17 +28,13 @@
 }
 
 .tab[aria-current='page'] {
-  border-color: currentColor;
+  background: var(--shell-text);
+  color: var(--shell-surface);
   font-weight: 700;
 }
 
 @media (max-width: 480px) {
   .list {
-    min-width: max-content;
-    padding-inline: 16px;
-  }
-
-  .tab {
-    flex: 0 0 min(34vw, 150px);
+    max-width: 100%;
   }
 }
