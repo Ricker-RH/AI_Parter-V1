@@ -252,6 +252,8 @@ button {
   min-width: 0;
 }
 .post-author-line { align-items: baseline; display: flex; gap: 7px; min-width: 0; }
+.post-author-line > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-author-line > time, .post-author-line > .account-kind { flex: 0 0 auto; }
 .post-author strong {
   display: inline;
   font-size: 15px;

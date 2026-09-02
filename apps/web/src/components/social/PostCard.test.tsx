@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import {act} from "react";
+import {hydrateRoot} from "react-dom/client";
+import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedPost } from "@aifans/contracts";
 import { PostCard } from "./PostCard.js";
@@ -47,6 +49,7 @@ const post: FeedPost = {
     { id: "66666666-6666-4666-8666-666666666666", type: "image", url: "https://media.example/four.webp", altText: "Square ratio", width: 800, height: 800, aspectRatio: 1 },
   ],
 };
+const cardReferenceTime = Date.parse('2026-09-02T12:00:00.000Z');
 
 function staticMediaFrames(count: 1 | 2 | 3 | 4) {
   const markup = renderToStaticMarkup(
@@ -55,6 +58,7 @@ function staticMediaFrames(count: 1 | 2 | 3 | 4) {
       labels={labels}
       locale="en"
       post={{ ...post, media: post.media?.slice(0, count) }}
+      referenceTime={cardReferenceTime}
     />,
   );
   const template = document.createElement("template");
@@ -73,7 +77,7 @@ describe("PostCard media geometry", () => {
   afterEach(() => vi.useRealTimers());
 
   it("uses dimensions, contract ratio, then 4:5 fallback for ordinary frames", () => {
-    const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
+    const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
 
     const frames = staticMediaFrames(4);
     expect(frames).toHaveLength(4);
@@ -99,6 +103,7 @@ describe("PostCard media geometry", () => {
         labels={labels}
         locale="en"
         post={{ ...post, media: post.media?.slice(0, count) }}
+        referenceTime={cardReferenceTime}
       />,
     );
 
@@ -115,7 +120,7 @@ describe("PostCard media geometry", () => {
   });
 
   it("shows compact relative time, omits the username row, and keeps the AI/IP badge inline", () => {
-    const {container} = render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
+    const {container} = render(<PostCard linked={false} labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
 
     expect(screen.getByText('2d')).toHaveAttribute('datetime', post.publishedAt);
     expect(container.querySelector('.author-meta')).toBeNull();
@@ -124,7 +129,7 @@ describe("PostCard media geometry", () => {
   });
 
   it("exposes a named keyboard carousel without nesting links and scrolls it with horizontal arrows", () => {
-    const {container} = render(<PostCard labels={labels} locale="en" post={post} />);
+    const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
     const rail = screen.getByRole('region', {name: 'Post media'});
     const scrollBy = vi.fn();
     Object.defineProperties(rail, {
@@ -142,17 +147,48 @@ describe("PostCard media geometry", () => {
   });
 
   it("keeps detail media non-linked while retaining the keyboard-reachable rail", () => {
-    render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
+    render(<PostCard linked={false} labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
 
     const rail = screen.getByRole('region', {name: 'Post media'});
     expect(within(rail).queryByRole('link')).toBeNull();
     expect(rail).toHaveAttribute('tabindex', '0');
   });
+
+  it("hydrates with the server reference time even after crossing a minute boundary", async () => {
+    const referenceTime = Date.parse('2026-09-02T12:00:00.000Z');
+    const boundaryPost = {...post, media: undefined, publishedAt: '2026-09-02T11:59:01.000Z'};
+    const view = <PostCard linked={false} labels={labels} locale="en" post={boundaryPost} referenceTime={referenceTime} />;
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(view);
+    document.body.append(container);
+    expect(container.querySelector('time')).toHaveTextContent('now');
+    vi.setSystemTime(new Date('2026-09-02T12:01:01.000Z'));
+    const hydrationErrors: unknown[] = [];
+
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, view, {onRecoverableError: (error) => hydrationErrors.push(error)});
+    });
+
+    expect(container.querySelector('time')).toHaveTextContent('now');
+    expect(hydrationErrors).toHaveLength(0);
+    await act(async () => root?.unmount());
+    container.remove();
+  });
+
+  it("keeps long display names accessible without sacrificing timestamp metadata", () => {
+    const displayName = 'LongUnbrokenDisplayName'.repeat(4);
+    const {container} = render(<PostCard linked={false} labels={labels} locale="en" post={{...post, author: {...post.author, displayName}}} referenceTime={Date.parse('2026-09-02T12:00:00.000Z')} />);
+
+    expect(screen.getByRole('link', {name: displayName})).toHaveAttribute('title', displayName);
+    expect(container.querySelector('.post-author-line time')).toHaveTextContent('2d');
+    expect(container.querySelector('.post-author-line .account-kind')).toHaveTextContent('AI/IP');
+  });
 });
 
 describe("PostCard public interaction hierarchy", () => {
   it("shows the same icon action row to guests and gates only protected actions", () => {
-    render(<PostCard labels={labels} locale="en" post={post} returnTo="/en" />);
+    render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} returnTo="/en" />);
 
     expect(screen.queryByText(labels.signInToInteract)).toBeNull();
     expect(screen.getByRole("link", {name: labels.like})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
@@ -163,7 +199,7 @@ describe("PostCard public interaction hierarchy", () => {
   });
 
   it("opens a real-data author preview and restores focus on Escape", () => {
-    render(<PostCard labels={labels} locale="en" post={post} />);
+    render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
     const trigger = screen.getByRole("button", {name: "Profile: Luma"});
 
     fireEvent.click(trigger);

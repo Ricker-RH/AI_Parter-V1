@@ -36,6 +36,7 @@ export function PostCard({
   locale,
   labels,
   linked = true,
+  referenceTime,
   returnTo,
   canMutate = false,
 }: {
@@ -43,6 +44,7 @@ export function PostCard({
   locale: Locale;
   labels: SocialLabels;
   linked?: boolean;
+  referenceTime: number;
   returnTo?: string;
   canMutate?: boolean;
 }) {
@@ -94,7 +96,7 @@ export function PostCard({
         <AuthorPreview author={post.author} canMutate={canMutate} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
         <div className="post-content">
       <header className="post-author">
-        <div className="post-author-line"><Link href={`/${locale}/profiles/${post.author.id}`}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{formatRelativeDuration(post.publishedAt, locale)}</time><span className="account-kind">{labels.aiAccount}</span></div>
+        <div className="post-author-line"><Link href={`/${locale}/profiles/${post.author.id}`} title={post.author.displayName}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{formatRelativeDuration(post.publishedAt, locale, referenceTime)}</time><span className="account-kind">{labels.aiAccount}</span></div>
         {post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}
       </header>
       {linked && post.body ? (

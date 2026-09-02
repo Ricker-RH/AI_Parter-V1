@@ -23,6 +23,7 @@ function searchHref(locale: Locale, q: string, category: SearchCategory, cursor?
 }
 
 export function SearchContent({locale, labels, query, category, cursor, result, canMutate = false}: {locale: Locale; labels: SocialLabels; query?: string; category: SearchCategory; cursor?: string; result?: SocialApiResult<SearchPage>; canMutate?: boolean}) {
+  const referenceTime = Date.now()
   const normalized = query?.trim().replace(/\s+/g, ' ') ?? ''
   const returnTo = normalized ? searchHref(locale, normalized, category, cursor) : `/${locale}/search`
   const profileHref = (profileId: string) => canMutate ? `/${locale}/profiles/${profileId}` : authHref(locale, `/${locale}/profiles/${profileId}`)
@@ -46,7 +47,7 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
       : result.data.items.length === 0 ? <div className="empty"><EmptyState title={labels.searchNoResults ?? labels.searchEmptyTitle ?? labels.homeEmptyTitle} /></div>
       : <section aria-labelledby="search-results-title" className="search-results"><h2 className="section-title" id="search-results-title">{labels.searchResults ?? labels.search}</h2><div className="feed-list">
         {result.data.items.map((item) => item.type === 'post'
-          ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} returnTo={returnTo} />
+          ? <PostCard canMutate={canMutate} key={`post-${item.post.id}`} labels={labels} locale={locale} post={item.post} referenceTime={referenceTime} returnTo={returnTo} />
           : <ProfileResult href={profileHref(item.profile.id)} key={`profile-${item.profile.id}`} labels={labels} profile={item.profile}/>)}
         {result.data.nextCursor ? <Link className="load-more" href={searchHref(locale, normalized, category, result.data.nextCursor)}>{labels.loadMore}</Link> : <p className="search-end">{labels.searchEnd ?? labels.loadMore}</p>}
       </div></section>}

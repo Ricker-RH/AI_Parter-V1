@@ -54,6 +54,11 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).not.toContain('background: #f4f4f4')
   })
 
+  it('lets long post author names shrink while keeping time and account metadata visible', () => {
+    expect(stylesheet).toMatch(/\.post-author-line > a \{[^}]*min-width: 0[^}]*overflow: hidden[^}]*text-overflow: ellipsis[^}]*white-space: nowrap/)
+    expect(stylesheet).toMatch(/\.post-author-line > time, \.post-author-line > \.account-kind \{[^}]*flex: 0 0 auto/)
+  })
+
   it('gives search profile results their own compact row instead of a post-card layout', () => {
     expect(stylesheet).toMatch(/\.profile-result \{[^}]*display: grid[^}]*grid-template-columns: 44px minmax\(0, 1fr\)/)
     expect(stylesheet).toMatch(/\.profile-result-avatar \{[^}]*height: 44px[^}]*width: 44px/)

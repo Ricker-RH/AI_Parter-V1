@@ -13,6 +13,7 @@ import styles from './PublicProfileContent.module.css'
 export function PublicProfileContent({result,locale,labels,moreHref}: {result:SocialApiResult<PublicIpProfile>;locale:Locale;labels:SocialLabels;moreHref?:string}) {
   if(result.status!=='ok') return <div className={styles.resultState}><ResultState labels={labels} profile result={result}/></div>
   const {profile,followerCount,viewerFollows,posts}=result.data
+  const referenceTime=Date.now()
   const returnTo=`/${locale}/profiles/${profile.id}`
   return <div className={styles.profile}>
     <header className={styles.contextualTitle}><h1>{profile.username}</h1></header>
@@ -35,7 +36,7 @@ export function PublicProfileContent({result,locale,labels,moreHref}: {result:So
     </section>
     <section aria-labelledby="profile-posts-heading" className={styles.postsSection}>
       <div className={styles.tabList}><h2 className={styles.tab} id="profile-posts-heading">{labels.posts}</h2></div>
-      <div>{posts.items.length?posts.items.map(post=><PostCard canMutate key={post.id} labels={labels} locale={locale} post={post}/>):<div className={styles.empty}><EmptyState description={labels.homeEmptyDescription} title={labels.homeEmptyTitle}/></div>}{posts.nextCursor&&moreHref?<Link className={styles.loadMore} href={moreHref}>{labels.loadMore}</Link>:null}</div>
+      <div>{posts.items.length?posts.items.map(post=><PostCard canMutate key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime}/>):<div className={styles.empty}><EmptyState description={labels.homeEmptyDescription} title={labels.homeEmptyTitle}/></div>}{posts.nextCursor&&moreHref?<Link className={styles.loadMore} href={moreHref}>{labels.loadMore}</Link>:null}</div>
     </section>
     </div>
   </div>
