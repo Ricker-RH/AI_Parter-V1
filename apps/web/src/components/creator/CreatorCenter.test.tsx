@@ -1,6 +1,7 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import en from '../../../messages/en.json'
+import zh from '../../../messages/zh-CN.json'
 import {CreatorCenter} from './CreatorCenter.js'
 
 const {replace,router}=vi.hoisted(()=>{const replace=vi.fn();return {replace,router:{replace}}})
@@ -9,6 +10,43 @@ vi.mock('next/navigation',()=>({useRouter:()=>router}))
 afterEach(()=>{vi.unstubAllGlobals();replace.mockClear()})
 
 describe('CreatorCenter',()=>{
+  it.each([
+    {locale:'en' as const,labels:en.creator,name:'Cancel',href:'/en/profile'},
+    {locale:'zh-CN' as const,labels:zh.creator,name:'取消',href:'/zh-CN/profile'},
+  ])('always offers a localized safe exit from creator mode in $locale',({locale,labels,name,href})=>{
+    vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(()=>{})))
+
+    render(<CreatorCenter labels={labels} locale={locale} />)
+
+    expect(screen.getByRole('link',{name})).toHaveAttribute('href',href)
+    expect(screen.getByRole('link',{name})).toHaveClass('creator-exit')
+  })
+
+  it('keeps the creator exit and draft cancel actions distinct while editing',async()=>{
+    const fetcher=vi.fn().mockResolvedValueOnce(Response.json({items:[],nextCursor:null})).mockResolvedValueOnce(Response.json({items:[],nextCursor:null}))
+    vi.stubGlobal('fetch',fetcher)
+
+    render(<CreatorCenter labels={en.creator} locale="en" />)
+
+    fireEvent.click(await screen.findByRole('button',{name:'New identity'}))
+    expect(screen.getByRole('link',{name:'Cancel'})).toHaveAttribute('href','/en/profile')
+    const draftCancel=screen.getByRole('button',{name:'Cancel'})
+    fireEvent.click(draftCancel)
+
+    expect(screen.queryByRole('form',{name:'Identity draft'})).toBeNull()
+    expect(screen.getByRole('link',{name:'Cancel'})).toHaveAttribute('href','/en/profile')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the safe exit available when creator data cannot load',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('offline')))
+
+    render(<CreatorCenter labels={en.creator} locale="en" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.creator.unavailable)
+    expect(screen.getByRole('link',{name:'Cancel'})).toHaveAttribute('href','/en/profile')
+  })
+
   it('shows a polished real-data empty state and lets any signed-in human start a draft',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(Response.json({items:[],nextCursor:null})).mockResolvedValueOnce(Response.json({items:[],nextCursor:null})).mockResolvedValueOnce(Response.json({id:'11111111-1111-4111-8111-111111111111'} ,{status:201}))
     vi.stubGlobal('fetch',fetcher)
