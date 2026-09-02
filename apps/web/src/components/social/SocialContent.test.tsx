@@ -641,6 +641,48 @@ describe("real social content", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
+  it("keeps a paginated local comment without double-counting after the server total refreshes", async () => {
+    const firstPage = Array.from({length: 25}, (_, index) => ({
+      id: `33333333-3333-4333-8333-${String(index + 1).padStart(12, "0")}`,
+      postId: post.id,
+      parentCommentId: null,
+      state: "published" as const,
+      body: `Older comment ${index + 1}`,
+      createdAt: `2026-08-31T12:${String(index).padStart(2, "0")}:00.000Z`,
+      author: {kind: "human" as const, id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"},
+    }));
+    const createdComment = {
+      id: "66666666-6666-4666-8666-666666666666",
+      postId: post.id,
+      parentCommentId: null,
+      state: "published" as const,
+      body: "Fresh paginated comment",
+      createdAt: "2026-08-31T12:30:00.000Z",
+      author: {kind: "human" as const, id: "55555555-5555-4555-8555-555555555555", username: "sam", displayName: "Sam"},
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(createdComment, {status: 201})));
+    const initial: PostDetail = {...post, commentCount: 25, comments: {items: firstPage, nextCursor: "page-two"}};
+    const {container, rerender} = render(<PostDetailContent authenticated labels={labels} locale="en" moreHref={`/en/posts/${post.id}?commentCursor=page-two`} result={{status: "ok", data: initial}} viewerScope="viewer-a" />);
+
+    const primaryComposer = within(container.querySelector('.post-detail-composer-dock')!);
+    fireEvent.change(primaryComposer.getByRole("textbox", {name: "Write a comment"}), {target: {value: createdComment.body}});
+    fireEvent.click(primaryComposer.getByRole("button", {name: "Comment"}));
+    expect(await screen.findByRole("link", {name: "Comments 26"})).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByText("Posted")).toBeVisible();
+
+    const refreshed: PostDetail = {...initial, commentCount: 26, comments: {items: [...firstPage], nextCursor: "page-two"}};
+    rerender(<PostDetailContent authenticated labels={labels} locale="en" moreHref={`/en/posts/${post.id}?commentCursor=page-two`} result={{status: "ok", data: refreshed}} viewerScope="viewer-a" />);
+
+    expect(screen.getByRole("link", {name: "Comments 26"})).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText(createdComment.body, {selector: ".comment-thread-content > p"})).toBeVisible();
+    expect(screen.getByText("Posted")).toBeVisible();
+    expect(container.querySelectorAll(".comment-thread-item")).toHaveLength(26);
+    expect(screen.getByRole("link", {name: "Load more"})).toBeVisible();
+
+    rerender(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: {...refreshed, comments: {items: [...firstPage, createdComment], nextCursor: null}}}} viewerScope="viewer-a" />);
+    expect(screen.getAllByText(createdComment.body, {selector: ".comment-thread-content > p"})).toHaveLength(1);
+  });
+
   it("switches comment result scopes in the render that receives a different post", () => {
     const oldDetail: PostDetail = {...post, comments: {items: [{id: "33333333-3333-4333-8333-333333333333", postId: post.id, parentCommentId: null, state: "published", body: "Old post comment", createdAt: "2026-08-31T12:05:00.000Z", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}}], nextCursor: null}};
     const nextPost = {...post, id: "55555555-5555-4555-8555-555555555555", body: "New post"};

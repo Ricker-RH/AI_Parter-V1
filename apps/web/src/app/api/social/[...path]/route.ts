@@ -127,7 +127,7 @@ export async function GET(request: Request, context: RouteContext) {
     const query = cursor ? `?${new URLSearchParams({cursor})}` : ''
     const upstreamPath = profilePath ? `/v1/profiles/${path[1]}` : `/v1/${path[0]}`
     const upstream = await fetchAifansApi(`${upstreamPath}${query}`, {policy: 'private-cache', requestInit: {method: 'GET'}, trustedClientHeaders: request.headers})
-    return new Response(await upstream.arrayBuffer(), {status: upstream.status, headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json'}})
+    return new Response(await upstream.arrayBuffer(), {status: upstream.status, headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json', ...(ownerCollectionPath ? {'cache-control': 'private, no-store'} : {})}})
   } catch {
     return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})
   }

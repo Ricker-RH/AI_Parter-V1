@@ -16,7 +16,9 @@ type Comment = PostDetail['comments']['items'][number]
 
 type StoredComments = {
   localIds: string[]
+  optimisticCount: number
   scope: string | null
+  serverCommentCount: number
   serverItems: Comment[] | null
   comments: Comment[]
 }
@@ -31,11 +33,13 @@ function hasValidProfileId(value: unknown): value is {profileId: string} {
     && profileIdPattern.test(value.profileId)
 }
 
-function reconcileComments(current: StoredComments, serverItems: Comment[]): StoredComments {
+function reconcileComments(current: StoredComments, serverItems: Comment[], serverCommentCount: number): StoredComments {
   const serverIds = new Set(serverItems.map((comment) => comment.id))
   const localIds = current.localIds.filter((id) => !serverIds.has(id))
   const retainedLocalComments = current.comments.filter((comment) => localIds.includes(comment.id) && !serverIds.has(comment.id))
-  return {...current, comments: [...serverItems, ...retainedLocalComments], localIds, serverItems}
+  const acknowledgedCount = Math.max(0, serverCommentCount - current.serverCommentCount)
+  const optimisticCount = Math.max(0, current.optimisticCount - acknowledgedCount)
+  return {...current, comments: [...serverItems, ...retainedLocalComments], localIds, optimisticCount, serverCommentCount, serverItems}
 }
 
 function CommentThreadItem({authenticated, comment, labels, locale, onCommentCreated, postId, referenceTime, returnTo, viewerScope}: {authenticated: boolean; comment: Comment; labels: SocialLabels; locale: Locale; onCommentCreated(comment: Comment): void; postId: string; referenceTime: number; returnTo: string; viewerScope?: string}) {
@@ -74,11 +78,11 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
   const pageScope = currentResult ? `${viewerScope ?? 'anonymous'}\u0000${locale}\u0000${currentResult.id}\u0000${postReturnTo}` : null
   const currentServerItems = currentResult?.comments.items ?? null
   const serverItems = currentServerItems ?? []
-  const [storedComments, setStoredComments] = useState<StoredComments>(() => ({scope: pageScope, comments: serverItems, localIds: [], serverItems: currentServerItems}))
+  const [storedComments, setStoredComments] = useState<StoredComments>(() => ({scope: pageScope, comments: serverItems, localIds: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverItems: currentServerItems}))
   if (storedComments.scope !== pageScope) {
-    setStoredComments({scope: pageScope, comments: serverItems, localIds: [], serverItems: currentServerItems})
+    setStoredComments({scope: pageScope, comments: serverItems, localIds: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverItems: currentServerItems})
   } else if (storedComments.serverItems !== currentServerItems) {
-    setStoredComments(reconcileComments(storedComments, serverItems))
+    setStoredComments(reconcileComments(storedComments, serverItems, currentResult?.commentCount ?? 0))
   }
   const comments = storedComments.scope === pageScope ? storedComments.comments : serverItems
 
@@ -124,16 +128,16 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
   function appendComment(comment: Comment) {
     if (!currentResult || !pageScope || comment.postId !== currentResult.id) return
     setStoredComments((current) => {
-      const base = current.scope === pageScope ? current : {scope: pageScope, comments: serverItems, localIds: [], serverItems: currentResult.comments.items}
+      const base = current.scope === pageScope ? current : {scope: pageScope, comments: serverItems, localIds: [], optimisticCount: 0, serverCommentCount: currentResult.commentCount, serverItems: currentResult.comments.items}
       if (base.comments.some((item) => item.id === comment.id)) return base
-      return {...base, comments: [...base.comments, comment], localIds: [...base.localIds, comment.id]}
+      return {...base, comments: [...base.comments, comment], localIds: [...base.localIds, comment.id], optimisticCount: base.optimisticCount + 1}
     })
   }
 
   if (result.status !== 'ok') return <div className="post-detail-content social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result} /></div>
   const resolvedPostReturnTo = postReturnTo ?? `/${locale}/posts/${result.data.id}`
   return <div className="post-detail-content">
-    <PostCard canMutate={canMutate} commentCountOverride={result.data.commentCount + storedComments.localIds.length} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} variant="detail" {...(viewerScope ? {viewerScope} : {})} />
+    <PostCard canMutate={canMutate} commentCountOverride={result.data.commentCount + storedComments.optimisticCount} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} variant="detail" {...(viewerScope ? {viewerScope} : {})} />
     <section aria-label={labels.comments} className="comments-section" style={{'--post-detail-composer-reserve': `${composerDockHeight}px`} as CSSProperties}>
       <div className="post-detail-comments-content">
       <div className="comments-toolbar"><h2>{labels.comments}</h2><span>{labels.commentSortChronological ?? labels.comments}</span></div>
