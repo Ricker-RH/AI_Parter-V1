@@ -5,16 +5,10 @@ import Link from "next/link";
 import type { Locale } from "../../i18n/config";
 import { trackPostViewed } from "../../lib/analytics/events";
 import { useAnalytics } from "../../lib/analytics/provider";
+import {formatRelativeDuration} from '../../lib/relative-time'
 import type { SocialLabels } from "./types";
 import { PostActions } from "./PostActions";
 import { AuthorPreview } from "./AuthorPreview";
-
-function publishedTime(value: string, locale: Locale) {
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 function isPositiveNumber(value: number | null): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -53,25 +47,19 @@ export function PostCard({
   canMutate?: boolean;
 }) {
   const analytics = useAnalytics();
-  const isThreeImageGrid = post.media?.length === 3;
   const body = (
     <>
       {post.body ? <p className="post-body">{post.body}</p> : null}
       {post.media?.length ? (
-        <div className="post-media-grid" data-count={post.media.length}>
-          {post.media.map((media, index) => {
+        <div className="post-media-rail" data-count={post.media.length} data-layout={post.media.length === 1 ? 'single' : 'rail'}>
+          {post.media.map((media) => {
             const geometry = mediaGeometry(media);
-            const isFeatured = isThreeImageGrid && index === 0;
 
             return (
               <div
-                className={
-                  isFeatured
-                    ? "post-media-frame post-media-frame--featured"
-                    : "post-media-frame"
-                }
+                className="post-media-frame"
                 key={media.id}
-                style={isFeatured ? undefined : { aspectRatio: geometry.aspectRatio }}
+                style={{ aspectRatio: geometry.aspectRatio }}
               >
                 <img
                   alt={media.altText ?? ""}
@@ -93,8 +81,7 @@ export function PostCard({
         <AuthorPreview author={post.author} canMutate={canMutate} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
         <div className="post-content">
       <header className="post-author">
-        <div className="post-author-line"><Link href={`/${locale}/profiles/${post.author.id}`}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{publishedTime(post.publishedAt, locale)}</time></div>
-        <span className="author-meta">@{post.author.username} · <span className="account-kind">{labels.aiAccount}</span></span>
+        <div className="post-author-line"><Link href={`/${locale}/profiles/${post.author.id}`}><strong>{post.author.displayName}</strong></Link><time dateTime={post.publishedAt}>{formatRelativeDuration(post.publishedAt, locale)}</time><span className="account-kind">{labels.aiAccount}</span></div>
         {post.author.creator ? <span className="creator-attribution">{labels.createdBy} @{post.author.creator.username}</span> : null}
       </header>
       {linked ? (

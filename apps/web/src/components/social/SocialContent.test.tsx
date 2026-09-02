@@ -200,11 +200,12 @@ describe("real social content", () => {
     expect(
       screen.getByRole("img", { name: "Luma under moonlight" }),
     ).toHaveAttribute("src", mediaPost.media?.[0]?.url);
-    expect(container.querySelector(".post-media-grid")).toHaveAttribute(
+    expect(container.querySelector(".post-media-rail")).toHaveAttribute(
       "data-count",
       "2",
     );
-    expect(container.querySelectorAll(".post-media-grid img")).toHaveLength(2);
+    expect(container.querySelector(".post-media-rail")).toHaveAttribute("data-layout", "rail");
+    expect(container.querySelectorAll(".post-media-rail img")).toHaveLength(2);
   });
 
   it("shows anonymous users the real action row and gates protected actions", () => {

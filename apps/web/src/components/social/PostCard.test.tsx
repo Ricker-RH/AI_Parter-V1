@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedPost } from "@aifans/contracts";
 import { PostCard } from "./PostCard.js";
 import type { SocialLabels } from "./types.js";
@@ -68,6 +68,9 @@ function requiredFrame(frames: NodeListOf<HTMLElement>, index: number) {
 }
 
 describe("PostCard media geometry", () => {
+  beforeEach(() => vi.useFakeTimers({now: new Date('2026-09-02T12:00:00.000Z')}));
+  afterEach(() => vi.useRealTimers());
+
   it("uses dimensions, contract ratio, then 4:5 fallback for ordinary frames", () => {
     const { container } = render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
 
@@ -86,8 +89,9 @@ describe("PostCard media geometry", () => {
   it.each([
     [1, ["1.5"]],
     [2, ["1.5", "1.25"]],
+    [3, ["1.5", "1.25", "0.8"]],
     [4, ["1.5", "1.25", "0.8", "1"]],
-  ] as const)("keeps the %i-image grid contract without a featured frame", (count, ratios) => {
+  ] as const)("keeps all %i images in one ordered media rail", (count, ratios) => {
     const { container } = render(
       <PostCard
         linked={false}
@@ -97,44 +101,25 @@ describe("PostCard media geometry", () => {
       />,
     );
 
-    const grid = container.querySelector(".post-media-grid");
-    expect(grid).toHaveAttribute("data-count", String(count));
+    const rail = container.querySelector(".post-media-rail");
+    expect(rail).toHaveAttribute("data-count", String(count));
+    expect(rail).toHaveAttribute("data-layout", count === 1 ? "single" : "rail");
     const frames = staticMediaFrames(count);
     expect(frames).toHaveLength(count);
-    expect(grid?.querySelectorAll("img")).toHaveLength(count);
+    expect(rail?.querySelectorAll("img")).toHaveLength(count);
     expect([...frames].map((frame) => frame.getAttribute("style"))).toEqual(
       ratios.map((ratio) => `aspect-ratio:${ratio}`),
     );
-    expect(
-      [...frames].every(
-        (frame) => !frame.classList.contains("post-media-frame--featured"),
-      ),
-    ).toBe(true);
+    expect([...frames].every((frame) => !frame.classList.contains("post-media-frame--featured"))).toBe(true);
   });
 
-  it("lets only the three-image featured frame take its height from the spanned grid area", () => {
-    const { container } = render(
-      <PostCard
-        linked={false}
-        labels={labels}
-        locale="en"
-        post={{ ...post, media: post.media?.slice(0, 3) }}
-      />,
-    );
+  it("shows compact relative time, omits the username row, and keeps the AI/IP badge inline", () => {
+    const {container} = render(<PostCard linked={false} labels={labels} locale="en" post={post} />);
 
-    const frames = staticMediaFrames(3);
-    expect(requiredFrame(frames, 0).classList.contains("post-media-frame--featured")).toBe(
-      true,
-    );
-    expect(requiredFrame(frames, 0).getAttribute("style")).toBeNull();
-    expect(requiredFrame(frames, 1).classList.contains("post-media-frame--featured")).toBe(
-      false,
-    );
-    expect(requiredFrame(frames, 2).classList.contains("post-media-frame--featured")).toBe(
-      false,
-    );
-    expect(requiredFrame(frames, 1).getAttribute("style")).toBe("aspect-ratio:1.25");
-    expect(requiredFrame(frames, 2).getAttribute("style")).toBe("aspect-ratio:0.8");
+    expect(screen.getByText('2d')).toHaveAttribute('datetime', post.publishedAt);
+    expect(container.querySelector('.author-meta')).toBeNull();
+    expect(screen.getByRole('article')).not.toHaveTextContent('@luma');
+    expect(container.querySelector('.post-author-line .account-kind')).toHaveTextContent(labels.aiAccount);
   });
 });
 

@@ -37,11 +37,19 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-title \{[^}]*clip:/)
     expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*flex: 1[^}]*width: 50%/)
     expect(stylesheet).not.toContain('.mobile-feed-menu')
-    expect(stylesheet).toMatch(/\.mobile-top-bar \{[^}]*height: 60px/)
+    expect(stylesheet).toMatch(/\.mobile-top-bar \{[^}]*height: 56px/)
+    expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*min-height: 44px/)
     expect(stylesheet).toMatch(/\.post-card \{[^}]*padding: 12px/)
     expect(stylesheet).toMatch(/\.post-action \{[^}]*min-height: 36px/)
     expect(stylesheet).toMatch(/\.mobile-nav \{[^}]*height: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
     expect(stylesheet).toMatch(/\.mobile-link span \{[^}]*clip:/)
+  })
+
+  it('constrains one image and makes multi-image posts a snap-scrolling rail without page overflow', () => {
+    expect(stylesheet).toMatch(/\.post-media-rail \{[^}]*max-width: 100%[^}]*overflow-x: auto[^}]*scroll-snap-type: x mandatory/)
+    expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="single"\] \{[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/\.post-media-rail\[data-layout="rail"\] \.post-media-frame \{[^}]*flex: 0 0 min\(82%, 440px\)[^}]*scroll-snap-align: start/)
+    expect(stylesheet).toMatch(/\.post-media-frame \{[^}]*max-height: 560px/)
   })
 
   it('gives search profile results their own compact row instead of a post-card layout', () => {

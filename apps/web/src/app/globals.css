@@ -1644,33 +1644,34 @@ button {
     display: none;
   }
 }
-.post-media-grid {
-  display: grid;
-  gap: 2px;
-  margin-top: 12px;
-  overflow: hidden;
+.post-media-rail {
   border: 1px solid var(--shell-border);
   border-radius: 16px;
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
 }
-.post-media-grid[data-count="2"],
-.post-media-grid[data-count="3"],
-.post-media-grid[data-count="4"] {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
+.post-media-rail::-webkit-scrollbar { display: none; }
+.post-media-rail[data-layout="single"] { overflow: hidden; }
 .post-media-frame {
   background: #f4f4f4;
-  min-width: 0;
+  max-height: 560px;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
-.post-media-grid img {
+.post-media-rail[data-layout="single"] .post-media-frame { flex: 1 1 100%; }
+.post-media-rail[data-layout="rail"] .post-media-frame { flex: 0 0 min(82%, 440px); scroll-snap-align: start; }
+.post-media-rail img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-.post-media-grid[data-count="3"] .post-media-frame--featured {
-  grid-row: span 2;
 }
 .post-media-uploader {
   border: 1px solid var(--shell-border);
@@ -1719,7 +1720,7 @@ button {
   .content { border-right: 0; }
   .messages-shell { display: grid; grid-template-rows: minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
   .messages-shell .content { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
-  .mobile-top-bar { align-items: center; display: grid; grid-template-columns: 44px 1fr 44px; height: 60px; padding: max(4px, env(safe-area-inset-top)) 12px 4px; }
+  .mobile-top-bar { align-items: center; display: grid; grid-template-columns: 44px 1fr 44px; height: 56px; padding: max(2px, env(safe-area-inset-top)) 12px 2px; }
   .mobile-top-bar .global-more { margin: 0; }
   .mobile-top-bar .more-trigger { justify-content: center; min-height: 44px; padding: 0; width: 44px; }
   .mobile-top-bar .more-trigger-label { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
@@ -1746,7 +1747,7 @@ button {
   .home-header { display: block; min-height: 0 !important; padding: 0 !important; }
   .home-title { height: 1px; margin: -1px !important; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .mobile-feed-tabs { border-bottom: 1px solid var(--shell-border); gap: 0; overflow: visible; width: 100%; }
-  .mobile-feed-tabs > .tab { flex: 1; font-size: 15px; min-height: 48px; padding: 0 8px; text-align: center; width: 50%; }
+  .mobile-feed-tabs > .tab { flex: 1; font-size: 15px; min-height: 44px; padding: 0 8px; text-align: center; width: 50%; }
   .search-category-tabs { display: none; }
   .activity-tabs { padding-inline: 20px; }
   .post-card { padding: 12px; }
