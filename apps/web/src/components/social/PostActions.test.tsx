@@ -78,6 +78,20 @@ describe('PostActions', () => {
     expect(screen.getByRole('button', {name: 'Share'}).querySelector('span')).toBeNull()
   })
 
+  it('marks the comment action active only on the Detail surface', () => {
+    const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
+    const {rerender} = render(<PostActions bookmarked={false} canMutate={false} commentCount={2} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
+
+    const detailComment = screen.getByRole('link', {name: 'Comments 2'})
+    expect(detailComment).toHaveAttribute('aria-current', 'page')
+    expect(detailComment.querySelector('svg')).toHaveAttribute('fill', 'currentColor')
+
+    rerender(<PostActions bookmarked={false} canMutate={false} commentCount={2} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="feed" />)
+    const feedComment = screen.getByRole('link', {name: 'Comments'})
+    expect(feedComment).not.toHaveAttribute('aria-current')
+    expect(feedComment.querySelector('svg')).toHaveAttribute('fill', 'none')
+  })
+
   it('does not fabricate Detail counts when an authoritative total is unavailable', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
     const {rerender} = render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)

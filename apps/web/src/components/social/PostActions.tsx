@@ -88,9 +88,10 @@ function ShareButton({label, postId, locale}: {label: string; postId: string; lo
   return <button aria-label={label} className="post-action" onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/></button>
 }
 
-function ActionFrame({afterComment, beforeComment, commentsLabel, commentCount, locale, postId, shareLabel, variant}: {
+function ActionFrame({afterComment, beforeComment, commentActive, commentsLabel, commentCount, locale, postId, shareLabel, variant}: {
   afterComment: ReactNode
   beforeComment: ReactNode
+  commentActive: boolean
   commentsLabel: string
   commentCount: number | undefined
   locale: Locale
@@ -102,7 +103,7 @@ function ActionFrame({afterComment, beforeComment, commentsLabel, commentCount, 
   const postHref = `/${locale}/posts/${postId}`
   return <footer aria-label={commentsLabel} className="post-actions">
     {beforeComment}
-    <Link {...intentHandlers(postHref)} aria-label={actionLabel(commentsLabel, commentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
+    <Link {...intentHandlers(postHref)} aria-current={commentActive ? 'page' : undefined} aria-label={actionLabel(commentsLabel, commentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true" fill={commentActive ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
     {afterComment}
     <ShareButton label={shareLabel} locale={locale} postId={postId}/>
   </footer>
@@ -166,7 +167,7 @@ function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, li
   const likeAction = <button aria-busy={state.pending.like} aria-label={actionLabel(likeLabel, state.likeCount, locale, variant)} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.likeCount}</Count></button>
   const bookmarkAction = <><button aria-busy={state.pending.bookmark} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/></button>{state.error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
 
-  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={commentsLabel} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
+  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={commentsLabel} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
 }
 
 function GuestActions({commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`, variant='feed'}: PostActionsProps) {
@@ -174,7 +175,7 @@ function GuestActions({commentCount, labels, likeCount, locale, postId, returnTo
   const {intentHandlers} = useIntentPrefetch()
   const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCount}</Count></Link>
   const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={labels.bookmark} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/></Link>
-  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
+  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
 }
 
 export function PostActions(props: PostActionsProps) {

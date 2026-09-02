@@ -509,11 +509,15 @@ describe("real social content", () => {
     const comments = container.querySelector<HTMLElement>('.comments-section')!;
     expect(comments.style.getPropertyValue('--post-detail-composer-reserve')).toBe('65px');
     expect(comments.querySelector('.post-detail-composer-dock > .comment-composer--primary')).not.toBeNull();
-    expect(screen.getByRole('link', {name: 'Comments 2'})).toBeVisible();
+    const initialCommentAction = screen.getByRole('link', {name: 'Comments 2'});
+    expect(initialCommentAction).toHaveAttribute('aria-current', 'page');
+    expect(initialCommentAction.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
 
     fireEvent.change(screen.getByRole('textbox', {name: 'Write a comment'}), {target: {value: created.body}});
     fireEvent.click(screen.getByRole('button', {name: 'Comment'}));
-    expect(await screen.findByRole('link', {name: 'Comments 3'})).toBeVisible();
+    const updatedCommentAction = await screen.findByRole('link', {name: 'Comments 3'});
+    expect(updatedCommentAction).toHaveAttribute('aria-current', 'page');
+    expect(updatedCommentAction.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
     expect(comments.querySelector('.post-detail-composer-dock')).not.toHaveStyle({overflowY: 'auto'});
   });
 
