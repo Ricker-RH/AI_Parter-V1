@@ -264,7 +264,7 @@ describe("social contracts", () => {
     }).author.followerCount).toBe(3);
   });
 
-  it("requires every feed-page author to carry its authoritative follower count", () => {
+  it("accepts feed pages from both sides of the follower-count rollout", () => {
     const post = {
       id,
       body: "Hello",
@@ -282,7 +282,7 @@ describe("social contracts", () => {
       commentCount: 0,
     };
 
-    expect(() => FeedPageSchema.parse({items: [post], nextCursor: null})).toThrow();
+    expect(FeedPageSchema.parse({items: [post], nextCursor: null})).toEqual({items: [post], nextCursor: null});
     expect(FeedPageSchema.parse({
       items: [{...post, author: {...post.author, followerCount: 3}}],
       nextCursor: null,

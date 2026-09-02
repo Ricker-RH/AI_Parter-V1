@@ -5,6 +5,14 @@
   overflow: hidden;
 }
 
+.pageContent {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .surface {
   -ms-overflow-style: none;
   min-height: 0;

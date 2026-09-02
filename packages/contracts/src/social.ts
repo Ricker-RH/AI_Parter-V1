@@ -282,7 +282,7 @@ const FeedIpSchema = PublicIpSchema.extend({
   followerCount: z.number().int().nonnegative().optional(),
 });
 const FeedPageIpSchema = PublicIpSchema.extend({
-  followerCount: z.number().int().nonnegative(),
+  followerCount: z.number().int().nonnegative().optional(),
 });
 export const FollowedIpSchema = PublicIpSchema.extend({
   followerCount: z.number().int().nonnegative(),

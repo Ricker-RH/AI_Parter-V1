@@ -181,6 +181,22 @@ describe('MyProfilePanel', () => {
     expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.editDialog\s*\{[^}]*border-radius:\s*0[^}]*min-height:\s*100dvh/s)
   })
 
+  it('keeps the header and scroll surface in a bounded two-row content grid', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(account)))
+    const {container} = render(<MyProfilePanel labels={labels} locale="en" />)
+
+    await screen.findByRole('heading', {level: 2, name: 'Rui'})
+    const page = container.firstElementChild
+    const content = page?.firstElementChild
+    expect(content?.className).toContain('pageContent')
+    expect(content?.children).toHaveLength(2)
+    expect(content).not.toHaveAttribute('aria-hidden')
+    expect(stylesheet).toMatch(/\.pageContent\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
+    expect(content).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('keeps the newest StrictMode profile load when an aborted older request resolves late', async () => {
     const older = deferred<Response>()
     const newer = deferred<Response>()

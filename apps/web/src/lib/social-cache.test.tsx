@@ -10,6 +10,23 @@ vi.mock('./server-api.js', () => ({fetchAifansApi}))
 
 import {fetchCachedPublicFeed, publicFeedTag} from './social-cache.js'
 
+const cachedPost = {
+  id: '22222222-2222-4222-8222-222222222222',
+  body: 'Cached post',
+  languageCode: 'en',
+  publishedAt: '2026-08-31T12:00:00.000Z',
+  author: {
+    kind: 'ip' as const,
+    id: '11111111-1111-4111-8111-111111111111',
+    username: 'luma',
+    displayName: 'Luma',
+    languages: ['en'] as const,
+    visualType: 'hybrid' as const,
+  },
+  likeCount: 4,
+  commentCount: 2,
+}
+
 describe('public social cache', () => {
   beforeEach(() => {
     cacheLife.mockReset()
@@ -31,6 +48,15 @@ describe('public social cache', () => {
 
     expect(cacheTag).toHaveBeenCalledWith('feed:for_you:en')
     expect(fetchAifansApi).toHaveBeenCalledWith('/v1/feed?kind=for_you&locale=en&cursor=next+page', {policy: 'public-cache'})
+  })
+
+  it.each([
+    ['an old payload without followerCount', cachedPost],
+    ['a new payload with followerCount', {...cachedPost, author: {...cachedPost.author, followerCount: 7}}],
+  ])('replays %s through the public cache contract', async (_description, post) => {
+    fetchAifansApi.mockResolvedValue(Response.json({items: [post], nextCursor: null}))
+
+    await expect(fetchCachedPublicFeed({kind: 'for_you', locale: 'en'})).resolves.toEqual({items: [post], nextCursor: null})
   })
 
   it.each([401, 429, 503])('rejects a %s response instead of caching a transient failure', async (status) => {

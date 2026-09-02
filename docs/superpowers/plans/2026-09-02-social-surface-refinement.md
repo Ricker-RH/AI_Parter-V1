@@ -147,15 +147,15 @@
 
 - [x] **Step 6: Add the minimum owner-scoped followed-IP projection**
 
-  Added a strict public followed-IP page DTO and dedicated opaque cursor. The repository runs inside the verified actor transaction, enumerates only RLS-visible published IP rows, filters them through the existing SECURITY DEFINER `social_viewer_follows(profile_id)` owner predicate, and projects only `social_public_ip_profile(profile_id)` fields. No database schema, migration, RLS, role, upload, or operator-capability change was made.
+  Added a strict public followed-IP page DTO and dedicated opaque cursor. The repository runs inside the verified actor transaction, scans the RLS-visible published IP rows, filters each candidate through the existing SECURITY DEFINER `social_viewer_follows(profile_id)` owner predicate, and projects only `social_public_ip_profile(profile_id)` fields. This is intentionally not a follows-driven query: `aifans_authenticated` has neither `SELECT` privilege nor a SELECT RLS policy on `public.follows`, and the existing bounded helper returns only a boolean for one target. A follows-driven implementation therefore requires a separately reviewed SECURITY DEFINER listing function and migration; none was added within this no-schema/no-role-change slice.
 
 - [x] **Step 7: Connect the authenticated API, BFF, and Following tab**
 
-  Added `GET /v1/following` through the existing strict owner-page route helper, authentication flow, rate-limit middleware, cursor validation, and response parsing. The Web BFF allowlists only the cursor query and forwards the request with the existing short-lived bearer token. The profile tab parses the strict response and renders real public IP links.
+  Added `GET /v1/following` through the existing strict owner-page route helper, authentication flow, the reused `social_mutation` rate-limit policy, cursor validation, and response parsing. The Web BFF allowlists only the cursor query and forwards the request with the existing short-lived bearer token. The profile tab parses the strict response and renders real public IP links.
 
 - [x] **Step 8: Verify profile GREEN**
 
-  Profile, contract, API, BFF, and repository unit tests pass. English/Chinese message key parity is 370/370. The real repository integration suite is present but skipped because no local disposable `DATABASE_URL` was available; no remote database was accessed.
+  Profile, contract, API, BFF, and repository unit tests pass. Feed pages keep `author.followerCount` optional for a rolling-deploy compatibility window, while the current repository enriches new pages with the authoritative count; contract and public-cache replay tests accept both old and new payloads. English/Chinese message key parity is 370/370. The focused Following repository integration passes against the disposable local database. The full database suite still exposes independent pre-existing chat fixture/transaction failures and liked-cursor microsecond truncation; those are outside this profile slice, and no remote database was accessed.
 
 ### Task 4: Integration, comment-path verification, and preview deployment
 

@@ -33,6 +33,19 @@ describe('API production hardening', () => {
     expect(JSON.stringify(consume.mock.calls)).not.toContain('203.0.113.7')
   })
 
+  it('rate limits authenticated following reads before the route executes', async () => {
+    const consume=vi.fn(async()=>({allowed:false,retryAfterSeconds:23,remaining:0}))
+    const app=createApp({requireRateLimit:true,rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})
+
+    const response=await app.request('/v1/following',{headers:{'x-aifans-rate-limit-identity':identity(Math.floor(Date.now()/60_000))}})
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('23')
+    expect(await response.json()).toMatchObject({code:'RATE_LIMITED'})
+    expect(consume).toHaveBeenCalledOnce()
+    expect(consume).toHaveBeenCalledWith({policy:'social_mutation',identifierHash:expect.stringMatching(/^[a-f0-9]{64}$/)})
+  })
+
   it('accepts only current signed mutation identities and never trusts forwarded client addresses', async () => {
     const consume = vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))
     const app = createApp({requireRateLimit:true,rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})

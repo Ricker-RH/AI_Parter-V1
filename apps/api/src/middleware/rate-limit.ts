@@ -5,6 +5,7 @@ import type {RateLimitPolicy,RateLimitPort} from '../ports/rate-limit.js'
 import type {ApiVariables} from './request-id.js'
 
 function policyFor(method:string,path:string):RateLimitPolicy|null {
+  if(method==='GET'&&path==='/v1/following') return 'social_mutation'
   if(method==='POST'&&(path==='/v1/chat/conversations'||/^\/v1\/chat\/conversations\/[^/]+\/messages$/.test(path))) return 'chat_send'
   if(method==='POST'&&/^\/v1\/posts\/[^/]+\/comments$/.test(path)) return 'comment_create'
   if(['PUT','DELETE'].includes(method)&&(/^\/v1\/profiles\/[^/]+\/follow$/.test(path)||/^\/v1\/posts\/[^/]+\/(?:like|bookmark)$/.test(path)||/^\/v1\/notifications\/[^/]+\/read$/.test(path))) return 'social_mutation'
