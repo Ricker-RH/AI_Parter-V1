@@ -27,10 +27,10 @@ export default async function ActivityPage({params, searchParams}: {params: Prom
   const returnTo = `/${locale}/activity?${query}`
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><header className="page-header"><h1 className="page-title">{messages.collections}</h1></header><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
+  if (access.status === 'unavailable') return <main><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
   const result = tab === 'liked' ? await fetchLiked({cursor, token: access.token}) : await fetchBookmarks({cursor, token: access.token})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/activity?${new URLSearchParams({tab, cursor: nextCursor})}` : undefined
-  return <main><header className="page-header"><h1 className="page-title">{messages.collections}</h1></header><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent canMutate empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
+  return <main><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent canMutate empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
 }

@@ -17,7 +17,7 @@ describe('activity center', () => {
   })
 
   it('loads only the selected private dataset and keeps its tab in the return path', async () => {
-    render(await ActivityPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({tab: 'liked', cursor: 'opaque'})}))
+    const {container} = render(await ActivityPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({tab: 'liked', cursor: 'opaque'})}))
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/activity?tab=liked&cursor=opaque'})
     expect(fetchLiked).toHaveBeenCalledWith({cursor: 'opaque', token: 'token'})
     expect(fetchBookmarks).not.toHaveBeenCalled()
@@ -26,6 +26,8 @@ describe('activity center', () => {
     expect(liked).toHaveAttribute('aria-current', 'page')
     expect(liked).toHaveAttribute('href', '/en/activity?tab=liked')
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', {level: 1, name: 'Collections'})).toHaveClass('sr-only')
+    expect(container.querySelector('.page-header')).toBeNull()
   })
 
   it('defaults to Liked and ignores repeated activity query values', async () => {

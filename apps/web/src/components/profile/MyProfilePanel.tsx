@@ -70,8 +70,8 @@ export function MyProfilePanel({labels, locale}: {labels: MyProfileLabels; local
   }
 
   return <section className={styles.profile} aria-labelledby="my-profile-title">
-    <header className={styles.header}><div className={styles.avatar} aria-hidden="true">{account.displayName.slice(0, 1).toUpperCase()}</div><div><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div>{!editing ? <button onClick={beginEdit} type="button">{labels.edit}</button> : null}</header>
-    {!editing ? <div className={styles.details}><p>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p><dl><div><dt>{labels.locale}</dt><dd>{account.preferredLocale === 'zh-CN' ? labels.languageChinese : labels.languageEnglish}</dd></div></dl></div> : <form className={styles.form} onSubmit={(event) => {event.preventDefault(); if (!pending) void save()}}>
+    <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div><div className={styles.avatar} aria-hidden="true">{account.displayName.slice(0, 1).toUpperCase()}</div></header>
+    {!editing ? <><div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p><dl><div><dt>{labels.locale}</dt><dd>{account.preferredLocale === 'zh-CN' ? labels.languageChinese : labels.languageEnglish}</dd></div></dl></div><button className={styles.editAction} onClick={beginEdit} type="button">{labels.edit}</button></> : <form className={styles.form} onSubmit={(event) => {event.preventDefault(); if (!pending) void save()}}>
       <label>{labels.displayName}<input aria-label={labels.displayName} maxLength={80} onChange={(event) => setDraft({...draft, displayName: event.target.value})} value={String(value('displayName'))}/></label>
       {fieldError === 'name' ? <p role="alert">{labels.invalidName}</p> : null}
       <label>{labels.username}<input aria-label={labels.username} maxLength={30} onChange={(event) => setDraft({...draft, username: event.target.value})} value={String(value('username'))}/></label>
