@@ -341,6 +341,7 @@ describe("real social content", () => {
         labels={labels}
         locale="en"
         moreHref={`/en/posts/${post.id}?commentCursor=comments-next`}
+        referenceTime={Date.parse("2026-08-31T12:10:00.000Z")}
         result={{ status: "ok", data: detail }}
       />,
     );
@@ -349,6 +350,10 @@ describe("real social content", () => {
     expect(screen.getByText("Human reply")).toBeVisible();
     expect(screen.getByText("This comment was deleted.")).toBeVisible();
     expect(screen.getByText("Created by @comment_creator")).toBeVisible();
+    expect(screen.getByLabelText("Alex avatar")).toHaveTextContent("A");
+    expect(screen.getByText("5m")).toHaveAttribute("datetime", "2026-08-31T12:05:00.000Z");
+    expect(screen.queryByRole("heading", {name: "Comments"})).toBeNull();
+    expect(document.querySelectorAll(".comment-thread-item")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute(
       "href",
       `/en/posts/${post.id}?commentCursor=comments-next`,
@@ -361,6 +366,31 @@ describe("real social content", () => {
       />,
     );
     expect(screen.getByText("创建者 @comment_creator")).toBeVisible();
+  });
+
+  it("renders replies as an indented connected thread and keeps the real parent action", () => {
+    const parentId = "33333333-3333-4333-8333-333333333333";
+    const detail: PostDetail = {
+      ...post,
+      comments: {items: [
+        {id: parentId, postId: post.id, parentCommentId: null, state: "published", body: "Parent", createdAt: "2026-08-31T12:05:00.000Z", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}},
+        {id: "55555555-5555-4555-8555-555555555555", postId: post.id, parentCommentId: parentId, state: "published", body: "Nested reply", createdAt: "2026-08-31T12:06:00.000Z", author: ip},
+      ], nextCursor: null},
+    };
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" referenceTime={Date.parse("2026-08-31T12:10:00.000Z")} result={{status: "ok", data: detail}} />);
+
+    expect(container.querySelector(".comment-thread-item--reply")).toHaveTextContent("Nested reply");
+    expect(container.querySelector(".comment-thread-item--reply")).toHaveAttribute("data-parent-comment-id", parentId);
+    expect(screen.getByText("Reply", {selector: "summary"})).toBeVisible();
+  });
+
+  it("uses a compact reply composer rather than a large boxed form", () => {
+    const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+
+    expect(container.querySelector(".comment-composer--primary")).toBeTruthy();
+    expect(screen.getByRole("textbox", {name: "Write a comment"})).toHaveAttribute("rows", "1");
+    expect(screen.getByRole("button", {name: "Comment"})).toBeDisabled();
   });
 
   it("renders real notification rows and safe empty/auth states", () => {

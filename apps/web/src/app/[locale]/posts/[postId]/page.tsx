@@ -17,5 +17,5 @@ export default async function PostPage({params, searchParams}: {params: Promise<
   if (result.status === 'auth-required' && access.status === 'authenticated') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.comments.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/posts/${postId}?${new URLSearchParams({commentCursor: nextCursor})}` : undefined
-  return <main className="post-detail-page"><PostDetailHeader labels={messages} locale={locale} postId={postId}/><PostDetailContent authenticated={access.status==='authenticated'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} /></main>
+  return <main className="post-detail-page"><PostDetailHeader labels={messages} locale={locale} postId={postId}/><PostDetailContent authenticated={access.status==='authenticated'} labels={messages} locale={locale} moreHref={moreHref} referenceTime={Date.now()} result={result} returnTo={returnTo} /></main>
 }

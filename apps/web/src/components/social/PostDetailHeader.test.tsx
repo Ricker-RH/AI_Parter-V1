@@ -25,6 +25,15 @@ describe('PostDetailHeader', () => {
     expect(router.back).not.toHaveBeenCalled()
   })
 
+  it('uses the compact Threads-style chrome without a visible Post title or divider', () => {
+    const {container} = render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" />)
+
+    expect(screen.queryByRole('heading', {name: 'Post'})).toBeNull()
+    expect(screen.getByRole('link', {name: 'AIFANS'})).toHaveAttribute('href', '/en')
+    expect(container.querySelector('.post-detail-brand svg')).toHaveAttribute('viewBox', '0 0 64 64')
+    expect(container.querySelector('.post-detail-header')).toHaveAttribute('data-titleless', 'true')
+  })
+
   it('uses app history when the referrer is same-origin and in the selected locale', () => {
     render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer={new URL('/en/search', window.location.origin).toString()} />)
     fireEvent.click(screen.getByRole('button', {name: 'Back'}))
