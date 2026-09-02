@@ -128,7 +128,7 @@
   display: block;
 }
 
-.followAction :global(.profile-follow .interaction-error),
+.followAction :global(.profile-follow .interaction-error:not(:empty)),
 .chatAction :global(.profile-start-chat [role='alert']) {
   color: var(--shell-muted);
   display: block;
@@ -136,10 +136,6 @@
   line-height: 1.35;
   margin-top: 4px;
   overflow-wrap: anywhere;
-}
-
-.followAction :global(.profile-follow .interaction-error) {
-  min-height: 16px;
 }
 
 .followAction > a,

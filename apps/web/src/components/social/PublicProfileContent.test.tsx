@@ -94,5 +94,7 @@ describe('PublicProfileContent', () => {
     expect(stylesheet).toMatch(/overflow-wrap:\s*anywhere/)
     expect(stylesheet).toMatch(/min-height:\s*44px/)
     expect(stylesheet).not.toMatch(/@media \(max-width: 359px\)[\s\S]*?\.profileActions\s*\{[\s\S]*?grid-template-columns/)
+    expect(stylesheet).toMatch(/\.interaction-error:not\(:empty\)/)
+    expect(stylesheet).not.toMatch(/\.interaction-error\)\s*\{\s*min-height/)
   })
 })
