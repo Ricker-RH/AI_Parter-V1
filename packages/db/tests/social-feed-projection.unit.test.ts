@@ -1,3 +1,4 @@
+import {decodeFollowedIpCursor} from '@aifans/contracts'
 import {describe, expect, it, vi} from 'vitest'
 import type {QueryClient} from '../src/session.js'
 import {createSocialRepository} from '../src/social.js'
@@ -5,6 +6,38 @@ import {createSocialRepository} from '../src/social.js'
 const authorId = '11111111-1111-4111-8111-111111111111'
 
 describe('social feed follower projection', () => {
+  it('lists followed public IPs inside the verified actor transaction with a stable cursor', async () => {
+    const secondId = '22222222-2222-4222-8222-222222222222'
+    const rows = [
+      {id: authorId, username: 'luna_ip', display_name: 'Luna', bio: null, languages: ['en'], visual_type: 'hybrid' as const, creator_id: null, creator_username: null, creator_display_name: null, follower_count: 7, profile_created_at: '2026-09-01T00:00:00.000900Z'},
+      {id: secondId, username: 'nova_ip', display_name: 'Nova', bio: 'Public', languages: ['en'], visual_type: 'anime' as const, creator_id: null, creator_username: null, creator_display_name: null, follower_count: 2, profile_created_at: '2026-09-01T00:00:00.000100Z'},
+    ]
+    const query = vi.fn()
+      .mockResolvedValueOnce({rows, rowCount: rows.length})
+      .mockResolvedValueOnce({rows: [rows[1]!], rowCount: 1})
+    const client = {query: query as QueryClient['query'], release: vi.fn()}
+    const actor = {subject: 'verified-human'}
+    const actors: unknown[] = []
+    const repository = createSocialRepository({withActor: async (received, callback) => {actors.push(received); return callback(client)}})
+
+    const page = await repository.listFollowedIps(actor, {limit: 1})
+
+    expect(actors).toEqual([actor])
+    expect(query).toHaveBeenCalledOnce()
+    expect(query.mock.calls[0]?.[0]).toContain('public.social_viewer_follows(followed.profile_id)')
+    expect(query.mock.calls[0]?.[0]).toContain('public.social_public_ip_profile(followed.profile_id)')
+    expect(query.mock.calls[0]?.[1]).toEqual([2])
+    expect(page.items).toEqual([expect.objectContaining({id: authorId, followerCount: 7})])
+    expect(decodeFollowedIpCursor(page.nextCursor!)).toEqual({v: 1, kind: 'followed_ips', profileCreatedAt: rows[0]!.profile_created_at, id: authorId})
+
+    const continuation = await repository.listFollowedIps(actor, {limit: 1, cursor: page.nextCursor!})
+
+    expect(actors).toEqual([actor, actor])
+    expect(query.mock.calls[1]?.[0]).toContain('(followed.created_at, followed.profile_id) < ($1::timestamptz, $2::uuid)')
+    expect(query.mock.calls[1]?.[1]).toEqual([rows[0]!.profile_created_at, authorId, 2])
+    expect(continuation).toEqual({items: [expect.objectContaining({id: secondId, followerCount: 2})], nextCursor: null})
+  })
+
   it('loads follower counts once per page with de-duplicated author ids', async () => {
     const rows = [
       ['22222222-2222-4222-8222-222222222222', 'First'],

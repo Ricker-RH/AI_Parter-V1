@@ -26,6 +26,10 @@ import {
   LikedCursorSchema,
   decodeLikedCursor,
   encodeLikedCursor,
+  FollowedIpCursorSchema,
+  FollowedIpPageSchema,
+  decodeFollowedIpCursor,
+  encodeFollowedIpCursor,
 } from "./social.js";
 
 
@@ -33,6 +37,38 @@ const id = "5b8ba43c-0a9e-43ec-87be-448a9e1ebf30";
 const timestamp = "2026-09-01T12:00:00.000Z";
 
 describe("social contracts", () => {
+  it("round trips strict followed-IP cursors", () => {
+    const cursor = {
+      v: 1 as const,
+      kind: "followed_ips" as const,
+      profileCreatedAt: "2026-09-01T12:00:00.000100Z",
+      id,
+    };
+    const encoded = encodeFollowedIpCursor(cursor);
+
+    expect(decodeFollowedIpCursor(encoded)).toEqual(cursor);
+    expect(FollowedIpCursorSchema.parse(cursor)).toEqual(cursor);
+    expect(() => decodeFollowedIpCursor("%%%bad")).toThrow("INVALID_CURSOR");
+    expect(() => decodeFollowedIpCursor(Buffer.from(JSON.stringify({...cursor, actor: "forged"}), "utf8").toString("base64url"))).toThrow("INVALID_CURSOR");
+  });
+
+  it("keeps followed-IP pages restricted to bounded public profile fields", () => {
+    const followed = {
+      kind: "ip" as const,
+      id,
+      username: "aifans_ip",
+      displayName: "AIFANS IP",
+      bio: "Public bio",
+      languages: ["en" as const],
+      visualType: "hybrid" as const,
+      followerCount: 3,
+    };
+
+    expect(FollowedIpPageSchema.parse({items: [followed], nextCursor: null})).toEqual({items: [followed], nextCursor: null});
+    expect(() => FollowedIpPageSchema.parse({items: [{...followed, authSubject: "private"}], nextCursor: null})).toThrow();
+    expect(() => FollowedIpPageSchema.parse({items: [{...followed, followerCount: undefined}], nextCursor: null})).toThrow();
+  });
+
   it("normalizes bounded public search inputs and rejects unsafe cursors", () => {
     expect(SearchQuerySchema.parse({q: "  luna   moon  "})).toEqual({
       q: "luna moon",

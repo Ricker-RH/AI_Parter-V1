@@ -126,7 +126,7 @@
 
 - [x] **Step 1: Inventory authoritative datasets before coding**
 
-  Confirm the response shapes and auth behavior for `/api/me`, `/v1/creator/ips`, liked posts, saved posts, and followed IPs. Record whether an owner-scoped followed-IP endpoint already exists; do not add a parallel endpoint if it does.
+  Confirmed the response shapes and auth behavior for `/api/me`, `/v1/creator/ips`, liked posts, saved posts, and followed IPs. No owner-scoped followed-IP listing endpoint existed. The existing actor transaction, published-IP projection, and `social_viewer_follows` owner predicate provide the minimum safe database boundary without a schema, migration, RLS, or role change.
 
 - [x] **Step 2: Write failing profile-shell and tab tests**
 
@@ -141,21 +141,21 @@
 
   Reuse `ProfilePageHeader` and the same fixed/clipped surface contract as the public IP profile. Keep current `/api/me` request cancellation and edit validation. Display the real account bio, use a large responsive avatar, and keep the edit form as an in-place state of the same surface.
 
-- [x] **Step 5: Add real available tab data adapters**
+- [x] **Step 5: Add real tab data adapters and preserve pagination**
 
-  My IPs reads the existing creator-IP response and Liked/Saved reuse standard `PostCard`/feed rendering. Inventory found no owner-scoped followed-IP listing response, so Following uses the explicit unavailable state instead of mock or placeholder profiles. Each available remote tab has explicit loading, empty, auth, unavailable, and retry states.
+  My IPs reads the existing creator-IP response, Liked/Saved reuse standard `PostCard` rendering, and Following reads the authenticated followed-IP projection. All four tabs preserve `nextCursor`, append later pages through an explicit Load more action, retain loaded items on continuation failure, and expose loading, empty, auth, unavailable, and retry states. No tab uses mock production data.
 
-- [x] **Step 6 (N/A): Do not add an unsupported followed-IP contract/API/repository path**
+- [x] **Step 6: Add the minimum owner-scoped followed-IP projection**
 
-  Not performed. Inventory found no existing owner-scoped followed-IP listing endpoint. This slice keeps the Following tab in its explicit unavailable state, so no speculative contract, API route, repository query, schema, role, or policy change was made.
+  Added a strict public followed-IP page DTO and dedicated opaque cursor. The repository runs inside the verified actor transaction, enumerates only RLS-visible published IP rows, filters them through the existing SECURITY DEFINER `social_viewer_follows(profile_id)` owner predicate, and projects only `social_public_ip_profile(profile_id)` fields. No database schema, migration, RLS, role, upload, or operator-capability change was made.
 
-- [x] **Step 7 (N/A): Do not implement a followed-IP projection without an approved endpoint contract**
+- [x] **Step 7: Connect the authenticated API, BFF, and Following tab**
 
-  Not performed. No query, role, policy, database schema, upload boundary, or operator-capability change was made.
+  Added `GET /v1/following` through the existing strict owner-page route helper, authentication flow, rate-limit middleware, cursor validation, and response parsing. The Web BFF allowlists only the cursor query and forwards the request with the existing short-lived bearer token. The profile tab parses the strict response and renders real public IP links.
 
 - [x] **Step 8: Verify profile GREEN**
 
-  Run the profile, contract, API, and repository focused tests that were changed. Expect PASS and verify Chinese/English key parity.
+  Profile, contract, API, BFF, and repository unit tests pass. English/Chinese message key parity is 370/370. The real repository integration suite is present but skipped because no local disposable `DATABASE_URL` was available; no remote database was accessed.
 
 ### Task 4: Integration, comment-path verification, and preview deployment
 
@@ -165,11 +165,11 @@
 
 - [x] **Step 1: Review all three task diffs for boundary conflicts**
 
-  Resolve shared surface adoption deliberately; do not preserve obsolete global selectors merely to avoid a merge decision. Run `git diff --check`.
+  Reviewed the combined task diff after the concurrent surface work landed and kept the profile/API/contracts/database edits isolated. `git diff --check` passes.
 
 - [x] **Step 2: Run full automated verification**
 
-  Run Web Vitest, all workspace typechecks, and the production Web build with the repository's configured Node runtime. Expected: all tests/typechecks/build PASS.
+  Web Vitest passes 802/802 from its workspace directory, all five workspace typechecks pass, the production build and prerender-shell verifier pass with the repository's documented local-only signing value, and the license check passes. The available Node 24.16.0 emits an engine warning against the repository's `>=24.19.0` declaration.
 
 - [ ] **Step 3: Verify comment failure at every boundary**
 

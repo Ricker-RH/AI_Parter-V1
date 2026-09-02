@@ -121,7 +121,7 @@ export async function GET(request: Request, context: RouteContext) {
   const cursors = url.searchParams.getAll('cursor')
   const cursor = cursors[0]
   const profilePath = path.length === 2 && path[0] === 'profiles' && uuid.test(path[1] ?? '')
-  const ownerCollectionPath = path.length === 1 && (path[0] === 'likes' || path[0] === 'bookmarks')
+  const ownerCollectionPath = path.length === 1 && (path[0] === 'likes' || path[0] === 'bookmarks' || path[0] === 'following')
   if ([...url.searchParams.keys()].some((key) => key !== 'cursor') || cursors.length > 1 || (cursor !== undefined && !/^[A-Za-z0-9_-]{1,2048}$/.test(cursor)) || (!profilePath && !ownerCollectionPath)) return Response.json({code: 'INVALID_REQUEST'}, {status: 400})
   try {
     const query = cursor ? `?${new URLSearchParams({cursor})}` : ''

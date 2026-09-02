@@ -8,6 +8,9 @@ import {
   type FeedPage,
   FeedPageSchema,
   type FeedPost,
+  type FollowedIpCursor,
+  type FollowedIpPage,
+  FollowedIpPageSchema,
   type Locale,
   type LikedCursor,
   type NotificationPage,
@@ -24,9 +27,11 @@ import {
   PublicIpProfileSchema,
   SearchPageSchema,
   decodeCursor,
+  decodeFollowedIpCursor,
   decodeLikedCursor,
   decodeNotificationCursor,
   encodeLikedCursor,
+  encodeFollowedIpCursor,
   encodeNotificationCursor,
   type Cursor as SocialCursor,
   type CreateIpInput,
@@ -98,6 +103,7 @@ export type SocialRepository = {
   unbookmarkPost(actor: Actor, postId: string): Promise<{ deleted: boolean }>;
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>;
   listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>;
+  listFollowedIps(actor: Actor, page: PageQuery): Promise<FollowedIpPage>;
   createHumanComment(
     actor: Actor,
     postId: string,
@@ -183,6 +189,10 @@ type PublicIpRow = {
 type PublicProfileRow = PublicIpRow & {
   follower_count: number | string;
   viewer_follows?: boolean;
+};
+type FollowedIpRow = PublicIpRow & {
+  follower_count: number | string;
+  profile_created_at: string;
 };
 type SearchProfileRow = PublicIpRow;
 type PostRow = PublicIpRow & {
@@ -724,6 +734,48 @@ export function createSocialRepository({
           true,
         ),
       ),
+    listFollowedIps: (actor, page) =>
+      runWithActor(actor, async (client) => {
+        const after: FollowedIpCursor | null = page.cursor
+          ? decodeFollowedIpCursor(page.cursor)
+          : null;
+        const params: unknown[] = [];
+        const filters = ["public.social_viewer_follows(followed.profile_id)"];
+        if (after) {
+          params.push(after.profileCreatedAt, after.id);
+          filters.push(
+            `(followed.created_at, followed.profile_id) < ($1::timestamptz, $2::uuid)`,
+          );
+        }
+        params.push(page.limit + 1);
+        const result = await client.query<FollowedIpRow>(
+          `SELECT profile.*,
+             to_char(followed.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS profile_created_at
+             FROM public.ip_profiles followed
+             CROSS JOIN LATERAL public.social_public_ip_profile(followed.profile_id) profile
+             WHERE ${filters.join(" AND ")}
+             ORDER BY followed.created_at DESC, followed.profile_id DESC
+             LIMIT $${params.length}`,
+          params,
+        );
+        const rows = result.rows.slice(0, page.limit);
+        const last = rows.at(-1);
+        return FollowedIpPageSchema.parse({
+          items: rows.map((row) => ({
+            ...publicIp(row),
+            followerCount: Number(row.follower_count),
+          })),
+          nextCursor:
+            result.rows.length > page.limit && last
+              ? encodeFollowedIpCursor({
+                  v: 1,
+                  kind: "followed_ips",
+                  profileCreatedAt: last.profile_created_at,
+                  id: last.id,
+                })
+              : null,
+        });
+      }),
     async createHumanComment(actor, postId, input, context) {
       const value = CreateHumanCommentSchema.parse(input);
       return runWithActor(actor, async (client) => {

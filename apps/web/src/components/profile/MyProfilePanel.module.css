@@ -36,6 +36,8 @@
 .ipRow small { color: var(--shell-muted); }
 .ipRow p { color: var(--shell-muted); font-size: 14px; margin: 4px 0 0; }
 .ipAvatar { align-items:center;background:var(--shell-hover);border:1px solid var(--shell-border);border-radius:50%;display:flex;font-weight:700;height:52px;justify-content:center;width:52px; }
+.loadMore { background: transparent; border: 0; border-top: 1px solid var(--shell-border); color: var(--shell-text); cursor: pointer; font: inherit; font-weight: 650; min-height: 48px; padding: 0 24px; width: 100%; }
+.loadMore:disabled { cursor: wait; opacity: .6; }
 
 .identityRow {
   align-items: flex-start;

@@ -74,6 +74,12 @@ export const LikedCursorSchema = z.strictObject({
   likedAt: dateTime,
   id: uuid,
 });
+export const FollowedIpCursorSchema = z.strictObject({
+  v: z.literal(1),
+  kind: z.literal("followed_ips"),
+  profileCreatedAt: dateTime,
+  id: uuid,
+});
 const SearchCursorBaseSchema = z.strictObject({
   v: z.literal(1),
   kind: z.literal("search"),
@@ -103,6 +109,7 @@ export type Cursor = z.infer<typeof CursorSchema>;
 export type CommentCursor = z.infer<typeof CommentCursorSchema>;
 export type NotificationCursor = z.infer<typeof NotificationCursorSchema>;
 export type LikedCursor = z.infer<typeof LikedCursorSchema>;
+export type FollowedIpCursor = z.infer<typeof FollowedIpCursorSchema>;
 export type Locale = z.infer<typeof LocaleSchema>;
 
 const base64 =
@@ -211,6 +218,24 @@ export function decodeLikedCursor(value: string): LikedCursor {
   if (!cursor.success) throw new Error("INVALID_CURSOR");
   return cursor.data;
 }
+export function encodeFollowedIpCursor(cursor: FollowedIpCursor): string {
+  return base64urlEncode(JSON.stringify(FollowedIpCursorSchema.parse(cursor)));
+}
+export function decodeFollowedIpCursor(value: string): FollowedIpCursor {
+  let decoded: unknown;
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1)
+      throw new Error("invalid base64url");
+    const json = base64urlDecode(value);
+    if (base64urlEncode(json) !== value) throw new Error("non-canonical base64url");
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error("INVALID_CURSOR");
+  }
+  const cursor = FollowedIpCursorSchema.safeParse(decoded);
+  if (!cursor.success) throw new Error("INVALID_CURSOR");
+  return cursor.data;
+}
 export function encodeSearchCursor(cursor: SearchCursor): string {
   return base64urlEncode(JSON.stringify(SearchCursorSchema.parse(cursor)));
 }
@@ -257,6 +282,9 @@ const FeedIpSchema = PublicIpSchema.extend({
   followerCount: z.number().int().nonnegative().optional(),
 });
 const FeedPageIpSchema = PublicIpSchema.extend({
+  followerCount: z.number().int().nonnegative(),
+});
+export const FollowedIpSchema = PublicIpSchema.extend({
   followerCount: z.number().int().nonnegative(),
 });
 export const PublicHumanSchema = z.strictObject({
@@ -324,6 +352,10 @@ export const NotificationSchema = z.strictObject({
 });
 export const FeedPageSchema = z.strictObject({
   items: z.array(FeedPostSchema.extend({author: FeedPageIpSchema})),
+  nextCursor: z.string().nullable(),
+});
+export const FollowedIpPageSchema = z.strictObject({
+  items: z.array(FollowedIpSchema),
   nextCursor: z.string().nullable(),
 });
 export const SearchResultSchema = z.discriminatedUnion("type", [
@@ -436,6 +468,8 @@ export type RegisteredPostMedia = z.infer<typeof RegisteredPostMediaSchema>;
 export type PublicComment = z.infer<typeof PublicCommentSchema>;
 export type Notification = z.infer<typeof NotificationSchema>;
 export type FeedPage = z.infer<typeof FeedPageSchema>;
+export type FollowedIp = z.infer<typeof FollowedIpSchema>;
+export type FollowedIpPage = z.infer<typeof FollowedIpPageSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 export type SearchPage = z.infer<typeof SearchPageSchema>;
 export type PublicIpProfile = z.infer<typeof PublicIpProfileSchema>;

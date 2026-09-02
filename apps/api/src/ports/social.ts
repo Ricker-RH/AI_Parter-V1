@@ -4,6 +4,7 @@ import type {
   Cursor,
   FeedKind,
   FeedPage,
+  FollowedIpPage,
   Locale,
   NotificationPage,
   PageQuery,
@@ -42,6 +43,7 @@ export type SocialPort = {
   unbookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{deleted: boolean}>
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>
   listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>
+  listFollowedIps(actor: Actor, page: PageQuery): Promise<FollowedIpPage>
   createHumanComment(actor: Actor, postId: string, input: CreateHumanComment, context: MutationContext): Promise<PublicComment>
   listNotifications(actor: Actor, page: PageQuery): Promise<NotificationPage>
   markNotificationRead(actor: Actor, notificationId: string, context: MutationContext): Promise<{readAt: string} | null>

@@ -2,11 +2,13 @@ import {randomUUID} from 'node:crypto'
 import {
   ApiErrorSchema,
   FeedPageSchema,
+  FollowedIpPageSchema,
   PostDetailSchema,
   PublicCommentSchema,
   PublicIpProfileSchema,
   SearchPageSchema,
   encodeSearchCursor,
+  encodeFollowedIpCursor,
 } from '@aifans/contracts'
 import {describe, expect, it} from 'vitest'
 import {createApp} from '../application.js'
@@ -39,6 +41,7 @@ const post = {
   commentCount: 0,
 }
 const page = FeedPageSchema.parse({items: [post], nextCursor: null})
+const followedPage = FollowedIpPageSchema.parse({items: [{...ip, followerCount: 4}], nextCursor: null})
 const comment = PublicCommentSchema.parse({
   id: commentId,
   postId,
@@ -103,6 +106,7 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
     unbookmarkPost: async () => ({deleted: true}),
     listBookmarks: async () => page,
     listLiked: async () => page,
+    listFollowedIps: async () => followedPage,
     createHumanComment: async () => comment,
     listNotifications: async () => ({items: [], nextCursor: null}),
     markNotificationRead: async () => ({readAt}),
@@ -282,6 +286,7 @@ describe('authenticated social routes', () => {
     ['PUT', `/v1/posts/${postId}/bookmark?actor=one&actor=two`],
     ['DELETE', `/v1/posts/${postId}/bookmark?actor=one&actor=two`],
     ['GET', '/v1/bookmarks?limit=1&limit=2'],
+    ['GET', '/v1/following?limit=1&limit=2'],
     ['GET', '/v1/notifications?limit=1&limit=2'],
     ['POST', `/v1/posts/${postId}/comments?source=one&source=two`],
     ['PUT', `/v1/notifications/${notificationId}/read?source=one&source=two`],
@@ -388,6 +393,26 @@ describe('authenticated social routes', () => {
     await expectError(await createApp(dependencies(social)).request('/v1/likes?limit=2&limit=3'), 400, 'INVALID_REQUEST')
     await expectError(await createApp(dependencies(social)).request('/v1/likes?cursor=not-a-cursor'), 400, 'INVALID_CURSOR')
     await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social}).request('/v1/likes'), 401, 'AUTH_REQUIRED')
+  })
+
+  it('lists only the verified actor followed IPs and validates the private cursor', async () => {
+    const calls: unknown[] = []
+    const social = socialPort({
+      listFollowedIps: async (actor, query) => {
+        calls.push([actor, query])
+        return followedPage
+      },
+    })
+    const app = createApp(dependencies(social))
+    const cursor = encodeFollowedIpCursor({v: 1, kind: 'followed_ips', profileCreatedAt: '2026-09-01T00:00:00.000100Z', id: profileId})
+
+    const response = await app.request(`/v1/following?limit=2&cursor=${cursor}`)
+
+    expect(response.status).toBe(200)
+    expect(FollowedIpPageSchema.parse(await response.json())).toEqual(followedPage)
+    expect(calls).toEqual([[{subject: identity.subject}, {limit: 2, cursor}]])
+    await expectError(await app.request('/v1/following?cursor=not-a-cursor'), 400, 'INVALID_CURSOR')
+    await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social}).request('/v1/following'), 401, 'AUTH_REQUIRED')
   })
 
   it.each([

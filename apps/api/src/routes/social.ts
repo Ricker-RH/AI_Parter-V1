@@ -3,6 +3,7 @@ import {
   CreateHumanCommentSchema,
   FeedPageSchema,
   FeedQuerySchema,
+  FollowedIpPageSchema,
   NotificationPageSchema,
   PageQuerySchema,
   PostDetailSchema,
@@ -11,6 +12,7 @@ import {
   SearchPageSchema,
   SearchQuerySchema,
   decodeCursor,
+  decodeFollowedIpCursor,
   decodeLikedCursor,
   decodeNotificationCursor,
   decodeSearchCursor,
@@ -355,9 +357,9 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
   relationship('delete', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id, context) => social.unbookmarkPost(actor, id, context), DeletedSchema, 'POST_NOT_FOUND')
 
   const actorPage = (
-    path: '/v1/bookmarks' | '/v1/likes' | '/v1/notifications',
+    path: '/v1/bookmarks' | '/v1/likes' | '/v1/following' | '/v1/notifications',
     operation: (social: SocialPort, actor: Actor, query: z.infer<typeof PageQuerySchema>) => Promise<unknown>,
-    responseSchema: typeof FeedPageSchema | typeof NotificationPageSchema,
+    responseSchema: typeof FeedPageSchema | typeof FollowedIpPageSchema | typeof NotificationPageSchema,
   ) => {
     app.get(path, async (c) => {
       const unavailable = socialUnavailable(c, dependencies.social)
@@ -380,6 +382,13 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
           return invalidCursor(c)
         }
       }
+      if (path === '/v1/following' && query.data.cursor) {
+        try {
+          decodeFollowedIpCursor(query.data.cursor)
+        } catch {
+          return invalidCursor(c)
+        }
+      }
       const actor = await resolveActor(c, dependencies, true)
       if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
       try {
@@ -392,6 +401,7 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
 
   actorPage('/v1/bookmarks', (social, actor, query) => social.listBookmarks(actor, query), FeedPageSchema)
   actorPage('/v1/likes', (social, actor, query) => social.listLiked(actor, query), FeedPageSchema)
+  actorPage('/v1/following', (social, actor, query) => social.listFollowedIps(actor, query), FollowedIpPageSchema)
   actorPage('/v1/notifications', (social, actor, query) => social.listNotifications(actor, query), NotificationPageSchema)
 
   app.post('/v1/posts/:postId/comments', async (c) => {
