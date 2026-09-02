@@ -1,5 +1,6 @@
 import {render, screen} from '@testing-library/react'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {encodeChatConversationCursor} from '@aifans/contracts'
 
 const {access, conversations, history, redirectToUserSignIn, notFound} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn(), history: vi.fn(), redirectToUserSignIn: vi.fn(), notFound: vi.fn()}))
 vi.mock('../../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn}))
@@ -25,6 +26,14 @@ describe('persistent conversation detail page', () => {
     expect(history).toHaveBeenCalledWith(id, {token: 'token'})
     expect(screen.getByText('Welcome back')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Back'})).toHaveAttribute('href', '/en/messages')
+  })
+
+  it('uses a canonical list cursor for the adjacent list, auth return, and Back destination', async () => {
+    const listCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id})
+    render(await ConversationPage({params: Promise.resolve({locale: 'en', conversationId: id}), searchParams: Promise.resolve({listCursor})}))
+    expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: `/en/messages/${id}?listCursor=${encodeURIComponent(listCursor)}`})
+    expect(conversations).toHaveBeenCalledWith({cursor: listCursor, token: 'token'})
+    expect(screen.getByRole('link', {name: 'Back'})).toHaveAttribute('href', `/en/messages?cursor=${encodeURIComponent(listCursor)}`)
   })
 
   it('sends bad ids and unavailable conversations to the not-found boundary', async () => {

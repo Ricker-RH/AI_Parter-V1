@@ -16,6 +16,6 @@ export default async function MessagesPage({params, searchParams}: {params: Prom
   const result = await fetchConversations({token: access.token, ...(cursor ? {cursor} : {})})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const items = result.status === 'ok' ? result.data.items : []
-  const moreHref = result.status === 'ok' && result.data.nextCursor ? `/${locale}/messages?${new URLSearchParams({cursor: result.data.nextCursor})}` : undefined
-  return <MessagesWorkspace items={items} labels={messages.chat} listUnavailable={result.status === 'unavailable'} locale={locale} moreHref={moreHref}/>
+  const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
+  return <MessagesWorkspace initialCursor={cursor} items={items} labels={messages.chat} listUnavailable={result.status === 'unavailable'} locale={locale} nextCursor={nextCursor}/>
 }

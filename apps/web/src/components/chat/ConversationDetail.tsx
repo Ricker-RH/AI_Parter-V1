@@ -2,7 +2,7 @@
 
 import {ChatHistoryPageSchema, type ChatHistoryPage, type ChatMessage} from '@aifans/contracts'
 import Link from 'next/link'
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useRef, useState, type ReactNode} from 'react'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import {ChatComposer, type ChatComposerLabels} from './ChatComposer'
@@ -12,13 +12,13 @@ export type ConversationDetailLabels = ChatComposerLabels & {back: string; empty
 
 function orderedUnique(messages: ChatMessage[]) { return [...new Map(messages.map((message) => [message.id, message])).values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)) }
 
-type ConversationDetailProps = {history?: ChatHistoryPage | undefined; labels: ConversationDetailLabels; locale: Locale; unavailable?: boolean | undefined}
+type ConversationDetailProps = {history?: ChatHistoryPage | undefined; labels: ConversationDetailLabels; listCursor?: string | undefined; locale: Locale; sectionHeader?: ReactNode; unavailable?: boolean | undefined}
 
 export function ConversationDetail(props: ConversationDetailProps) {
   return <ConversationDetailContent key={props.history?.conversation.id ?? 'unavailable'} {...props}/>
 }
 
-function ConversationDetailContent({history, labels, locale, unavailable = false}: ConversationDetailProps) {
+function ConversationDetailContent({history, labels, listCursor, locale, sectionHeader, unavailable = false}: ConversationDetailProps) {
   const [items, setItems] = useState<ChatMessage[]>(history?.items ?? [])
   const [nextCursor, setNextCursor] = useState(history?.nextCursor ?? null)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
@@ -68,7 +68,7 @@ function ConversationDetailContent({history, labels, locale, unavailable = false
     try {
       const response = await fetch(`/api/conversations/${encodeURIComponent(targetConversationId)}/messages?${new URLSearchParams({cursor})}`, {method: 'GET', signal: request.signal})
       if (!current()) { await cancelBody(response); return }
-      if (response.status === 401) { await cancelBody(response); if (current()) globalThis.location.assign(authHref(locale, `/${locale}/messages/${targetConversationId}`)); return }
+      if (response.status === 401) { await cancelBody(response); if (current()) globalThis.location.assign(authHref(locale, `/${locale}/messages/${targetConversationId}${listCursor ? `?${new URLSearchParams({listCursor})}` : ''}`)); return }
       if (!response.ok) { await cancelBody(response); if (!current()) return; throw Error('unavailable') }
       const value: unknown = await response.json()
       if (!current()) return
@@ -85,9 +85,10 @@ function ConversationDetailContent({history, labels, locale, unavailable = false
       if (mounted.current) setLoadingEarlier(false)
     }
   }
-  if (unavailable || !history) return <section className={styles.detailPane}><p className={styles.detailNotice} role="alert">{labels.unavailable}</p></section>
+  if (unavailable || !history) return <section className={styles.detailPane}>{sectionHeader}<p className={styles.detailNotice} role="alert">{labels.unavailable}</p></section>
   return <section aria-label={history.conversation.ipProfile.displayName} className={styles.detailPane}>
-    <header className={styles.detailHeader}><Link aria-label={labels.back} className={styles.back} href={`/${locale}/messages`}>← {labels.back}</Link><div className={styles.detailIdentity}><span aria-hidden="true" className={styles.avatar}>{history.conversation.ipProfile.displayName.slice(0, 1).toUpperCase()}</span><div><h2>{history.conversation.ipProfile.displayName}</h2><p>@{history.conversation.ipProfile.username}</p></div></div></header>
+    {sectionHeader}
+    <header className={styles.detailHeader}><Link aria-label={labels.back} className={styles.back} href={`/${locale}/messages${listCursor ? `?${new URLSearchParams({cursor: listCursor})}` : ''}`}>← {labels.back}</Link><div className={styles.detailIdentity}><span aria-hidden="true" className={styles.avatar}>{history.conversation.ipProfile.displayName.slice(0, 1).toUpperCase()}</span><div><h2>{history.conversation.ipProfile.displayName}</h2><p>@{history.conversation.ipProfile.username}</p></div></div></header>
     <div className={styles.messageArea}>{nextCursor ? <button className={styles.older} disabled={loadingEarlier} onClick={() => void loadEarlier()} type="button">{labels.loadEarlierMessages}</button> : null}{earlierError ? <p className={styles.detailNotice} role="alert">{labels.unavailable}</p> : null}{items.length === 0 ? <p className={styles.detailNotice}>{labels.emptyHistory}</p> : <ol className={styles.messageList}>{items.map((message) => <li aria-label={message.deliveryState === 'failed' ? labels.messageFailed : undefined} className={message.role === 'human' ? styles.humanMessage : styles.assistantMessage} key={message.id}><p>{message.body}</p>{message.deliveryState === 'failed' ? <span className={styles.failedMarker}>{labels.messageFailed}</span> : null}</li>)}</ol>}<p aria-live="polite" className={styles.liveStatus}>{items.some((message) => message.deliveryState === 'pending') ? labels.sending : ''}</p></div>
     <ChatComposer conversationId={history.conversation.id} key={history.conversation.id} labels={labels} locale={locale} messages={items} onMessages={setItems} sendEnabled={history.conversation.sendEnabled}/>
   </section>

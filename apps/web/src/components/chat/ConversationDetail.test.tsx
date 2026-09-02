@@ -2,6 +2,7 @@ import {StrictMode} from 'react'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {ConversationDetail} from './ConversationDetail.js'
+import {MessagesSectionHeader} from './MessagesSectionHeader.js'
 
 const composerRenders = vi.hoisted(() => [] as {conversationId: string; bodies: string[]}[])
 vi.mock('./ChatComposer.js', () => ({ChatComposer: ({conversationId, messages}: {conversationId: string; messages: {body: string}[]}) => {
@@ -22,6 +23,13 @@ describe('ConversationDetail', () => {
     rerender(<ConversationDetail history={second} labels={labels} locale="en" />)
     expect(await screen.findByText('Second history')).toBeVisible()
     expect(screen.queryByText('First history')).toBeNull()
+  })
+
+  it('preserves the originating list cursor and exposes the mobile Messages section header', () => {
+    render(<ConversationDetail history={first} labels={labels} listCursor="origin-page" locale="en" sectionHeader={<MessagesSectionHeader active="chat" labels={{title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications'}} locale="en"/>}/>)
+    expect(screen.getByRole('link', {name: 'Back'})).toHaveAttribute('href', '/en/messages?cursor=origin-page')
+    expect(screen.getByRole('heading', {name: 'Messages'})).toBeVisible()
+    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/notifications')
   })
 
   it('never renders the previous transcript under a newly selected conversation identity', () => {

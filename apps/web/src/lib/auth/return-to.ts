@@ -32,6 +32,9 @@ function isCanonicalCursor(cursor: string, kind: 'conversation' | 'message' | 'l
   } catch { return false }
 }
 
+export function isCanonicalChatConversationCursor(value: string): boolean { return isCanonicalCursor(value, 'conversation') }
+export function isCanonicalChatMessageCursor(value: string): boolean { return isCanonicalCursor(value, 'message') }
+
 function hasCanonicalCursor(query: string, kind: 'conversation' | 'message' | 'liked'): boolean {
   if (!query) return true
   if (!queryIsWellFormed(query)) return false
@@ -40,6 +43,16 @@ function hasCanonicalCursor(query: string, kind: 'conversation' | 'message' | 'l
   const cursor = params.get('cursor')
   if (!cursor) return false
   return isCanonicalCursor(cursor, kind)
+}
+
+function hasCanonicalMessageDetailQuery(query: string): boolean {
+  if (!query) return true
+  if (!queryIsWellFormed(query)) return false
+  const params = new URLSearchParams(query)
+  if ([...params.keys()].some((key) => key !== 'cursor' && key !== 'listCursor') || params.getAll('cursor').length > 1 || params.getAll('listCursor').length > 1) return false
+  const historyCursor = params.get('cursor')
+  const listCursor = params.get('listCursor')
+  return (historyCursor === null || (historyCursor.length > 0 && isCanonicalChatMessageCursor(historyCursor))) && (listCursor === null || (listCursor.length > 0 && isCanonicalChatConversationCursor(listCursor)))
 }
 
 function hasCanonicalActivityQuery(query: string): boolean {
@@ -87,7 +100,7 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
 
   if (pathname === `${base}/messages`) return hasCanonicalCursor(query, 'conversation') ? value : undefined
   const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
-  if (new RegExp(`^${base}/messages/${uuid}$`, 'i').test(pathname)) return hasCanonicalCursor(query, 'message') ? value : undefined
+  if (new RegExp(`^${base}/messages/${uuid}$`, 'i').test(pathname)) return hasCanonicalMessageDetailQuery(query) ? value : undefined
   if (pathname === `${base}/liked`) return hasCanonicalCursor(query, 'liked') ? value : undefined
   if (pathname === `${base}/settings`) return hasOnlyQueryKeys(query, []) ? value : undefined
   if (pathname === `${base}/activity`) return hasCanonicalActivityQuery(query) ? value : undefined

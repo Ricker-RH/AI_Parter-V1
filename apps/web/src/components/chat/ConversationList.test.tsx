@@ -1,18 +1,24 @@
-import {fireEvent, render, screen} from '@testing-library/react'
+import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
-import {expect, describe, it, vi} from 'vitest'
-import {ConversationList} from './ConversationList.js'
+import {afterEach, expect, describe, it, vi} from 'vitest'
+import {encodeChatConversationCursor} from '@aifans/contracts'
+import {StrictMode} from 'react'
+import {ConversationList, formatConversationStamp} from './ConversationList.js'
 
 vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
 
-const labels = {title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications', noConversations: 'No conversations yet', emptyDescription: 'Conversations with AI/IP profiles appear here.', emptyAction: 'Explore home', searchLabel: 'Search conversations', searchPlaceholder: 'Search', noSearchResults: 'No matching conversations', loadMore: 'Load more', unavailable: 'Messages are unavailable right now.', unavailableDescription: 'We could not load your conversations.', unavailableAction: 'Try again', unavailablePending: 'Trying again…'}
+const labels = {title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications', noConversations: 'No conversations yet', emptyDescription: 'Conversations with AI/IP profiles appear here.', emptyAction: 'Explore home', searchLabel: 'Search conversations', searchPlaceholder: 'Search', noSearchResults: 'No matching conversations', partialSearchResults: 'No matches in loaded conversations. Load more to keep searching.', loadMore: 'Load more', loadingMore: 'Loading…', loadMoreError: 'Could not load more conversations.', unavailable: 'Messages are unavailable right now.', unavailableDescription: 'We could not load your conversations.', unavailableAction: 'Try again', unavailablePending: 'Trying again…'}
 const item = {id: '11111111-1111-4111-8111-111111111111', ipProfile: {id: '22222222-2222-4222-8222-222222222222', displayName: 'Luma', username: 'luma'}, lastMessage: {body: 'Last real message', role: 'assistant' as const, createdAt: '2026-09-01T00:00:00.000Z'}, updatedAt: '2026-09-01T00:00:00.000Z', sendEnabled: true}
+const originCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T01:00:00.000Z', id: item.id})
+const nextCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id: item.id})
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('ConversationList', () => {
   it('renders real identity and last-message summary with selected state', () => {
-    render(<ConversationList items={[item]} labels={labels} locale="en" selectedId={item.id}/>)
+    render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" selectedId={item.id}/>)
     const link = screen.getByRole('link', {name: /Luma/})
-    expect(link).toHaveAttribute('href', `/en/messages/${item.id}`)
+    expect(link).toHaveAttribute('href', `/en/messages/${item.id}?listCursor=${encodeURIComponent(originCursor)}`)
     expect(link).toHaveAttribute('aria-current', 'page')
     expect(screen.getByText('@luma')).toBeVisible()
     expect(screen.getByText('Last real message')).toBeVisible()
@@ -23,21 +29,79 @@ describe('ConversationList', () => {
     expect(screen.getByRole('heading', {name: 'No conversations yet'})).toBeVisible()
     expect(screen.getByText('Conversations with AI/IP profiles appear here.')).toBeVisible()
     expect(screen.getByRole('link', {name: 'Explore home'})).toHaveAttribute('href', '/en')
-    rerender(<ConversationList items={[item]} labels={labels} locale="en" moreHref="/en/messages?cursor=next"/>)
-    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/messages?cursor=next')
+    rerender(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
+    expect(screen.getByRole('button', {name: 'Load more'})).toBeEnabled()
   })
 
-  it('filters loaded conversation summaries without changing pagination links', () => {
+  it('keeps search active while it accumulates and de-duplicates the next cursor page', async () => {
     const second = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Orion', username: 'night_sky'}, lastMessage: {...item.lastMessage, body: 'A quiet constellation'}}
-    render(<ConversationList items={[item, second]} labels={labels} locale="en" moreHref="/en/messages?cursor=next"/>)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [item, second], nextCursor: null})))
+    render(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
     const search = screen.getByRole('searchbox', {name: 'Search conversations'})
     fireEvent.change(search, {target: {value: 'NIGHT'}})
-    expect(screen.queryByRole('link', {name: /Luma/})).toBeNull()
-    expect(screen.getByRole('link', {name: /Orion/})).toBeVisible()
-    expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/messages?cursor=next')
+    expect(screen.getByText('No matches in loaded conversations. Load more to keep searching.')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    expect(await screen.findByRole('link', {name: /Orion/})).toHaveAttribute(
+      'href',
+      `/en/messages/${second.id}?listCursor=${encodeURIComponent(nextCursor)}`,
+    )
+    expect(fetch).toHaveBeenCalledWith(`/api/conversations?cursor=${encodeURIComponent(nextCursor)}`, expect.objectContaining({method: 'GET'}))
+    expect(screen.queryAllByRole('link', {name: /Luma/})).toHaveLength(0)
     fireEvent.change(search, {target: {value: 'missing'}})
-    expect(screen.getByText('No matching conversations')).toBeVisible()
+    expect(await screen.findByText('No matching conversations')).toBeVisible()
     expect(screen.queryByText('No conversations yet')).toBeNull()
+  })
+
+  it('formats timestamps deterministically across server and browser timezones', () => {
+    const original = process.env.TZ
+    process.env.TZ = 'UTC'
+    const server = formatConversationStamp('2026-09-01T23:30:00.000Z', 'en')
+    process.env.TZ = 'Asia/Shanghai'
+    const browser = formatConversationStamp('2026-09-01T23:30:00.000Z', 'en')
+    if (original === undefined) delete process.env.TZ
+    else process.env.TZ = original
+    expect(server).toBe('Sep 1')
+    expect(browser).toBe(server)
+  })
+
+  it('keeps pagination mounted through Strict Effects setup-cleanup-setup', async () => {
+    const second = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Orion'}}
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [second], nextCursor: null})))
+    render(<StrictMode><ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/></StrictMode>)
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    expect(await screen.findByRole('link', {name: /Orion/})).toBeVisible()
+  })
+
+  it('aborts and ignores a stale pagination request when the list cursor changes', async () => {
+    let resolve!: (response: Response) => void
+    const stale = {...item, id: '44444444-4444-4444-8444-444444444444', ipProfile: {...item.ipProfile, displayName: 'Stale'}}
+    const current = {...item, id: '55555555-5555-4555-8555-555555555555', ipProfile: {...item.ipProfile, displayName: 'Current'}}
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
+    const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    const signal = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1].signal as AbortSignal
+    rerender(<ConversationList items={[current]} labels={labels} locale="en" nextCursor={null}/>)
+    expect(signal.aborted).toBe(true)
+    resolve(Response.json({items: [stale], nextCursor: null}))
+    await waitFor(() => expect(screen.getByRole('link', {name: /Current/})).toBeVisible())
+    expect(screen.queryByRole('link', {name: /Stale/})).toBeNull()
+  })
+
+  it('does not let a stale request unlock a newer pagination request', async () => {
+    const resolvers: Array<(response: Response) => void> = []
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolvers.push(resolve) })))
+    const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    rerender(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={originCursor}/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    resolvers[0]!({body: {cancel}} as unknown as Response)
+    await waitFor(() => expect(cancel).toHaveBeenCalledOnce())
+    const active = screen.getByRole('button', {name: 'Loading…'})
+    expect(active).toBeDisabled()
+    fireEvent.click(active)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    resolvers[1]!(Response.json({items: [], nextCursor: null}))
   })
 
   it('renders an exclusive unavailable state without an active search or empty-inbox copy', () => {

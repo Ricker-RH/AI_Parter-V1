@@ -43,6 +43,8 @@ describe('user auth return target', () => {
     const detailCursor = encodeChatMessageCursor({v: 1, kind: 'chat-messages', createdAt: '2026-09-01T00:00:00.000Z', id})
     expect(authHref('en', `/en/messages?cursor=${listCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages?cursor=${listCursor}`)}`)
     expect(authHref('en', `/en/messages/${id}?cursor=${detailCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${id}?cursor=${detailCursor}`)}`)
+    expect(authHref('en', `/en/messages/${id}?listCursor=${listCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${id}?listCursor=${listCursor}`)}`)
+    expect(authHref('en', `/en/messages/${id}?listCursor=${listCursor}&cursor=${detailCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${id}?listCursor=${listCursor}&cursor=${detailCursor}`)}`)
   })
   it('preserves protected liked, settings, and canonical collection targets in the real login href', () => {
     const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
@@ -85,6 +87,9 @@ describe('user auth return target', () => {
     ['en', '/en/messages?unknown=value'],
     ['en', '/en/messages/not-a-uuid'],
     ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?cursor=one&cursor=two'],
+    ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?listCursor=one&listCursor=two'],
+    ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?listCursor=not-canonical'],
+    ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?listCursor=one&unknown=value'],
     ['en', '/en/liked?cursor=not-canonical'],
     ['en', '/en/liked?cursor=one&cursor=two'],
     ['en', '/en/settings?appearance=dark'],
