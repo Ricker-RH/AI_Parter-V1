@@ -30,7 +30,7 @@ describe('ConversationDetail', () => {
     render(<ConversationDetail history={first} labels={labels} listCursor="origin-page" locale="en" sectionHeader={<MessagesSectionHeader active="chat" labels={{title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications'}} locale="en"/>}/>)
     expect(screen.getByRole('link', {name: 'Back'})).toHaveAttribute('href', '/en/messages?cursor=origin-page')
     expect(screen.getByRole('heading', {name: 'Messages'})).toBeVisible()
-    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/notifications')
+    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/messages/notifications')
   })
 
   it('never renders the previous transcript under a newly selected conversation identity', () => {

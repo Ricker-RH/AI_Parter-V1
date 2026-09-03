@@ -46,6 +46,13 @@ describe('user auth return target', () => {
     expect(authHref('en', `/en/messages/${id}?listCursor=${listCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${id}?listCursor=${listCursor}`)}`)
     expect(authHref('en', `/en/messages/${id}?listCursor=${listCursor}&cursor=${detailCursor}`)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(`/en/messages/${id}?listCursor=${listCursor}&cursor=${detailCursor}`)}`)
   })
+  it('preserves canonical notification list and detail targets in the real login href', () => {
+    const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
+    const cursor = encodeNotificationCursor({v: 1, kind: 'notifications', createdAt: '2026-09-01T00:00:00.000Z', id})
+    for (const target of [`/en/messages/notifications?cursor=${cursor}`, `/en/messages/notifications/${id}?listCursor=${cursor}`]) {
+      expect(authHref('en', target)).toBe(`/en/auth/sign-in?next=${encodeURIComponent(target)}`)
+    }
+  })
   it('preserves protected liked, settings, and canonical collection targets in the real login href', () => {
     const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
     const likedCursor = encodeLikedCursor({v: 1, kind: 'liked', likedAt: '2026-09-01T00:00:00.000Z', id})
@@ -86,6 +93,8 @@ describe('user auth return target', () => {
     ['en', '/en/messages?cursor=one&cursor=two'],
     ['en', '/en/messages?unknown=value'],
     ['en', '/en/messages/not-a-uuid'],
+    ['en', '/en/messages/notifications?cursor=not-canonical'],
+    ['en', '/en/messages/notifications/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?listCursor=not-canonical'],
     ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?cursor=one&cursor=two'],
     ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?listCursor=one&listCursor=two'],
     ['en', '/en/messages/5b8ba43c-0a9e-43ec-87be-448a9e1ebf30?listCursor=not-canonical'],

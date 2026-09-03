@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, describe, expect, it } from 'vitest'
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { ipProfiles } from '../src/schema.js'
+import { commentBookmarks, comments, ipProfiles, notifications } from '../src/schema.js'
 
 const connectionString = process.env.DATABASE_URL ?? ''
 const describeIntegration = connectionString ? describe : describe.skip
@@ -133,12 +133,11 @@ describeIntegration('social core authorization', () => {
       await become(client, first.subject)
       await client.query('SELECT public.follow_profile($1,$2)', [author.id, randomUUID()])
       await client.query('SELECT public.like_post($1,$2)', [postId, randomUUID()])
-      const comment = randomUUID()
-      await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'A real comment')`, [comment, postId, first.id])
+      const comment=(await client.query<{id:string}>("SELECT id FROM public.create_human_comment($1,NULL,'A real comment',$2)",[postId,randomUUID()])).rows[0]!.id
       await expect(savepoint(client, () => client.query('DELETE FROM public.post_likes WHERE profile_id = $1', [second.id]))).rejects.toThrow(/permission denied/)
       const count = await client.query('SELECT count(*)::int AS count FROM public.post_likes WHERE profile_id = $1', [second.id])
       expect(count.rows[0]?.count).toBe(0)
-      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Reply')`, [randomUUID(), postId, comment, first.id]))).resolves.toBeTruthy()
+      await expect(savepoint(client, () => client.query("SELECT id FROM public.create_human_comment($1,$2,'Reply',$3)",[postId,comment,randomUUID()]))).resolves.toBeTruthy()
     })
   })
 
@@ -173,10 +172,19 @@ describeIntegration('social core authorization', () => {
       await expect(client.query(`UPDATE public.posts SET body = 'Edited draft' WHERE id = $1`, [draftId])).resolves.toMatchObject({rowCount: 1})
       await expect(client.query(`UPDATE public.posts SET state = 'published', published_at = clock_timestamp() WHERE id = $1`, [draftId])).resolves.toMatchObject({rowCount: 1})
       await client.query('SET LOCAL ROLE aifans_anon')
-      await expect(client.query('SELECT id, body FROM public.comments WHERE id = $1', [commentId])).resolves.toMatchObject({rowCount: 1})
+      await expect(client.query('SELECT id, body FROM public.social_public_comments($1,NULL,NULL,10) WHERE id = $2', [postId,commentId])).resolves.toMatchObject({rowCount: 1})
       await expect(savepoint(client, () => client.query('SELECT acting_operator_profile_id, source FROM public.comments'))).rejects.toThrow(/permission denied/)
     })
   })
+
+  it('keeps deleted identities out of the legacy anonymous comment projection',async()=>transaction(async client=>{
+    const author=await ip(client),actor=await human(client),postId=await publishedPost(client,author.id),root=randomUUID(),reply=randomUUID()
+    await client.query("INSERT INTO public.comments(id,post_id,author_profile_id,source,body) VALUES($1,$2,$3,'human','deleted root')",[root,postId,actor.id])
+    await client.query("INSERT INTO public.comments(id,post_id,parent_comment_id,author_profile_id,source,body) VALUES($1,$2,$3,$4,'human','public reply')",[reply,postId,root,actor.id])
+    await client.query("UPDATE public.comments SET state='deleted',deleted_at=clock_timestamp() WHERE id=$1",[root])
+    await client.query('SET LOCAL ROLE aifans_anon')
+    await expect(client.query('SELECT id,author_id,body,state FROM public.social_public_comments($1,NULL,NULL,10) WHERE id=$2',[postId,root])).resolves.toMatchObject({rowCount:0})
+  }))
 
   it('enforces immutable identities, soft deletion, notification ownership, and IP identity lifecycle', async () => {
     await transaction(async (client) => {
@@ -234,12 +242,13 @@ describeIntegration('social core authorization', () => {
       const parent = randomUUID()
       const humanAuthor = await human(client)
       await client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', 'Parent')`, [parent, mediaOnly, humanAuthor.id])
-      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Wrong post')`, [randomUUID(), otherPost, parent, humanAuthor.id]))).rejects.toThrow(/same post/)
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Wrong post')`, [randomUUID(), otherPost, parent, humanAuthor.id]))).rejects.toThrow(/invalid reply parent/)
       const reply = randomUUID()
       await client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Reply')`, [reply, mediaOnly, parent, humanAuthor.id])
-      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Too deep')`, [randomUUID(), mediaOnly, reply, humanAuthor.id]))).rejects.toThrow(/one reply level/)
+      const deep=randomUUID()
+      await expect(client.query(`INSERT INTO public.comments (id, post_id, parent_comment_id, author_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'Deep reply') RETURNING root_comment_id`, [deep, mediaOnly, reply, humanAuthor.id])).resolves.toMatchObject({rows:[{root_comment_id:parent}]})
       await become(client, humanAuthor.subject)
-      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', '   ')`, [randomUUID(), mediaOnly, humanAuthor.id]))).rejects.toThrow(/check/)
+      await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, source, body) VALUES ($1, $2, $3, 'human', '   ')`, [randomUUID(), mediaOnly, humanAuthor.id]))).rejects.toThrow(/permission denied/)
       await expect(savepoint(client, () => client.query(`INSERT INTO public.comments (id, post_id, author_profile_id, acting_operator_profile_id, source, body) VALUES ($1, $2, $3, $4, 'human', 'No impersonation')`, [randomUUID(), mediaOnly, firstIp.id, humanAuthor.id]))).rejects.toThrow(/permission denied|row-level security|human comments require/)
     })
   })
@@ -253,7 +262,7 @@ describeIntegration('social core authorization', () => {
       await client.query('SELECT public.follow_profile($1,$2)', [author.id, randomUUID()])
       await client.query('SELECT public.like_post($1,$2)', [postId, randomUUID()])
       await client.query('SELECT public.bookmark_post($1)', [postId])
-      await client.query('INSERT INTO public.comment_likes (comment_id, profile_id) VALUES ($1, $2)', [commentId, first.id])
+      await client.query('SELECT public.like_comment($1,$2)', [commentId, randomUUID()])
       const notificationId = randomUUID(); await client.query('SET LOCAL ROLE NONE'); await client.query(`INSERT INTO public.notifications (id, recipient_profile_id, kind) VALUES ($1, $2, 'follow')`, [notificationId, first.id])
       await become(client, second.subject)
       await expect(savepoint(client, () => client.query('DELETE FROM public.follows WHERE follower_profile_id = $1', [first.id]))).rejects.toThrow(/permission denied/)
@@ -270,8 +279,34 @@ describeIntegration('social core authorization', () => {
     })
   })
 
+  it('derives immutable root identity and enforces the hard 500-row group boundary',async()=>transaction(async client=>{
+    const actor=await human(client),author=await ip(client),postId=await publishedPost(client,author.id),root=randomUUID(),forged=randomUUID(),reply=randomUUID()
+    await client.query("INSERT INTO public.comments(id,post_id,root_comment_id,author_profile_id,source,body) VALUES($1,$2,$3,$4,'human','root')",[root,postId,forged,actor.id])
+    await client.query("INSERT INTO public.comments(id,post_id,root_comment_id,parent_comment_id,author_profile_id,source,body) VALUES($1,$2,$3,$4,$5,'human','reply')",[reply,postId,forged,root,actor.id])
+    await expect(client.query('SELECT id,root_comment_id FROM public.comments WHERE id=ANY($1::uuid[]) ORDER BY id',[ [root,reply] ])).resolves.toMatchObject({rows:expect.arrayContaining([{id:root,root_comment_id:root},{id:reply,root_comment_id:root}])})
+    await expect(savepoint(client,()=>client.query('UPDATE public.comments SET root_comment_id=$1 WHERE id=$2',[reply,root]))).rejects.toThrow(/root is immutable|only be soft deleted/)
+    await client.query("INSERT INTO public.comments(id,post_id,parent_comment_id,author_profile_id,source,body) SELECT gen_random_uuid(),$1,$2,$3,'human','bounded' FROM generate_series(1,498)",[postId,root,actor.id])
+    await expect(savepoint(client,()=>client.query("INSERT INTO public.comments(id,post_id,parent_comment_id,author_profile_id,source,body) VALUES($1,$2,$3,$4,'human','overflow')",[randomUUID(),postId,root,actor.id]))).rejects.toThrow(/fanout limit/)
+  }))
+
+  it('denies direct comment relationship writes while granting only bounded commands',async()=>transaction(async client=>{
+    const result=await client.query<{likes_insert:boolean;bookmarks_insert:boolean;shares_insert:boolean;like_command:boolean;share_command_anon:boolean}>(`SELECT has_table_privilege('aifans_authenticated','public.comment_likes','INSERT') likes_insert,has_table_privilege('aifans_authenticated','public.comment_bookmarks','INSERT') bookmarks_insert,has_table_privilege('aifans_anon','public.comment_share_events','INSERT') shares_insert,has_function_privilege('aifans_authenticated','public.like_comment(uuid,uuid)','EXECUTE') like_command,has_function_privilege('aifans_anon','public.record_comment_share(uuid,uuid)','EXECUTE') share_command_anon`)
+    expect(result.rows[0]).toEqual({likes_insert:false,bookmarks_insert:false,shares_insert:false,like_command:true,share_command_anon:true})
+  }))
+  it('denies anonymous and authenticated callers raw comment rows and bodies',async()=>transaction(async client=>{
+    const privileges=await client.query<{anon_select:boolean;authenticated_select:boolean;authenticated_insert:boolean}>(`SELECT has_column_privilege('aifans_anon','public.comments','body','SELECT') anon_select,has_column_privilege('aifans_authenticated','public.comments','body','SELECT') authenticated_select,has_table_privilege('aifans_authenticated','public.comments','INSERT') authenticated_insert`)
+    expect(privileges.rows[0]).toEqual({anon_select:false,authenticated_select:false,authenticated_insert:false})
+  }))
+
   it('exports the composite current-revision foreign key through Drizzle', () => {
     const foreignKeys = getTableConfig(ipProfiles).foreignKeys
     expect(foreignKeys.some((key) => key.getName() === 'ip_profiles_current_identity_revision_fk')).toBe(true)
+  })
+  it('exports threaded-comment checks and indexes through Drizzle',()=>{
+    const commentConfig=getTableConfig(comments),bookmarkConfig=getTableConfig(commentBookmarks),notificationConfig=getTableConfig(notifications)
+    expect(commentConfig.checks.map(item=>item.name)).toContain('comments_root_shape_check')
+    expect(commentConfig.indexes.map(item=>item.config.name)).toEqual(expect.arrayContaining(['comments_post_root_created_idx','comments_post_root_cursor_idx']))
+    expect(bookmarkConfig.indexes.map(item=>item.config.name)).toContain('comment_bookmarks_profile_created_idx')
+    expect(notificationConfig.indexes.map(item=>item.config.name)).toContain('notifications_comment_like_once_idx')
   })
 })

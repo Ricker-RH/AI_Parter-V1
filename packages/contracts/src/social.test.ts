@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CommentCursorSchema,
+  CommentPageSchema,
+  CommentThreadContextSchema,
+  decodeCommentCursor,
+  encodeCommentCursor,
   CursorSchema,
   decodeCursor,
   encodeCursor,
@@ -38,6 +43,52 @@ const id = "5b8ba43c-0a9e-43ec-87be-448a9e1ebf30";
 const timestamp = "2026-09-01T12:00:00.000Z";
 
 describe("social contracts", () => {
+  it("requires strict root-thread comment pages and v2 root cursors", () => {
+    const root = {
+      id,
+      postId: id,
+      rootCommentId: id,
+      parentCommentId: null,
+      author: {kind: "human" as const, id, username: "human_user", displayName: "Human"},
+      state: "published" as const,
+      body: "root",
+      createdAt: timestamp,
+      likeCount: 1,
+      replyCount: 1,
+      bookmarkCount: 2,
+      shareCount: 3,
+      viewerHasLiked: true,
+      viewerHasBookmarked: false,
+    };
+    const reply = {...root, id: "d0a9170a-e727-4d88-bf31-1a795a7f88eb", parentCommentId: id, body: "reply", likeCount: 0, replyCount: 0, bookmarkCount: 0, shareCount: 0};
+    expect(CommentPageSchema.parse({groups: [{root, replies: [reply]}], nextCursor: null})).toMatchObject({groups: [{root: {rootCommentId: id}}]});
+    expect(CommentCursorSchema.parse({v: 2, kind: "comment_roots", order: "root_created_at_asc_v1", postId: id, rootCreatedAt: timestamp, rootId: id})).toMatchObject({v: 2});
+    expect(() => CommentCursorSchema.parse({v: 1, kind: "comments", createdAt: timestamp, id})).toThrow();
+    expect(() => CommentPageSchema.parse({items: [root], nextCursor: null})).toThrow();
+    expect(() => CommentPageSchema.parse({groups: [{root: {...root, parentCommentId: reply.id}, replies: [reply]}], nextCursor: null})).toThrow();
+    expect(() => CommentPageSchema.parse({groups: [{root, replies: [{...reply, rootCommentId: reply.id}]}], nextCursor: null})).toThrow();
+    expect(() => PublicCommentSchema.parse({...root, internal: true})).toThrow();
+    expect(() => PublicCommentSchema.parse({...root, likeCount: -1})).toThrow();
+    const tombstone = {...root, state: "deleted" as const, body: undefined, author: null, likeCount: 0, replyCount: 0, bookmarkCount: 0, shareCount: 0, viewerHasLiked: false, viewerHasBookmarked: false};
+    expect(PublicCommentSchema.parse(tombstone)).toMatchObject({author: null, likeCount: 0});
+    for (const metric of ["likeCount", "replyCount", "bookmarkCount", "shareCount"] as const)
+      expect(() => PublicCommentSchema.parse({...tombstone, [metric]: 1})).toThrow();
+    expect(() => PublicCommentSchema.parse({...tombstone, viewerHasLiked: true})).toThrow();
+    expect(() => PublicCommentSchema.parse({...tombstone, viewerHasBookmarked: true})).toThrow();
+    expect(PublicCommentSchema.parse({...tombstone, viewerHasLiked: undefined, viewerHasBookmarked: undefined})).toMatchObject({state: "deleted"});
+    expect(() => PublicCommentSchema.parse({...root, author: null})).toThrow();
+    expect(() => PublicCommentSchema.parse({...tombstone, body: "leak"})).toThrow();
+    expect(CommentThreadContextSchema.parse({group: {root, replies: [reply]}})).toMatchObject({group: {root: {id}}});
+    expect(() => CommentThreadContextSchema.parse({group: {root, replies: [reply]}, extra: true})).toThrow();
+  });
+
+  it("round trips canonical post-bound comment cursors", () => {
+    const cursor = {v: 2 as const, kind: "comment_roots" as const, order: "root_created_at_asc_v1" as const, postId: id, rootCreatedAt: timestamp, rootId: id};
+    const encoded = encodeCommentCursor(cursor);
+    expect(decodeCommentCursor(encoded, id)).toEqual(cursor);
+    expect(() => decodeCommentCursor(encoded, "d0a9170a-e727-4d88-bf31-1a795a7f88eb")).toThrow("INVALID_CURSOR");
+    expect(() => decodeCommentCursor(`${encoded}=`, id)).toThrow("INVALID_CURSOR");
+  });
   it("round trips strict followed-IP cursors", () => {
     const cursor = {
       v: 1 as const,
@@ -203,10 +254,15 @@ describe("social contracts", () => {
       PublicCommentSchema.parse({
         id,
         postId: id,
+        rootCommentId: id,
         parentCommentId: null,
-        author: ip,
+        author: null,
         state: "deleted",
         createdAt: timestamp,
+        likeCount: 0,
+        replyCount: 0,
+        bookmarkCount: 0,
+        shareCount: 0,
       }),
     ).toMatchObject({ state: "deleted" });
     expect(

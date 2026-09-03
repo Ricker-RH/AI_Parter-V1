@@ -57,10 +57,12 @@ export const CursorSchema = z.discriminatedUnion("kind", [
   ForYouCursorSchema,
 ]);
 export const CommentCursorSchema = z.strictObject({
-  v: z.literal(1),
-  kind: z.literal("comments"),
-  createdAt: dateTime,
-  id: uuid,
+  v: z.literal(2),
+  kind: z.literal("comment_roots"),
+  order: z.literal("root_created_at_asc_v1"),
+  postId: uuid,
+  rootCreatedAt: dateTime,
+  rootId: uuid,
 });
 export const NotificationCursorSchema = z.strictObject({
   v: z.literal(1),
@@ -176,6 +178,25 @@ export function decodeCursor(value: string, expectedKind?: FeedKind): Cursor {
       cursor.data.kind !==
         (expectedKind === "following" ? "chronological" : "for_you"))
   )
+    throw new Error("INVALID_CURSOR");
+  return cursor.data;
+}
+export function encodeCommentCursor(cursor: CommentCursor): string {
+  return base64urlEncode(JSON.stringify(CommentCursorSchema.parse(cursor)));
+}
+export function decodeCommentCursor(value: string, expectedPostId?: string): CommentCursor {
+  let decoded: unknown;
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1)
+      throw new Error("invalid base64url");
+    const json = base64urlDecode(value);
+    if (base64urlEncode(json) !== value) throw new Error("non-canonical base64url");
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error("INVALID_CURSOR");
+  }
+  const cursor = CommentCursorSchema.safeParse(decoded);
+  if (!cursor.success || (expectedPostId && cursor.data.postId !== expectedPostId))
     throw new Error("INVALID_CURSOR");
   return cursor.data;
 }
@@ -324,18 +345,33 @@ export const PublicCommentSchema = z
   .strictObject({
     id: uuid,
     postId: uuid,
+    rootCommentId: uuid,
     parentCommentId: uuid.nullable(),
-    author: PublicCommentAuthorSchema,
+    author: PublicCommentAuthorSchema.nullable(),
     state: z.enum(["published", "deleted"]),
     body: z.string().min(1).max(2000).optional(),
     createdAt: dateTime,
+    likeCount: z.number().int().nonnegative(),
+    replyCount: z.number().int().nonnegative(),
+    bookmarkCount: z.number().int().nonnegative(),
+    shareCount: z.number().int().nonnegative(),
+    viewerHasLiked: z.boolean().optional(),
+    viewerHasBookmarked: z.boolean().optional(),
   })
   .superRefine((value, context) => {
-    if (value.state === "published" && !value.body)
+    if (value.state === "published" && (!value.body || !value.author))
       context.addIssue({
         code: "custom",
-        message: "Published comments require body",
+        message: "Published comments require body and author",
       });
+    if (value.state === "deleted" && value.body !== undefined)
+      context.addIssue({code: "custom", message: "Deleted comments must not expose body"});
+    if (value.state === "deleted" && value.author !== null)
+      context.addIssue({code: "custom", message: "Deleted comments must not expose author"});
+    if (value.state === "deleted" && (value.likeCount !== 0 || value.replyCount !== 0 || value.bookmarkCount !== 0 || value.shareCount !== 0))
+      context.addIssue({code: "custom", message: "Deleted comments must not expose interaction counts"});
+    if (value.state === "deleted" && (value.viewerHasLiked === true || value.viewerHasBookmarked === true))
+      context.addIssue({code: "custom", message: "Deleted comments must not expose viewer interactions"});
   });
 export const NotificationSchema = z.strictObject({
   id: uuid,
@@ -368,10 +404,25 @@ export const PublicIpProfileSchema = z.strictObject({
   viewerFollows: z.boolean().optional(),
   posts: FeedPageSchema,
 });
+export const CommentThreadGroupSchema = z.strictObject({
+  root: PublicCommentSchema,
+  replies: z.array(PublicCommentSchema),
+}).superRefine((group, context) => {
+  if (group.root.parentCommentId !== null || group.root.rootCommentId !== group.root.id) {
+    context.addIssue({code: "custom", message: "Comment thread root is invalid"});
+  }
+  for (let index = 0; index < group.replies.length; index += 1) {
+    const reply = group.replies[index]!;
+    if (reply.parentCommentId === null || reply.rootCommentId !== group.root.id || reply.postId !== group.root.postId) {
+      context.addIssue({code: "custom", path: ["replies", index], message: "Comment thread reply is invalid"});
+    }
+  }
+});
 export const CommentPageSchema = z.strictObject({
-  items: z.array(PublicCommentSchema),
+  groups: z.array(CommentThreadGroupSchema),
   nextCursor: z.string().nullable(),
 });
+export const CommentThreadContextSchema = z.strictObject({group: CommentThreadGroupSchema});
 export const PostDetailSchema = FeedPostSchema.extend({
   comments: CommentPageSchema,
 }).strict();
@@ -463,6 +514,7 @@ export type PostMediaUploadIntentResponse = z.infer<
 export type RegisterPostMedia = z.infer<typeof RegisterPostMediaSchema>;
 export type RegisteredPostMedia = z.infer<typeof RegisteredPostMediaSchema>;
 export type PublicComment = z.infer<typeof PublicCommentSchema>;
+export type CommentThreadContext = z.infer<typeof CommentThreadContextSchema>;
 export type Notification = z.infer<typeof NotificationSchema>;
 export type FeedPage = z.infer<typeof FeedPageSchema>;
 export type FollowedIp = z.infer<typeof FollowedIpSchema>;

@@ -84,12 +84,14 @@ describe('AppShell', () => {
   it('omits the generic mobile More, AIFANS, and Search header for a post detail route', () => {
     pathname = '/en/posts/22222222-2222-4222-8222-222222222222'
     render(<AppShell locale="en" labels={labels}><main>Post</main></AppShell>)
+    expect(document.querySelector('[data-shell="public"]')).toHaveAttribute('data-mobile-top-bar', 'hidden')
     expect(document.querySelector('.mobile-top-bar')).toBeNull()
   })
 
   it('omits the generic mobile header when a public profile supplies its own contextual header', () => {
     pathname = '/en/profiles/11111111-1111-4111-8111-111111111111'
     render(<AppShell locale="en" labels={labels}><main>Public profile</main></AppShell>)
+    expect(document.querySelector('[data-shell="public"]')).toHaveAttribute('data-mobile-top-bar', 'hidden')
     expect(document.querySelector('.mobile-top-bar')).toBeNull()
   })
 

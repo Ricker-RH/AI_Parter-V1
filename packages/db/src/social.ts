@@ -1,6 +1,8 @@
 import { Pool } from "@neondatabase/serverless";
 import {
   type CommentCursor,
+  type CommentThreadContext,
+  CommentThreadContextSchema,
   type CreateHumanComment,
   CreateHumanCommentSchema,
   type Cursor,
@@ -13,7 +15,9 @@ import {
   FollowedIpPageSchema,
   type Locale,
   type LikedCursor,
+  type Notification,
   type NotificationPage,
+  NotificationSchema,
   NotificationPageSchema,
   type PageQuery,
   type PostDetail,
@@ -33,6 +37,7 @@ import {
   encodeLikedCursor,
   encodeFollowedIpCursor,
   encodeNotificationCursor,
+  encodeCommentCursor,
   type Cursor as SocialCursor,
   type CreateIpInput,
   CreateIpSchema,
@@ -71,6 +76,7 @@ export type SocialRepository = {
     commentLimit: number;
     commentAfter: CommentCursor | null;
   }): Promise<PostDetail | null>;
+  getCommentThread(input: {viewer: Actor | null; postId: string; commentId: string}): Promise<CommentThreadContext | null>;
   getPublicProfile(input: {
     viewer: Actor | null;
     profileId: string;
@@ -106,6 +112,11 @@ export type SocialRepository = {
     postId: string,
     idempotencyKey: string,
   ): Promise<{ created: boolean }>;
+  likeComment(actor: Actor, commentId: string, context: CommandContext): Promise<{created: boolean}>;
+  unlikeComment(actor: Actor, commentId: string): Promise<{deleted: boolean}>;
+  bookmarkComment(actor: Actor, commentId: string): Promise<{created: boolean}>;
+  unbookmarkComment(actor: Actor, commentId: string): Promise<{deleted: boolean}>;
+  recordCommentShare(viewer: Actor | null, commentId: string, idempotencyKey: string): Promise<{created: boolean}>;
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>;
   listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>;
   listFollowedIps(actor: Actor, page: PageQuery): Promise<FollowedIpPage>;
@@ -116,6 +127,7 @@ export type SocialRepository = {
     context: CommandContext,
   ): Promise<PublicComment>;
   listNotifications(actor: Actor, page: PageQuery): Promise<NotificationPage>;
+  getNotification(actor: Actor, notificationId: string): Promise<Notification | null>;
   markNotificationRead(
     actor: Actor,
     notificationId: string,
@@ -250,6 +262,58 @@ function publicIp(row: PublicIpRow): PublicIp {
     visualType: row.visual_type ?? "hybrid",
     ...(creator ? { creator } : {}),
   };
+}
+
+type NotificationRow = {
+  id: string;
+  kind: "follow" | "post_like" | "comment" | "reply" | "comment_like";
+  post_id: string | null;
+  comment_id: string | null;
+  created_at: Date | string;
+  read_at: Date | string | null;
+  actor_id: string | null;
+  actor_kind: "human" | "ip" | null;
+  username: string | null;
+  display_name: string | null;
+  bio: string | null;
+  languages: string[] | null;
+  visual_type: "realistic" | "anime" | "hybrid" | null;
+  creator_id: string | null;
+  creator_username: string | null;
+  creator_display_name: string | null;
+};
+
+function notification(row: NotificationRow): Notification {
+  const actor =
+    !row.actor_id || !row.actor_kind || !row.username || !row.display_name
+      ? null
+      : row.actor_kind === "human"
+        ? {
+            kind: "human" as const,
+            id: row.actor_id,
+            username: row.username,
+            displayName: row.display_name,
+          }
+        : publicIp({
+            id: row.actor_id,
+            username: row.username,
+            display_name: row.display_name,
+            bio: row.bio,
+            languages: row.languages ?? [],
+            visual_type: row.visual_type ?? "hybrid",
+            creator_id: row.creator_id,
+            creator_username: row.creator_username,
+            creator_display_name: row.creator_display_name,
+          });
+  return NotificationSchema.parse({
+    id: row.id,
+    kind: row.kind,
+    actor,
+    postId: row.post_id,
+    commentId: row.comment_id,
+    createdAt: iso(row.created_at),
+    readAt: row.read_at ? iso(row.read_at) : null,
+  });
 }
 function post(row: PostRow, media: PublicPostMedia[] = []): FeedPost {
   return {
@@ -479,83 +543,114 @@ export function createSocialRepository({
     },
     async getPost(input) {
       return read(input.viewer, async (client) => {
-        const result = await client.query<PostRow>(
-          `${publicPostSql} WHERE p.post_id = $1${publicMediaBaseUrl ? "" : " AND NOT EXISTS (SELECT 1 FROM public.social_public_post_media(p.post_id))"}`,
-          [input.postId],
-        );
-        const base = result.rows[0];
-        if (!base) return null;
         const after = input.commentAfter;
-        const rows = await client.query<{
-          id: string;
-          post_id: string;
-          parent_comment_id: string | null;
-          author_id: string;
-          author_kind: "human" | "ip";
-          username: string;
-          display_name: string;
-          body: string;
-          state: "published" | "deleted";
-          created_at: Date | string;
-          visual_type: "realistic" | "anime" | "hybrid" | null;
-          creator_id: string | null;
-          creator_username: string | null;
-          creator_display_name: string | null;
-        }>("SELECT * FROM public.social_public_comments($1,$2,$3,$4)", [
+        type DetailRow = PostRow & {
+          comment_id: string | null; comment_post_id: string | null; root_comment_id: string | null;
+          parent_comment_id: string | null; comment_author_id: string | null; comment_author_kind: "human" | "ip" | null;
+          comment_username: string | null; comment_display_name: string | null; comment_body: string | null;
+          comment_state: "published" | "deleted" | null; comment_created_at: Date | string | null;
+          comment_like_count: number | null; reply_count: number | null; comment_bookmark_count: number | null;
+          comment_share_count: number | null; comment_viewer_has_liked: boolean | null; comment_viewer_has_bookmarked: boolean | null;
+          root_created_at: string | null; root_ordinal: number | null;
+        };
+        const rows = await client.query<DetailRow>(`WITH base AS MATERIALIZED (
+          ${publicPostSql} WHERE p.post_id=$1${publicMediaBaseUrl ? "" : " AND NOT EXISTS (SELECT 1 FROM public.social_public_post_media(p.post_id))"}
+        ) SELECT base.*,thread.id AS comment_id,thread.post_id AS comment_post_id,thread.root_comment_id,thread.parent_comment_id,
+          thread.author_id AS comment_author_id,thread.author_kind AS comment_author_kind,thread.username AS comment_username,
+          thread.display_name AS comment_display_name,thread.body AS comment_body,thread.state AS comment_state,
+          thread.created_at AS comment_created_at,thread.like_count AS comment_like_count,thread.reply_count,
+          thread.bookmark_count AS comment_bookmark_count,thread.share_count AS comment_share_count,
+          thread.viewer_has_liked AS comment_viewer_has_liked,thread.viewer_has_bookmarked AS comment_viewer_has_bookmarked,
+          thread.root_created_at,thread.root_ordinal
+        FROM base LEFT JOIN LATERAL public.social_public_comment_threads(base.post_id,$2,$3,$4) thread ON true
+        ORDER BY thread.root_ordinal,CASE WHEN thread.id=thread.root_comment_id THEN 0 ELSE 1 END,thread.created_at,thread.id`, [
           input.postId,
-          after?.createdAt ?? null,
-          after?.id ?? null,
+          after?.rootCreatedAt ?? null,
+          after?.rootId ?? null,
           input.commentLimit + 1,
         ]);
-        const items = rows.rows.slice(0, input.commentLimit).map((r) => ({
-          id: r.id,
-          postId: r.post_id,
+        const base = rows.rows[0];
+        if (!base) return null;
+        const commentRows = rows.rows.filter((row) => row.comment_id !== null);
+        const visibleRows = commentRows.filter((row) => row.root_ordinal !== null && row.root_ordinal <= input.commentLimit);
+        const items = visibleRows.map((r) => PublicCommentSchema.parse({
+          id: r.comment_id,
+          postId: r.comment_post_id,
+          rootCommentId: r.root_comment_id,
           parentCommentId: r.parent_comment_id,
           author:
-            r.author_kind === "human"
+            !r.comment_author_kind || !r.comment_author_id || !r.comment_username || !r.comment_display_name
+              ? null
+              : r.comment_author_kind === "human"
               ? {
                   kind: "human" as const,
-                  id: r.author_id,
-                  username: r.username,
-                  displayName: r.display_name,
+                  id: r.comment_author_id,
+                  username: r.comment_username,
+                  displayName: r.comment_display_name,
                 }
               : publicIp({
-                  id: r.author_id,
-                  username: r.username,
-                  display_name: r.display_name,
+                  id: r.comment_author_id!,
+                  username: r.comment_username!,
+                  display_name: r.comment_display_name!,
                   bio: null,
                   languages: [],
-                  visual_type: r.visual_type ?? "hybrid",
-                  creator_id: r.creator_id,
-                  creator_username: r.creator_username,
-                  creator_display_name: r.creator_display_name,
+                  visual_type: "hybrid",
+                  creator_id: null,
+                  creator_username: null,
+                  creator_display_name: null,
                 }),
-          state: r.state,
-          ...(r.state === "published" ? { body: r.body } : {}),
-          createdAt: iso(r.created_at),
+          state: r.comment_state,
+          ...(r.comment_state === "published" && r.comment_body ? { body: r.comment_body } : {}),
+          createdAt: iso(r.comment_created_at!),
+          likeCount: Number(r.comment_like_count),
+          replyCount: Number(r.reply_count),
+          bookmarkCount: Number(r.comment_bookmark_count),
+          shareCount: Number(r.comment_share_count),
+          ...(input.viewer ? {viewerHasLiked: r.comment_viewer_has_liked, viewerHasBookmarked: r.comment_viewer_has_bookmarked} : {}),
         }));
-        const last = items.at(-1);
+        const groups = [...new Set(items.map((item) => item.rootCommentId))].map((rootId) => {
+          const members = items.filter((item) => item.rootCommentId === rootId);
+          const root = members.find((item) => item.id === rootId);
+          if (!root) throw new Error("INVALID_COMMENT_THREAD");
+          return {root, replies: members.filter((item) => item.id !== rootId)};
+        });
+        const last = groups.at(-1)?.root;
+        const lastRootRow = last ? visibleRows.find((row) => row.comment_id === last.id) : undefined;
+        const hasMore = commentRows.some((row) => row.root_ordinal !== null && row.root_ordinal > input.commentLimit);
         return {
           ...post(
             base,
             await publicMedia(client, base.post_id, publicMediaBaseUrl),
           ),
           comments: {
-            items,
+            groups,
             nextCursor:
-              rows.rows.length > input.commentLimit && last
-                ? Buffer.from(
-                    JSON.stringify({
-                      v: 1,
-                      kind: "comments",
-                      createdAt: last.createdAt,
-                      id: last.id,
-                    }),
-                    "utf8",
-                  ).toString("base64url")
+              hasMore && last && lastRootRow?.root_created_at
+                ? encodeCommentCursor({v: 2,kind: "comment_roots",order: "root_created_at_asc_v1",postId: input.postId,rootCreatedAt: lastRootRow.root_created_at,rootId: last.id})
                 : null,
           },
         };
+      });
+    },
+    async getCommentThread(input) {
+      return read(input.viewer,async client=>{
+        const result=await client.query<{
+          id:string;post_id:string;root_comment_id:string;parent_comment_id:string|null;author_id:string|null;author_kind:"human"|"ip"|null;
+          username:string|null;display_name:string|null;body:string|null;state:"published"|"deleted";created_at:Date|string;
+          like_count:number;reply_count:number;bookmark_count:number;share_count:number;viewer_has_liked:boolean;viewer_has_bookmarked:boolean;
+        }>('SELECT * FROM public.social_public_comment_context($1,$2)',[input.postId,input.commentId]);
+        if(!result.rows.length)return null;
+        const members=result.rows.map(row=>PublicCommentSchema.parse({
+          id:row.id,postId:row.post_id,rootCommentId:row.root_comment_id,parentCommentId:row.parent_comment_id,
+          author:!row.author_id||!row.author_kind||!row.username||!row.display_name?null:row.author_kind==='human'
+            ?{kind:'human' as const,id:row.author_id,username:row.username,displayName:row.display_name}
+            :publicIp({id:row.author_id,username:row.username,display_name:row.display_name,bio:null,languages:[],visual_type:'hybrid',creator_id:null,creator_username:null,creator_display_name:null}),
+          state:row.state,...(row.state==='published'&&row.body?{body:row.body}:{}),createdAt:iso(row.created_at),
+          likeCount:Number(row.like_count),replyCount:Number(row.reply_count),bookmarkCount:Number(row.bookmark_count),shareCount:Number(row.share_count),
+          ...(input.viewer?{viewerHasLiked:row.viewer_has_liked,viewerHasBookmarked:row.viewer_has_bookmarked}:{}),
+        }));
+        const root=members.find(item=>item.id===item.rootCommentId);if(!root)return null;
+        return CommentThreadContextSchema.parse({group:{root,replies:members.filter(item=>item.id!==root.id)}});
       });
     },
     async getPublicProfile(input) {
@@ -714,6 +809,16 @@ export function createSocialRepository({
             )
           ).rows[0]?.created === true,
       })),
+    likeComment: (actor, commentId, context) =>
+      runWithActor(actor, async (client) => ({created: (await client.query<{created:boolean}>("SELECT public.like_comment($1,$2) AS created", [commentId, context.requestId])).rows[0]?.created === true})),
+    unlikeComment: (actor, commentId) =>
+      runWithActor(actor, async (client) => ({deleted: (await client.query<{deleted:boolean}>("SELECT public.unlike_comment($1) AS deleted", [commentId])).rows[0]?.deleted === true})),
+    bookmarkComment: (actor, commentId) =>
+      runWithActor(actor, async (client) => ({created: (await client.query<{created:boolean}>("SELECT public.bookmark_comment($1) AS created", [commentId])).rows[0]?.created === true})),
+    unbookmarkComment: (actor, commentId) =>
+      runWithActor(actor, async (client) => ({deleted: (await client.query<{deleted:boolean}>("SELECT public.unbookmark_comment($1) AS deleted", [commentId])).rows[0]?.deleted === true})),
+    recordCommentShare: (viewer, commentId, idempotencyKey) =>
+      read(viewer, async (client) => ({created: (await client.query<{created:boolean}>("SELECT public.record_comment_share($1,$2) AS created", [commentId, idempotencyKey])).rows[0]?.created === true})),
     listBookmarks: (actor, page) =>
       runWithActor(actor, (client) =>
         feed(
@@ -773,8 +878,9 @@ export function createSocialRepository({
         const inserted = await client.query<{
           id: string;
           created_at: Date | string;
+          root_comment_id: string;
         }>(
-          "SELECT id,created_at FROM public.create_human_comment($1,$2,$3,$4)",
+          "SELECT id,created_at,root_comment_id FROM public.create_human_comment($1,$2,$3,$4)",
           [
             postId,
             value.parentCommentId ?? null,
@@ -793,9 +899,10 @@ export function createSocialRepository({
         ]);
         const author = me.rows[0];
         if (!author) throw new Error("FORBIDDEN");
-        return {
+        return PublicCommentSchema.parse({
           id: created.id,
           postId,
+          rootCommentId: created.root_comment_id,
           parentCommentId: value.parentCommentId ?? null,
           author: {
             kind: "human",
@@ -806,7 +913,13 @@ export function createSocialRepository({
           state: "published",
           body: value.body,
           createdAt: iso(created.created_at),
-        };
+          likeCount: 0,
+          replyCount: 0,
+          bookmarkCount: 0,
+          shareCount: 0,
+          viewerHasLiked: false,
+          viewerHasBookmarked: false,
+        });
       });
     },
     async listNotifications(actor, page) {
@@ -814,65 +927,14 @@ export function createSocialRepository({
         const afterId = page.cursor
           ? decodeNotificationCursor(page.cursor).id
           : null;
-        const result = await client.query<{
-          id: string;
-          kind: "follow" | "post_like" | "comment" | "reply" | "comment_like";
-          post_id: string | null;
-          comment_id: string | null;
-          created_at: Date | string;
-          read_at: Date | string | null;
-          actor_id: string | null;
-          actor_kind: "human" | "ip" | null;
-          username: string | null;
-          display_name: string | null;
-          bio: string | null;
-          languages: string[] | null;
-          visual_type: "realistic" | "anime" | "hybrid" | null;
-          creator_id: string | null;
-          creator_username: string | null;
-          creator_display_name: string | null;
-        }>("SELECT * FROM public.social_my_notifications($1,$2)", [
+        const result = await client.query<NotificationRow>("SELECT * FROM public.social_my_notifications($1,$2)", [
           afterId,
           page.limit + 1,
         ]);
         const rows = result.rows.slice(0, page.limit);
         const last = rows.at(-1);
         return NotificationPageSchema.parse({
-          items: rows.map((row) => {
-            const actor =
-              !row.actor_id ||
-              !row.actor_kind ||
-              !row.username ||
-              !row.display_name
-                ? null
-                : row.actor_kind === "human"
-                  ? {
-                      kind: "human" as const,
-                      id: row.actor_id,
-                      username: row.username,
-                      displayName: row.display_name,
-                    }
-                  : publicIp({
-                      id: row.actor_id,
-                      username: row.username,
-                      display_name: row.display_name,
-                      bio: row.bio,
-                      languages: row.languages ?? [],
-                      visual_type: row.visual_type ?? "hybrid",
-                      creator_id: row.creator_id,
-                      creator_username: row.creator_username,
-                      creator_display_name: row.creator_display_name,
-                    });
-            return {
-              id: row.id,
-              kind: row.kind,
-              actor,
-              postId: row.post_id,
-              commentId: row.comment_id,
-              createdAt: iso(row.created_at),
-              readAt: row.read_at ? iso(row.read_at) : null,
-            };
-          }),
+          items: rows.map(notification),
           nextCursor:
             result.rows.length > page.limit && last
               ? encodeNotificationCursor({
@@ -883,6 +945,31 @@ export function createSocialRepository({
                 })
               : null,
         });
+      });
+    },
+    async getNotification(actor, notificationId) {
+      return runWithActor(actor, async (client) => {
+        // The shared projection is cursor-based and excludes its anchor. Pick
+        // the owner's immediately newer row so a one-row page is the target,
+        // even when the target is older than the normal list page bound.
+        const result = await client.query<NotificationRow>(
+          `WITH target AS (
+             SELECT id,created_at FROM public.notifications WHERE id=$1
+           ), anchor AS (
+             SELECT candidate.id
+             FROM public.notifications candidate CROSS JOIN target
+             WHERE (candidate.created_at,candidate.id)>(target.created_at,target.id)
+             ORDER BY candidate.created_at ASC,candidate.id ASC
+             LIMIT 1
+           )
+           SELECT projected.*
+           FROM target
+           CROSS JOIN LATERAL public.social_my_notifications((SELECT id FROM anchor),1) projected
+           WHERE projected.id=target.id`,
+          [notificationId],
+        );
+        const row = result.rows[0];
+        return row ? notification(row) : null;
       });
     },
     async markNotificationRead(actor, notificationId) {
@@ -911,6 +998,7 @@ type PlatformCommentRow = PublicIpRow & {
   comment_id: string;
   post_id: string;
   parent_comment_id: string | null;
+  root_comment_id: string;
   body: string;
   created_at: Date | string;
 };
@@ -1057,11 +1145,16 @@ export function createPlatformSocialRepository({
         return PublicCommentSchema.parse({
           id: created.comment_id,
           postId: created.post_id,
+          rootCommentId: created.root_comment_id,
           parentCommentId: created.parent_comment_id,
           author: publicIp(created),
           state: "published",
           body: created.body,
           createdAt: iso(created.created_at),
+          likeCount: 0,
+          replyCount: 0,
+          bookmarkCount: 0,
+          shareCount: 0,
         });
       });
     },

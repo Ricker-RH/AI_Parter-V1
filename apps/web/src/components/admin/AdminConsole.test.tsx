@@ -82,11 +82,16 @@ const post = {
 const comment = {
   id: commentId,
   postId,
+  rootCommentId: commentId,
   parentCommentId: null,
   author: ip,
   state: "published",
   body: "A reply",
   createdAt: "2026-09-01T00:01:00.000Z",
+  likeCount: 0,
+  replyCount: 0,
+  bookmarkCount: 0,
+  shareCount: 0,
 };
 
 afterEach(() => vi.unstubAllGlobals());

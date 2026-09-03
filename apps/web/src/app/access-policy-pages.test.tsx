@@ -26,7 +26,7 @@ vi.mock('../lib/server-api.js', () => ({fetchAifansApi}))
 import BookmarksPage from './[locale]/bookmarks/page.js'
 import * as creatorDraftRoute from './[locale]/creator/[draftId]/page.js'
 import CreatorPage from './[locale]/creator/page.js'
-import NotificationsPage from './[locale]/notifications/page.js'
+import NotificationsPage from './[locale]/messages/notifications/page.js'
 import PostPage from './[locale]/posts/[postId]/page.js'
 import ProfilePage from './[locale]/profile/page.js'
 import PublicProfilePage from './[locale]/profiles/[profileId]/page.js'
@@ -59,7 +59,7 @@ describe('protected user pages', () => {
 
   it.each([
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/bookmarks'],
-    ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/notifications'],
+    ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/messages/notifications'],
     ['my profile', () => ProfilePage({params: Promise.resolve({locale: 'en'})}), '/en/profile'],
     ['AI/IP profile detail', () => PublicProfilePage({params: Promise.resolve({locale: 'en', profileId: 'profile-1'}), searchParams: Promise.resolve({})}), '/en/profiles/profile-1'],
     ['creator root', () => CreatorPage({params: Promise.resolve({locale: 'en'})}), '/en/creator'],
@@ -77,7 +77,7 @@ describe('protected user pages', () => {
 
   it.each([
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchBookmarks, '/en/bookmarks'],
-    ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchNotifications, '/en/notifications'],
+    ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), fetchNotifications, '/en/messages/notifications'],
     ['AI/IP profile detail', () => PublicProfilePage({params: Promise.resolve({locale: 'en', profileId: 'profile-1'}), searchParams: Promise.resolve({})}), fetchPublicProfile, '/en/profiles/profile-1'],
   ])('redirects to sign in when %s receives a 401 result', async (_name, page, fetchPage, returnTo) => {
     access.mockResolvedValue({status: 'authenticated', token: 'token'})
@@ -99,7 +99,7 @@ describe('protected user pages', () => {
   })
 
   it('lets anonymous visitors read search and a published post without redirecting', async () => {
-    fetchPost.mockResolvedValue({status: 'ok', data: {comments: {items: [], nextCursor: null}}} as never)
+    fetchPost.mockResolvedValue({status: 'ok', data: {comments: {groups: [], nextCursor: null}}} as never)
 
     await SearchPage({params: Promise.resolve({locale: 'en'})})
     await PostPage({params: Promise.resolve({locale: 'en', postId: 'post-1'}), searchParams: Promise.resolve({})})

@@ -1,8 +1,10 @@
 import {randomUUID} from 'node:crypto'
 import {
   ApiErrorSchema,
+  CommentThreadContextSchema,
   FeedPageSchema,
   FollowedIpPageSchema,
+  NotificationSchema,
   PostDetailSchema,
   PublicCommentSchema,
   PublicIpProfileSchema,
@@ -47,6 +49,7 @@ const followedPage = FollowedIpPageSchema.parse({items: [{...ip, followerCount: 
 const comment = PublicCommentSchema.parse({
   id: commentId,
   postId,
+  rootCommentId: commentId,
   parentCommentId: null,
   author: {
     kind: 'human',
@@ -57,10 +60,28 @@ const comment = PublicCommentSchema.parse({
   state: 'published',
   body: 'A comment',
   createdAt: publishedAt,
+  likeCount: 0,
+  replyCount: 0,
+  bookmarkCount: 0,
+  shareCount: 0,
 })
 const detail = PostDetailSchema.parse({
   ...post,
-  comments: {items: [], nextCursor: null},
+  comments: {groups: [], nextCursor: null},
+})
+const notification = NotificationSchema.parse({
+  id: notificationId,
+  kind: 'comment',
+  actor: {
+    kind: 'human',
+    id: randomUUID(),
+    username: 'notification_actor',
+    displayName: 'Notification Actor',
+  },
+  postId,
+  commentId,
+  createdAt: publishedAt,
+  readAt: null,
 })
 const identity = {
   subject: 'verified_subject',
@@ -98,6 +119,7 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
   return {
     listFeed: async () => page,
     getPost: async () => detail,
+    getCommentThread: async () => ({group: {root: comment, replies: []}}),
     getPublicProfile: async () => PublicIpProfileSchema.parse({profile:ip,followerCount:0,posts:page}),
     search: async () => ({items: [], nextCursor: null}),
     follow: async () => ({created: true}),
@@ -107,11 +129,17 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
     bookmarkPost: async () => ({created: true}),
     unbookmarkPost: async () => ({deleted: true}),
     recordPostShare: async () => ({created: true}),
+    likeComment: async () => ({created: true}),
+    unlikeComment: async () => ({deleted: true}),
+    bookmarkComment: async () => ({created: true}),
+    unbookmarkComment: async () => ({deleted: true}),
+    recordCommentShare: async () => ({created: true}),
     listBookmarks: async () => page,
     listLiked: async () => page,
     listFollowedIps: async () => followedPage,
     createHumanComment: async () => comment,
     listNotifications: async () => ({items: [], nextCursor: null}),
+    getNotification: async () => notification,
     markNotificationRead: async () => ({readAt}),
     ...overrides,
   }
@@ -126,6 +154,58 @@ async function expectError(response: Response, status: number, code: string) {
 }
 
 describe('social read routes', () => {
+  it('returns an anonymous strict comment thread context and validates its bound IDs/query',async()=>{
+    const calls:unknown[]=[]; const context=CommentThreadContextSchema.parse({group:{root:comment,replies:[]}})
+    const social=socialPort({getCommentThread:async input=>{calls.push(input);return input.commentId===commentId?context:null}})
+    const app=createApp({auth:missingAuth,profiles:profilePort(),social})
+    const response=await app.request(`/v1/posts/${postId}/comments/${commentId}/context`)
+    expect(response.status).toBe(200); expect(CommentThreadContextSchema.parse(await response.json())).toEqual(context); expect(calls).toEqual([{viewer:null,postId,commentId}])
+    await expectError(await app.request(`/v1/posts/${postId}/comments/${randomUUID()}/context`),404,'COMMENT_NOT_FOUND')
+    await expectError(await app.request(`/v1/posts/bad/comments/${commentId}/context`),400,'INVALID_REQUEST')
+    await expectError(await app.request(`/v1/posts/${postId}/comments/bad/context`),400,'INVALID_REQUEST')
+    await expectError(await app.request(`/v1/posts/${postId}/comments/${commentId}/context?x=1`),400,'INVALID_REQUEST')
+  })
+  it('normalizes a non-leaking comment context lookup miss',async()=>{
+    const social=socialPort({getCommentThread:async()=>{throw Object.assign(new Error('private target'),{code:'P0002'})}})
+    const app=createApp({auth:missingAuth,profiles:profilePort(),social})
+    await expectError(await app.request(`/v1/posts/${postId}/comments/${commentId}/context`),404,'COMMENT_NOT_FOUND')
+  })
+  it('returns only an owned notification detail through the verified actor', async () => {
+    const calls: unknown[] = []
+    const social = socialPort({
+      getNotification: async (actor, targetId) => {
+        calls.push([actor, targetId])
+        return targetId === notificationId ? notification : null
+      },
+    })
+    const app = createApp({auth: validAuth, profiles: profilePort(), social})
+
+    const response = await app.request(`/v1/notifications/${notificationId}`)
+
+    expect(response.status).toBe(200)
+    expect(NotificationSchema.parse(await response.json())).toEqual(notification)
+    expect(calls).toEqual([[{subject: identity.subject}, notificationId]])
+    await expectError(await app.request(`/v1/notifications/${randomUUID()}`), 404, 'NOTIFICATION_NOT_FOUND')
+    await expectError(await app.request('/v1/notifications/not-a-uuid'), 400, 'INVALID_REQUEST')
+    await expectError(await app.request(`/v1/notifications/${notificationId}?actor=forged`), 400, 'INVALID_REQUEST')
+    await expectError(
+      await createApp({auth: missingAuth, profiles: profilePort(), social}).request(`/v1/notifications/${notificationId}`),
+      401,
+      'AUTH_REQUIRED',
+    )
+  })
+
+  it('rejects expanded notification detail responses without leaking port fields', async () => {
+    const social = socialPort({
+      getNotification: async () => ({...notification, internalRecipientId: randomUUID()}),
+    })
+    const response = await createApp({auth: validAuth, profiles: profilePort(), social}).request(`/v1/notifications/${notificationId}`)
+    const text = await response.clone().text()
+
+    await expectError(response, 500, 'INTERNAL_ERROR')
+    expect(text).not.toContain('internalRecipientId')
+  })
+
   it('allows anonymous bounded search and binds cursors to the query', async () => {
     const calls: unknown[] = []
     const search = SearchPageSchema.parse({items: [{type: 'profile', profile: ip}], nextCursor: null})
@@ -432,6 +512,8 @@ describe('authenticated social routes', () => {
     ['DELETE', `/v1/posts/${postId}/like?actor=one&actor=two`],
     ['PUT', `/v1/posts/${postId}/bookmark?actor=one&actor=two`],
     ['DELETE', `/v1/posts/${postId}/bookmark?actor=one&actor=two`],
+    ['PUT', `/v1/comments/${commentId}/like?actor=one&actor=two`],
+    ['POST', `/v1/comments/${commentId}/share?actor=one&actor=two`],
     ['GET', '/v1/bookmarks?limit=1&limit=2'],
     ['GET', '/v1/following?limit=1&limit=2'],
     ['GET', '/v1/notifications?limit=1&limit=2'],
@@ -452,6 +534,10 @@ describe('authenticated social routes', () => {
     ['DELETE', `/v1/posts/${postId}/like`, 'unlikePost', {deleted: true}],
     ['PUT', `/v1/posts/${postId}/bookmark`, 'bookmarkPost', {created: true}],
     ['DELETE', `/v1/posts/${postId}/bookmark`, 'unbookmarkPost', {deleted: true}],
+    ['PUT', `/v1/comments/${commentId}/like`, 'likeComment', {created: true}],
+    ['DELETE', `/v1/comments/${commentId}/like`, 'unlikeComment', {deleted: true}],
+    ['PUT', `/v1/comments/${commentId}/bookmark`, 'bookmarkComment', {created: true}],
+    ['DELETE', `/v1/comments/${commentId}/bookmark`, 'unbookmarkComment', {deleted: true}],
   ] as const)('%s %s derives the actor and returns the idempotent result', async (method, path, operation, result) => {
     const calls: unknown[] = []
     const social = socialPort({
@@ -467,9 +553,18 @@ describe('authenticated social routes', () => {
     expect(await response.json()).toEqual(result)
     expect(calls).toEqual([[
       {subject: identity.subject},
-      path.includes('/profiles/') ? profileId : postId,
+      path.includes('/profiles/') ? profileId : path.includes('/comments/') ? commentId : postId,
       {requestId: response.headers.get('x-request-id')},
     ]])
+  })
+
+  it('records anonymous comment shares with a strict UUID idempotency key and no body/query fields', async () => {
+    const key = randomUUID(); const calls: unknown[] = []
+    const social = socialPort({recordCommentShare: async (...args) => {calls.push(args); return {created: true}}})
+    const response = await createApp({auth: missingAuth, profiles: profilePort(), social}).request(`/v1/comments/${commentId}/share`, {method: 'POST', headers: {'idempotency-key': key}})
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({created: true}); expect(calls).toEqual([[null, commentId, key]])
+    await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social}).request(`/v1/comments/${commentId}/share?x=1`, {method: 'POST', headers: {'idempotency-key': key}}), 400, 'INVALID_REQUEST')
+    await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social}).request(`/v1/comments/${commentId}/share`, {method: 'POST', headers: {'idempotency-key': 'bad'}}), 400, 'INVALID_REQUEST')
   })
 
   it('rejects forged fields on bodyless mutations before calling the port', async () => {
@@ -737,6 +832,8 @@ describe('authenticated social routes', () => {
   it.each([
     ['follow', `/v1/profiles/${profileId}/follow`, 'PUT', 'PROFILE_NOT_FOUND'],
     ['likePost', `/v1/posts/${postId}/like`, 'PUT', 'POST_NOT_FOUND'],
+    ['likeComment', `/v1/comments/${commentId}/like`, 'PUT', 'COMMENT_NOT_FOUND'],
+    ['recordCommentShare', `/v1/comments/${commentId}/share`, 'POST', 'COMMENT_NOT_FOUND'],
     ['createHumanComment', `/v1/posts/${postId}/comments`, 'POST', 'POST_NOT_FOUND'],
   ] as const)('maps PostgreSQL P0002 from %s to its endpoint-specific not-found response', async (operation, path, method, code) => {
     const social = socialPort({
@@ -746,6 +843,8 @@ describe('authenticated social routes', () => {
       method,
       ...(operation === 'createHumanComment'
         ? {headers: {'content-type': 'application/json'}, body: JSON.stringify({body: 'valid'})}
+        : operation === 'recordCommentShare'
+          ? {headers: {'idempotency-key': randomUUID()}}
         : {}),
     })
     const text = await response.clone().text()

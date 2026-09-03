@@ -11,7 +11,7 @@ export function MessagesSectionHeader({active, children, labels, locale}: {activ
     {children}
     <nav aria-label={labels.title} className={styles.sectionTabs}>
       <Link aria-current={active === 'chat' ? 'page' : undefined} href={`/${locale}/messages`}>{labels.chatTab}</Link>
-      <Link aria-current={active === 'notifications' ? 'page' : undefined} href={`/${locale}/notifications`}>{labels.notificationsTab}</Link>
+      <Link aria-current={active === 'notifications' ? 'page' : undefined} href={`/${locale}/messages/notifications`}>{labels.notificationsTab}</Link>
     </nav>
   </header>
 }

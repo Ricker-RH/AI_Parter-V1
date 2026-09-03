@@ -1,9 +1,10 @@
 import {
-  CommentCursorSchema,
   CreateHumanCommentSchema,
+  CommentThreadContextSchema,
   FeedPageSchema,
   FeedQuerySchema,
   FollowedIpPageSchema,
+  NotificationSchema,
   NotificationPageSchema,
   PageQuerySchema,
   PostDetailSchema,
@@ -13,6 +14,7 @@ import {
   SearchQuerySchema,
   ShareRecordedSchema,
   decodeCursor,
+  decodeCommentCursor,
   decodeFollowedIpCursor,
   decodeLikedCursor,
   decodeNotificationCursor,
@@ -123,15 +125,6 @@ function hasDuplicateTopLevelJsonKey(text: string): boolean {
   return false
 }
 
-function decodeCommentCursor(value: string): z.infer<typeof CommentCursorSchema> {
-  try {
-    if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('INVALID_CURSOR')
-    return CommentCursorSchema.parse(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')))
-  } catch {
-    throw new Error('INVALID_CURSOR')
-  }
-}
-
 async function resolveActor(
   c: ApiContext,
   {auth, profiles}: SocialDependencies,
@@ -172,7 +165,7 @@ async function resolveActor(
   return {ok: true, actor: {subject: result.identity.subject}}
 }
 
-type NotFoundCode = 'POST_NOT_FOUND' | 'PROFILE_NOT_FOUND' | 'NOTIFICATION_NOT_FOUND'
+type NotFoundCode = 'POST_NOT_FOUND' | 'PROFILE_NOT_FOUND' | 'NOTIFICATION_NOT_FOUND' | 'COMMENT_NOT_FOUND'
 type SocialErrorContext = {notFound?: NotFoundCode; comment?: boolean}
 
 function errorProperty(error: unknown, property: 'code' | 'message'): string | undefined {
@@ -189,6 +182,8 @@ function notFound(c: ApiContext, code: NotFoundCode): Response {
       return apiError(c, 404, code, 'Profile not found')
     case 'NOTIFICATION_NOT_FOUND':
       return apiError(c, 404, code, 'Notification not found')
+    case 'COMMENT_NOT_FOUND':
+      return apiError(c, 404, code, 'Comment not found')
   }
 }
 
@@ -204,6 +199,8 @@ function knownSocialError(c: ApiContext, error: unknown, context: SocialErrorCon
       return notFound(c, 'PROFILE_NOT_FOUND')
     case 'NOTIFICATION_NOT_FOUND':
       return notFound(c, 'NOTIFICATION_NOT_FOUND')
+    case 'COMMENT_NOT_FOUND':
+      return notFound(c, 'COMMENT_NOT_FOUND')
     case 'COMMENT_INVALID':
       return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
     case 'FORBIDDEN':
@@ -278,7 +275,7 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     let commentAfter = null
     if (query.data.commentCursor) {
       try {
-        commentAfter = decodeCommentCursor(query.data.commentCursor)
+        commentAfter = decodeCommentCursor(query.data.commentCursor, postId)
       } catch {
         return invalidCursor(c)
       }
@@ -298,6 +295,15 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     } catch (error) {
       return knownSocialError(c, error)
     }
+  })
+
+  app.get('/v1/posts/:postId/comments/:commentId/context',async c=>{
+    const unavailable=socialUnavailable(c,dependencies.social); if(unavailable)return unavailable
+    const query=safeQuery(c),postId=parseId(c.req.param('postId')),commentId=parseId(c.req.param('commentId'))
+    if(query===null||!EmptyQuerySchema.safeParse(query).success||!postId||!commentId)return invalidRequest(c)
+    const viewer=await resolveActor(c,dependencies,false);if(!viewer.ok)return viewer.response
+    try { const result=await dependencies.social!.getCommentThread({viewer:viewer.actor,postId,commentId}); if(!result)return notFound(c,'COMMENT_NOT_FOUND'); return c.json(CommentThreadContextSchema.parse(result),200) }
+    catch(error){return knownSocialError(c,error,{notFound:'COMMENT_NOT_FOUND'})}
   })
 
   app.get('/v1/profiles/:profileId', async (c) => {
@@ -394,7 +400,7 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
     parameter: string,
     operation: (social: SocialPort, actor: Actor, id: string, context: MutationContext) => Promise<unknown>,
     responseSchema: typeof CreatedSchema | typeof DeletedSchema,
-    missing: 'PROFILE_NOT_FOUND' | 'POST_NOT_FOUND',
+    missing: 'PROFILE_NOT_FOUND' | 'POST_NOT_FOUND' | 'COMMENT_NOT_FOUND',
   ) => {
     app[method](path, async (c) => {
       const unavailable = socialUnavailable(c, dependencies.social)
@@ -419,6 +425,29 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
   relationship('delete', '/v1/posts/:postId/like', 'postId', (social, actor, id, context) => social.unlikePost(actor, id, context), DeletedSchema, 'POST_NOT_FOUND')
   relationship('put', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id, context) => social.bookmarkPost(actor, id, context), CreatedSchema, 'POST_NOT_FOUND')
   relationship('delete', '/v1/posts/:postId/bookmark', 'postId', (social, actor, id, context) => social.unbookmarkPost(actor, id, context), DeletedSchema, 'POST_NOT_FOUND')
+  relationship('put', '/v1/comments/:commentId/like', 'commentId', (social, actor, id, context) => social.likeComment(actor, id, context), CreatedSchema, 'COMMENT_NOT_FOUND')
+  relationship('delete', '/v1/comments/:commentId/like', 'commentId', (social, actor, id, context) => social.unlikeComment(actor, id, context), DeletedSchema, 'COMMENT_NOT_FOUND')
+  relationship('put', '/v1/comments/:commentId/bookmark', 'commentId', (social, actor, id, context) => social.bookmarkComment(actor, id, context), CreatedSchema, 'COMMENT_NOT_FOUND')
+  relationship('delete', '/v1/comments/:commentId/bookmark', 'commentId', (social, actor, id, context) => social.unbookmarkComment(actor, id, context), DeletedSchema, 'COMMENT_NOT_FOUND')
+
+  app.post('/v1/comments/:commentId/share', async (c) => {
+    const unavailable = socialUnavailable(c, dependencies.social)
+    if (unavailable) return unavailable
+    const query = safeQuery(c)
+    const commentId = parseId(c.req.param('commentId'))
+    const idempotencyKey = parseId(c.req.header('idempotency-key'))
+    if (query === null || !EmptyQuerySchema.safeParse(query).success || !commentId || !idempotencyKey) return invalidRequest(c)
+    const body = await parseShareBody(c)
+    if (body === 'too_large') return apiError(c, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large')
+    if (body === 'invalid') return invalidRequest(c)
+    const viewer = await resolveActor(c, dependencies, false)
+    if (!viewer.ok) return viewer.response
+    try {
+      return c.json(ShareRecordedSchema.parse(await dependencies.social!.recordCommentShare(viewer.actor, commentId, idempotencyKey)), 200)
+    } catch (error) {
+      return knownSocialError(c, error, {notFound: 'COMMENT_NOT_FOUND'})
+    }
+  })
 
   const actorPage = (
     path: '/v1/bookmarks' | '/v1/likes' | '/v1/following' | '/v1/notifications',
@@ -467,6 +496,24 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
   actorPage('/v1/likes', (social, actor, query) => social.listLiked(actor, query), FeedPageSchema)
   actorPage('/v1/following', (social, actor, query) => social.listFollowedIps(actor, query), FollowedIpPageSchema)
   actorPage('/v1/notifications', (social, actor, query) => social.listNotifications(actor, query), NotificationPageSchema)
+
+  app.get('/v1/notifications/:notificationId', async (c) => {
+    const unavailable = socialUnavailable(c, dependencies.social)
+    if (unavailable) return unavailable
+    const query = safeQuery(c)
+    if (query === null || !EmptyQuerySchema.safeParse(query).success) return invalidRequest(c)
+    const notificationId = parseId(c.req.param('notificationId'))
+    if (!notificationId) return invalidRequest(c)
+    const actor = await resolveActor(c, dependencies, true)
+    if (!actor.ok || actor.actor === null) return actor.ok ? apiError(c, 401, 'AUTH_REQUIRED', 'Authentication is required') : actor.response
+    try {
+      const result = await dependencies.social!.getNotification(actor.actor, notificationId)
+      if (result === null) return apiError(c, 404, 'NOTIFICATION_NOT_FOUND', 'Notification not found')
+      return c.json(NotificationSchema.parse(result), 200)
+    } catch (error) {
+      return knownSocialError(c, error, {notFound: 'NOTIFICATION_NOT_FOUND'})
+    }
+  })
 
   app.post('/v1/posts/:postId/comments', async (c) => {
     const unavailable = socialUnavailable(c, dependencies.social)

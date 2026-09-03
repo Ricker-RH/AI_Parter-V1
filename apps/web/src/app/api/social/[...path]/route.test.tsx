@@ -216,6 +216,23 @@ describe('same-origin social mutation proxy', () => {
   })
   it('forwards authenticated owner collection reads without accepting extra query keys', async()=>{process.env.AIFANS_API_URL='https://internal-api.example';const upstream=vi.fn().mockImplementation(async()=>Response.json({items:[],nextCursor:null}));vi.stubGlobal('fetch',upstream);for(const collection of ['likes','bookmarks','following']){const response=await GET(new Request(`https://web.example/api/social/${collection}`),{params:Promise.resolve({path:[collection]})});expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store');expect(upstream).toHaveBeenLastCalledWith(`https://internal-api.example/v1/${collection}`,expect.objectContaining({headers:{authorization:'Bearer signed-jwt'}}))}expect((await GET(new Request('https://web.example/api/social/likes?admin=true'),{params:Promise.resolve({path:['likes']})})).status).toBe(400)})
   it('does not force the owner-only cache policy onto public profile reads',async()=>{process.env.AIFANS_API_URL='https://internal-api.example';vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({profile:{},followerCount:0,posts:{items:[],nextCursor:null}})));const path=['profiles','11111111-1111-4111-8111-111111111111'];const response=await GET(new Request(`https://web.example/api/social/${path.join('/')}`),{params:Promise.resolve({path})});expect(response.status).toBe(200);expect(response.headers.get('cache-control')).not.toBe('private, no-store')})
+  it('strictly proxies a bounded public comment-thread context read', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    const commentId = '33333333-3333-4333-8333-333333333333'
+    const comment = {id: commentId, postId, rootCommentId: commentId, parentCommentId: null, state: 'published', body: 'Context root', createdAt: '2026-09-03T08:00:00.000Z', likeCount: 0, replyCount: 0, bookmarkCount: 0, shareCount: 0, author: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex'}}
+    const upstream = vi.fn().mockResolvedValue(Response.json({group: {root: comment, replies: []}}))
+    vi.stubGlobal('fetch', upstream)
+    const path = ['posts', postId, 'comments', commentId, 'context']
+
+    const response = await GET(new Request(`https://web.example/api/social/${path.join('/')}`), {params: Promise.resolve({path})})
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({group: {root: comment, replies: []}})
+    expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/posts/${postId}/comments/${commentId}/context`, expect.objectContaining({cache: 'no-store'}))
+
+    upstream.mockResolvedValueOnce(Response.json({group: {root: {id: commentId}, replies: []}}))
+    expect((await GET(new Request(`https://web.example/api/social/${path.join('/')}`), {params: Promise.resolve({path})})).status).toBe(502)
+  })
   it('forwards only an allowed mutation with a short-lived bearer token', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example/'
     const upstream = vi.fn().mockResolvedValue(new Response(JSON.stringify({created: true}), {status: 200, headers: {'content-type': 'application/json'}}))
@@ -254,6 +271,38 @@ describe('same-origin social mutation proxy', () => {
     expect(upstream).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['PUT', 'like', {created: true}],
+    ['DELETE', 'like', {deleted: true}],
+    ['PUT', 'bookmark', {created: false}],
+    ['DELETE', 'bookmark', {deleted: false}],
+  ] as const)('allows the bounded comment %s %s mutation', async (method, action, payload) => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    const upstream = vi.fn().mockResolvedValue(Response.json(payload))
+    vi.stubGlobal('fetch', upstream)
+    const path = ['comments', postId, action]
+    const request = new Request(`https://web.example/api/social/${path.join('/')}`, {method, headers: {origin: 'https://web.example'}})
+    const response = method === 'PUT' ? await PUT(request, {params: Promise.resolve({path})}) : await DELETE(request, {params: Promise.resolve({path})})
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(payload)
+    expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/comments/${postId}/${action}`, expect.objectContaining({method}))
+  })
+
+  it('allows a strict empty-body comment share without leaking browser headers', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
+    const upstream = vi.fn().mockResolvedValue(Response.json({created: true}))
+    vi.stubGlobal('fetch', upstream)
+    const path = ['comments', postId, 'share']
+    const request = new Request(`https://web.example/api/social/${path.join('/')}`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId, cookie: 'private=true'}})
+    const response = await POST(request, {params: Promise.resolve({path})})
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({created: true})
+    const sent = new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers)
+    expect(sent.has('cookie')).toBe(false)
+    expect(sent.get('idempotency-key')).toBe(postId)
+  })
+
   it('fails safely when the API is not configured', async () => {
     const request = new Request('https://web.example/api/social/profiles/11111111-1111-4111-8111-111111111111/follow', {method: 'PUT',headers:{origin:'https://web.example'}})
     const response = await PUT(request, {params: Promise.resolve({path: ['profiles', '11111111-1111-4111-8111-111111111111', 'follow']})})
@@ -262,7 +311,7 @@ describe('same-origin social mutation proxy', () => {
 
   it('accepts only the strict comment request, returns only the strict created-comment DTO, and invalidates fixed feed tags', async () => {
     process.env.AIFANS_API_URL='https://internal-api.example'
-    const created={id:'33333333-3333-4333-8333-333333333333',postId:'22222222-2222-4222-8222-222222222222',parentCommentId:null,state:'published',body:'hello',createdAt:'2026-09-02T12:00:00.000Z',author:{kind:'human',id:'44444444-4444-4444-8444-444444444444',username:'alex',displayName:'Alex'}}
+    const created={id:'33333333-3333-4333-8333-333333333333',postId:'22222222-2222-4222-8222-222222222222',rootCommentId:'33333333-3333-4333-8333-333333333333',parentCommentId:null,state:'published',body:'hello',createdAt:'2026-09-02T12:00:00.000Z',likeCount:0,replyCount:0,bookmarkCount:0,shareCount:0,viewerHasLiked:false,viewerHasBookmarked:false,author:{kind:'human',id:'44444444-4444-4444-8444-444444444444',username:'alex',displayName:'Alex'}}
     const upstream=vi.fn().mockResolvedValue(new Response(JSON.stringify(created),{status:201,headers:{'content-type':'application/json'}}))
     vi.stubGlobal('fetch',upstream)
     const path=['posts','22222222-2222-4222-8222-222222222222','comments']

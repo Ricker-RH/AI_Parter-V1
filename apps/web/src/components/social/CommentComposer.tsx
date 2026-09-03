@@ -2,24 +2,37 @@
 
 import Link from 'next/link'
 import {useRouter} from 'next/navigation'
-import {PublicCommentSchema, type PublicComment} from '@aifans/contracts'
+import {PublicCommentSchema, type Account, type PublicComment} from '@aifans/contracts'
 import {useEffect, useRef, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import type {SocialLabels} from './types'
 import {authHref} from '../../lib/auth/return-to'
 
 type Labels=Pick<SocialLabels,'commentPlaceholder'|'commentSubmit'|'commentSending'|'commentSuccess'|'interactionError'|'signInToComment'>
+export type CommentViewer = Pick<Account, 'displayName' | 'avatarUrl'>
 
-export function CommentComposer({postId,parentCommentId,authenticated,locale,labels,returnTo,onCommentCreated,viewerScope}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels;returnTo?:string;onCommentCreated?(comment:PublicComment):void;viewerScope?:string}) {
+export function CommentComposer({postId,parentCommentId,authenticated,locale,labels,returnTo,onCommentCreated,viewer,viewerScope}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels;returnTo?:string;onCommentCreated?(comment:PublicComment):void;viewer?:CommentViewer;viewerScope?:string}) {
   if (authenticated && !viewerScope) throw new Error('viewerScope is required for authenticated comment mutations')
   const safeReturnTo = returnTo ?? `/${locale}/posts/${postId}`
   const variant = parentCommentId ? 'reply' : 'primary'
   if (!authenticated) return <p className={`comment-signin comment-signin--${variant}`}><Link href={authHref(locale, safeReturnTo)}>{labels.signInToComment}</Link></p>
-  const scope = JSON.stringify([postId, parentCommentId ?? null, viewerScope])
-  return <ScopedCommentComposer key={scope} labels={labels} locale={locale} postId={postId} viewerScope={viewerScope!} {...(onCommentCreated ? {onCommentCreated} : {})} {...(parentCommentId ? {parentCommentId} : {})}/>
+  const scope = JSON.stringify([postId, viewerScope, viewer?.displayName ?? null, viewer?.avatarUrl ?? null])
+  return <ScopedCommentComposer key={scope} labels={labels} locale={locale} postId={postId} viewerScope={viewerScope!} {...(onCommentCreated ? {onCommentCreated} : {})} {...(parentCommentId ? {parentCommentId} : {})} {...(viewer ? {viewer} : {})}/>
 }
 
-function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCreated,viewerScope}: {postId:string;parentCommentId?:string;locale:Locale;labels:Labels;onCommentCreated?(comment:PublicComment):void;viewerScope:string}) {
+function ViewerAvatar({viewer}: {viewer?: CommentViewer}) {
+  const [failed, setFailed] = useState(false)
+  const initial = Array.from(viewer?.displayName.trim() ?? '')[0]?.toLocaleUpperCase()
+  if (viewer?.avatarUrl && !failed) return <span className="comment-composer-avatar"><img alt={viewer.displayName} onError={() => setFailed(true)} src={viewer.avatarUrl}/></span>
+  if (initial) return <span aria-label={viewer?.displayName} className="comment-composer-avatar" role="img">{initial}</span>
+  return <span aria-hidden="true" className="comment-composer-avatar"><svg fill="none" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.6"/><path d="M4.8 20c.8-4 3.2-6 7.2-6s6.4 2 7.2 6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6"/></svg></span>
+}
+
+function SendIcon() {
+  return <svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M12 18V6m0 0-5 5m5-5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg>
+}
+
+function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCreated,viewer,viewerScope}: {postId:string;parentCommentId?:string;locale:Locale;labels:Labels;onCommentCreated?(comment:PublicComment):void;viewer?:CommentViewer;viewerScope:string}) {
   const router=useRouter()
   const [body,setBody]=useState('')
   const [pending,setPending]=useState(false)
@@ -29,7 +42,7 @@ function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCr
   const controller=useRef<AbortController|null>(null)
   useEffect(()=>()=>{mutationId.current+=1;controller.current?.abort()},[])
   useEffect(()=>{if(status==='success'&&!pending)inputRef.current?.focus()},[pending,status])
-  const variant = parentCommentId ? 'reply' : 'primary'
+  useEffect(()=>{if(parentCommentId&&!pending)inputRef.current?.focus()},[parentCommentId,pending])
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if(pending)return
@@ -46,9 +59,11 @@ function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCr
       setBody('');onCommentCreated?.(parsed.data);setStatus('success')
     } catch { if(isCurrent())setStatus('error') } finally { if(isCurrent()){controller.current=null;setPending(false)} }
   }
-  return <form className={`comment-composer comment-composer--${variant}`} onSubmit={(event)=>void submit(event)}>
-    <textarea aria-label={labels.commentPlaceholder} disabled={pending} maxLength={2000} onChange={(event)=>setBody(event.target.value)} placeholder={labels.commentPlaceholder} ref={inputRef} required rows={1} value={body} />
-    <button aria-busy={pending} disabled={pending||!body.trim()} type="submit">{pending?labels.commentSending:labels.commentSubmit}</button>
-    <span aria-live="polite" className="interaction-error">{status==='success'?labels.commentSuccess:status==='error'?labels.interactionError:''}</span>
+  const textarea = <textarea aria-label={labels.commentPlaceholder} disabled={pending} maxLength={2000} onChange={(event)=>{setBody(event.target.value);if(status!=='idle')setStatus('idle')}} placeholder={labels.commentPlaceholder} ref={inputRef} required rows={1} value={body} />
+  const feedback = <span aria-live="polite" className="interaction-error">{status==='success'?labels.commentSuccess:status==='error'?labels.interactionError:''}</span>
+  return <form className="comment-composer comment-composer--primary" onSubmit={(event)=>void submit(event)}>
+    <ViewerAvatar {...(viewer ? {viewer} : {})}/>
+    <div className="comment-composer-field">{textarea}<button aria-busy={pending} aria-label={labels.commentSubmit} className="comment-submit" disabled={pending||!body.trim()} title={pending?labels.commentSending:labels.commentSubmit} type="submit"><span className="comment-submit-visual"><SendIcon/></span></button></div>
+    {feedback}
   </form>
 }

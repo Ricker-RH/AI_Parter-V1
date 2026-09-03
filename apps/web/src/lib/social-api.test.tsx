@@ -10,6 +10,7 @@ import {
   fetchPost,
   fetchPublicProfile,
 } from './social-api.js'
+import * as socialApi from './social-api.js'
 
 const ip = {
   kind: 'ip' as const,
@@ -40,6 +41,18 @@ afterEach(() => {
 })
 
 describe('social API client', () => {
+  it('strictly reads one owner-scoped notification for a deep link', async () => {
+    process.env.AIFANS_API_URL = 'https://server.example'
+    const notification = {id: '66666666-6666-4666-8666-666666666666', kind: 'post_like', actor: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex'}, postId: post.id, commentId: null, createdAt: '2026-08-31T12:07:00.000Z', readAt: null}
+    const request = vi.fn().mockResolvedValueOnce(Response.json(notification)).mockResolvedValueOnce(Response.json({...notification, fabricated: true}))
+    vi.stubGlobal('fetch', request)
+
+    expect(typeof (socialApi as Record<string, unknown>).fetchNotification).toBe('function')
+    const fetchNotification = (socialApi as unknown as {fetchNotification(id: string, options: {token: string}): Promise<unknown>}).fetchNotification
+    await expect(fetchNotification(notification.id, {token: 'viewer-jwt'})).resolves.toEqual({status: 'ok', data: notification})
+    await expect(fetchNotification(notification.id, {token: 'viewer-jwt'})).resolves.toEqual({status: 'unavailable'})
+    expect(request).toHaveBeenCalledWith(`https://server.example/v1/notifications/${notification.id}`, expect.objectContaining({headers: {authorization: 'Bearer viewer-jwt'}}))
+  })
   it('uses the server URL, forwards a bearer token, and strictly parses a feed', async () => {
     process.env.AIFANS_API_URL = 'https://server.example/'
     process.env.NEXT_PUBLIC_AIFANS_API_URL = 'https://public.example'
@@ -94,7 +107,7 @@ describe('social API client', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
       .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
       .mockResolvedValueOnce(new Response(JSON.stringify({items: [], nextCursor: null}), {status: 200}))
-      .mockResolvedValueOnce(new Response(JSON.stringify({...post, comments: {items: [], nextCursor: null}}), {status: 200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({...post, comments: {groups: [], nextCursor: null}}), {status: 200}))
     vi.stubGlobal('fetch', request)
 
     await fetchBookmarks({cursor: 'bookmark cursor'})
@@ -143,7 +156,7 @@ describe('social API client', () => {
   it('parses post detail and maps a missing post without fabricating content', async () => {
     process.env.AIFANS_API_URL = 'https://server.example'
     const request = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({...post, comments: {items: [], nextCursor: null}}), {status: 200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({...post, comments: {groups: [], nextCursor: null}}), {status: 200}))
       .mockResolvedValueOnce(new Response(JSON.stringify({code: 'POST_NOT_FOUND', message: 'Post not found', requestId: 'req-2'}), {status: 404}))
     vi.stubGlobal('fetch', request)
 

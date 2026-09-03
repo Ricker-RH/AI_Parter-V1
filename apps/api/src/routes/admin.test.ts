@@ -60,14 +60,20 @@ const post = CreatePostResponseSchema.parse({
   bookmarkCount: 0,
   shareCount: 0,
 });
+const adminCommentId = randomUUID();
 const comment = CreateIpCommentResponseSchema.parse({
-  id: randomUUID(),
+  id: adminCommentId,
   postId,
+  rootCommentId: adminCommentId,
   parentCommentId: null,
   author: ip,
   state: "published",
   body: "Reply",
   createdAt,
+  likeCount: 0,
+  replyCount: 0,
+  bookmarkCount: 0,
+  shareCount: 0,
 });
 
 function profiles(overrides: Partial<ProfilePort> = {}): ProfilePort {

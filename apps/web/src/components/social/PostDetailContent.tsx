@@ -1,138 +1,208 @@
 'use client'
 
-import type {PostDetail} from '@aifans/contracts'
-import type {Locale} from '../../i18n/config'
-import type {SocialApiResult} from '../../lib/social-api'
+import {AccountSchema, CommentThreadContextSchema, type PostDetail, type PublicComment} from '@aifans/contracts'
 import Link from 'next/link'
+import {useEffect, useState} from 'react'
+import type {Locale} from '../../i18n/config'
+import {formatRelativeDuration} from '../../lib/relative-time'
+import type {SocialApiResult} from '../../lib/social-api'
+import {AuthorPreview} from './AuthorPreview'
+import {CommentActions} from './CommentActions'
+import {CommentComposer, type CommentViewer} from './CommentComposer'
 import {PostCard} from './PostCard'
 import {ResultState} from './ResultState'
 import type {SocialLabels} from './types'
-import {CommentComposer} from './CommentComposer'
-import {formatRelativeDuration} from '../../lib/relative-time'
-import {useEffect, useState} from 'react'
-import {AuthorPreview} from './AuthorPreview'
 
-type Comment = PostDetail['comments']['items'][number]
+type CommentGroup = PostDetail['comments']['groups'][number]
 
 type StoredComments = {
-  localIds: string[]
+  contextGroups: CommentGroup[]
+  groups: CommentGroup[]
+  localComments: PublicComment[]
   optimisticCount: number
   scope: string | null
   serverCommentCount: number
-  serverItems: Comment[] | null
-  comments: Comment[]
+  serverGroups: CommentGroup[] | null
 }
 
-const profileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-function hasValidProfileId(value: unknown): value is {profileId: string} {
-  return typeof value === 'object'
-    && value !== null
-    && 'profileId' in value
-    && typeof value.profileId === 'string'
-    && profileIdPattern.test(value.profileId)
+type CommentAccess = {
+  inputKey: string
+  canMutate: boolean
+  checkingAccess: boolean
+  viewer?: CommentViewer
+  viewerScope?: string
 }
 
-function reconcileComments(current: StoredComments, serverItems: Comment[], serverCommentCount: number): StoredComments {
-  const serverIds = new Set(serverItems.map((comment) => comment.id))
-  const localIds = current.localIds.filter((id) => !serverIds.has(id))
-  const retainedLocalComments = current.comments.filter((comment) => localIds.includes(comment.id) && !serverIds.has(comment.id))
+type ReplyTarget = {id: string; name: string}
+
+function groupCommentIds(groups: CommentGroup[]): Set<string> {
+  return new Set(groups.flatMap((group) => [group.root.id, ...group.replies.map((reply) => reply.id)]))
+}
+
+function insertComment(groups: CommentGroup[], comment: PublicComment): CommentGroup[] {
+  if (comment.parentCommentId === null || comment.rootCommentId === comment.id) {
+    return groups.some((group) => group.root.id === comment.id) ? groups : [...groups, {root: comment, replies: []}]
+  }
+  let inserted = false
+  const next = groups.map((group) => {
+    if (group.root.id !== comment.rootCommentId || group.replies.some((reply) => reply.id === comment.id)) return group
+    inserted = true
+    return {...group, replies: [...group.replies, comment]}
+  })
+  return inserted ? next : groups
+}
+
+function mergeLocalComments(groups: CommentGroup[], comments: PublicComment[]): CommentGroup[] {
+  return comments.reduce(insertComment, groups)
+}
+
+function reconcileComments(current: StoredComments, serverGroups: CommentGroup[], serverCommentCount: number): StoredComments {
+  const serverIds = groupCommentIds(serverGroups)
+  const localComments = current.localComments.filter((comment) => !serverIds.has(comment.id))
   const acknowledgedCount = Math.max(0, serverCommentCount - current.serverCommentCount)
-  const optimisticCount = Math.max(0, current.optimisticCount - acknowledgedCount)
-  return {...current, comments: [...serverItems, ...retainedLocalComments], localIds, optimisticCount, serverCommentCount, serverItems}
+  const serverRootIds = new Set(serverGroups.map((group) => group.root.id))
+  const contextGroups = current.contextGroups.filter((group) => !serverRootIds.has(group.root.id))
+  return {...current, contextGroups, groups: mergeLocalComments([...serverGroups, ...contextGroups], localComments), localComments, optimisticCount: Math.max(0, current.optimisticCount - acknowledgedCount), serverCommentCount, serverGroups}
 }
 
-function CommentThreadItem({authenticated, comment, labels, locale, onCommentCreated, postId, referenceTime, returnTo, viewerScope}: {authenticated: boolean; comment: Comment; labels: SocialLabels; locale: Locale; onCommentCreated(comment: Comment): void; postId: string; referenceTime: number; returnTo: string; viewerScope?: string}) {
-  const isReply = Boolean(comment.parentCommentId)
-  const creatorLabel = comment.author.kind === 'ip' && comment.author.creator
-    ? `${labels.createdBy} @${comment.author.creator.username}`
-    : null
-  const profileHref = comment.author.kind === 'ip' ? `/${locale}/profiles/${comment.author.id}` : null
-
-  return <article className={`comment-thread-item${isReply ? ' comment-thread-item--reply' : ''}`} data-parent-comment-id={comment.parentCommentId ?? undefined}>
-    {comment.author.kind === 'ip'
-      ? <AuthorPreview author={comment.author} canMutate={authenticated && Boolean(viewerScope)} context="comment" labels={labels} locale={locale} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
-      : <span aria-label={comment.author.displayName} className="comment-avatar" role="img">{comment.author.displayName.slice(0, 1)}</span>}
+function CommentThreadItem({authenticated, comment, labels, locale, onReply, postId, referenceTime, returnTo, viewerScope}: {authenticated: boolean; comment: PublicComment; labels: SocialLabels; locale: Locale; onReply(target: ReplyTarget): void; postId: string; referenceTime: number; returnTo: string; viewerScope?: string}) {
+  const isReply = comment.parentCommentId !== null
+  const isTombstone = comment.state === 'deleted'
+  const author = isTombstone ? null : comment.author
+  const authorName = author?.displayName ?? labels.deletedComment
+  const creatorLabel = author?.kind === 'ip' && author.creator ? `${labels.createdBy} @${author.creator.username}` : null
+  const profileHref = author?.kind === 'ip' ? `/${locale}/profiles/${author.id}` : null
+  return <article className={`comment-thread-item${isReply ? ' comment-thread-item--reply' : ''}`} data-parent-comment-id={comment.parentCommentId ?? undefined} id={`comment-${comment.id}`} tabIndex={-1}>
+    <div className={`comment-avatar-rail${isTombstone ? ' comment-avatar-rail--tombstone' : ''}`}>
+      {author?.kind === 'ip'
+        ? <AuthorPreview author={author} canMutate={authenticated && Boolean(viewerScope)} context="comment" labels={labels} locale={locale} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
+        : author ? <span aria-label={authorName} className="comment-avatar" role="img">{Array.from(author.displayName)[0]?.toLocaleUpperCase()}</span> : null}
+    </div>
     <div className="comment-thread-content">
       <header className="comment-thread-heading">
-        {profileHref ? <Link href={profileHref} title={comment.author.displayName}><strong>{comment.author.displayName}</strong></Link> : <strong title={comment.author.displayName}>{comment.author.displayName}</strong>}
+        {author ? (profileHref ? <Link href={profileHref} title={authorName}><strong>{authorName}</strong></Link> : <strong title={authorName}>{authorName}</strong>) : null}
         <time dateTime={comment.createdAt}>{formatRelativeDuration(comment.createdAt, locale, referenceTime)}</time>
       </header>
       {creatorLabel ? <span aria-label={creatorLabel} className="creator-attribution">{creatorLabel}</span> : null}
       <p className={comment.state === 'deleted' ? 'deleted-comment' : undefined}>{comment.state === 'deleted' ? labels.deletedComment : comment.body}</p>
-      {comment.state === 'published' && !isReply ? <details className="reply-composer"><summary>{labels.reply}</summary><CommentComposer authenticated={authenticated && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={onCommentCreated} parentCommentId={comment.id} postId={postId} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/></details> : null}
+      {!isTombstone ? <CommentActions bookmarked={comment.viewerHasBookmarked ?? false} bookmarkCount={comment.bookmarkCount} canMutate={authenticated && Boolean(viewerScope) && comment.viewerHasLiked !== undefined && comment.viewerHasBookmarked !== undefined} commentId={comment.id} labels={labels} liked={comment.viewerHasLiked ?? false} likeCount={comment.likeCount} locale={locale} onReply={() => onReply({id: comment.id, name: authorName})} postId={postId} replyCount={comment.replyCount} returnTo={returnTo} shareCount={comment.shareCount} {...(viewerScope ? {viewerScope} : {})}/> : null}
     </div>
   </article>
 }
 
-export function PostDetailContent({result, locale, labels, moreHref, authenticated=false, authResolutionNeeded=false, returnTo, referenceTime=Date.now(), viewerScope: serverViewerScope}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined;authenticated?:boolean; authResolutionNeeded?: boolean; returnTo?: string; referenceTime?: number; viewerScope?: string}) {
-  const [canMutate, setCanMutate] = useState(authenticated)
-  const [resolvedViewerScope, setResolvedViewerScope] = useState<string | undefined>(serverViewerScope)
-  if (authenticated && resolvedViewerScope !== serverViewerScope) setResolvedViewerScope(serverViewerScope)
-  const [checkingAccess, setCheckingAccess] = useState(!authenticated && authResolutionNeeded)
+function CommentThreadGroup({authenticated, group, labels, locale, onReply, postId, referenceTime, returnTo, viewerScope}: {authenticated: boolean; group: CommentGroup; labels: SocialLabels; locale: Locale; onReply(target: ReplyTarget): void; postId: string; referenceTime: number; returnTo: string; viewerScope?: string}) {
+  return <section aria-label={group.root.state === 'deleted' ? labels.deletedComment : group.root.author?.displayName ?? labels.deletedComment} className={`comment-thread-group${group.replies.length ? ' comment-thread-group--connected' : ''}`}>
+    <CommentThreadItem authenticated={authenticated} comment={group.root} labels={labels} locale={locale} onReply={onReply} postId={postId} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
+    {group.replies.map((reply) => <CommentThreadItem authenticated={authenticated} comment={reply} key={reply.id} labels={labels} locale={locale} onReply={onReply} postId={postId} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>)}
+  </section>
+}
+
+export function PostDetailContent({result, locale, labels, moreHref, authenticated=false, accountResolutionNeeded=false, authResolutionNeeded=false, returnTo, referenceTime=Date.now(), viewer: serverViewer, viewerScope: serverViewerScope}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined; authenticated?: boolean; accountResolutionNeeded?: boolean; authResolutionNeeded?: boolean; returnTo?: string; referenceTime?: number; viewer?: CommentViewer; viewerScope?: string}) {
+  const resolutionNeeded = accountResolutionNeeded || authResolutionNeeded
+  const accessInputKey = JSON.stringify([authenticated, resolutionNeeded, serverViewerScope ?? null, serverViewer?.displayName ?? null, serverViewer?.avatarUrl ?? null])
+  const initialAccess = (): CommentAccess => ({inputKey: accessInputKey, canMutate: authenticated && !resolutionNeeded, checkingAccess: resolutionNeeded, ...(!resolutionNeeded && serverViewer ? {viewer: serverViewer} : {}), ...(!resolutionNeeded && serverViewerScope ? {viewerScope: serverViewerScope} : {})})
+  const [storedAccess, setStoredAccess] = useState<CommentAccess>(initialAccess)
+  const access = storedAccess.inputKey === accessInputKey ? storedAccess : initialAccess()
+  if (storedAccess.inputKey !== accessInputKey) setStoredAccess(access)
+  const {canMutate, checkingAccess, viewer: resolvedViewer, viewerScope: resolvedViewerScope} = access
   const currentResult = result.status === 'ok' ? result.data : null
   const postReturnTo = currentResult ? returnTo ?? `/${locale}/posts/${currentResult.id}` : null
   const viewerScope = canMutate ? resolvedViewerScope : undefined
   const pageScope = currentResult ? `${viewerScope ?? 'anonymous'}\u0000${locale}\u0000${currentResult.id}\u0000${postReturnTo}` : null
-  const currentServerItems = currentResult?.comments.items ?? null
-  const serverItems = currentServerItems ?? []
-  const [storedComments, setStoredComments] = useState<StoredComments>(() => ({scope: pageScope, comments: serverItems, localIds: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverItems: currentServerItems}))
+  const currentServerGroups = currentResult?.comments.groups ?? null
+  const serverGroups = currentServerGroups ?? []
+  const [storedComments, setStoredComments] = useState<StoredComments>(() => ({scope: pageScope, contextGroups: [], groups: serverGroups, localComments: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverGroups: currentServerGroups}))
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null)
+  const [anchorTarget, setAnchorTarget] = useState<string | null>(null)
   if (storedComments.scope !== pageScope) {
-    setStoredComments({scope: pageScope, comments: serverItems, localIds: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverItems: currentServerItems})
-  } else if (storedComments.serverItems !== currentServerItems) {
-    setStoredComments(reconcileComments(storedComments, serverItems, currentResult?.commentCount ?? 0))
+    setStoredComments({scope: pageScope, contextGroups: [], groups: serverGroups, localComments: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverGroups: currentServerGroups})
+    if (replyTarget !== null) setReplyTarget(null)
+  } else if (storedComments.serverGroups !== currentServerGroups) {
+    setStoredComments(reconcileComments(storedComments, serverGroups, currentResult?.commentCount ?? 0))
   }
-  const comments = storedComments.scope === pageScope ? storedComments.comments : serverItems
+  const groups = storedComments.scope === pageScope ? storedComments.groups : serverGroups
 
   useEffect(() => {
-    setCanMutate(authenticated)
-    setResolvedViewerScope(serverViewerScope)
-    if (authenticated || !authResolutionNeeded) {
-      setCheckingAccess(false)
-      return
-    }
+    if (!resolutionNeeded) return
     const controller = new AbortController()
-    setCheckingAccess(true)
-    void fetch('/api/account', {cache: 'no-store', credentials: 'include', signal: controller.signal})
-      .then(async (response) => {
-        let accountResolved = false
-        if (response.status === 200) {
-          try {
-          const account = await response.json()
-          accountResolved = hasValidProfileId(account)
-          if (accountResolved && !controller.signal.aborted) setResolvedViewerScope(account.profileId)
-          } catch {
-            accountResolved = false
-          }
-        }
-        if (!controller.signal.aborted) setCanMutate(accountResolved)
-      })
-      .catch(() => undefined)
-      .finally(() => { if (!controller.signal.aborted) setCheckingAccess(false) })
+    void fetch('/api/me', {cache: 'no-store', credentials: 'include', signal: controller.signal}).then(async (response) => {
+      let resolved: CommentAccess = {inputKey: accessInputKey, canMutate: false, checkingAccess: false}
+      if (response.status === 200) {
+        try {
+          const parsed = AccountSchema.strict().safeParse(await response.json())
+          if (parsed.success) resolved = {inputKey: accessInputKey, canMutate: true, checkingAccess: false, viewerScope: parsed.data.id, viewer: {displayName: parsed.data.displayName, avatarUrl: parsed.data.avatarUrl ?? null}}
+        } catch {}
+      }
+      if (!controller.signal.aborted) setStoredAccess((current) => current.inputKey === accessInputKey ? resolved : current)
+    }).catch(() => undefined).finally(() => { if (!controller.signal.aborted) setStoredAccess((current) => current.inputKey === accessInputKey ? {...current, checkingAccess: false} : current) })
     return () => controller.abort()
-  }, [authResolutionNeeded, authenticated, serverViewerScope])
+  }, [accessInputKey, resolutionNeeded])
 
-  function appendComment(comment: Comment) {
+  useEffect(() => {
+    const readAnchor = () => {
+      const match = window.location.hash.match(/^#comment-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
+      setAnchorTarget(match?.[1] ?? null)
+    }
+    readAnchor()
+    window.addEventListener('hashchange', readAnchor)
+    return () => window.removeEventListener('hashchange', readAnchor)
+  }, [pageScope])
+
+  useEffect(() => {
+    if (!anchorTarget) return
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(`comment-${anchorTarget}`)
+      if (!target) return
+      target.focus({preventScroll: true})
+      target.scrollIntoView({behavior: 'smooth', block: 'center'})
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [anchorTarget, groups])
+
+  useEffect(() => {
+    if (!anchorTarget || !currentResult || !pageScope || document.getElementById(`comment-${anchorTarget}`)) return
+    const controller = new AbortController()
+    void fetch(`/api/social/posts/${currentResult.id}/comments/${anchorTarget}/context`, {cache: 'no-store', credentials: 'include', signal: controller.signal}).then(async (response) => {
+      if (!response.ok || controller.signal.aborted) return
+      const parsed = CommentThreadContextSchema.safeParse(await response.json())
+      if (!parsed.success || controller.signal.aborted) return
+      const {group} = parsed.data
+      const members = [group.root, ...group.replies]
+      if (group.root.postId !== currentResult.id || group.root.rootCommentId !== group.root.id || !members.some((comment) => comment.id === anchorTarget) || members.some((comment) => comment.postId !== currentResult.id || comment.rootCommentId !== group.root.id)) return
+      setStoredComments((current) => {
+        if (current.scope !== pageScope || groupCommentIds(current.groups).has(anchorTarget)) return current
+        const contextGroups = [...current.contextGroups.filter((item) => item.root.id !== group.root.id), group]
+        const groupsWithoutContextRoot = current.groups.filter((item) => item.root.id !== group.root.id)
+        return {...current, contextGroups, groups: mergeLocalComments([...groupsWithoutContextRoot, group], current.localComments)}
+      })
+    }).catch(() => undefined)
+    return () => controller.abort()
+  }, [anchorTarget, currentResult, pageScope])
+
+  function appendComment(comment: PublicComment) {
     if (!currentResult || !pageScope || comment.postId !== currentResult.id) return
     setStoredComments((current) => {
-      const base = current.scope === pageScope ? current : {scope: pageScope, comments: serverItems, localIds: [], optimisticCount: 0, serverCommentCount: currentResult.commentCount, serverItems: currentResult.comments.items}
-      if (base.comments.some((item) => item.id === comment.id)) return base
-      return {...base, comments: [...base.comments, comment], localIds: [...base.localIds, comment.id], optimisticCount: base.optimisticCount + 1}
+      const base: StoredComments = current.scope === pageScope ? current : {scope: pageScope, contextGroups: [], groups: serverGroups, localComments: [], optimisticCount: 0, serverCommentCount: currentResult.commentCount, serverGroups: currentServerGroups}
+      if (groupCommentIds(base.groups).has(comment.id)) return base
+      return {...base, groups: insertComment(base.groups, comment), localComments: [...base.localComments, comment], optimisticCount: base.optimisticCount + 1}
     })
+    setReplyTarget((current) => current?.id === comment.parentCommentId ? null : current)
   }
 
-  if (result.status !== 'ok') return <div className="post-detail-content social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result} /></div>
+  if (result.status !== 'ok') return <div className="post-detail-content social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result}/></div>
   const resolvedPostReturnTo = postReturnTo ?? `/${locale}/posts/${result.data.id}`
-  return <>
-    <div aria-label={labels.comments} className="post-detail-scroll-region post-detail-content" role="region" tabIndex={0}>
-      <PostCard canMutate={canMutate} commentCountOverride={result.data.commentCount + storedComments.optimisticCount} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} variant="detail" {...(viewerScope ? {viewerScope} : {})} />
-      <section className="comments-section">
+  const replyingTo = replyTarget ? (labels.replyingTo ?? 'Replying to @{name}').replace('{name}', replyTarget.name) : null
+  return <div aria-label={labels.comments} className="post-detail-scroll-region post-detail-content" role="region" tabIndex={0}>
+    <PostCard canMutate={canMutate} commentCountOverride={result.data.commentCount + storedComments.optimisticCount} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} variant="detail" {...(viewerScope ? {viewerScope} : {})}/>
+    <section className="comments-section">
       <div className="comments-toolbar"><h2>{labels.comments}</h2><span>{labels.commentSortChronological ?? labels.comments}</span></div>
-      {comments.length === 0 ? <div className="comments-empty"><h3>{labels.commentsEmptyTitle ?? labels.comments}</h3>{labels.commentsEmptyDescription ? <p>{labels.commentsEmptyDescription}</p> : null}</div> : null}
-      <div className="comment-thread">{comments.map((comment) => <CommentThreadItem authenticated={canMutate} comment={comment} key={comment.id} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})}/>)}</div>
+      <div className="post-detail-composer-dock">
+        {replyingTo ? <div className="comment-reply-target"><span>{replyingTo}</span><button aria-label={labels.cancelReply ?? 'Cancel reply'} onClick={() => setReplyTarget(null)} type="button">{labels.cancelReply ?? 'Cancel reply'}</button></div> : null}
+        {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} returnTo={resolvedPostReturnTo} {...(replyTarget ? {parentCommentId: replyTarget.id} : {})} {...(resolvedViewer ? {viewer: resolvedViewer} : {})} {...(viewerScope ? {viewerScope} : {})}/>}
+      </div>
+      {groups.length === 0 ? <div className="comments-empty"><h3>{labels.commentsEmptyTitle ?? labels.comments}</h3>{labels.commentsEmptyDescription ? <p>{labels.commentsEmptyDescription}</p> : null}</div> : null}
+      <div className="comment-thread">{groups.map((group) => <CommentThreadGroup authenticated={canMutate} group={group} key={group.root.id} labels={labels} locale={locale} onReply={setReplyTarget} postId={result.data.id} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})}/>)}</div>
       {result.data.comments.nextCursor && moreHref ? <Link className="load-more" href={moreHref}>{labels.loadMore}</Link> : null}
-      </section>
-    </div>
-    <div className="post-detail-composer-dock">{checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})} />}</div>
-  </>
+    </section>
+  </div>
 }

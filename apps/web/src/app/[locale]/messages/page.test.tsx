@@ -25,7 +25,7 @@ describe('persistent messages list page', () => {
     expect(conversations).toHaveBeenCalledWith({token: 'token'})
     expect(screen.getByRole('heading', {name: 'Messages'})).toBeVisible()
     expect(screen.getByRole('link', {name: 'Chats'})).toHaveAttribute('href', '/en/messages')
-    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/notifications')
+    expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('href', '/en/messages/notifications')
     expect(screen.getByRole('searchbox', {name: 'Search conversations'})).toBeVisible()
     expect(screen.getByRole('link', {name: /Luma/})).toHaveAttribute('href', '/en/messages/11111111-1111-4111-8111-111111111111')
     expect(screen.getByText('Select a conversation')).toBeVisible()

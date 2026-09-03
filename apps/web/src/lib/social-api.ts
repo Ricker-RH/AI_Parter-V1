@@ -1,6 +1,7 @@
 import {
   ApiErrorSchema,
   FeedPageSchema,
+  NotificationSchema,
   NotificationPageSchema,
   PostDetailSchema,
   PublicIpProfileSchema,
@@ -9,6 +10,7 @@ import {
   type SearchPage,
   type FeedPage,
   type NotificationPage,
+  type Notification,
   type PostDetail,
   type PublicIpProfile,
 } from '@aifans/contracts'
@@ -36,7 +38,7 @@ function parseResponse<T>({status, body}: {status: number; body: unknown}, schem
   }
   const error = ApiErrorSchema.safeParse(body)
   if (!error.success) return {status: 'unavailable'}
-  if (status === 404 && (error.data.code === 'POST_NOT_FOUND' || error.data.code === 'PROFILE_NOT_FOUND')) return {status: 'not-found'}
+  if (status === 404 && (error.data.code === 'POST_NOT_FOUND' || error.data.code === 'PROFILE_NOT_FOUND' || error.data.code === 'NOTIFICATION_NOT_FOUND')) return {status: 'not-found'}
   return {status: 'unavailable'}
 }
 
@@ -100,4 +102,8 @@ export function fetchNotifications({cookie, cursor, token}: {cookie?: string | u
   const query = new URLSearchParams()
   if (cursor) query.set('cursor', cursor)
   return request(`/v1/notifications${query.size ? `?${query}` : ''}`, NotificationPageSchema, 'private-cache', token)
+}
+
+export function fetchNotification(notificationId: string, {token}: {token?: string | undefined} = {}): Promise<SocialApiResult<Notification>> {
+  return request(`/v1/notifications/${encodeURIComponent(notificationId)}`, NotificationSchema, 'private-cache', token)
 }

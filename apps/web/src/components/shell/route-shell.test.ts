@@ -6,6 +6,8 @@ describe('route shell resolver', () => {
     ['/en', 'public'],
     ['/en/auth/sign-in', 'auth'],
     ['/en/messages', 'messages'],
+    ['/en/messages/notifications', 'messages'],
+    ['/en/messages/notifications/66666666-6666-4666-8666-666666666666', 'messages'],
     ['/en/notifications', 'messages'],
     ['/en/creator', 'creator'],
     ['/en/admin', 'admin'],

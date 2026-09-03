@@ -1,4 +1,4 @@
-import {ApiErrorSchema, CreateHumanCommentSchema, PublicCommentSchema, ShareRecordedSchema} from '@aifans/contracts'
+import {ApiErrorSchema, CommentThreadContextSchema, CreateHumanCommentSchema, PublicCommentSchema, ShareRecordedSchema} from '@aifans/contracts'
 import {fetchAifansApi} from '../../../../lib/server-api'
 import {invalidateSocialMutation} from '../../../../lib/social-invalidation'
 
@@ -11,8 +11,10 @@ function allowedPath(parts: string[], method: 'POST' | 'PUT' | 'DELETE'): string
   if (parts.length !== 3 || !uuid.test(parts[1] ?? '')) return null
   if (method === 'POST' && parts[0] === 'posts' && parts[2] === 'comments') return parts.join('/')
   if (method === 'POST' && parts[0] === 'posts' && parts[2] === 'share') return parts.join('/')
+  if (method === 'POST' && parts[0] === 'comments' && parts[2] === 'share') return parts.join('/')
   if (method === 'PUT' && parts[0] === 'notifications' && parts[2] === 'read') return parts.join('/')
   if (method !== 'POST' && parts[0] === 'posts' && (parts[2] === 'like' || parts[2] === 'bookmark')) return parts.join('/')
+  if (method !== 'POST' && parts[0] === 'comments' && (parts[2] === 'like' || parts[2] === 'bookmark')) return parts.join('/')
   if (method !== 'POST' && parts[0] === 'profiles' && parts[2] === 'follow') return parts.join('/')
   return null
 }
@@ -171,11 +173,20 @@ export async function GET(request: Request, context: RouteContext) {
   const cursor = cursors[0]
   const profilePath = path.length === 2 && path[0] === 'profiles' && uuid.test(path[1] ?? '')
   const ownerCollectionPath = path.length === 1 && (path[0] === 'likes' || path[0] === 'bookmarks' || path[0] === 'following')
-  if ([...url.searchParams.keys()].some((key) => key !== 'cursor') || cursors.length > 1 || (cursor !== undefined && !/^[A-Za-z0-9_-]{1,2048}$/.test(cursor)) || (!profilePath && !ownerCollectionPath)) return Response.json({code: 'INVALID_REQUEST'}, {status: 400})
+  const commentContextPath = path.length === 5 && path[0] === 'posts' && uuid.test(path[1] ?? '') && path[2] === 'comments' && uuid.test(path[3] ?? '') && path[4] === 'context'
+  if ([...url.searchParams.keys()].some((key) => key !== 'cursor') || cursors.length > 1 || (cursor !== undefined && !/^[A-Za-z0-9_-]{1,2048}$/.test(cursor)) || (commentContextPath && cursor !== undefined) || (!profilePath && !ownerCollectionPath && !commentContextPath)) return Response.json({code: 'INVALID_REQUEST'}, {status: 400})
   try {
     const query = cursor ? `?${new URLSearchParams({cursor})}` : ''
-    const upstreamPath = profilePath ? `/v1/profiles/${path[1]}` : `/v1/${path[0]}`
+    const upstreamPath = commentContextPath ? `/v1/posts/${path[1]}/comments/${path[3]}/context` : profilePath ? `/v1/profiles/${path[1]}` : `/v1/${path[0]}`
     const upstream = await fetchAifansApi(`${upstreamPath}${query}`, {policy: 'private-cache', requestInit: {method: 'GET'}, trustedClientHeaders: request.headers})
+    if (commentContextPath) {
+      if (!upstream.ok) return safeUpstreamError(upstream)
+      if (upstream.status !== 200) return Response.json({code: 'SOCIAL_INVALID_RESPONSE'}, {status: 502, headers: privateNoStore})
+      let body: unknown
+      try { body = await upstream.json() } catch { return Response.json({code: 'SOCIAL_INVALID_RESPONSE'}, {status: 502, headers: privateNoStore}) }
+      const parsed = CommentThreadContextSchema.safeParse(body)
+      return parsed.success ? Response.json(parsed.data, {headers: privateNoStore}) : Response.json({code: 'SOCIAL_INVALID_RESPONSE'}, {status: 502, headers: privateNoStore})
+    }
     return new Response(await upstream.arrayBuffer(), {status: upstream.status, headers: {'content-type': upstream.headers.get('content-type') ?? 'application/json', ...(ownerCollectionPath ? {'cache-control': 'private, no-store'} : {})}})
   } catch {
     return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})

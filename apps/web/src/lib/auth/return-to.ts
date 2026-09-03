@@ -1,5 +1,5 @@
 import type {Locale} from '../../i18n/config'
-import {decodeChatConversationCursor, decodeChatMessageCursor, decodeCursor, decodeLikedCursor, encodeChatConversationCursor, encodeChatMessageCursor, encodeCursor, encodeLikedCursor} from '@aifans/contracts'
+import {decodeChatConversationCursor, decodeChatMessageCursor, decodeCursor, decodeLikedCursor, decodeNotificationCursor, encodeChatConversationCursor, encodeChatMessageCursor, encodeCursor, encodeLikedCursor, encodeNotificationCursor} from '@aifans/contracts'
 
 export function authHref(locale: Locale, returnTo: string): string {
   const safeReturn = readUserReturnTo(locale, returnTo) ?? `/${locale}`
@@ -34,6 +34,9 @@ function isCanonicalCursor(cursor: string, kind: 'conversation' | 'message' | 'l
 
 export function isCanonicalChatConversationCursor(value: string): boolean { return isCanonicalCursor(value, 'conversation') }
 export function isCanonicalChatMessageCursor(value: string): boolean { return isCanonicalCursor(value, 'message') }
+export function isCanonicalNotificationCursor(value: string): boolean {
+  try { return encodeNotificationCursor(decodeNotificationCursor(value)) === value } catch { return false }
+}
 
 function hasCanonicalCursor(query: string, kind: 'conversation' | 'message' | 'liked'): boolean {
   if (!query) return true
@@ -100,6 +103,18 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
 
   if (pathname === `${base}/messages`) return hasCanonicalCursor(query, 'conversation') ? value : undefined
   const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+  if (pathname === `${base}/messages/notifications`) {
+    if (!query) return value
+    const params = new URLSearchParams(query)
+    const cursor = params.get('cursor')
+    return [...params.keys()].every((key) => key === 'cursor') && params.getAll('cursor').length === 1 && cursor && isCanonicalNotificationCursor(cursor) ? value : undefined
+  }
+  if (new RegExp(`^${base}/messages/notifications/${uuid}$`, 'i').test(pathname)) {
+    if (!query) return value
+    const params = new URLSearchParams(query)
+    const cursor = params.get('listCursor')
+    return [...params.keys()].every((key) => key === 'listCursor') && params.getAll('listCursor').length === 1 && cursor && isCanonicalNotificationCursor(cursor) ? value : undefined
+  }
   if (new RegExp(`^${base}/messages/${uuid}$`, 'i').test(pathname)) return hasCanonicalMessageDetailQuery(query) ? value : undefined
   if (pathname === `${base}/liked`) return hasCanonicalCursor(query, 'liked') ? value : undefined
   if (pathname === `${base}/settings`) return hasOnlyQueryKeys(query, []) ? value : undefined

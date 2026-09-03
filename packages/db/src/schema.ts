@@ -1272,6 +1272,7 @@ export const comments = pgTable(
     parentCommentId: uuid("parent_comment_id").references(
       (): AnyPgColumn => comments.id,
     ),
+    rootCommentId: uuid("root_comment_id").notNull(),
     authorProfileId: uuid("author_profile_id")
       .notNull()
       .references(() => profiles.id),
@@ -1287,6 +1288,12 @@ export const comments = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
+    unique("comments_id_post_unique").on(table.id, table.postId),
+    foreignKey({columns: [table.rootCommentId, table.postId], foreignColumns: [table.id, table.postId], name: "comments_root_comment_fk"}),
+    foreignKey({columns: [table.parentCommentId, table.postId], foreignColumns: [table.id, table.postId], name: "comments_parent_same_post_fk"}),
+    check("comments_root_shape_check", sql`(${table.parentCommentId} IS NULL AND ${table.rootCommentId}=${table.id}) OR (${table.parentCommentId} IS NOT NULL AND ${table.rootCommentId}<>${table.id})`),
+    index("comments_post_root_created_idx").on(table.postId, table.rootCommentId, table.createdAt, table.id),
+    index("comments_post_root_cursor_idx").on(table.postId, table.createdAt, table.id).where(sql`${table.parentCommentId} IS NULL`),
     check(
       "comments_body_length_check",
       sql`char_length(${table.body}) BETWEEN 1 AND 2000 AND ${table.body} ~ '[^[:space:]]'`,
@@ -1308,17 +1315,51 @@ export const commentLikes = pgTable(
   },
   (table) => [primaryKey({ columns: [table.commentId, table.profileId] })],
 );
-export const notifications = pgTable("notifications", {
-  id: uuid().primaryKey(),
-  recipientProfileId: uuid("recipient_profile_id")
-    .notNull()
-    .references(() => profiles.id),
-  actorProfileId: uuid("actor_profile_id").references(() => profiles.id),
-  kind: notificationKindEnum("kind").notNull(),
-  postId: uuid("post_id").references(() => posts.id),
-  commentId: uuid("comment_id").references(() => comments.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  readAt: timestamp("read_at", { withTimezone: true }),
-});
+export const commentBookmarks = pgTable(
+  "comment_bookmarks",
+  {
+    commentId: uuid("comment_id").notNull().references(() => comments.id),
+    profileId: uuid("profile_id").notNull().references(() => profiles.id),
+    createdAt: timestamp("created_at", {withTimezone: true}).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({columns: [table.commentId, table.profileId]}),
+    index("comment_bookmarks_profile_created_idx").on(table.profileId, table.createdAt.desc()),
+  ],
+);
+export const commentShareEvents = pgTable(
+  "comment_share_events",
+  {
+    id: uuid().primaryKey(),
+    commentId: uuid("comment_id").notNull().references(() => comments.id),
+    actorProfileId: uuid("actor_profile_id").references(() => profiles.id),
+    idempotencyKey: uuid("idempotency_key").notNull(),
+    createdAt: timestamp("created_at", {withTimezone: true}).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("comment_share_events_comment_id_idempotency_key_unique").on(table.commentId, table.idempotencyKey),
+    index("comment_share_events_comment_created_idx").on(table.commentId, table.createdAt.desc()),
+  ],
+);
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid().primaryKey(),
+    recipientProfileId: uuid("recipient_profile_id")
+      .notNull()
+      .references(() => profiles.id),
+    actorProfileId: uuid("actor_profile_id").references(() => profiles.id),
+    kind: notificationKindEnum("kind").notNull(),
+    postId: uuid("post_id").references(() => posts.id),
+    commentId: uuid("comment_id").references(() => comments.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("notifications_comment_like_once_idx")
+      .on(table.recipientProfileId, table.actorProfileId, table.kind, table.commentId)
+      .where(sql`${table.kind} = 'comment_like'`),
+  ],
+);

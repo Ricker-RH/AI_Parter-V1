@@ -7,6 +7,13 @@ async function openAt(page: Page, width: number) {
   await waitForHomeShell(page)
 }
 
+async function openMobileAt(page: Page, width: number, height: number, path = '/en') {
+  await page.setViewportSize({width, height})
+  await page.goto(path)
+  await page.locator('.shell[data-shell="public"]').waitFor()
+  if (path === '/en') await page.locator('article.post-card, [role="alert"]').or(page.getByText('Nothing here yet')).first().waitFor()
+}
+
 async function geometry(page: Page) {
   return page.locator('body').evaluate(() => {
     const box = (selector: string) => {
@@ -45,6 +52,52 @@ test('ordinary public shell switches to the five-item mobile navigation below 70
     await expect(page.locator('.desktop-nav')).toBeHidden()
     expect(current.overflow, `unexpected horizontal overflow at ${width}px`).toBe(false)
   }
+})
+
+test('mobile public shell owns one bounded viewport while messages navigation remains fixed', async ({page}) => {
+  for (const viewport of [{width: 375, height: 812}, {width: 390, height: 844}, {width: 414, height: 896}]) {
+    await openMobileAt(page, viewport.width, viewport.height)
+    const publicGeometry = await page.locator('.shell[data-shell="public"]').evaluate((shell) => {
+      const root = document.scrollingElement
+      const content = shell.querySelector<HTMLElement>('.content')
+      const nav = shell.querySelector<HTMLElement>('.mobile-nav')
+      if (!root || !content || !nav) throw new Error('Expected complete public shell')
+      const contentRect = content.getBoundingClientRect()
+      const navRect = nav.getBoundingClientRect()
+      return {
+        contentBottom: contentRect.bottom,
+        navPosition: getComputedStyle(nav).position,
+        navTop: navRect.top,
+        rootClientHeight: root.clientHeight,
+        rootScrollHeight: root.scrollHeight,
+      }
+    })
+    expect(publicGeometry.rootScrollHeight).toBe(publicGeometry.rootClientHeight)
+    expect(Math.abs(publicGeometry.contentBottom - publicGeometry.navTop)).toBeLessThanOrEqual(1)
+    expect(publicGeometry.navPosition).toBe('static')
+  }
+
+  await openMobileAt(page, 390, 844, '/en/posts/00000000-0000-4000-8000-000000000001')
+  await expect(page.locator('.shell[data-shell="public"]')).toHaveAttribute('data-mobile-top-bar', 'hidden')
+  const detailGeometry = await page.locator('.shell[data-shell="public"] .content').evaluate((content) => {
+    const route = content.firstElementChild as HTMLElement | null
+    if (!route) throw new Error('Expected detail route content')
+    const contentRect = content.getBoundingClientRect()
+    const routeRect = route.getBoundingClientRect()
+    return {contentBottom: contentRect.bottom, contentTop: contentRect.top, routeBottom: routeRect.bottom, routeTop: routeRect.top}
+  })
+  expect(Math.abs(detailGeometry.routeTop - detailGeometry.contentTop)).toBeLessThanOrEqual(1)
+  expect(Math.abs(detailGeometry.routeBottom - detailGeometry.contentBottom)).toBeLessThanOrEqual(1)
+
+  await openMobileAt(page, 390, 844)
+  const messagesNavPosition = await page.locator('.shell[data-shell="public"]').evaluate((shell) => {
+    shell.classList.add('messages-shell')
+    shell.setAttribute('data-shell', 'messages')
+    const nav = shell.querySelector<HTMLElement>('.mobile-nav')
+    if (!nav) throw new Error('Expected mobile navigation')
+    return getComputedStyle(nav).position
+  })
+  expect(messagesNavPosition).toBe('fixed')
 })
 
 test('refresh preserves public content geometry at responsive boundaries', async ({page}) => {

@@ -75,15 +75,24 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/\.mobile-top-bar \{[^}]*height: 56px/)
     expect(stylesheet).toMatch(/\.mobile-feed-tabs > \.tab \{[^}]*align-items: end[^}]*min-height: 40px[^}]*padding: 0 8px 8px/)
     expect(stylesheet).toMatch(/\.post-card \{[^}]*padding: 12px/)
-    expect(stylesheet).toMatch(/\.post-action \{[^}]*min-height: 36px/)
+    expect(stylesheet).toMatch(/\.post-action \{[^}]*min-height: 44px/)
     expect(stylesheet).toMatch(/\.mobile-nav \{[^}]*height: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
     expect(stylesheet).toMatch(/\.mobile-link span \{[^}]*clip:/)
   })
 
+  it('uses one bounded mobile public-shell viewport with an in-flow safe-area navigation row', () => {
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \{[^}]*display: grid[^}]*grid-template-rows: minmax\(0, 1fr\) auto[^}]*height: 100dvh[^}]*min-height: 0[^}]*overflow: hidden[^}]*padding-bottom: 0/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[^}]*display: grid[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: auto[^}]*min-height: 0[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.mobile-nav \{[^}]*bottom: auto[^}]*position: static/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\]\[data-mobile-top-bar="hidden"\] \.content > \* \{[^}]*grid-row: 1 \/ -1/)
+    expect(stylesheet).not.toContain('.content > :only-child')
+    expect(stylesheet).not.toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*100dvh/)
+    expect(stylesheet).not.toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-page \{[^}]*100dvh/)
+  })
+
   it('uses the Home feed frame contract for liked and saved collections at every responsive boundary', () => {
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*height: calc\(100dvh - 56px - env\(safe-area-inset-bottom\) - 50px\)/)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-page \{[^}]*height: calc\(100dvh - 50px - env\(safe-area-inset-bottom\)\)/)
-    expect(stylesheet).not.toMatch(/\.post-detail-page\s*\{[^}]*height:\s*calc\(100dvh - 56px/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%[^}]*min-height: 0/)
+    expect(stylesheet).not.toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.(?:home|collection|post-detail)-page[^}]*height:\s*calc\([^}]*100dvh/)
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
   })
@@ -174,12 +183,20 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
   })
 
-  it('docks the detail composer through grid flow with one focusable scroll owner', () => {
+  it('keeps one adaptive detail composer inline on desktop and fixed above mobile navigation', () => {
+    const primaryComposerBlock = stylesheet.match(/\.comment-composer--primary\s*\{([^}]*)\}/)?.[1] ?? ''
     expect(stylesheet).toMatch(/\.post-detail-scroll-region\s*\{[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain[^}]*scrollbar-width:\s*none/)
     expect(stylesheet).toMatch(/\.post-detail-scroll-region::-webkit-scrollbar\s*\{[^}]*display:\s*none/)
     expect(stylesheet).toMatch(/\.post-detail-composer-dock\s*\{[^}]*background:\s*var\(--shell-surface\)/)
-    expect(stylesheet).not.toMatch(/\.post-detail-composer-dock\s*\{[^}]*(?:position:\s*sticky|bottom:)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.comments-section\s*\{[^}]*padding-bottom:\s*132px/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-composer-dock\s*\{[^}]*bottom:\s*calc\(50px \+ env\(safe-area-inset-bottom\)\)[^}]*position:\s*fixed/)
     expect(stylesheet).not.toContain('--post-detail-composer-reserve')
+    expect(primaryComposerBlock).not.toMatch(/(?:^|;)\s*position:\s*(?:fixed|sticky)/)
+    expect(primaryComposerBlock).not.toMatch(/(?:^|;)\s*bottom:/)
+    expect(stylesheet).toMatch(/\.comment-composer--primary\s*\{[^}]*grid-template-columns:\s*44px minmax\(0,\s*1fr\)/)
+    expect(stylesheet).toMatch(/\.comment-composer-field\s*\{[^}]*border-radius:\s*999px[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) 44px/)
+    expect(stylesheet).toMatch(/\.comment-composer--primary \.comment-submit\s*\{[^}]*height:\s*44px[^}]*width:\s*44px/)
+    expect(stylesheet).toMatch(/\.comment-submit-visual\s*\{[^}]*height:\s*36px[^}]*width:\s*36px/)
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
   })

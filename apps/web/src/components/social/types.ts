@@ -44,6 +44,8 @@ export interface SocialLabels {
   commentSending: string
   commentSuccess: string
   reply: string
+  replyingTo?: string
+  cancelReply?: string
   signInToComment: string
   markRead: string
   markingRead: string

@@ -267,7 +267,7 @@ integration("platform social repository", () => {
       FROM pg_proc p
       JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public'
-        AND p.proname IN ('platform_create_ip','platform_publish_post','platform_publish_ip_comment')
+        AND p.proname IN ('platform_create_ip','platform_publish_post','platform_publish_ip_comment','guard_comment','social_lock_comment_authors')
     `);
       const byName = new Map(
         definitions.rows.map((row) => [row.name, row.definition]),
@@ -279,15 +279,14 @@ integration("platform social repository", () => {
       expect(byName.get("platform_publish_ip_comment")).toMatch(
         /FOR UPDATE OF target/,
       );
+      expect(byName.get("guard_comment")).toMatch(/comments root[\s\S]*FOR UPDATE[\s\S]*comments[\s\S]*FOR UPDATE/);
       expect(byName.get("platform_publish_ip_comment")).toMatch(
-        /FOR UPDATE OF parent/,
+        /social_lock_comment_authors/,
       );
-      expect(byName.get("platform_publish_ip_comment")).toMatch(
-        /ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/,
-      );
+      expect(byName.get("social_lock_comment_authors")).toMatch(/ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip,\s*identity/);
       const commentDefinition = byName.get("platform_publish_ip_comment") ?? "";
       expect(commentDefinition.indexOf("FOR UPDATE OF target")).toBeLessThan(
-        commentDefinition.indexOf("ORDER BY ip.profile_id"),
+        commentDefinition.indexOf("social_lock_comment_authors"),
       );
       expect(commentDefinition.indexOf("IP not publishable")).toBeLessThan(
         commentDefinition.indexOf("target_post_state<>'published'"),
@@ -580,7 +579,11 @@ integration("platform social repository", () => {
             parentCommentId: reply.id,
           },
         }),
-      ).rejects.toMatchObject({ code: "23514" });
+      ).resolves.toMatchObject({parentCommentId: reply.id,rootCommentId: root.id});
+      const third = await platform.createIp({actor:operator,requestId:randomUUID(),ip:{username:`ip_${randomUUID().replaceAll("-","").slice(0,20)}`,displayName:"Third"}})
+      await client.query("UPDATE public.ip_profiles SET public_state='unpublished',operation_enabled=false WHERE profile_id=$1",[second.id])
+      await expect(platform.publishIpComment({actor:operator,requestId:randomUUID(),postId:firstPost.id,comment:{ipProfileId:third.id,body:'Hidden parent',parentCommentId:root.id}})).rejects.toMatchObject({code:'23514'})
+      await client.query("UPDATE public.ip_profiles SET public_state='published',operation_enabled=true WHERE profile_id=$1",[second.id])
       await client.query(
         "UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp() WHERE id=$1",
         [firstPost.id],
@@ -680,6 +683,34 @@ integration("platform social repository", () => {
         ORDER BY table_name
       `);
       expect(after.rows).toEqual(before.rows);
+    }));
+
+  it("rejects platform comments when the target or represented creator identity is no longer canonical", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
+      const target = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`, displayName: "Target"},
+      });
+      const represented = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`, displayName: "Represented"},
+      });
+      const post = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: {ipProfileId: target.id, body: "Target post"},
+      });
+
+      await client.query("UPDATE public.ip_profiles SET source='creator',active_creator_revision_id=NULL WHERE profile_id=$1",[target.id]);
+      await expect(platform.publishIpComment({actor:operator,requestId:randomUUID(),postId:post.id,comment:{ipProfileId:represented.id,body:"invalid target"}})).rejects.toMatchObject({code:"P0002"});
+      await client.query("UPDATE public.ip_profiles SET source='platform' WHERE profile_id=$1",[target.id]);
+      await client.query("UPDATE public.ip_profiles SET source='creator',active_creator_revision_id=NULL WHERE profile_id=$1",[represented.id]);
+      await expect(platform.publishIpComment({actor:operator,requestId:randomUUID(),postId:post.id,comment:{ipProfileId:represented.id,body:"invalid represented"}})).rejects.toMatchObject({code:"P0001"});
+      await expect(client.query("SELECT 1 FROM public.comments WHERE post_id=$1 AND body IN ('invalid target','invalid represented')",[post.id])).resolves.toMatchObject({rowCount:0});
     }));
 
   it("atomically rolls back visible rows when history or outbox insertion fails", async () =>
