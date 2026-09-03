@@ -66,6 +66,7 @@
 
 .profileSurface {
   -ms-overflow-style: none;
+  min-height: 0;
   min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -376,8 +377,9 @@
   }
 
   .profileSurface {
+    background: var(--shell-surface);
     border: 1px solid var(--shell-border);
-    border-radius: 14px;
+    border-radius: 16px;
   }
 }
 

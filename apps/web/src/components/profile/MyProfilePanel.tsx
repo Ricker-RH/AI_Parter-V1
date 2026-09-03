@@ -149,7 +149,7 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
     finally { if (isCurrentRequest(request)) setPending(false); finishRequest(request) }
   }
 
-  return <div className={styles.page}><div aria-hidden={editing || undefined} className={styles.pageContent}><ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/><div className={styles.surface}><section className={styles.profile} aria-labelledby="my-profile-title">
+  return <div className={styles.page}><div aria-hidden={editing || undefined} className={styles.pageContent}><ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/><div className={styles.surface} data-profile-content-frame><section className={styles.profile} aria-labelledby="my-profile-title">
     <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div><div className={styles.avatar} aria-hidden="true">{account.displayName.slice(0, 1).toUpperCase()}</div></header>
     <div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p></div><button className={styles.editAction} onClick={beginEdit} ref={editTrigger} type="button">{labels.edit}</button>
     {!editing && message ? <p className={styles.message} role="status">{message}</p> : null}

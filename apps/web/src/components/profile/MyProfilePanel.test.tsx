@@ -174,7 +174,7 @@ describe('MyProfilePanel', () => {
 
   it('uses an edge-to-edge mobile surface and a bordered desktop surface', () => {
     expect(stylesheet).toMatch(/\.profile\s*\{[^}]*max-width:\s*640px/s)
-    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/s)
+    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.surface\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/s)
     expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.surface\s*\{[^}]*border:\s*0[^}]*border-radius:\s*0/s)
     expect(stylesheet).toMatch(/@media \(max-width:\s*699px\)[\s\S]*\.page\s*>\s*div:first-child\s*>\s*header:first-child\s*\{[^}]*display:\s*none/s)
     expect(stylesheet).toMatch(/\.editDialog\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*border:\s*1px solid var\(--shell-border\)/s)
@@ -188,10 +188,16 @@ describe('MyProfilePanel', () => {
     await screen.findByRole('heading', {level: 2, name: 'Rui'})
     const page = container.firstElementChild
     const content = page?.firstElementChild
+    const header = screen.getByRole('heading', {level: 1, name: '@rui'}).closest('header')
+    const frame = container.querySelector('[data-profile-content-frame]')
     expect(content?.className).toContain('pageContent')
     expect(content?.children).toHaveLength(2)
+    expect(frame).toBe(content?.children[1])
+    expect(content?.children[0]).toBe(header)
+    expect(frame).not.toContainElement(header)
     expect(content).not.toHaveAttribute('aria-hidden')
     expect(stylesheet).toMatch(/\.pageContent\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+    expect(stylesheet).toMatch(/\.surface\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*none/s)
 
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     expect(content).toHaveAttribute('aria-hidden', 'true')

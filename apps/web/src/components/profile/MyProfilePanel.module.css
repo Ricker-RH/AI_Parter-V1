@@ -250,6 +250,7 @@
 @media (min-width: 700px) {
   .page { height: calc(100dvh - 32px); }
   .surface {
+    background: var(--shell-surface);
     border: 1px solid var(--shell-border);
     border-radius: 16px;
   }

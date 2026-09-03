@@ -17,7 +17,7 @@ export function PublicProfileContent({result,locale,labels,moreHref,viewerScope}
   const returnTo=`/${locale}/profiles/${profile.id}`
   return <div className={styles.profile}>
     <ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={profile.username}/>
-    <div className={styles.profileSurface}>
+    <div className={styles.profileSurface} data-profile-content-frame>
     <section className={styles.header} aria-labelledby="profile-display-name">
       <div className={styles.identityRow}>
         <div className={styles.identity}>
