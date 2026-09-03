@@ -4,7 +4,7 @@
 
 **Goal:** Expose durable bookmark/share totals on every post payload and make successful native-share or copy actions record an idempotent, privacy-preserving server event for signed-in and signed-out viewers.
 
-**Architecture:** A forward PostgreSQL migration adds a write-only share ledger keyed by `(post_id, idempotency_key)`, a lock-safe optional-actor command, and two new fields in the existing post-metrics/search projections without changing ranking. The shared strict contract then forces every feed/detail producer and fixture to carry both counts; the API and same-origin Web BFF independently validate a UUID `Idempotency-Key` and the empty share command, while the shared post action component generates one key per completed browser share and reuses it across a bounded recording retry.
+**Architecture:** A forward PostgreSQL migration adds a write-only share ledger keyed by `(post_id, idempotency_key)`, a lock-safe optional-actor command, normalizes the platform-comment command to the existing post → IP lock order, and adds two fields to the existing post-metrics/search projections without changing ranking. The shared strict contract then forces every feed/detail producer and fixture to carry both counts; the API and same-origin Web BFF independently validate a UUID `Idempotency-Key`, request-stream presence, exact JSON media type, and the empty share command, while the shared post action component generates one key per completed browser share and reuses it across a bounded recording retry.
 
 **Tech Stack:** PostgreSQL, Drizzle schema declarations, TypeScript, Zod, Hono, Next.js 16 App Router, React 19, Vitest/Testing Library, pnpm, Docker Compose.
 
@@ -14,7 +14,7 @@
 
 ### Database and repository
 
-- Create `packages/db/migrations/202609030002_interaction_counts.sql`: create `post_share_events`, its `post_id`-leading index, `record_post_share`, expanded `social_post_metrics`, and the recreated search-post projection.
+- Create `packages/db/migrations/202609030002_interaction_counts.sql`: create `post_share_events`, its `post_id`-leading index, `record_post_share`, replace `platform_publish_ip_comment` in place so all comment/share commands use the canonical post → IP lock order, expand `social_post_metrics`, and recreate the search-post projection.
 - Modify `packages/db/src/schema.ts`: declare the share ledger for schema parity.
 - Modify `packages/db/src/index.ts`: export `postShareEvents`.
 - Modify `packages/db/src/social.ts`: project both counts and implement `recordPostShare(viewer, postId, idempotencyKey)` through the correct anonymous/authenticated session.
@@ -162,17 +162,35 @@ it('rejects shares outside the public current projection and exposes only the bo
 }))
 ```
 
-Add these committed-fixture and bounded lock-probe helpers beside the existing comment concurrency helpers:
+Add these committed-fixture and bounded lock-probe helpers beside the existing comment concurrency helpers. Import `afterEach` and `createPlatformSession`. The cleanup is test-owner-only, targets exact generated IDs, disables only the named append-only/delete guards needed for those rows inside one rollback-safe transaction, and is registered before the committed fixture is returned so a failed assertion cannot pollute later local runs:
 
 ```ts
-async function committedShareFixture() {
+type CommittedShareFixture = {
+  author: string
+  represented: string
+  actor: Awaited<ReturnType<typeof human>>
+  operator: Awaited<ReturnType<typeof human>>
+  postId: string
+}
+const committedShareFixtures = new Set<CommittedShareFixture>()
+
+async function committedShareFixture(): Promise<CommittedShareFixture> {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     const author = await ip(client)
+    const represented = await ip(client)
+    const actor = await human(client)
+    const operator = await human(client)
+    await client.query(
+      "INSERT INTO public.profile_roles(profile_id,role,granted_by_profile_id) VALUES($1,'operator',$1)",
+      [operator.id],
+    )
     const postId = await post(client, author)
     await client.query('COMMIT')
-    return {author, postId}
+    const fixture = {author, represented, actor, operator, postId}
+    committedShareFixtures.add(fixture)
+    return fixture
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined)
     throw error
@@ -180,6 +198,62 @@ async function committedShareFixture() {
     client.release()
   }
 }
+
+async function cleanupCommittedShareFixture(fixture: CommittedShareFixture) {
+  if (!committedShareFixtures.has(fixture)) return
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('SET CONSTRAINTS ALL DEFERRED')
+    const comments = await client.query<{id:string}>('SELECT id FROM public.comments WHERE post_id=$1', [fixture.postId])
+    const commentIds = comments.rows.map((row) => row.id)
+    if (commentIds.length) {
+      await client.query('ALTER TABLE public.analytics_outbox DISABLE TRIGGER analytics_outbox_guard')
+      await client.query('ALTER TABLE public.business_events DISABLE TRIGGER business_events_append_only')
+      await client.query('ALTER TABLE public.audit_events DISABLE TRIGGER audit_events_append_only')
+      await client.query('ALTER TABLE public.workflow_transitions DISABLE TRIGGER workflow_transitions_append_only')
+      await client.query("DELETE FROM public.analytics_outbox WHERE business_event_id IN (SELECT id FROM public.business_events WHERE subject_entity_type='comment' AND subject_entity_id=ANY($1::uuid[]))", [commentIds])
+      await client.query("DELETE FROM public.business_events WHERE subject_entity_type='comment' AND subject_entity_id=ANY($1::uuid[])", [commentIds])
+      await client.query("DELETE FROM public.audit_events WHERE entity_type='comment' AND entity_id=ANY($1::uuid[])", [commentIds])
+      await client.query("DELETE FROM public.workflow_transitions WHERE entity_type='comment' AND entity_id=ANY($1::uuid[])", [commentIds])
+      await client.query('ALTER TABLE public.analytics_outbox ENABLE TRIGGER analytics_outbox_guard')
+      await client.query('ALTER TABLE public.business_events ENABLE TRIGGER business_events_append_only')
+      await client.query('ALTER TABLE public.audit_events ENABLE TRIGGER audit_events_append_only')
+      await client.query('ALTER TABLE public.workflow_transitions ENABLE TRIGGER workflow_transitions_append_only')
+      await client.query('DELETE FROM public.notifications WHERE comment_id=ANY($1::uuid[])', [commentIds])
+      await client.query('DELETE FROM public.comment_likes WHERE comment_id=ANY($1::uuid[])', [commentIds])
+      await client.query('ALTER TABLE public.comments DISABLE TRIGGER comments_reject_delete')
+      await client.query('DELETE FROM public.comments WHERE id=ANY($1::uuid[])', [commentIds])
+      await client.query('ALTER TABLE public.comments ENABLE TRIGGER comments_reject_delete')
+    }
+    await client.query('DELETE FROM public.notifications WHERE post_id=$1', [fixture.postId])
+    await client.query('DELETE FROM public.post_share_events WHERE post_id=$1', [fixture.postId])
+    await client.query('DELETE FROM public.post_likes WHERE post_id=$1', [fixture.postId])
+    await client.query('DELETE FROM public.bookmarks WHERE post_id=$1', [fixture.postId])
+    await client.query('ALTER TABLE public.posts DISABLE TRIGGER posts_reject_delete')
+    await client.query('DELETE FROM public.posts WHERE id=$1', [fixture.postId])
+    await client.query('ALTER TABLE public.posts ENABLE TRIGGER posts_reject_delete')
+    await client.query('DELETE FROM public.profile_roles WHERE profile_id=$1', [fixture.operator.id])
+    const ipIds = [fixture.author, fixture.represented]
+    await client.query("UPDATE public.ip_profiles SET public_state='draft',operation_enabled=false,current_identity_revision_id=NULL WHERE profile_id=ANY($1::uuid[])", [ipIds])
+    await client.query('ALTER TABLE public.ip_identity_revisions DISABLE TRIGGER ip_identity_revisions_immutable')
+    await client.query('DELETE FROM public.ip_identity_revisions WHERE ip_profile_id=ANY($1::uuid[])', [ipIds])
+    await client.query('ALTER TABLE public.ip_identity_revisions ENABLE TRIGGER ip_identity_revisions_immutable')
+    await client.query('DELETE FROM public.ip_profiles WHERE profile_id=ANY($1::uuid[])', [ipIds])
+    await client.query('DELETE FROM public.profiles WHERE id=ANY($1::uuid[])', [[...ipIds, fixture.actor.id, fixture.operator.id]])
+    await client.query('COMMIT')
+    committedShareFixtures.delete(fixture)
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+afterEach(async () => {
+  for (const fixture of [...committedShareFixtures]) await cleanupCommittedShareFixture(fixture)
+})
 
 async function expectSessionToWaitOnLock(
   observer: PoolClient,
@@ -200,7 +274,7 @@ async function expectSessionToWaitOnLock(
 }
 ```
 
-Then add two two-connection tests. The state-changing transaction acquires its update lock first; the share call must block, observe the committed state, reject with `P0002`, and leave no ledger row:
+Then add two two-connection tests. The state-changing transaction acquires its update lock first; the share call must block, observe the committed state, reject with `P0002`, and leave no ledger row. PostgreSQL aborts the share transaction after `P0002`, so roll it back before observing through the still-valid state connection; the finalizer must tolerate the earlier rollback:
 
 ```ts
 it.each(['withdraw', 'unpublish'] as const)('does not record when concurrent %s wins the visibility lock', async (change) => {
@@ -222,13 +296,32 @@ it.each(['withdraw', 'unpublish'] as const)('does not record when concurrent %s 
     const outcome = await attempt
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) expect(outcome.error).toMatchObject({code:'P0002'})
-    await expect(shareClient.query('SELECT 1 FROM public.post_share_events WHERE post_id=$1', [fixture.postId])).resolves.toMatchObject({rowCount:0})
+    await shareClient.query('ROLLBACK')
+    await expect(stateClient.query('SELECT 1 FROM public.post_share_events WHERE post_id=$1', [fixture.postId])).resolves.toMatchObject({rowCount:0})
   } finally {
     await Promise.all([stateClient.query('ROLLBACK').catch(() => undefined), shareClient.query('ROLLBACK').catch(() => undefined)])
     stateClient.release()
     shareClient.release()
+    await cleanupCommittedShareFixture(fixture)
   }
 })
+```
+
+Add deterministic three-connection lock-order probes for both comment commands. A blocker holds the target post, then share and comment start concurrently; `expectSessionToWaitOnLock` must observe both sessions waiting on that post before the blocker commits. After release, assert both commands resolve (neither has SQLSTATE `40P01`), then query inside each still-open command transaction to prove its share/comment exists exactly once. Roll back those command transactions after the assertions so the lock probe itself leaves no history rows. Run one case through `createHumanComment` and one through `createPlatformSession(..., {transactionMode:'nested'}).withPlatformActor(...)` calling `platform_publish_ip_comment` with `fixture.represented`. Use unique body markers and request IDs. Always rollback any still-open transaction and call `cleanupCommittedShareFixture(fixture)` in `finally`.
+
+The lock probes must also assert the migrated function definitions, not timing alone: `create_human_comment`, `record_post_share`, and `platform_publish_ip_comment` each lock `public.posts` before any `public.ip_profiles`; the platform definition locks both IP rows with `WHERE ip.profile_id IN (...) ORDER BY ip.profile_id FOR UPDATE OF ip, r`. This proves the platform replacement preserves a deterministic order for distinct target-author and represented profiles.
+
+```ts
+const definitions = await observer.query<{name:string; definition:string}>(`
+  SELECT p.proname AS name, pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname IN ('record_post_share','create_human_comment','platform_publish_ip_comment')
+`)
+const byName = new Map(definitions.rows.map((row) => [row.name, row.definition]))
+for (const name of ['record_post_share', 'create_human_comment', 'platform_publish_ip_comment']) {
+  expect(byName.get(name)).toMatch(/FROM public\.posts[\s\S]*FOR (?:SHARE|UPDATE)(?: OF \w+)?;[\s\S]*FROM public\.ip_profiles/)
+}
+expect(byName.get('platform_publish_ip_comment')).toMatch(/WHERE ip\.profile_id IN \([^)]+\)[\s\S]*ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
 ```
 
 - [ ] **Step 3: Strengthen producer/count coverage in the existing integration tests**
@@ -293,6 +386,8 @@ expect(migration).toContain('metrics.bookmark_count,metrics.share_count')
 expect(migration).toContain('post_share_events_post_id_idempotency_key_unique')
 expect(migration).toContain('ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING')
 expect(migration).toMatch(/FROM public\.posts post[\s\S]*FOR SHARE[\s\S]*FROM public\.ip_profiles ip[\s\S]*FOR SHARE/)
+expect(migration).toContain('CREATE OR REPLACE FUNCTION public.platform_publish_ip_comment')
+expect(migration).toMatch(/platform_publish_ip_comment[\s\S]*FROM public\.posts target[\s\S]*FOR UPDATE OF target[\s\S]*FROM public\.ip_profiles ip[\s\S]*ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
 expect(migration).toContain("SECURITY DEFINER SET search_path = ''")
 expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
 ```
@@ -373,6 +468,96 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.record_post_share(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.record_post_share(uuid,uuid) TO aifans_anon,aifans_authenticated;
+
+-- Keep every command that locks a post and IP profile on the same post -> IP
+-- order. Preserve the platform command's signature, authorization, business
+-- writes, return shape, and deterministic UUID ordering for its two IP rows.
+CREATE OR REPLACE FUNCTION public.platform_publish_ip_comment(
+  target_post_id uuid,
+  represented_ip_profile_id uuid,
+  requested_body text,
+  requested_parent_comment_id uuid,
+  request_id uuid
+)
+RETURNS TABLE(
+  comment_id uuid, post_id uuid, parent_comment_id uuid, body text, created_at timestamptz,
+  id uuid, username text, display_name text, bio text, languages text[]
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  operator_id uuid;
+  target_author_profile_id uuid;
+  created_comment_id uuid := gen_random_uuid();
+  event_id uuid := gen_random_uuid();
+  created_time timestamptz := clock_timestamp();
+  parent_parent_id uuid;
+BEGIN
+  IF request_id IS NULL THEN RAISE EXCEPTION 'request id required' USING ERRCODE='23502'; END IF;
+  SELECT p.id INTO operator_id
+  FROM public.profiles p JOIN public.profile_roles pr ON pr.profile_id=p.id
+  WHERE p.account_kind='human' AND p.auth_subject=app.current_auth_subject()
+    AND pr.role='operator' AND pr.revoked_at IS NULL
+  FOR UPDATE OF p, pr;
+  IF operator_id IS NULL THEN RAISE EXCEPTION 'active human operator required' USING ERRCODE='42501'; END IF;
+
+  SELECT target.author_profile_id INTO target_author_profile_id
+  FROM public.posts target
+  WHERE target.id=target_post_id AND target.state='published'
+  FOR UPDATE OF target;
+  IF target_author_profile_id IS NULL THEN
+    RAISE EXCEPTION 'published post not found' USING ERRCODE='P0002';
+  END IF;
+
+  PERFORM 1
+  FROM public.ip_profiles ip
+  JOIN public.ip_identity_revisions r
+    ON r.id=ip.current_identity_revision_id AND r.ip_profile_id=ip.profile_id
+  WHERE ip.profile_id IN (target_author_profile_id, represented_ip_profile_id)
+  ORDER BY ip.profile_id
+  FOR UPDATE OF ip, r;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ip_profiles ip
+    WHERE ip.profile_id=target_author_profile_id AND ip.public_state='published'
+  ) THEN RAISE EXCEPTION 'published post not found' USING ERRCODE='P0002'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ip_profiles ip
+    WHERE ip.profile_id=represented_ip_profile_id AND ip.public_state='published' AND ip.operation_enabled
+  ) THEN RAISE EXCEPTION 'IP not publishable' USING ERRCODE='P0001'; END IF;
+
+  IF requested_parent_comment_id IS NOT NULL THEN
+    SELECT parent.parent_comment_id INTO parent_parent_id
+    FROM public.comments parent
+    WHERE parent.id=requested_parent_comment_id AND parent.post_id=target_post_id AND parent.state='published'
+    FOR UPDATE OF parent;
+    IF NOT FOUND OR parent_parent_id IS NOT NULL THEN
+      RAISE EXCEPTION 'invalid comment thread' USING ERRCODE='23514';
+    END IF;
+  END IF;
+
+  INSERT INTO public.comments(id,post_id,parent_comment_id,author_profile_id,acting_operator_profile_id,source,body,state,created_at)
+  VALUES(created_comment_id,target_post_id,requested_parent_comment_id,represented_ip_profile_id,operator_id,'admin',requested_body,'published',created_time);
+
+  INSERT INTO public.audit_events(id,actor_type,actor_profile_id,action,entity_type,entity_id,request_id,source_app,result,change_summary)
+  VALUES(gen_random_uuid(),'operator',operator_id,'ip_comment_published','comment',created_comment_id,request_id,'admin','succeeded',jsonb_build_object('source','admin','represented_ip_profile_id',represented_ip_profile_id));
+  INSERT INTO public.workflow_transitions(id,entity_type,entity_id,previous_state,next_state,actor_profile_id,reason_code,request_id)
+  VALUES(gen_random_uuid(),'comment',created_comment_id,NULL,'published',operator_id,'admin_publish',request_id);
+  INSERT INTO public.business_events(id,event_name,schema_version,actor_profile_id,subject_entity_type,subject_entity_id,request_id,environment,properties)
+  VALUES(event_id,'ip_comment_published',1,operator_id,'comment',created_comment_id,request_id,'admin',jsonb_build_object('event_id',event_id,'request_id',request_id,'ip_profile_id',represented_ip_profile_id,'post_id',target_post_id,'action_source','admin'));
+  INSERT INTO public.analytics_outbox(id,business_event_id,destination,payload_version,payload)
+  VALUES(gen_random_uuid(),event_id,'posthog',1,jsonb_build_object('event_id',event_id,'event_name','ip_comment_published','event_version',1,'request_id',request_id,'ip_profile_id',represented_ip_profile_id,'post_id',target_post_id,'action_source','admin'));
+
+  RETURN QUERY
+  SELECT c.id,c.post_id,c.parent_comment_id,c.body,c.created_at,profile.id,profile.username,r.display_name,r.bio,r.languages
+  FROM public.comments c
+  JOIN public.profiles profile ON profile.id=c.author_profile_id
+  JOIN public.ip_profiles ip ON ip.profile_id=profile.id
+  JOIN public.ip_identity_revisions r ON r.id=ip.current_identity_revision_id
+  WHERE c.id=created_comment_id;
+END
+$$;
+REVOKE ALL ON FUNCTION public.platform_publish_ip_comment(uuid,uuid,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.platform_publish_ip_comment(uuid,uuid,text,uuid,uuid) TO aifans_platform;
 
 DROP FUNCTION public.social_public_search_posts(text,timestamptz,uuid,integer);
 DROP FUNCTION public.social_post_metrics(uuid,uuid,text);
@@ -501,6 +686,15 @@ Then assert every mapped item contains `{bookmarkCount: 0, shareCount: 0}`. In t
 ```ts
 bookmarkCount: 0,
 shareCount: 0,
+```
+
+The existing platform-command source assertion currently encodes the superseded IP-before-post order. Reverse it so it proves the post lock occurs before the sorted IP lock, while retaining the operator, parent, and `FOR UPDATE OF ip, r` assertions:
+
+```ts
+const commentDefinition = byName.get('platform_publish_ip_comment') ?? ''
+expect(commentDefinition.indexOf('FOR UPDATE OF target')).toBeLessThan(
+  commentDefinition.indexOf('ORDER BY ip.profile_id'),
+)
 ```
 
 - [ ] **Step 5: Apply the migration and verify GREEN**
@@ -702,15 +896,17 @@ it('records a share with optional auth and a validated idempotency key', async (
   }
 })
 
-it('accepts only a strict empty JSON object when a share body is present', async () => {
+it('accepts strict empty JSON with an exact JSON media type when a body stream is present', async () => {
   const idempotencyKey = randomUUID()
-  const response = await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort()}).request(`/v1/posts/${postId}/share`, {
-    method: 'POST',
-    headers: {'content-type': 'application/json', 'idempotency-key': idempotencyKey},
-    body: '{}',
-  })
-  expect(response.status).toBe(200)
-  expect(await response.json()).toEqual({created:true})
+  for (const contentType of ['application/json', 'application/json; charset=utf-8']) {
+    const response = await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort()}).request(`/v1/posts/${postId}/share`, {
+      method: 'POST',
+      headers: {'content-type': contentType, 'idempotency-key': idempotencyKey},
+      body: '{}',
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({created:true})
+  }
 })
 
 it('rejects missing or invalid idempotency keys, ids, query, content type, and nonempty bodies before the port', async () => {
@@ -722,6 +918,10 @@ it('rejects missing or invalid idempotency keys, ids, query, content type, and n
   expect((await app.request('/v1/posts/not-a-uuid/share', {method: 'POST', headers: {'idempotency-key': key}})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share?count=1`, {method: 'POST', headers: {'idempotency-key': key}})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '   '})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: ''})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/jsonx', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/jsonp', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: '{"count":1}'})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: 'x'.repeat(65_537)})).status).toBe(413)
   expect(recordPostShare).not.toHaveBeenCalled()
@@ -777,13 +977,25 @@ Add to `SocialPort`:
 recordPostShare(viewer: Actor | null, postId: string, idempotencyKey: string): Promise<{created: boolean}>
 ```
 
-Import `ShareRecordedSchema` in `apps/api/src/routes/social.ts`. Keep the existing `parseEmptyBody` for existing relationship commands and add this share-specific parser; the global 65,536-byte middleware remains the hard payload bound:
+Import `ShareRecordedSchema` in `apps/api/src/routes/social.ts`. Keep the existing `parseEmptyBody` for existing relationship commands and add these share-specific helpers; the global 65,536-byte middleware remains the hard payload bound. Checking `c.req.raw.body === null` distinguishes a genuinely absent stream from an explicitly supplied empty stream. The media-type parser compares the essence exactly and permits only an optional valid UTF-8 charset parameter:
 
 ```ts
+function isJsonMediaType(value: string | undefined): boolean {
+  if (!value) return false
+  const [rawEssence, ...rawParameters] = value.split(';')
+  if (rawEssence.trim().toLowerCase() !== 'application/json') return false
+  if (rawParameters.length > 1) return false
+  return rawParameters.every((parameter) => {
+    const match = /^\s*charset\s*=\s*(?:"utf-8"|utf-8)\s*$/i.exec(parameter)
+    return match !== null
+  })
+}
+
 async function parseShareBody(c: ApiContext): Promise<boolean> {
+  if (c.req.raw.body === null) return true
+  if (!isJsonMediaType(c.req.header('content-type'))) return false
   const text = await c.req.text()
   if (!text.trim()) return true
-  if (!c.req.header('content-type')?.toLowerCase().startsWith('application/json')) return false
   try {
     return EmptyBodySchema.safeParse(JSON.parse(text)).success
   } catch {
@@ -865,12 +1077,17 @@ it('proxies only same-origin empty share POSTs with strict private responses and
   const upstream = vi.fn()
     .mockResolvedValueOnce(Response.json({created: true}, {status: 200, headers: {'x-request-id': 'upstream-id-1'}}))
     .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-2'}}))
+    .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-3'}}))
   vi.stubGlobal('fetch', upstream)
   const path = ['posts', '22222222-2222-4222-8222-222222222222', 'share']
   const idempotencyKey = '33333333-3333-4333-8333-333333333333'
-  for (const [index, body] of [undefined, '{}'].entries()) {
+  for (const [index, [body, contentType]] of [
+    [undefined, undefined],
+    ['{}', 'application/json'],
+    ['{}', 'application/json; charset=utf-8'],
+  ].entries()) {
     const headers = new Headers({origin: 'https://web.example', 'idempotency-key': idempotencyKey, 'x-vercel-forwarded-for': '203.0.113.7', authorization: 'Bearer forged', 'x-aifans-rate-limit-identity': 'forged'})
-    if (body !== undefined) headers.set('content-type', 'application/json')
+    if (contentType !== undefined) headers.set('content-type', contentType)
     const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {method: 'POST', headers, ...(body === undefined ? {} : {body})}), {params: Promise.resolve({path})})
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('private, no-store')
@@ -878,6 +1095,7 @@ it('proxies only same-origin empty share POSTs with strict private responses and
   }
   for (const [, init] of upstream.mock.calls) {
     const sent = new Headers((init as RequestInit).headers)
+    expect((init as RequestInit).body).toBeUndefined()
     expect(sent.get('authorization')).toBe('Bearer signed-jwt')
     expect(sent.get('idempotency-key')).toBe(idempotencyKey)
     expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
@@ -897,6 +1115,10 @@ it.each([
   [new Request(`https://web.example/api/social/posts/${postId}/share?count=1`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId}}), 400],
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: '{"count":1}'}), 422],
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: '{}'}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: '   '}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: ''}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/jsonx', 'idempotency-key': postId}, body: '{}'}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/jsonp', 'idempotency-key': postId}, body: '{}'}), 422],
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: 'x'.repeat(8193)}), 413],
 ] as const)('rejects an invalid share proxy request before transport', async (request, status) => {
   process.env.AIFANS_API_URL = 'https://internal-api.example'
@@ -942,7 +1164,7 @@ Import `ShareRecordedSchema`; allow `posts/:uuid/share` only for POST:
 if (method === 'POST' && parts[0] === 'posts' && (parts[2] === 'comments' || parts[2] === 'share')) return parts.join('/')
 ```
 
-Inside `proxy`, derive `const shareRequest = method === 'POST' && /\/share$/.test(path)`. Before reading a share body, require `request.headers.get('idempotency-key')` to match the existing UUID expression or return `400 INVALID_REQUEST`. Accept an absent body without a content type. When `request.body !== null`, require `application/json`, use the existing bounded reader, reject duplicate keys, and require the parsed value to be a non-array object with `Object.keys(value).length === 0`; normalize valid `''` or `{}` to an undefined upstream body. Reject other share bodies with `422 INVALID_REQUEST`, while retaining the bounded comment parser only for non-share POSTs. Use:
+Inside `proxy`, derive `const shareRequest = method === 'POST' && /\/share$/.test(path)`. Add an equivalent local `isJsonMediaType` helper with the exact implementation shown in the API step; do not import across applications. Before reading a share body, require `request.headers.get('idempotency-key')` to match the existing UUID expression or return `400 INVALID_REQUEST`. Accept an absent body without a content type. When `request.body !== null`, first require that exact media-type check (`request.headers.get(...) ?? undefined`), then use the existing bounded reader, reject duplicate keys, and require the parsed value to be a non-array object with `Object.keys(value).length === 0`; normalize valid blank content or `{}` to an undefined upstream body. Reject other share bodies with `422 INVALID_REQUEST`, while retaining the bounded comment parser only for non-share POSTs. Use:
 
 ```ts
 const shareRequest = method === 'POST' && /\/share$/.test(path)
@@ -953,7 +1175,7 @@ if (shareRequest && (!idempotencyKey || !uuid.test(idempotencyKey))) {
 
 let body: string | undefined
 if (shareRequest && request.body !== null) {
-  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+  if (!isJsonMediaType(request.headers.get('content-type') ?? undefined)) {
     return Response.json({code:'INVALID_REQUEST'}, {status:422})
   }
   let text: string
@@ -1332,11 +1554,11 @@ Expected: all commands exit `0`; database tests run with no environment-gated sk
 Run:
 
 ```bash
-rg -n "post_share_events|record_post_share|idempotency_key|bookmark_count|share_count" packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/social.ts
+rg -n "post_share_events|record_post_share|platform_publish_ip_comment|idempotency_key|bookmark_count|share_count|FOR (SHARE|UPDATE)|ORDER BY ip.profile_id" packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/social.ts
 rg -n "ip|user.agent|destination|copied.url|share_count.*\+|bookmark_count.*\+" packages/db/migrations/202609030002_interaction_counts.sql
 ```
 
-Expected: the first command shows the ledger, bounded command, and projections. The second command finds no persisted network/browser/destination field and no bookmark/share ranking term; inspect any match to confirm it is a test/comment rather than stored metadata or score arithmetic.
+Expected: the first command shows the ledger, bounded command, projections, and post → sorted-IP order in the platform replacement. The second command finds no persisted network/browser/destination field and no bookmark/share ranking term; inspect any match to confirm it is a test/comment rather than stored metadata or score arithmetic.
 
 - [ ] **Step 3: Pin the candidate and migrate the isolated Preview database**
 
@@ -1366,7 +1588,8 @@ Using one published test post, verify:
 5. Signed-out share succeeds and persists without creating an account.
 6. A forced first-attempt transport failure followed by a retry sends the same `Idempotency-Key` twice, invokes browser share/copy once, stores one event, and increments the displayed total once even when the acknowledgement is `{created:false}`.
 7. A forced/observed exhausted recording failure shows the existing interaction error and does not increment the displayed total.
-8. Feed, following, liked, bookmarks, search, public profile, and detail all show numeric like/comment/bookmark/share values, including `0`.
+8. At both the API and BFF boundary, an absent body and `{}` with `application/json; charset=utf-8` succeed, while explicitly streamed empty/whitespace `text/plain`, `application/jsonx`, and `application/jsonp` requests fail before recording or changing the count.
+9. Feed, following, liked, bookmarks, search, public profile, and detail all show numeric like/comment/bookmark/share values, including `0`.
 
 Expected: counts agree after refresh and no endpoint exposes bookmark owners or share-event rows.
 

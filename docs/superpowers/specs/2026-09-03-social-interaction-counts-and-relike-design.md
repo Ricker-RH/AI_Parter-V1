@@ -63,6 +63,8 @@ Add a security-definer `record_post_share(post_id, idempotency_key)` command gra
 - return whether a new event was created;
 - preserve the existing locked search path and privilege pattern.
 
+The same migration replaces `platform_publish_ip_comment` in place, without changing its signature, grants, authorization, validation, writes, or return shape, so it acquires the published target post first and then locks the target-author and represented IP rows in canonical UUID order. `create_human_comment` already uses post → IP. Keeping all three commands on that global order prevents share/comment deadlocks while retaining deterministic ordering when the platform command touches two IP profiles.
+
 ### Counts
 
 Extend the existing bounded post-metrics projection with:
@@ -80,9 +82,9 @@ Extend the social repository/port with a `recordPostShare(viewer, postId, idempo
 
 ## API and Web BFF design
 
-Add `POST /v1/posts/:postId/share` with an empty body or strict empty JSON object, optional authentication, a required UUID `Idempotency-Key` header, public-post validation, and the existing mutation rate-limit identity. An absent body needs no content type; a present body must be `application/json`, remain within the global body limit, and parse as strict `{}`. The API validates the idempotency key independently and passes it to the repository. Its existing server-generated request ID remains correlation-only and is never used as the share deduplication key. The route returns a strict `{created: boolean}` response, and database constraint details stay redacted by the normal error mapper.
+Add `POST /v1/posts/:postId/share` with an empty body or strict empty JSON object, optional authentication, a required UUID `Idempotency-Key` header, public-post validation, and the existing mutation rate-limit identity. Body presence is determined from the request stream, not from text length. An absent stream needs no content type; when a stream exists, its parsed media-type essence must equal `application/json` exactly (a valid `charset=utf-8` parameter is allowed) before blank content or strict `{}` is processed. Thus empty or whitespace `text/plain`, `application/jsonx`, and `application/jsonp` are rejected before the repository is called. The body remains within the global body limit. The API validates the idempotency key independently and passes it to the repository. Its existing server-generated request ID remains correlation-only and is never used as the share deduplication key. The route returns a strict `{created: boolean}` response, and database constraint details stay redacted by the normal error mapper.
 
-Allow the same path through the Web BFF only for same-origin `POST` requests with no query string, a valid UUID `Idempotency-Key`, and an empty JSON object or empty body. The BFF validates the key before transport and passes it to `fetchAifansApi` through a dedicated trusted option; it must never widen the generic inbound-header allow-list. Continue stripping untrusted authorization, cookie, forwarding, and rate-limit headers; the BFF supplies its server token when present and its signed rate-limit identity. Responses are `private, no-store`.
+Allow the same path through the Web BFF only for same-origin `POST` requests with no query string, a valid UUID `Idempotency-Key`, and an empty JSON object or empty body. It independently applies the same body-stream and exact media-type rules before any upstream call. The BFF validates the key before transport and passes it to `fetchAifansApi` through a dedicated trusted option; it must never widen the generic inbound-header allow-list. Continue stripping untrusted authorization, cookie, forwarding, and rate-limit headers; the BFF supplies its server token when present and its signed rate-limit identity. Responses are `private, no-store`.
 
 No endpoint exposes individual bookmark owners or share-event rows.
 
@@ -111,10 +113,10 @@ All four actions render a numeric value, including `0`, in feed and detail varia
 ### Automated
 
 - DB migration/integration: like → unlike → like succeeds, count returns to one, only one historical notification exists, and two business/outbox events exist.
-- DB share tests: authenticated and anonymous shares, repeated post/key pairs, the same key on different posts, separate successful shares, hidden/missing post rejection, withdrawal/unpublish races, and count projection.
+- DB share tests: authenticated and anonymous shares, repeated post/key pairs, the same key on different posts, separate successful shares, hidden/missing post rejection, withdrawal/unpublish races, share-versus-platform-comment and share-versus-human-comment lock-order probes with no `40P01`, reliable committed-fixture cleanup, and count projection.
 - Contract tests: all strict post payloads require both new counts and reject negative/non-integer values.
-- API tests: optional auth, missing/invalid idempotency keys, invalid IDs/query/content type/body/oversized body, rate-limit identity path, strict response, not-found/error redaction.
-- Web BFF tests: allowed path, same-origin requirement, idempotency-key validation and trusted forwarding, header hygiene, response validation, and cache policy.
+- API tests: optional auth, missing/invalid idempotency keys, invalid IDs/query/exact media type/body/oversized body, including body-stream edge cases, rate-limit identity path, strict response, not-found/error redaction, and proof that rejected inputs never reach the port.
+- Web BFF tests: allowed path, same-origin requirement, exact body-stream/media-type validation, idempotency-key validation and trusted forwarding, header hygiene, response validation, cache policy, and proof that rejected inputs never reach upstream transport.
 - Component tests: zero rendering, bookmark optimistic update/rollback, successful share count, same-key recording retry, cancelled share, exhausted/invalid recording, stale request/post reset, and accessible labels.
 - Full repository tests, DB integration tests, typecheck, production builds, migration/license checks, and `git diff --check`.
 
@@ -138,3 +140,4 @@ After applying the forward migrations and deploying the final branch SHA:
 - Adding bookmark/share signals to feed ranking.
 - Capturing the destination app or proving that a recipient opened the shared link.
 - Backfilling historical browser shares that were never recorded.
+- Changing platform-comment behavior, permissions, payloads, or audit/event semantics beyond the required lock-order normalization.
