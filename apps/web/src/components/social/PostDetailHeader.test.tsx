@@ -43,10 +43,39 @@ describe('PostDetailHeader', () => {
     expect(source).not.toMatch(/\bviews\b/)
   })
 
+  it('keeps the opaque action menu above the bounded content frame', () => {
+    const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src'
+    const stylesheet = readFileSync(`${root}/app/globals.css`, 'utf8')
+    const surfaceStylesheet = readFileSync(`${root}/components/social/SocialSurface.module.css`, 'utf8')
+
+    expect(stylesheet).toMatch(/:root\s*\{[^}]*--shell-surface:\s*#[0-9a-f]{6}/i)
+    expect(stylesheet).toMatch(/\[data-theme="dark"\]\s*\{[^}]*--shell-surface:\s*#[0-9a-f]{6}/i)
+    expect(stylesheet).toMatch(/\.post-detail-menu-list\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*position:\s*absolute[^}]*z-index:\s*30/)
+    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*isolation:\s*isolate/)
+    expect(surfaceStylesheet).toMatch(/\.frame\s*\{[^}]*position:\s*relative[^}]*z-index:\s*0/)
+    expect(surfaceStylesheet).toMatch(/\.header\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*position:\s*relative[^}]*z-index:\s*1/)
+  })
+
   it('uses app history when the referrer is same-origin and in the selected locale', () => {
     render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer={new URL('/en/search', window.location.origin).toString()} />)
     fireEvent.click(screen.getByRole('button', {name: 'Back'}))
     expect(router.back).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes from the menu and dismisses on outside pointer interaction', () => {
+    render(<><PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" /><button type="button">Outside</button></>)
+    const trigger = screen.getByRole('button', {name: 'Post actions'})
+
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Refresh'}))
+    expect(router.refresh).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(trigger).toHaveFocus()
+
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(screen.getByRole('button', {name: 'Outside'}))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(trigger).toHaveFocus()
   })
 
   it('offers only refresh, copy canonical link, and share with keyboard-safe focus restoration', async () => {
