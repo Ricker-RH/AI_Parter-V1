@@ -17,11 +17,11 @@
 - Create `packages/db/migrations/202609030002_interaction_counts.sql`: create `post_share_events`, its `post_id`-leading index, `record_post_share`, replace `platform_publish_ip_comment` in place so all comment/share commands use the canonical post → IP lock order, expand `social_post_metrics`, and recreate the search-post projection.
 - Modify `packages/db/src/schema.ts`: declare the share ledger for schema parity.
 - Modify `packages/db/src/index.ts`: export `postShareEvents`.
-- Modify `packages/db/src/social.ts`: project both counts and implement `recordPostShare(viewer, postId, idempotencyKey)` through the correct anonymous/authenticated session.
+- Modify `packages/db/src/social.ts`: project both counts, adapt the legacy platform-publish row with transactionally known zeros, and implement `recordPostShare(viewer, postId, idempotencyKey)` through the correct anonymous/authenticated session.
 - Modify `packages/db/tests/social-repository.test.ts`: integration coverage for both actor modes, post-scoped idempotency, visibility races, privacy, and every post producer.
 - Modify `packages/db/tests/social-feed-projection.unit.test.ts`: row fixture and mapping assertions.
 - Modify `packages/db/tests/social-search.test.ts`: expanded search projection/fixture assertions.
-- Modify `packages/db/tests/platform-social.test.ts`: published-post response fixture/expectations.
+- Modify `packages/db/tests/platform-social.test.ts`: legacy platform-publish row adapter expectations, post-before-IP source assertions, and combined-error precedence coverage.
 
 ### Contract and API
 
@@ -49,7 +49,7 @@
 
 ### Strict `FeedPost` fixture updates
 
-The contract has no fallback. Add `bookmarkCount` and `shareCount` to every strict post literal in these files as part of Task 3; do not make either field optional to silence errors:
+The contract has no fallback. Add `bookmarkCount` and `shareCount` to every strict post literal in these files as part of the atomic Task 2 batch; do not make either field optional to silence errors:
 
 - `apps/web/src/lib/social-api.test.tsx`
 - `apps/web/src/lib/social-cache.test.tsx`
@@ -159,6 +159,22 @@ it('rejects shares outside the public current projection and exposes only the bo
     "SELECT has_function_privilege(current_user,'public.record_post_share(uuid,uuid)','EXECUTE') execute,has_table_privilege(current_user,'public.post_share_events','SELECT') select_rows,has_table_privilege(current_user,'public.post_share_events','INSERT') insert_rows",
   )
   expect(authenticated.rows[0]).toEqual({execute: true, select_rows: false, insert_rows: false})
+}))
+
+it('rejects a published creator IP without an active creator revision', async () => tx(async (client) => {
+  const creator = await human(client)
+  const author = await ip(client)
+  await client.query(
+    "UPDATE public.ip_profiles SET source='creator',creator_profile_id=$2,active_creator_revision_id=NULL WHERE profile_id=$1",
+    [author, creator.id],
+  )
+  const postId = await post(client, author)
+  const actor = await human(client)
+  const social = repo(client)
+
+  await expect(client.query('SELECT 1 FROM public.social_public_posts() WHERE post_id=$1', [postId])).resolves.toMatchObject({rowCount:0})
+  await expect(social.recordPostShare(actor, postId, randomUUID())).rejects.toMatchObject({code:'P0002'})
+  await expect(client.query('SELECT 1 FROM public.post_share_events WHERE post_id=$1', [postId])).resolves.toMatchObject({rowCount:0})
 }))
 ```
 
@@ -468,8 +484,11 @@ expect(migration).toContain('metrics.bookmark_count,metrics.share_count')
 expect(migration).toContain('post_share_events_post_id_idempotency_key_unique')
 expect(migration).toContain('ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING')
 expect(migration).toMatch(/FROM public\.posts post[\s\S]*FOR SHARE[\s\S]*FROM public\.ip_profiles ip[\s\S]*FOR SHARE/)
+expect(migration).toMatch(/ip\.source,ip\.current_identity_revision_id,ip\.active_creator_revision_id[\s\S]*owner_source='creator'[\s\S]*FROM public\.creator_revisions creator_revision/)
 expect(migration).toContain('CREATE OR REPLACE FUNCTION public.platform_publish_ip_comment')
 expect(migration).toMatch(/platform_publish_ip_comment[\s\S]*FROM public\.posts target[\s\S]*FOR UPDATE OF target[\s\S]*FROM public\.ip_profiles ip[\s\S]*ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
+expect(migration).toMatch(/SELECT target\.author_profile_id,target\.state[\s\S]*WHERE target\.id=target_post_id\s+FOR UPDATE OF target[\s\S]*'IP not publishable'[\s\S]*IF target_post_state<>'published'/)
+expect(migration).not.toMatch(/WHERE target\.id=target_post_id AND target\.state='published'\s+FOR UPDATE OF target/)
 expect(migration).toContain("SECURITY DEFINER SET search_path = ''")
 expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
 ```
@@ -492,7 +511,11 @@ git add packages/db/tests/social-repository.test.ts packages/db/tests/social-sea
 git commit -m "test(db): specify durable share counts"
 ```
 
-### Task 2: Add the share ledger, bounded command, and aggregate projection
+### Task 2: Atomically add the ledger, aggregate projection, and strict contract
+
+This is one implementation/review unit. Part A changes the database/repository producer shape; Part B immediately makes that shape mandatory in the shared contract and updates every strict fixture. Do not typecheck, claim GREEN, commit, or hand off between the two parts: either half alone is intentionally transitional and cannot satisfy the workspace's strict TypeScript/schema contract.
+
+#### Part A: Database, repository, and platform adapter
 
 **Files:**
 - Create: `packages/db/migrations/202609030002_interaction_counts.sql`
@@ -520,7 +543,13 @@ REVOKE ALL ON TABLE public.post_share_events FROM PUBLIC,aifans_anon,aifans_auth
 
 CREATE FUNCTION public.record_post_share(target_post_id uuid, command_idempotency_key uuid)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE actor_id uuid; owner_id uuid; current_revision_id uuid; did_create boolean := false;
+DECLARE
+  actor_id uuid;
+  owner_id uuid;
+  owner_source public.ip_source;
+  current_revision_id uuid;
+  active_creator_revision_id uuid;
+  did_create boolean := false;
 BEGIN
   SELECT post.author_profile_id INTO owner_id
   FROM public.posts post
@@ -530,13 +559,21 @@ BEGIN
     RAISE EXCEPTION 'published post not found' USING ERRCODE = 'P0002';
   END IF;
 
-  SELECT ip.current_identity_revision_id INTO current_revision_id
+  SELECT ip.source,ip.current_identity_revision_id,ip.active_creator_revision_id
+  INTO owner_source,current_revision_id,active_creator_revision_id
   FROM public.ip_profiles ip
   WHERE ip.profile_id=owner_id AND ip.public_state='published'
   FOR SHARE;
-  IF current_revision_id IS NULL OR NOT EXISTS (
+  IF owner_source IS NULL OR current_revision_id IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.ip_identity_revisions identity
     WHERE identity.id=current_revision_id AND identity.ip_profile_id=owner_id
+  ) OR (
+    owner_source='creator' AND (
+      active_creator_revision_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM public.creator_revisions creator_revision
+        WHERE creator_revision.id=active_creator_revision_id
+      )
+    )
   ) THEN
     RAISE EXCEPTION 'published post not found' USING ERRCODE = 'P0002';
   END IF;
@@ -569,6 +606,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   operator_id uuid;
   target_author_profile_id uuid;
+  target_post_state public.post_state;
   created_comment_id uuid := gen_random_uuid();
   event_id uuid := gen_random_uuid();
   created_time timestamptz := clock_timestamp();
@@ -582,9 +620,12 @@ BEGIN
   FOR UPDATE OF p, pr;
   IF operator_id IS NULL THEN RAISE EXCEPTION 'active human operator required' USING ERRCODE='42501'; END IF;
 
-  SELECT target.author_profile_id INTO target_author_profile_id
+  -- Lock the post first for the global order, but retain the existing error
+  -- precedence by validating the represented IP before rejecting saved state.
+  SELECT target.author_profile_id,target.state
+  INTO target_author_profile_id,target_post_state
   FROM public.posts target
-  WHERE target.id=target_post_id AND target.state='published'
+  WHERE target.id=target_post_id
   FOR UPDATE OF target;
   IF target_author_profile_id IS NULL THEN
     RAISE EXCEPTION 'published post not found' USING ERRCODE='P0002';
@@ -606,6 +647,9 @@ BEGIN
     SELECT 1 FROM public.ip_profiles ip
     WHERE ip.profile_id=represented_ip_profile_id AND ip.public_state='published' AND ip.operation_enabled
   ) THEN RAISE EXCEPTION 'IP not publishable' USING ERRCODE='P0001'; END IF;
+  IF target_post_state<>'published' THEN
+    RAISE EXCEPTION 'published post not found' USING ERRCODE='P0002';
+  END IF;
 
   IF requested_parent_comment_id IS NOT NULL THEN
     SELECT parent.parent_comment_id INTO parent_parent_id
@@ -754,6 +798,22 @@ recordPostShare: (viewer, postId, idempotencyKey) =>
   })),
 ```
 
+Do not widen `platform_publish_post`: both overloads still return only `like_count` and `comment_count`. Replace the current alias with a legacy row type that omits only the two new columns, then adapt the freshly inserted post at the single platform boundary. Zero is authoritative here because no other transaction can create a bookmark/share relationship for the new post before the publishing transaction returns it:
+
+```ts
+type PlatformPostRow = Omit<PostRow, 'bookmark_count' | 'share_count'>
+
+// createPlatformSocialRepository.publishPost, immediately before post(...)
+return FeedPostSchema.parse(
+  post(
+    {...created, bookmark_count: 0, share_count: 0},
+    await publicMedia(client, created.post_id, publicMediaBaseUrl),
+  ),
+)
+```
+
+This is an explicit producer adapter, not a fallback in `post()`: every other `PostRow` remains required to contain both aggregate columns.
+
 - [ ] **Step 4: Update database row fixtures and assertions**
 
 In each `PostRow` fixture in `packages/db/tests/social-feed-projection.unit.test.ts`, add:
@@ -770,6 +830,8 @@ bookmarkCount: 0,
 shareCount: 0,
 ```
 
+Keep the platform SQL fixture/mocks on the legacy two-count row and add a focused assertion that `publishPost` succeeds through the adapter and returns both new values as numeric zero. This guards against accidentally changing either `platform_publish_post` database signature while making `PostRow` strict.
+
 The existing platform-command source assertion currently encodes the superseded IP-before-post order. Reverse it so it proves the post lock occurs before the sorted IP lock, while retaining the operator, parent, and `FOR UPDATE OF ip, r` assertions:
 
 ```ts
@@ -779,26 +841,26 @@ expect(commentDefinition.indexOf('FOR UPDATE OF target')).toBeLessThan(
 )
 ```
 
-- [ ] **Step 5: Apply the migration and verify GREEN**
+Add a platform integration matrix that calls the command as a valid operator and asserts the preserved combined-error precedence with no inserted comment, audit, workflow, business-event, or outbox row:
 
-Run:
-
-```bash
-DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm db:migrate
-DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir packages/db test -- social-repository.test.ts social-search.test.ts social-feed-projection.unit.test.ts platform-social.test.ts
-PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir packages/db typecheck
+```ts
+// Existing target row, hidden target-author IP, invalid represented IP: target P0002 wins.
+await expect(publishComment({postId: hiddenAuthorPost, representedIpId: invalidRepresented})).rejects.toMatchObject({code:'P0002'})
+// Existing withdrawn target with otherwise visible author, invalid represented IP: represented P0001 wins before saved post state.
+await expect(publishComment({postId: withdrawnPost, representedIpId: invalidRepresented})).rejects.toMatchObject({code:'P0001'})
+// Same withdrawn target with a valid represented IP: delayed saved-state validation returns P0002.
+await expect(publishComment({postId: withdrawnPost, representedIpId: validRepresented})).rejects.toMatchObject({code:'P0002'})
+// Missing target cannot supply an author and remains P0002 even when represented IP is invalid.
+await expect(publishComment({postId: randomUUID(), representedIpId: invalidRepresented})).rejects.toMatchObject({code:'P0002'})
 ```
 
-Expected: migration output includes `202609030002_interaction_counts.sql`; all focused tests PASS. The authenticated and anonymous role checks have execute-only access to the command, the ledger exposes exactly five columns, and all seven producer paths return both counts. Both share/comment lock probes observe the blocker, settle the winner within five seconds, roll it back before the loser is awaited, settle the loser within five seconds, and report no `40P01` or hanging database session.
+Also assert `pg_get_functiondef` places the unfiltered `WHERE target.id=target_post_id ... FOR UPDATE OF target` before the sorted IP lock, the represented-IP `P0001` check before `IF target_post_state<>'published'`, and all mutation statements after both checks. Do not filter `target.state='published'` in the first locked query; that would silently change the second case from `P0001` to `P0002`.
 
-- [ ] **Step 6: Commit the database slice**
+- [ ] **Step 5: Continue directly to Part B without an intermediate gate or commit**
 
-```bash
-git add packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/index.ts packages/db/src/social.ts packages/db/tests/social-feed-projection.unit.test.ts packages/db/tests/platform-social.test.ts
-git commit -m "feat(db): add durable post interaction counts"
-```
+At this point the database projection and `PostRow` have the new fields while `FeedPostSchema` and many fixtures do not. Preserve the working tree and continue immediately; the only GREEN/commit checkpoint for Task 2 is Part B Step 5/6 below.
 
-### Task 3: Make both counts mandatory in the shared contract and every fixture
+#### Part B: Make both counts mandatory in the shared contract and every fixture
 
 **Files:**
 - Modify: `packages/contracts/src/social.ts:308-320,447-480`
@@ -926,25 +988,29 @@ shareCount: 3,
 
 Do not update the creator analytics DTO files identified in the file map.
 
-- [ ] **Step 5: Run contract and workspace type checks and verify GREEN**
+- [ ] **Step 5: Apply the migration and verify the entire atomic batch GREEN**
 
 Run:
 
 ```bash
+DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm db:migrate
+DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_test PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir packages/db test -- social-repository.test.ts social-search.test.ts social-feed-projection.unit.test.ts platform-social.test.ts
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir packages/contracts test -- social.test.ts
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm typecheck
 ```
 
-Expected: PASS. Any remaining type error about missing `bookmarkCount` or `shareCount` identifies an unlisted strict producer/fixture; add both required numeric properties at that construction point rather than weakening the schema.
+Expected: migration output includes `202609030002_interaction_counts.sql`; all database and contract tests PASS, followed by a clean workspace typecheck. The creator-without-active-revision test returns `P0002` with no ledger row; combined platform errors preserve their prior precedence; both bounded share/comment probes terminate without `40P01`; platform publish returns strict zero bookmark/share counts through its explicit adapter. Any remaining type error about missing `bookmarkCount` or `shareCount` identifies an unlisted strict producer/fixture; add both required numeric properties at that construction point rather than weakening the schema.
 
-- [ ] **Step 6: Commit the strict contract slice**
+- [ ] **Step 6: Commit the database and strict-contract batch together**
 
 ```bash
-git add packages/contracts/src/social.ts packages/contracts/src/social.test.ts apps/api/src/routes/admin.test.ts apps/api/src/routes/social.test.ts apps/web/src/app/'[locale]'/posts/'[postId]'/page.test.tsx apps/web/src/app/'[locale]'/search/page.test.tsx apps/web/src/components/admin/AdminConsole.test.tsx apps/web/src/components/profile/MyProfileTabs.test.tsx apps/web/src/components/social/PublicProfileContent.test.tsx apps/web/src/components/social/SocialContent.test.tsx apps/web/src/components/social/PostCard.test.tsx apps/web/src/components/social/search-ranking.test.ts apps/web/src/lib/social-api.test.tsx apps/web/src/lib/social-cache.test.tsx packages/db/tests/social-search.test.ts
-git commit -m "feat(contracts): require all post interaction counts"
+git add packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/index.ts packages/db/src/social.ts packages/db/tests/social-repository.test.ts packages/db/tests/social-search.test.ts packages/db/tests/social-feed-projection.unit.test.ts packages/db/tests/platform-social.test.ts packages/contracts/src/social.ts packages/contracts/src/social.test.ts apps/api/src/routes/admin.test.ts apps/api/src/routes/social.test.ts apps/web/src/app/'[locale]'/posts/'[postId]'/page.test.tsx apps/web/src/app/'[locale]'/search/page.test.tsx apps/web/src/components/admin/AdminConsole.test.tsx apps/web/src/components/profile/MyProfileTabs.test.tsx apps/web/src/components/social/PublicProfileContent.test.tsx apps/web/src/components/social/SocialContent.test.tsx apps/web/src/components/social/PostCard.test.tsx apps/web/src/components/social/search-ranking.test.ts apps/web/src/lib/social-api.test.tsx apps/web/src/lib/social-cache.test.tsx
+git commit -m "feat(social): add strict durable interaction counts"
 ```
 
-### Task 4: Add the optional-auth share API and abuse controls
+### Task 3: Add the optional-auth share API and abuse controls
+
+**Depends on:** the complete atomic Task 2 commit, including `ShareRecordedSchema` and the repository port implementation.
 
 **Files:**
 - Modify: `apps/api/src/ports/social.ts:22-50`
@@ -1138,7 +1204,9 @@ git add apps/api/src/ports/social.ts apps/api/src/routes/social.ts apps/api/src/
 git commit -m "feat(api): record optional-actor post shares"
 ```
 
-### Task 5: Allow the share command through the same-origin Web BFF
+### Task 4: Allow the share command through the same-origin Web BFF
+
+**Depends on:** Task 3's strict API endpoint and Task 2's response schema.
 
 **Files:**
 - Modify: `apps/web/src/app/api/social/[...path]/route.ts:1-116`
@@ -1361,7 +1429,9 @@ git add apps/web/src/app/api/social/'[...path]'/route.ts apps/web/src/app/api/so
 git commit -m "feat(web): proxy post share recording safely"
 ```
 
-### Task 6: Render and update all four interaction counts
+### Task 5: Render and update all four interaction counts
+
+**Depends on:** Tasks 2–4 so the UI consumes required totals and records shares through the validated BFF/API path.
 
 **Files:**
 - Modify: `apps/web/src/components/social/PostActions.tsx`
@@ -1610,7 +1680,9 @@ git add apps/web/src/components/social/PostActions.tsx apps/web/src/components/s
 git commit -m "feat(web): show authoritative interaction counts"
 ```
 
-### Task 7: Run full verification and Preview acceptance
+### Task 6: Run full verification and Preview acceptance
+
+**Depends on:** Tasks 1–5 complete with no transitional RED checkpoint left in the branch.
 
 **Files:**
 - Verify: all files listed in this plan
@@ -1636,11 +1708,12 @@ Expected: all commands exit `0`; database tests run with no environment-gated sk
 Run:
 
 ```bash
-rg -n "post_share_events|record_post_share|platform_publish_ip_comment|idempotency_key|bookmark_count|share_count|FOR (SHARE|UPDATE)|ORDER BY ip.profile_id" packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/social.ts
+rg -n "post_share_events|record_post_share|platform_publish_ip_comment|active_creator_revision_id|creator_revisions|idempotency_key|bookmark_count|share_count|FOR (SHARE|UPDATE)|ORDER BY ip.profile_id" packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/social.ts
+rg -n "PlatformPostRow|bookmark_count: 0|share_count: 0|platform_publish_post" packages/db/src/social.ts packages/db/migrations/202609030002_interaction_counts.sql packages/db/migrations/202609010029_post_media_pipeline.sql
 rg -n "ip|user.agent|destination|copied.url|share_count.*\+|bookmark_count.*\+" packages/db/migrations/202609030002_interaction_counts.sql
 ```
 
-Expected: the first command shows the ledger, bounded command, projections, and post → sorted-IP order in the platform replacement. The second command finds no persisted network/browser/destination field and no bookmark/share ranking term; inspect any match to confirm it is a test/comment rather than stored metadata or score arithmetic.
+Expected: the first command shows the ledger, creator visibility guard, bounded command, projections, and post → sorted-IP order in the platform replacement. The second shows that only the platform repository supplies transactionally known zero values while the SQL publish signature remains unchanged. The final privacy command finds no persisted network/browser/destination field and no bookmark/share ranking term; inspect any match to confirm it is a test/comment rather than stored metadata or score arithmetic.
 
 - [ ] **Step 3: Pin the candidate and migrate the isolated Preview database**
 

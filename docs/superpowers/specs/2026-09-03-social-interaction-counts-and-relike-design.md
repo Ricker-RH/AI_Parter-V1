@@ -57,13 +57,13 @@ Add an index beginning with `post_id` for bounded count lookups and an explicitl
 Add a security-definer `record_post_share(post_id, idempotency_key)` command granted to the existing anonymous and authenticated application roles. It must:
 
 - reject posts outside the public current projection with the same not-found semantics as other post commands;
-- lock and validate the post and its IP profile in the established post → IP order before inserting, so a concurrent withdrawal or unpublish cannot win the visibility change and still leave a new share event;
+- lock and validate the post and its IP profile in the established post → IP order before inserting, including the exact `social_public_posts` creator-source condition that a creator IP has a valid active creator revision, so a concurrent withdrawal or unpublish cannot win the visibility change and still leave a new share event;
 - derive the optional actor from the database session rather than accepting an actor identifier;
 - insert at most once for the same post and idempotency key, using an explicit constraint target and unambiguous SQL variable names;
 - return whether a new event was created;
 - preserve the existing locked search path and privilege pattern.
 
-The same migration replaces `platform_publish_ip_comment` in place, without changing its signature, grants, authorization, validation, writes, or return shape, so it acquires the published target post first and then locks the target-author and represented IP rows in canonical UUID order. `create_human_comment` already uses post → IP. Keeping all three commands on that global order prevents share/comment deadlocks while retaining deterministic ordering when the platform command touches two IP profiles.
+The same migration replaces `platform_publish_ip_comment` in place, without changing its signature, grants, authorization, validation precedence, writes, or return shape. It locks the target post first and captures its immutable author and current state, but deliberately delays the unpublished-post error until after the target-author and represented IP rows have been locked and validated in canonical UUID order. Therefore a combination of an existing withdrawn target and an invalid represented IP still returns `P0001` before the saved target state produces `P0002`, matching the current command. A missing target and an invalid target-author IP retain their existing `P0002` precedence. `create_human_comment` already uses post → IP. Keeping all three commands on that global order prevents share/comment deadlocks without changing externally observable error semantics.
 
 ### Counts
 
@@ -77,6 +77,8 @@ The bookmark rows themselves remain owner-private. Only their aggregate total be
 ## Contract and repository design
 
 Extend the strict `FeedPost` contract with required non-negative integers `bookmarkCount` and `shareCount`. Every producer—feed, following, liked, bookmarks, search, public profile, and post detail—must populate both fields. No compatibility fallback or optional field is permitted inside application code; missing producer updates should fail contract tests.
+
+The platform post-publish SQL function keeps its existing return columns. A just-inserted post cannot yet have bookmark/share rows inside the publishing transaction, so the platform repository adapts that legacy row into the shared mapper with explicit `bookmark_count: 0` and `share_count: 0`; the general `PostRow` remains strict and receives no fallback.
 
 Extend the social repository/port with a `recordPostShare(viewer, postId, idempotencyKey)` command. The viewer is optional so the already-public share button behaves consistently for signed-in and signed-out users. Repository tests must prove both actor modes, post-scoped idempotency, concurrent visibility changes, hidden-post rejection, and correct aggregate counts.
 
@@ -113,7 +115,7 @@ All four actions render a numeric value, including `0`, in feed and detail varia
 ### Automated
 
 - DB migration/integration: like → unlike → like succeeds, count returns to one, only one historical notification exists, and two business/outbox events exist.
-- DB share tests: authenticated and anonymous shares, repeated post/key pairs, the same key on different posts, separate successful shares, hidden/missing post rejection, withdrawal/unpublish races, share-versus-platform-comment and share-versus-human-comment lock-order probes with no `40P01`, reliable committed-fixture cleanup, and count projection.
+- DB share tests: authenticated and anonymous shares, repeated post/key pairs, the same key on different posts, separate successful shares, hidden/missing post rejection, creator IPs with missing active creator revisions, withdrawal/unpublish races, share-versus-platform-comment and share-versus-human-comment lock-order probes with no `40P01`, reliable committed-fixture cleanup, platform-comment combined-error precedence, and count projection.
 - Contract tests: all strict post payloads require both new counts and reject negative/non-integer values.
 - API tests: optional auth, missing/invalid idempotency keys, invalid IDs/query/exact media type/body/oversized body, including body-stream edge cases, rate-limit identity path, strict response, not-found/error redaction, and proof that rejected inputs never reach the port.
 - Web BFF tests: allowed path, same-origin requirement, exact body-stream/media-type validation, idempotency-key validation and trusted forwarding, header hygiene, response validation, cache policy, and proof that rejected inputs never reach upstream transport.
