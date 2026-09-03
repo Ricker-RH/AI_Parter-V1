@@ -1,5 +1,6 @@
 import {fireEvent, render, screen} from '@testing-library/react'
 import type {AnchorHTMLAttributes, ReactNode} from 'react'
+import {readFileSync} from 'node:fs'
 import {describe, expect, it, vi} from 'vitest'
 
 const {refresh} = vi.hoisted(() => ({refresh: vi.fn()}))
@@ -19,6 +20,9 @@ describe('ChannelIpList', () => {
     expect(row).toHaveTextContent('@luma')
     expect(row).toHaveTextContent('City systems researcher')
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/channels/future-city/profiles?cursor=next')
+    const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/channels/ChannelPage.module.css' : 'apps/web/src/components/channels/ChannelPage.module.css', 'utf8')
+    expect(css).toMatch(/\.ipRow\s*\{[^}]*padding:\s*12px 20px/)
+    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipRow\s*\{[^}]*padding-inline:\s*12px/)
   })
 
   it('covers empty and unavailable/retry states', () => {

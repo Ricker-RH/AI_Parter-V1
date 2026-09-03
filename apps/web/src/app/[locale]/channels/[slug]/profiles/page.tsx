@@ -1,8 +1,9 @@
-import Link from 'next/link'
 import {notFound} from 'next/navigation'
 import {ChannelIpList} from '../../../../../components/channels/ChannelIpList'
 import styles from '../../../../../components/channels/ChannelPage.module.css'
 import {ChannelState} from '../../../../../components/channels/ChannelState'
+import {PostDetailHeader} from '../../../../../components/social/PostDetailHeader'
+import {SocialSurface} from '../../../../../components/social/SocialSurface'
 import {getMessages, isLocale} from '../../../../../i18n/config'
 import {fetchChannel, fetchChannelIps} from '../../../../../lib/channels-api'
 
@@ -22,8 +23,11 @@ export default async function ChannelProfilesPage({params, searchParams}: {param
   if (result.status === 'not-found') notFound()
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/channels/${slug}/profiles?${new URLSearchParams({cursor: nextCursor})}` : undefined
-  return <main className={styles.page}><div className={styles.detailInner}>
-    <header className={styles.detailHeader}><Link aria-label={format(messages.channelPages.backToChannel, detail.data.name)} href={`/${locale}/channels/${slug}`}>←</Link><h1>{format(messages.channelPages.profilesTitle, detail.data.name)}</h1><span /></header>
+  const channelPath = `/${locale}/channels/${slug}`
+  const profilesPath = `${channelPath}/profiles`
+  const title = format(messages.channelPages.profilesTitle, detail.data.name)
+  const header = <PostDetailHeader actionsLabel={messages.more} canonicalPath={profilesPath} fallbackHref={channelPath} labels={{...messages, back: format(messages.channelPages.backToChannel, detail.data.name)}} locale={locale} title={title} />
+  return <SocialSurface header={header} label={title}>
     <ChannelIpList labels={{empty: messages.channelPages.profilesEmpty, unavailable: messages.channelPages.profilesUnavailable, retry: messages.channelPages.retry, retrying: messages.channelPages.retrying, loadMore: messages.channelPages.loadMore}} locale={locale} result={result} {...moreHref ? {moreHref} : {}} />
-  </div></main>
+  </SocialSurface>
 }

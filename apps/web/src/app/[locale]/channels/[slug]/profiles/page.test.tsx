@@ -15,8 +15,11 @@ describe('channel profiles route', () => {
 
   it('renders a capped single-list page and preserves server pagination', async () => {
     render(await ChannelProfilesPage({params: Promise.resolve({locale: 'en', slug: 'future-city'}), searchParams: Promise.resolve({cursor: 'current'})}))
+    expect(document.querySelector('[data-social-surface]')).not.toBeNull()
+    expect(document.querySelector('[data-social-surface-frame]')).not.toBeNull()
     expect(screen.getByRole('heading', {name: 'Future City IPs'})).toBeVisible()
-    expect(screen.getByRole('link', {name: 'Back to Future City'})).toHaveAttribute('href', '/en/channels/future-city')
+    expect(screen.getByRole('button', {name: 'Back to Future City'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'More'})).toBeVisible()
     expect(fetchChannelIps).toHaveBeenCalledWith('future-city', {cursor: 'current'})
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/channels/future-city/profiles?cursor=next')
   })

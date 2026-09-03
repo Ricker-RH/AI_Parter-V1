@@ -29,7 +29,7 @@
 .ipCard strong { font-size: 13px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ipEmpty { color: var(--shell-muted); margin: 14px 4px 2px; }
 .ipList { display: grid; }
-.ipRow { border-bottom: 1px solid var(--shell-border); display: grid; gap: 12px; grid-template-columns: 52px minmax(0, 1fr); min-height: 76px; padding: 12px 4px; }
+.ipRow { border-bottom: 1px solid var(--shell-border); display: grid; gap: 12px; grid-template-columns: 52px minmax(0, 1fr); min-height: 76px; padding: 12px 20px; }
 .ipRow > span:last-child { display: grid; min-width: 0; }
 .ipRow strong, .ipRow small, .ipRow p { overflow-wrap: anywhere; }
 .ipRow small, .ipRow p { color: var(--shell-muted); }
@@ -45,4 +45,5 @@
   .directoryHeader { border-bottom: 0; }
   .directoryBody { padding: 14px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
   .ipSection { padding-inline: 12px; }
+  .ipRow { padding-inline: 12px; }
 }
