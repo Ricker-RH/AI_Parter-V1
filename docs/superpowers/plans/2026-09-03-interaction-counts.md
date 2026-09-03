@@ -1103,6 +1103,23 @@ it('rejects missing or invalid idempotency keys, ids, query, content type, and n
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: 'x'.repeat(65_537)})).status).toBe(413)
   expect(recordPostShare).not.toHaveBeenCalled()
 })
+
+it('enforces the share limit from actual stream bytes instead of trusting Content-Length', async () => {
+  const recordPostShare = vi.fn(async () => ({created: true}))
+  const app = createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare})})
+  const headers = {'content-type': 'application/json', 'idempotency-key': randomUUID()}
+
+  for (const contentLength of ['1', '-1', 'not-a-number']) {
+    const response = await app.request(`/v1/posts/${postId}/share`, {
+      method: 'POST',
+      headers: {...headers, 'content-length': contentLength},
+      body: contentLength === '1' ? 'x'.repeat(65_537) : '{}',
+    })
+    expect(response.status).toBe(413)
+    expect(await response.json()).toMatchObject({code: 'PAYLOAD_TOO_LARGE'})
+  }
+  expect(recordPostShare).not.toHaveBeenCalled()
+})
 ```
 
 Add these concrete error-boundary tests:
@@ -1154,7 +1171,7 @@ Add to `SocialPort`:
 recordPostShare(viewer: Actor | null, postId: string, idempotencyKey: string): Promise<{created: boolean}>
 ```
 
-Import `ShareRecordedSchema` in `apps/api/src/routes/social.ts`. Keep the existing `parseEmptyBody` for existing relationship commands and add these share-specific helpers; the global 65,536-byte middleware remains the hard payload bound. Checking `c.req.raw.body === null` distinguishes a genuinely absent stream from an explicitly supplied empty stream. The media-type parser compares the essence exactly and permits only an optional valid UTF-8 charset parameter:
+Import `ShareRecordedSchema` in `apps/api/src/routes/social.ts`. Keep the existing `parseEmptyBody` for existing relationship commands and add these share-specific helpers. The global Hono 65,536-byte middleware remains the first rejection layer, but the route-level bounded reader is authoritative: Hono may trust a declared `Content-Length`, so the share route must count actual stream bytes and must not call `c.req.text()` directly. Checking `c.req.raw.body === null` distinguishes a genuinely absent stream from an explicitly supplied empty stream. The media-type parser compares the essence exactly and permits at most one valid UTF-8 charset parameter; extra, empty, or non-UTF-8 parameters are invalid:
 
 ```ts
 function isJsonMediaType(value: string | undefined): boolean {
@@ -1168,18 +1185,28 @@ function isJsonMediaType(value: string | undefined): boolean {
   })
 }
 
-async function parseShareBody(c: ApiContext): Promise<boolean> {
-  if (c.req.raw.body === null) return true
-  if (!isJsonMediaType(c.req.header('content-type'))) return false
-  const text = await c.req.text()
-  if (!text.trim()) return true
+type ShareBodyResult = 'valid' | 'invalid' | 'too_large'
+
+async function parseShareBody(c: ApiContext): Promise<ShareBodyResult> {
+  if (c.req.raw.body === null) return 'valid'
+  if (!isJsonMediaType(c.req.header('content-type'))) return 'invalid'
+  let text: string
   try {
-    return EmptyBodySchema.safeParse(JSON.parse(text)).success
+    text = await readBoundedBody(c.req.raw, 65_536)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'BODY_TOO_LARGE') return 'too_large'
+    throw error
+  }
+  if (!text.trim()) return 'valid'
+  try {
+    return EmptyBodySchema.safeParse(JSON.parse(text)).success ? 'valid' : 'invalid'
   } catch {
-    return false
+    return 'invalid'
   }
 }
 ```
+
+The existing `readBoundedBody` checks both a declared length and every received chunk. Its declaration check treats non-decimal values, including negative or malformed `Content-Length`, as too large/fail-closed; its chunk count catches a body larger than 65,536 actual bytes even when `Content-Length` is forged smaller. Do not weaken either check or substitute `c.req.text()`.
 
 Register the route before the authenticated relationship helper:
 
@@ -1190,7 +1217,10 @@ app.post('/v1/posts/:postId/share', async (c) => {
   const query = safeQuery(c)
   const postId = parseId(c.req.param('postId'))
   const idempotencyKey = parseId(c.req.header('idempotency-key'))
-  if (query === null || !EmptyQuerySchema.safeParse(query).success || !postId || !idempotencyKey || !(await parseShareBody(c))) return invalidRequest(c)
+  if (query === null || !EmptyQuerySchema.safeParse(query).success || !postId || !idempotencyKey) return invalidRequest(c)
+  const body = await parseShareBody(c)
+  if (body === 'too_large') return apiError(c, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large')
+  if (body === 'invalid') return invalidRequest(c)
   const viewer = await resolveActor(c, dependencies, false)
   if (!viewer.ok) return viewer.response
   try {
@@ -1224,7 +1254,7 @@ PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/api typecheck
 ```
 
-Expected: PASS for authenticated success, configured-verifier `missing` success, completely unconfigured auth/profiles success with `viewer:null`, strict `200` passthrough for `{created:false}`, all invalid inputs including `charset=latin1` rejection before the port, fixed rate-limit policy, strict output, not-found semantics, and normal error redaction.
+Expected: PASS for authenticated success, configured-verifier `missing` success, completely unconfigured auth/profiles success with `viewer:null`, strict `200` passthrough for `{created:false}`, all invalid inputs including `charset=latin1` rejection before the port, a forged smaller or malformed/negative `Content-Length` that still yields `413` without reaching the port, fixed rate-limit policy, strict output, not-found semantics, and normal error redaction.
 
 - [ ] **Step 6: Commit the API slice**
 
