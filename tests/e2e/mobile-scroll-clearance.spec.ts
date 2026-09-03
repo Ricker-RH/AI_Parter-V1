@@ -42,6 +42,7 @@ async function renderSurface(page: Page, width: number, height: number, detailSt
       <section class="content"><article class="surface ${detailState ? 'post-detail-page' : 'home-page'}"><header class="header"><div class="page-header">Header</div></header><div class="frame" data-social-surface-frame>${viewport}</div></article></section>
       <nav class="mobile-nav"><a class="mobile-link" href="#home">Home</a></nav>
     </main>`)
+  await page.evaluate(() => document.documentElement.setAttribute('data-route-shell', 'public'))
   await page.addStyleTag({content: `${globalCssWithoutHas}\n${surfaceCss}\nhtml, body { height: 100%; margin: 0; }${safeAreaBottom ? `\n:root { --mobile-safe-area-bottom: ${safeAreaBottom}px; }` : ''}`})
 }
 
@@ -71,6 +72,23 @@ test('mobile list scroll surfaces end above the in-flow navigation with breathin
       expect(Math.abs(geometry.gap)).toBeLessThanOrEqual(1)
     }
   }
+})
+
+test('the public document cannot carry the shared mobile navigation while content scrolls', async ({page}) => {
+  await renderSurface(page, 375, 812)
+  const before = await page.locator('.mobile-nav').boundingBox()
+
+  await page.evaluate(() => {
+    const overflowProbe = document.createElement('div')
+    overflowProbe.style.height = '2000px'
+    document.body.append(overflowProbe)
+    window.scrollTo(0, 600)
+  })
+
+  const after = await page.locator('.mobile-nav').boundingBox()
+  const documentScroll = await page.evaluate(() => window.scrollY)
+  expect(documentScroll).toBe(0)
+  expect(after?.y).toBeCloseTo(before?.y ?? 0, 0)
 })
 
 test('a non-zero safe area expands the in-flow navigation and keeps the composer docked above it', async ({page}) => {

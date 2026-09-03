@@ -84,6 +84,7 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('uses one bounded mobile public-shell viewport with an in-flow safe-area navigation row', () => {
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?html\[data-route-shell="public"\],\s*html\[data-route-shell="public"\] body \{[^}]*height: 100dvh[^}]*overflow: hidden/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \{[^}]*display: grid[^}]*grid-template-rows: minmax\(0, 1fr\) auto[^}]*height: 100dvh[^}]*min-height: 0[^}]*overflow: hidden[^}]*padding-bottom: 0/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[^}]*display: grid[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: auto[^}]*min-height: 0[^}]*overflow: hidden/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.mobile-nav \{[^}]*bottom: auto[^}]*position: static/)

@@ -1982,6 +1982,8 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .report-problem-unavailable { color: var(--shell-muted); font-size: 13px; margin: 0; }
 
 @media (max-width: 699px) {
+  html[data-route-shell="public"],
+  html[data-route-shell="public"] body { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: none; }
   .route-skeleton { padding: 12px 16px 32px; }
   .route-skeleton--messages .route-skeleton-message-detail { display: none; }
   .route-skeleton--messages .route-skeleton-messages { display: block; min-height: 0; }
