@@ -2042,7 +2042,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .shell[data-shell="public"] .mobile-nav { bottom: auto; left: auto; position: static; right: auto; }
   .mobile-nav[data-count="4"] { grid-template-columns: repeat(4, 1fr); }
   .shell[data-shell="public"] .floating-creator-action { bottom: 16px; right: max(16px, env(safe-area-inset-right)); }
-  .messages-shell .floating-creator-action { bottom: calc(66px + env(safe-area-inset-bottom)); right: max(16px, env(safe-area-inset-right)); }
+  .messages-shell .floating-creator-action { bottom: 16px; right: max(16px, env(safe-area-inset-right)); }
   .mobile-link { border-radius: 0; justify-content: center; min-height: 49px; padding: 0; }
   .mobile-link:hover, .mobile-link[aria-current="page"] { background: transparent; }
   .mobile-link[aria-current="page"] .nav-icon { stroke-width: 2.5; }

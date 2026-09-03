@@ -23,6 +23,8 @@ describe('FloatingCreatorAction', () => {
     expect(css).toMatch(/\.floating-creator-action\s*\{[^}]*border-radius:\s*50%/)
     expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.mobile-nav \{[^}]*grid-template-columns:\s*repeat\(4, 1fr\)/)
     expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.floating-creator-action \{[^}]*bottom:\s*16px/)
+    expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.messages-shell \.floating-creator-action \{[^}]*bottom:\s*16px/)
+    expect(css).not.toMatch(/\.messages-shell \.floating-creator-action \{[^}]*bottom:\s*calc\(/)
     expect(css).not.toMatch(/\.shell\[data-floating-creator-action="visible"\] \.content \{[^}]*padding-bottom/)
   })
 })
