@@ -101,4 +101,26 @@ describe('ProfileFollowButton', () => {
     expect(await screen.findByRole('button', {name: 'Following'})).toBeEnabled()
     expect((request.mock.calls[0]?.[1] as RequestInit).signal).not.toHaveProperty('aborted', true)
   })
+
+  it.each([
+    {initialRollback: true, latestRollback: false, expectedChanges: [true]},
+    {initialRollback: false, latestRollback: true, expectedChanges: [true, false]},
+  ])('keeps a pending mutation alive when rollbackOnUnmount changes from $initialRollback to $latestRollback', ({initialRollback, latestRollback, expectedChanges}) => {
+    let signal: AbortSignal | undefined
+    const onFollowingChange = vi.fn()
+    vi.stubGlobal('fetch', vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+      signal = init?.signal as AbortSignal
+      return new Promise<Response>(() => undefined)
+    }))
+    const {rerender, unmount} = render(<ProfileFollowButton following={false} labels={labels} locale="en" onFollowingChange={onFollowingChange} profileId={profileId} rollbackOnUnmount={initialRollback} viewerScope="viewer-a"/>)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Follow'}))
+    rerender(<ProfileFollowButton following={false} labels={labels} locale="en" onFollowingChange={onFollowingChange} profileId={profileId} rollbackOnUnmount={latestRollback} viewerScope="viewer-a"/>)
+
+    expect(signal).toHaveProperty('aborted', false)
+    expect(onFollowingChange).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(signal).toHaveProperty('aborted', true)
+    expect(onFollowingChange.mock.calls.map(([following]) => following)).toEqual(expectedChanges)
+  })
 })

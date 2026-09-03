@@ -25,13 +25,14 @@ function ScopedProfileFollowButton({profileId,following,labels,locale,onFollowin
   const previousFollowing=useRef(following)
   const mutationId=useRef(0);const mutationController=useRef<AbortController|null>(null)
   const mutationRollback=useRef<(()=>void)|null>(null)
+  const rollbackOnUnmountRef=useRef(rollbackOnUnmount);rollbackOnUnmountRef.current=rollbackOnUnmount
   useEffect(()=>{
     if(previousFollowing.current===following)return
     previousFollowing.current=following
     if(following===active)return
     mutationId.current+=1;mutationController.current?.abort();mutationController.current=null;mutationRollback.current=null;setActive(following);setPending(false);setError(false)
   },[active,following])
-  useEffect(()=>()=>{mutationId.current+=1;mutationController.current?.abort();mutationController.current=null;const rollback=mutationRollback.current;mutationRollback.current=null;if(rollbackOnUnmount)rollback?.()},[rollbackOnUnmount])
+  useEffect(()=>()=>{mutationId.current+=1;mutationController.current?.abort();mutationController.current=null;const rollback=mutationRollback.current;mutationRollback.current=null;if(rollbackOnUnmountRef.current)rollback?.()},[])
   async function mutate(){
     if(pending)return
     const requestedProfileId=profileId;const requestedActive=active;const requestId=++mutationId.current
