@@ -82,6 +82,18 @@ describe('PostActions', () => {
     expect(stylesheet).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--shell-focus\)/)
   })
 
+  it('keeps feed and detail action rows vertically compact without shrinking touch targets', () => {
+    const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
+    const postCardRule = stylesheet.match(/\.post-card\s*\{([^}]*)\}/)?.[1] ?? ''
+    const postActionsRule = stylesheet.match(/\.post-actions\s*\{([^}]*)\}/)?.[1] ?? ''
+    const postActionRule = stylesheet.match(/\.post-action\s*\{([^}]*)\}/)?.[1] ?? ''
+
+    expect.soft(postCardRule).toContain('padding: 16px 24px 8px')
+    expect.soft(postActionsRule).toContain('margin-top: 0')
+    expect.soft(stylesheet).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.post-card\s*\{[^}]*padding:\s*12px 12px 8px;?[^}]*\}/)
+    expect.soft(postActionRule).toContain('min-height: 44px')
+  })
+
   it('formats all authoritative counts in the Detail variant', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
     render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
