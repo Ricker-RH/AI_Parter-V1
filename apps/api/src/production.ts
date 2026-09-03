@@ -74,6 +74,8 @@ export function createProductionDependencies(
     conversations: database.chat,
     creator: database.creator,
     platformCreator: database.platformCreator,
+    channels:database.channels,
+    platformChannels:database.platformChannels,
     requireRateLimit:true,
     rateLimitIdentitySecret:env.webApiRateLimitSigningSecret,
     ...(env.rateLimit?{rateLimit:factories.createRateLimit(env.rateLimit.databaseUrl),rateLimitHmacSecret:env.rateLimit.hmacSecret}:{}),

@@ -12,6 +12,7 @@ const copy = {
     aria: 'Admin navigation',
     eyebrow: 'AIFANS Admin',
     operations: 'Content operations',
+    channels: 'Channel management',
     creator: 'Creator review',
     returnToSite: 'Return to user site',
   },
@@ -19,6 +20,7 @@ const copy = {
     aria: '管理后台导航',
     eyebrow: 'AIFANS 管理后台',
     operations: '内容运营',
+    channels: '频道管理',
     creator: '创作者审核',
     returnToSite: '返回用户站',
   },
@@ -37,6 +39,7 @@ export function AdminShell({
   const labels = copy[locale]
   const items = [
     {href: `/${locale}/admin`, label: labels.operations},
+    {href: `/${locale}/admin/channels`, label: labels.channels},
     {href: `/${locale}/admin/creator`, label: labels.creator},
   ]
 

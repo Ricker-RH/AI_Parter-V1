@@ -28,6 +28,8 @@ describe("production API composition", () => {
       chat: {} as DatabaseRuntimeRepositories['chat'],
       creator: {} as DatabaseRuntimeRepositories['creator'],
       platformCreator: {} as DatabaseRuntimeRepositories['platformCreator'],
+      channels: {} as DatabaseRuntimeRepositories['channels'],
+      platformChannels: {} as DatabaseRuntimeRepositories['platformChannels'],
     } satisfies DatabaseRuntimeRepositories
     const createDatabaseRuntime = (() => database) satisfies ProductionFactories['createDatabaseRuntime']
     const dependencies = createProductionDependencies(environment, {createDatabaseRuntime})
@@ -41,6 +43,8 @@ describe("production API composition", () => {
       conversations: expect.any(Object),
       creator: expect.any(Object),
       platformCreator: expect.any(Object),
+      channels: expect.any(Object),
+      platformChannels: expect.any(Object),
     });
     expect(dependencies.conversations).toBe(database.chat)
     expect(dependencies.chat).toBeUndefined();
@@ -75,6 +79,8 @@ describe("production API composition", () => {
       chat: {} as DatabaseRuntimeRepositories['chat'],
       creator: {} as DatabaseRuntimeRepositories['creator'],
       platformCreator: {} as DatabaseRuntimeRepositories['platformCreator'],
+      channels: {} as DatabaseRuntimeRepositories['channels'],
+      platformChannels: {} as DatabaseRuntimeRepositories['platformChannels'],
     } satisfies DatabaseRuntimeRepositories;
     const createDatabaseRuntime = vi.fn<ProductionFactories['createDatabaseRuntime']>(() => database);
     const previous = process.env.DATABASE_USER_URL;
@@ -96,6 +102,8 @@ describe("production API composition", () => {
         conversations: database.chat,
         creator: database.creator,
         platformCreator: database.platformCreator,
+        channels: database.channels,
+        platformChannels: database.platformChannels,
       });
       expect(dependencies.chat).toBeUndefined()
     } finally {
@@ -138,6 +146,8 @@ describe("production API composition", () => {
       chat: {} as DatabaseRuntimeRepositories['chat'],
       creator: {} as DatabaseRuntimeRepositories['creator'],
       platformCreator: {} as DatabaseRuntimeRepositories['platformCreator'],
+      channels: {} as DatabaseRuntimeRepositories['channels'],
+      platformChannels: {} as DatabaseRuntimeRepositories['platformChannels'],
     } satisfies DatabaseRuntimeRepositories;
     const createDatabaseRuntime = vi.fn<ProductionFactories['createDatabaseRuntime']>(() => database);
     const dependencies = createProductionDependencies(publicR2, {createDatabaseRuntime});

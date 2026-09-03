@@ -27,6 +27,46 @@ function request(path: string, body: object = { body: "Hello" }) {
 }
 
 describe("same-origin operator proxy", () => {
+  it('forwards the approved paginated channel listing query', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example';
+    const upstream = vi.fn().mockResolvedValue(Response.json({items: [], nextCursor: null}));
+    vi.stubGlobal('fetch', upstream);
+    const input = new Request('https://web.example/api/admin/channels?q=future&status=draft&limit=25&cursor=next');
+
+    const response = await route.GET(input, {params: Promise.resolve({path: ['channels']})});
+
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledWith(
+      'https://internal-api.example/v1/admin/channels?q=future&status=draft&limit=25&cursor=next',
+      expect.objectContaining({cache: 'no-store', method: 'GET'}),
+    );
+  });
+
+  it('forwards an approved channel record read without allowing query parameters', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example';
+    const upstream = vi.fn().mockResolvedValue(Response.json({id: postId}));
+    vi.stubGlobal('fetch', upstream);
+
+    const response = await route.GET(new Request(`https://web.example/api/admin/channels/${postId}`), {params: Promise.resolve({path: ['channels', postId]})});
+
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/admin/channels/${postId}`, expect.objectContaining({method: 'GET'}));
+    const rejected = await route.GET(new Request(`https://web.example/api/admin/channels/${postId}?q=x`), {params: Promise.resolve({path: ['channels', postId]})});
+    expect(rejected.status).toBe(404);
+  });
+
+  it('rejects unapproved or duplicate channel listing query keys', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example';
+    const upstream = vi.fn();
+    vi.stubGlobal('fetch', upstream);
+
+    for (const query of ['source=forged', 'limit=25&limit=50']) {
+      const response = await route.GET(new Request(`https://web.example/api/admin/channels?${query}`), {params: Promise.resolve({path: ['channels']})});
+      expect(response.status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["ips", ["ips"]],
     ["posts", ["posts"]],
@@ -92,7 +132,7 @@ describe("same-origin operator proxy", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it("rejects query strings and exposes no non-POST handler", async () => {
+  it("rejects query strings while exposing only approved mutation handlers", async () => {
     process.env.AIFANS_API_URL = "https://internal-api.example";
     const upstream = vi.fn();
     vi.stubGlobal("fetch", upstream);
@@ -105,8 +145,28 @@ describe("same-origin operator proxy", () => {
     });
     expect(response.status).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
-    expect("PUT" in route).toBe(false);
-    expect("DELETE" in route).toBe(false);
+    expect(typeof route.PATCH).toBe('function');
+    expect(typeof route.PUT).toBe('function');
+    expect(typeof route.DELETE).toBe('function');
+  });
+
+  it.each([
+    ['POST', 'channels', ['channels']],
+    ['PATCH', `channels/${postId}`, ['channels', postId]],
+    ['POST', `channels/${postId}/publish`, ['channels', postId, 'publish']],
+    ['POST', `channels/${postId}/archive`, ['channels', postId, 'archive']],
+    ['PUT', `channels/${postId}/aliases`, ['channels', postId, 'aliases']],
+    ['PUT', `channels/${postId}/profiles`, ['channels', postId, 'profiles']],
+    ['DELETE', `channels/${postId}/profiles/${postId}`, ['channels', postId, 'profiles', postId]],
+  ])('forwards approved channel %s /%s mutations', async (method, path, parts) => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example';
+    const upstream = vi.fn().mockResolvedValue(new Response(null, {status: 204}));
+    vi.stubGlobal('fetch', upstream);
+    const input = new Request(`https://web.example/api/admin/${path}`, {method, headers: {origin: 'https://web.example', 'content-type': 'application/json'}, ...(method === 'DELETE' ? {} : {body: '{}'})});
+    const handler = route[method as 'POST' | 'PATCH' | 'PUT' | 'DELETE'];
+    const response = await handler(input, {params: Promise.resolve({path: parts})});
+    expect(response.status).toBe(204);
+    expect(upstream).toHaveBeenCalledWith(`https://internal-api.example/v1/admin/${path}`, expect.objectContaining({method}));
   });
 
   it('creates a trusted identity without forwarding browser credentials or forged identity headers', async () => {

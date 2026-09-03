@@ -1,0 +1,20 @@
+.page { display: grid; gap: 22px; margin: 0 auto; max-width: 880px; padding: 32px 24px max(48px, calc(24px + env(safe-area-inset-bottom))); }
+.page header p, .page header h1, .page header span, .panel h2, .panel p { margin: 0; }
+.page header p { color: var(--shell-muted); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.page header h1 { font-size: 34px; letter-spacing: -.035em; }
+.page header span, .id, .form p { color: var(--shell-muted); }
+.panel { border: 1px solid var(--shell-border); border-radius: 16px; display: grid; gap: 16px; padding: 22px; }
+.form { display: grid; gap: 14px; }
+.form label { display: grid; font-size: 14px; font-weight: 650; gap: 6px; }
+.form input, .form textarea { background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; min-height: 44px; padding: 9px 11px; width: 100%; }
+.form textarea { min-height: 92px; resize: vertical; }
+.form button, .actions button { background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 999px; color: var(--shell-surface); cursor: pointer; min-height: 44px; padding: 0 16px; }
+.form button:disabled { cursor: wait; opacity: .6; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions button { flex: 1 1 160px; }
+.check { align-items: center; display: flex !important; gap: 8px !important; }
+.check input { min-height: 20px; width: 20px; }
+.error { color: #dc2626; }
+.success { color: #16803c; }
+.id { font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 699px) { .page { padding: 20px 16px max(48px, calc(24px + env(safe-area-inset-bottom))); } .panel { border-radius: 12px; padding: 18px 14px; } }

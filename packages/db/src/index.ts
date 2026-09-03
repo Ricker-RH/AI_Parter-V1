@@ -19,6 +19,7 @@ export {
   ipPublicStateEnum,
   postStateEnum,
   postSourceEnum,
+  channelStatusEnum,
   mediaKindEnum,
   commentSourceEnum,
   commentStateEnum,
@@ -38,6 +39,9 @@ export {
   platformSettings,
   profiles,
   ipProfiles,
+  channels,
+  channelSearchAliases,
+  channelIpProfiles,
   ipIdentityRevisions,
   posts,
   postMedia,
@@ -75,6 +79,8 @@ export {createCreatorRepository, createPlatformCreatorRepository} from './creato
 export {createAnalyticsOutboxRepository, createPooledAnalyticsOutboxRepository, createAnalyticsOutboxRepositoryFromUrl} from './analytics-outbox.js'
 export type {AnalyticsOutboxEvent, AnalyticsOutboxRepository} from './analytics-outbox.js'
 export {createDatabaseRuntimeRepositories} from './runtime.js'
+export {createChannelRepository,createPlatformChannelRepository} from './channels.js'
+export type {ChannelRepository,PlatformChannelRepository} from './channels.js'
 export type {DatabaseRuntimeRepositories, DatabaseRuntimeUrls} from './runtime.js'
 export {createRateLimitRepository,createRateLimitRepositoryFromUrl,createReadinessProbeFromUrl} from './rate-limit.js'
 export type {RateLimitRepository,DatabaseRateLimitDecision,DatabaseRateLimitPolicy} from './rate-limit.js'

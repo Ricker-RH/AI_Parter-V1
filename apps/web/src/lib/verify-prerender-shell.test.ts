@@ -7,7 +7,7 @@ import {afterEach, describe, expect, it} from 'vitest'
 
 const verifier = join(dirname(fileURLToPath(import.meta.url)), '../../scripts/verify-prerender-shell.mjs')
 const fixtures: string[] = []
-const fixtureLabels = {primary: 'Primary', forYou: 'For you', following: 'Following', search: 'Search', messages: 'Messages', liked: 'Liked', bookmarks: 'Bookmarks', myProfile: 'Profile', home: 'Home', creatorCenter: 'Creator', collections: 'Collections'}
+const fixtureLabels = {primary: 'Primary', forYou: 'For you', following: 'Following', search: 'Search', channels: 'Channels', messages: 'Messages', liked: 'Liked', bookmarks: 'Bookmarks', myProfile: 'Profile', home: 'Home', myNav: 'Me', creatorCenter: 'Creator', collections: 'Collections'}
 
 function writeFixture(root: string, path: string, contents: string) {
   const target = join(root, path)
@@ -16,16 +16,18 @@ function writeFixture(root: string, path: string, contents: string) {
 }
 
 function publicHtml(locale: string, labels: typeof fixtureLabels) {
-  const desktopHrefs = [`/${locale}`, `/${locale}?feed=following`, `/${locale}/search`, `/${locale}/messages`, `/${locale}/liked`, `/${locale}/bookmarks`, `/${locale}/profile`]
-  const desktopLabels = [labels.forYou, labels.following, labels.search, labels.messages, labels.liked, labels.bookmarks, labels.myProfile]
-  const mobileHrefs = [`/${locale}`, `/${locale}/messages`, `/${locale}/creator`, `/${locale}/activity`, `/${locale}/profile`]
-  const mobileLabels = [labels.home, labels.messages, labels.creatorCenter, labels.collections, labels.myProfile]
+  const desktopHrefs = [`/${locale}`, `/${locale}?feed=following`, `/${locale}/search`, `/${locale}/channels`, `/${locale}/messages`, `/${locale}/liked`, `/${locale}/bookmarks`, `/${locale}/profile`]
+  const desktopLabels = [labels.forYou, labels.following, labels.search, labels.channels, labels.messages, labels.liked, labels.bookmarks, labels.myProfile]
+  const mobileHrefs = [`/${locale}`, `/${locale}/channels`, `/${locale}/messages`, `/${locale}/profile`]
+  const mobileLabels = [labels.home, labels.channels, labels.messages, labels.myNav]
   const links = (hrefs: string[], ariaLabels: string[]) => hrefs.map((href, index) => `<a href="${href}" aria-label="${ariaLabels[index]}"></a>`).join('')
-  return `<div data-app-shell="shared-interactive"><nav aria-label="${labels.primary}" class="desktop-nav">${links(desktopHrefs, desktopLabels)}</nav><nav aria-label="${labels.primary}" class="mobile-nav">${links(mobileHrefs, mobileLabels)}</nav></div><div hidden id="S:fixture"></div>`
+  return `<div data-app-shell="shared-interactive"><nav aria-label="${labels.primary}" class="desktop-nav">${links(desktopHrefs, desktopLabels)}</nav><nav aria-label="${labels.primary}" class="mobile-nav">${links(mobileHrefs, mobileLabels)}</nav></div>`
 }
 
-function nonPublicHtml() {
-  return `<html data-route-shell="public"><script>setAttribute('data-route-shell',shell);'admin';'auth';'messages';'creator'</script><div class="route-shell-fallback-public"></div><div class="route-shell-fallback-loading"><div class="loading-screen"></div></div></html>`
+const prepaintResolver = "(function(){var path=location.pathname,match=/^\\/(en|zh-CN)(?=\\/|$)(.*)$/.exec(path),locale=match?match[1]:'en',rest=match&&match[2]||'',shell=rest==='/admin'||rest.indexOf('/admin/')===0?'admin':rest==='/creator'||rest.indexOf('/creator/')===0?'creator':rest==='/messages'||rest.indexOf('/messages/')===0||rest==='/notifications'?'messages':rest==='/auth'||rest.indexOf('/auth/')===0?'auth':'public';document.documentElement.lang=locale;document.documentElement.setAttribute('data-route-shell',shell)})()"
+
+function nonPublicHtml(resolver = prepaintResolver) {
+  return `<html data-route-shell="public"><script>${resolver}</script><div class="route-shell-fallback-public"></div><div class="route-shell-fallback-loading"><div class="loading-screen"></div></div></html>`
 }
 
 function createValidDist(root: string, distDir: string) {
@@ -57,5 +59,36 @@ describe('prerender shell artifact verifier', () => {
     })
 
     expect(output).toContain('Verified visible localized public navigation and non-public prepaint fallbacks')
+  })
+
+  it('rejects extra legacy creator and collection links in the mobile navigation', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aifans-prerender-verifier-'))
+    fixtures.push(root)
+    createValidDist(root, '.next')
+    for (const locale of ['en', 'zh-CN']) {
+      const path = `.next/server/app/${locale}.html`
+      const html = publicHtml(locale, fixtureLabels).replace('</nav></div>', `<a href="/${locale}/creator" aria-label="${fixtureLabels.creatorCenter}"></a><a href="/${locale}/activity" aria-label="${fixtureLabels.collections}"></a><a href="/${locale}/profile" aria-label="${fixtureLabels.myProfile}"></a></nav></div>`)
+      writeFixture(root, path, html)
+    }
+
+    expect(() => execFileSync(process.execPath, [verifier], {cwd: root, encoding: 'utf8'}))
+      .toThrow(/mobile nav must include exactly/)
+  })
+
+  it('rejects a resolver with swapped auth and creator mappings', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aifans-prerender-verifier-'))
+    fixtures.push(root)
+    createValidDist(root, '.next')
+    const swapped = prepaintResolver
+      .replace("?'creator':rest==='/messages'", "?'auth':rest==='/messages'")
+      .replace("?'auth':'public'", "?'creator':'public'")
+    for (const locale of ['en', 'zh-CN']) {
+      for (const artifact of ['admin', 'auth/sign-in', 'messages', 'creator']) {
+        writeFixture(root, `.next/server/app/${locale}/${artifact}.html`, nonPublicHtml(swapped))
+      }
+    }
+
+    expect(() => execFileSync(process.execPath, [verifier], {cwd: root, encoding: 'utf8'}))
+      .toThrow(/prepaint resolver must select/)
   })
 })

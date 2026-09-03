@@ -11,7 +11,7 @@ import {AppShell} from './AppShell.js'
 
 const labels = {
   primary: 'Primary', home: 'Home', search: 'Search', notifications: 'Notifications',
-  messages: 'Messages', bookmarks: 'Bookmarks', profile: 'Profile', settings: 'Settings',
+  channels: 'Channels', messages: 'Messages', bookmarks: 'Bookmarks', profile: 'Profile', settings: 'Settings',
   creatorNav: 'Creator',
   recommendations: 'Recommendations', recommendationsEmpty: 'No recommendations yet', more: 'More',
 }
@@ -122,6 +122,22 @@ describe('AppShell', () => {
     render(<AppShell locale="en" labels={labels}><main>Creator</main></AppShell>)
     expect(document.querySelector('[data-shell="creator"]')).toBeInTheDocument()
     expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
+  })
+
+  it.each([
+    ['/en', true],
+    ['/en/channels', true],
+    ['/en/messages', true],
+    ['/en/posts/post-1', false],
+    ['/en/channels/channel-1', false],
+    ['/en/messages/conversation-1', false],
+    ['/en/profile', false],
+    ['/en/activity', false],
+    ['/en/creator', false],
+  ] as const)('applies the shared floating creator route policy to %s', (route, visible) => {
+    pathname = route
+    render(<AppShell locale="en" labels={labels}><main>Route</main></AppShell>)
+    expect(document.querySelectorAll('.floating-creator-action')).toHaveLength(visible ? 1 : 0)
   })
 
   it('provides both route-kind fallbacks while pathname resolution is pending', () => {

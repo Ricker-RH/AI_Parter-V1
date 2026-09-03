@@ -13,6 +13,8 @@ import { registerChatRoutes } from "./routes/chat.js";
 import { registerInternalAnalyticsRoutes } from "./routes/internal-analytics.js";
 import { registerCreatorRoutes } from "./routes/creator.js";
 import { registerAdminCreatorRoutes } from "./routes/admin-creator.js";
+import {registerChannelRoutes} from './routes/channels.js'
+import {registerAdminChannelRoutes} from './routes/admin-channels.js'
 import type { AuthVerifier } from "./ports/auth.js";
 import type { AuthorityPort } from "./ports/authority.js";
 import type { PlatformSocialPort } from "./ports/platform-social.js";
@@ -30,6 +32,7 @@ import type {ReadinessPort} from './ports/readiness.js'
 import type {StructuredLogger} from './ports/logger.js'
 import {rateLimitMiddleware} from './middleware/rate-limit.js'
 import {structuredLoggerMiddleware} from './middleware/structured-logger.js'
+import type {ChannelPort,PlatformChannelPort} from './ports/channels.js'
 
 export type UnhandledErrorDiagnostic = {name: string; code?: string; requestId?: string; conversationId?: string}
 
@@ -55,6 +58,8 @@ export type AppDependencies = {
   requireRateLimit?:boolean;
   readiness?:ReadinessPort;
   logger?:StructuredLogger;
+  channels?:ChannelPort;
+  platformChannels?:PlatformChannelPort;
   onUnhandledError?: (diagnostic: UnhandledErrorDiagnostic) => void;
 };
 
@@ -83,6 +88,8 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerInternalAnalyticsRoutes(app, dependencies);
   registerCreatorRoutes(app, dependencies);
   registerAdminCreatorRoutes(app, dependencies);
+  registerChannelRoutes(app,dependencies)
+  registerAdminChannelRoutes(app,dependencies)
   app.notFound((c) => apiError(c, 404, "NOT_FOUND", "Route not found"));
   app.onError((error, c) => {
     dependencies.onUnhandledError?.(unhandledErrorDiagnostic(error));

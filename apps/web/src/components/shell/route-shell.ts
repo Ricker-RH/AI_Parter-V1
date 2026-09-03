@@ -11,3 +11,8 @@ export function resolveShellKind(pathname: string): ShellKind {
   if (rest === '/auth' || rest.startsWith('/auth/')) return 'auth'
   return 'public'
 }
+
+export function shouldShowFloatingCreatorAction(pathname: string): boolean {
+  const path = pathname.split(/[?#]/, 1)[0] ?? pathname
+  return /^\/(?:en|zh-CN)(?:\/(?:channels|messages))?\/?$/.test(path)
+}

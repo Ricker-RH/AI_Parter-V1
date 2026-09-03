@@ -26,7 +26,7 @@ describe('AppNav', () => {
   it('keeps the ordinary desktop order and excludes Creator Center', () => {
     render(<AppNav labels={labels} locale="en" />)
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label'))).toEqual([
-      'AIFANS', 'For You', 'Following', 'Search', 'Messages', 'Liked', 'Saved', 'My Profile',
+      'AIFANS', 'For You', 'Following', 'Search', 'Channels', 'Messages', 'Liked', 'Saved', 'My Profile',
     ])
     expect(screen.queryByRole('link', {name: 'Creator Center'})).toBeNull()
   })
@@ -35,10 +35,18 @@ describe('AppNav', () => {
     render(<AppNav labels={labels} locale="en" />)
 
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('data-prefetch'))).toEqual([
-      'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell',
+      'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell', 'shell',
     ])
     expect(screen.getByRole('link', {name: 'For You'})).toHaveAttribute('href', '/en')
     expect(screen.getByRole('link', {name: 'Following'})).toHaveAttribute('href', '/en?feed=following')
+  })
+
+  it('marks Channels active for the channel index and channel descendants', () => {
+    pathname.value = '/en/channels/future-city'
+    render(<AppNav labels={labels} locale="en" />)
+    expect(screen.getByRole('link', {name: 'Channels'})).toHaveAttribute('href', '/en/channels')
+    expect(screen.getByRole('link', {name: 'Channels'})).toHaveAttribute('aria-current', 'page')
+    pathname.value = '/en'
   })
 
   it.each([

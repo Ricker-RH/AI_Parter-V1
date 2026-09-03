@@ -26,6 +26,7 @@ import {
   createPlatformSession,
   type QueryClient,
 } from "./session.js";
+import {createChannelRepository,createPlatformChannelRepository,type ChannelRepository,type PlatformChannelRepository} from './channels.js'
 
 export type DatabaseRuntimeUrls = {
   userUrl: string;
@@ -43,6 +44,8 @@ export type DatabaseRuntimeRepositories = {
   chat: ChatRepository;
   creator: CreatorRepository;
   platformCreator: PlatformCreatorRepository;
+  channels: ChannelRepository;
+  platformChannels: PlatformChannelRepository;
 };
 
 function postgresUrl(value: string): string {
@@ -104,5 +107,7 @@ export function createDatabaseRuntimeRepositories(
     chat: createChatRepository(withActor),
     creator: createCreatorRepository({ withActor }),
     platformCreator: createPlatformCreatorRepository({ withPlatformActor }),
+    channels: createChannelRepository({withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
+    platformChannels: createPlatformChannelRepository({withPlatformActor,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
   };
 }

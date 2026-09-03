@@ -57,6 +57,7 @@ export const postStateEnum = pgEnum("post_state", [
   "published",
   "withdrawn",
 ]);
+export const channelStatusEnum = pgEnum("channel_status", ["draft", "published", "archived"]);
 export const postSourceEnum = pgEnum("post_source", ["admin", "worker"]);
 export const mediaKindEnum = pgEnum("media_kind", ["image"]);
 export const commentSourceEnum = pgEnum("comment_source", [
@@ -449,6 +450,51 @@ export const ipProfiles = pgTable(
       .where(sql`${table.source} = 'creator'`),
   ],
 );
+
+export const channels = pgTable("channels", {
+  id: uuid().primaryKey().defaultRandom(),
+  slug: text().notNull(),
+  name: text().notNull(),
+  description: text().notNull().default(""),
+  imageObjectKey: text("image_object_key"),
+  searchDocument: text("search_document").notNull(),
+  status: channelStatusEnum("status").notNull().default("draft"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", {withTimezone: true}).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", {withTimezone: true}).notNull().defaultNow(),
+}, table => [
+  unique("channels_slug_key").on(table.slug),
+  check("channels_slug_check", sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(${table.slug}) <= 80`),
+  check("channels_name_check", sql`char_length(${table.name}) BETWEEN 1 AND 80`),
+  check("channels_description_check", sql`char_length(${table.description}) <= 280`),
+  check("channels_image_object_key_check", sql`${table.imageObjectKey} IS NULL OR ${table.imageObjectKey} ~ '^public/channels/[0-9a-f-]+\.(jpg|png|webp)$'`),
+  index("channels_public_order_idx").on(table.sortOrder, table.id).where(sql`${table.status} = 'published'`),
+  index("channels_search_document_trgm_idx").using("gin", sql`${table.searchDocument} gin_trgm_ops`),
+])
+
+export const channelSearchAliases = pgTable("channel_search_aliases", {
+  channelId: uuid("channel_id").notNull().references(() => channels.id, {onDelete: "cascade"}),
+  alias: text().notNull(),
+  normalizedAlias: text("normalized_alias").notNull(),
+}, table => [
+  primaryKey({columns: [table.channelId, table.normalizedAlias]}),
+  check("channel_search_aliases_alias_check", sql`char_length(${table.alias}) BETWEEN 1 AND 80`),
+  check("channel_search_aliases_normalized_check", sql`char_length(${table.normalizedAlias}) BETWEEN 1 AND 80`),
+  index("channel_aliases_search_trgm_idx").using("gin", sql`${table.normalizedAlias} gin_trgm_ops`),
+])
+
+export const channelIpProfiles = pgTable("channel_ip_profiles", {
+  channelId: uuid("channel_id").notNull().references(() => channels.id, {onDelete: "cascade"}),
+  ipProfileId: uuid("ip_profile_id").notNull().references(() => ipProfiles.profileId, {onDelete: "cascade"}),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  curationWeight: integer("curation_weight").notNull().default(0),
+  createdAt: timestamp("created_at", {withTimezone: true}).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", {withTimezone: true}).notNull().defaultNow(),
+}, table => [
+  primaryKey({columns: [table.channelId, table.ipProfileId]}),
+  uniqueIndex("channel_ip_profiles_one_primary_per_ip_idx").on(table.ipProfileId).where(sql`${table.isPrimary}`),
+  index("channel_ip_profiles_recommendation_idx").on(table.channelId, table.curationWeight.desc(), table.ipProfileId.desc()),
+])
 
 export const chatConversations = pgTable(
   "chat_conversations",
@@ -1130,6 +1176,7 @@ export const posts = pgTable(
   },
   (table) => [
     check("posts_body_length_check", sql`char_length(${table.body}) <= 5000`),
+    index("posts_channel_cursor_idx").on(table.authorProfileId, table.publishedAt.desc(), table.id.desc()).where(sql`${table.state} = 'published'`),
   ],
 );
 
