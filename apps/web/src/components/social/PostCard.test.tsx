@@ -328,8 +328,9 @@ describe("PostCard public interaction hierarchy", () => {
     expect(screen.getByRole("link", {name: labels.follow})).toHaveAttribute("href", expect.stringContaining("/en/auth/sign-in"));
     expect(within(dialog).queryByRole("link", {name: labels.startChat!})).toBeNull();
     expect(within(dialog).queryByRole("button", {name: labels.startChat!})).toBeNull();
+    expect(within(dialog).queryByRole("button", {name: labels.close!})).toBeNull();
     fireEvent.keyDown(document, {key: "Tab", shiftKey: true});
-    expect(within(dialog).getByRole("button", {name: labels.close!})).toHaveFocus();
+    expect(within(dialog).getByRole("link", {name: labels.follow})).toHaveFocus();
     fireEvent.keyDown(document, {key: "Tab"});
     expect(profileLink).toHaveFocus();
     fireEvent.keyDown(document, {key: "Escape"});
@@ -387,12 +388,12 @@ describe("PostCard public interaction hierarchy", () => {
     expect(screen.getByRole("button", {name: "Follow"})).toBeVisible();
   });
 
-  it("pulls pending modal focus back inside and exposes a localized close action", () => {
+  it("pulls pending modal focus back inside without exposing a close action", () => {
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise<Response>(() => undefined)));
     render(<PostCard canMutate labels={labels} locale="en" post={{...post, viewerFollowsAuthor: false}} referenceTime={cardReferenceTime} viewerScope="viewer-a" />);
     fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
     const dialog = screen.getByRole("dialog", {name: "Luma"});
-    expect(within(dialog).getByRole("button", {name: "Close"})).toBeVisible();
+    expect(within(dialog).queryByRole("button", {name: "Close"})).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", {name: "Follow"}));
     document.body.tabIndex = -1;
     document.body.focus();
@@ -400,6 +401,6 @@ describe("PostCard public interaction hierarchy", () => {
     expect(within(dialog).getByRole("link", {name: "Luma"})).toHaveFocus();
     document.body.focus();
     fireEvent.keyDown(document, {key: "Tab", shiftKey: true});
-    expect(within(dialog).getByRole("button", {name: "Close"})).toHaveFocus();
+    expect(within(dialog).getByRole("link", {name: "Profile: Luma"})).toHaveFocus();
   });
 });

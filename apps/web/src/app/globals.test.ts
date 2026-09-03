@@ -6,6 +6,20 @@ const surfaceStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'sr
 const mediaStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/PostMedia.module.css' : 'apps/web/src/components/social/PostMedia.module.css', 'utf8')
 
 describe('ordinary-user fluid shell CSS contract', () => {
+  it('keeps the author preview above every application layer on a uniform viewport scrim', () => {
+    expect(stylesheet).toMatch(/\.author-preview-backdrop \{[^}]*background: color-mix\(in srgb, #000 40%, transparent\)[^}]*inset: 0[^}]*position: fixed[^}]*z-index: 110/)
+    expect(stylesheet).toMatch(/\.author-preview-dialog \{[^}]*border-radius: 20px[^}]*max-width: 380px[^}]*width: min\(380px, calc\(100vw - 32px\)\)/)
+    expect(stylesheet).not.toContain('.author-preview-close')
+  })
+
+  it('uses a 64px preview avatar and full-width 44px actions', () => {
+    expect(stylesheet).toMatch(/\.author-preview-avatar \{[^}]*height: 64px[^}]*width: 64px/)
+    expect(stylesheet).toMatch(/\.author-preview-actions \{[^}]*width: 100%/)
+    expect(stylesheet).toMatch(/\.author-preview-follow-action \{[^}]*width: 100%/)
+    expect(stylesheet).toMatch(/\.author-preview-follow-action \.author-preview-primary,\s*\.author-preview-follow-action \.profile-follow button \{[^}]*min-height: 44px[^}]*width: 100%/)
+    expect(stylesheet).toMatch(/\.author-preview-follow-action \.profile-follow \{[^}]*width: 100%/)
+  })
+
   it('anchors the compact rail while the primary column chooses its own fluid start', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[\s\S]*?margin-left: max\(100px, calc\(\(100% - 640px\) \/ 2\)\)/)
   })

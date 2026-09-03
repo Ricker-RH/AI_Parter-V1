@@ -490,23 +490,21 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .author-preview { position: relative; }
 .post-avatar-trigger { background: transparent; border: 0; border-radius: 50%; color: inherit; cursor: pointer; height: 52px; margin: -4px; padding: 4px; width: 52px; }
 .post-avatar-trigger .avatar { font-size: 16px; height: 44px; width: 44px; }
-.author-preview-backdrop { align-items: center; background: color-mix(in srgb, #000 40%, transparent); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 60; }
-.author-preview-dialog { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 20px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 14px; max-width: 380px; padding: 22px; position: relative; width: 100%; }
+.author-preview-backdrop { align-items: center; background: color-mix(in srgb, #000 40%, transparent); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 110; }
+.author-preview-dialog { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 20px; box-shadow: var(--aifans-elevation-2); display: grid; gap: 14px; max-width: 380px; padding: 24px; position: relative; width: min(380px, calc(100vw - 32px)); }
 .author-preview-dialog p { margin: 0; }
 .author-preview-heading { align-items: start; display: flex; justify-content: space-between; }
 .author-preview-heading > div { display: grid; }
 .author-preview-heading strong { font-size: 20px; }
 .author-preview-heading span { color: var(--shell-muted); font-size: 15px; }
-.author-preview-avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; font-weight: 700; height: 52px; justify-content: center; width: 52px; }
+.author-preview-avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; flex: 0 0 auto; font-weight: 700; height: 64px; justify-content: center; width: 64px; }
 .author-preview-bio { line-height: 1.4; }
 .author-preview-followers { color: var(--shell-muted); font-size: 13px; margin: 0; }
-.author-preview-actions { display: flex; justify-content: flex-end; }
+.author-preview-actions { display: flex; width: 100%; }
+.author-preview-follow-action { width: 100%; }
 .author-preview-follow-action .author-preview-primary,
-.author-preview-follow-action .profile-follow button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; min-width: 104px; padding: 0 16px; }
-.author-preview-follow-action .profile-follow { display: block; }
-.author-preview-close { align-items: center; background: var(--shell-hover); border: 0; border-radius: 50%; color: var(--shell-muted); cursor: pointer; display: flex; font: inherit; font-size: 23px; height: 44px; justify-content: center; line-height: 1; position: absolute; right: 12px; top: 12px; width: 44px; }
-.author-preview-close:hover { color: inherit; }
-.author-preview-heading { padding-right: 42px; }
+.author-preview-follow-action .profile-follow button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; width: 100%; }
+.author-preview-follow-action .profile-follow { display: block; width: 100%; }
 .comments-section { border-top: 0; }
 .post-detail-content .post-detail-comments-content { padding-bottom: var(--post-detail-composer-reserve); }
 .post-detail-content .post-detail-composer-dock { background: var(--shell-surface); bottom: 0; position: sticky; z-index: 8; }
