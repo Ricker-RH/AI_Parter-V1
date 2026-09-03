@@ -95,6 +95,13 @@ describe('AppShell', () => {
     expect(document.querySelector('.mobile-top-bar')).toBeNull()
   })
 
+  it.each(['/en/channels', '/en/channels/future-city', '/en/channels/future-city/profiles'])('omits the generic mobile header throughout the Channels section at %s', (route) => {
+    pathname = route
+    render(<AppShell locale="en" labels={labels}><main>Channels</main></AppShell>)
+    expect(document.querySelector('[data-shell="public"]')).toHaveAttribute('data-mobile-top-bar', 'hidden')
+    expect(document.querySelector('.mobile-top-bar')).toBeNull()
+  })
+
   it('selects the compact, recommendation-free messages shell', () => {
     pathname = '/en/messages'
     render(<AppShell locale="en" labels={labels}><main>Inbox</main></AppShell>)
