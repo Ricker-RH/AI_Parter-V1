@@ -1,7 +1,7 @@
 'use client'
 
 import {useRouter} from 'next/navigation'
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useLayoutEffect, useRef, useState} from 'react'
 import type {SocialLabels} from './types'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
@@ -25,7 +25,8 @@ function ScopedProfileFollowButton({profileId,following,labels,locale,onFollowin
   const previousFollowing=useRef(following)
   const mutationId=useRef(0);const mutationController=useRef<AbortController|null>(null)
   const mutationRollback=useRef<(()=>void)|null>(null)
-  const rollbackOnUnmountRef=useRef(rollbackOnUnmount);rollbackOnUnmountRef.current=rollbackOnUnmount
+  const rollbackOnUnmountRef=useRef(rollbackOnUnmount)
+  useLayoutEffect(()=>{rollbackOnUnmountRef.current=rollbackOnUnmount},[rollbackOnUnmount])
   useEffect(()=>{
     if(previousFollowing.current===following)return
     previousFollowing.current=following

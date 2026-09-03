@@ -1,6 +1,6 @@
 import {fireEvent, render, screen} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
-import {useState} from 'react'
+import {startTransition, Suspense, useState} from 'react'
 import {describe, expect, it, vi} from 'vitest'
 import {ProfileFollowButton} from './ProfileFollowButton.js'
 
@@ -122,5 +122,37 @@ describe('ProfileFollowButton', () => {
     unmount()
     expect(signal).toHaveProperty('aborted', true)
     expect(onFollowingChange.mock.calls.map(([following]) => following)).toEqual(expectedChanges)
+  })
+
+  it('uses only the committed rollbackOnUnmount value during unmount cleanup', async () => {
+    const suspendedRender = vi.fn()
+    const never = new Promise<void>(() => undefined)
+    const onFollowingChange = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>(() => undefined)))
+    function SuspendWhenEnabled({enabled}: {enabled: boolean}) {
+      if (enabled) {
+        suspendedRender()
+        throw never
+      }
+      return null
+    }
+    function ConcurrentParent() {
+      const [rollbackOnUnmount, setRollbackOnUnmount] = useState(false)
+      return <>
+        <button onClick={() => startTransition(() => setRollbackOnUnmount(true))} type="button">Render uncommitted flag</button>
+        <Suspense fallback={null}>
+          <ProfileFollowButton following={false} labels={labels} locale="en" onFollowingChange={onFollowingChange} profileId={profileId} rollbackOnUnmount={rollbackOnUnmount} viewerScope="viewer-a"/>
+          <SuspendWhenEnabled enabled={rollbackOnUnmount}/>
+        </Suspense>
+      </>
+    }
+    const {unmount} = render(<ConcurrentParent/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Follow'}))
+
+    fireEvent.click(screen.getByRole('button', {name: 'Render uncommitted flag'}))
+    await vi.waitFor(() => expect(suspendedRender).toHaveBeenCalled())
+    unmount()
+
+    expect(onFollowingChange.mock.calls.map(([following]) => following)).toEqual([true])
   })
 })
