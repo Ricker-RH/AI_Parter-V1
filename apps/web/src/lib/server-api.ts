@@ -1,4 +1,5 @@
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+import {getVercelOidcToken} from '@vercel/oidc'
 import {createRateLimitIdentity} from './rate-limit-identity'
 
 type SharedRequestOptions = {
@@ -20,12 +21,19 @@ async function defaultToken(): Promise<string | null> {
 async function vercelOidcToken(): Promise<string | null> {
   if (process.env.VERCEL !== '1') return null
   try {
-    const {getVercelOidcToken} = await import('@vercel/oidc')
     const token = await getVercelOidcToken()
     if (!token) throw new Error('Vercel returned an empty OIDC token')
     return token
   } catch (cause) {
     throw new Error('Failed to acquire Vercel OIDC token', {cause})
+  }
+}
+
+function invokeProvider<T>(provider: () => T | PromiseLike<T>): Promise<Awaited<T>> {
+  try {
+    return Promise.resolve(provider())
+  } catch (cause) {
+    return Promise.reject(cause)
   }
 }
 
@@ -87,8 +95,8 @@ export async function fetchAifansApi(
   const timer=setTimeout(()=>controller.abort(new Error('AIFANS API timeout')),timeoutMs)
   try {
     const timeout=new Promise<never>((_resolve,reject)=>{const rejectOnAbort=()=>reject(controller.signal.reason??new Error('AIFANS API timeout'));if(controller.signal.aborted)rejectOnAbort();else controller.signal.addEventListener('abort',rejectOnAbort,{once:true})})
-    const oidcTokenPromise=Promise.resolve().then(vercelOidcToken)
-    const bearerTokenPromise=Promise.resolve().then(getToken)
+    const oidcTokenPromise=invokeProvider(vercelOidcToken)
+    const bearerTokenPromise=invokeProvider(getToken)
     const [oidcToken,token]=await Promise.race([Promise.all([oidcTokenPromise,bearerTokenPromise]),timeout])
     return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,oidcToken,trustedClientHeaders,trustedIdempotencyKey)),signal:controller.signal})
   } finally {

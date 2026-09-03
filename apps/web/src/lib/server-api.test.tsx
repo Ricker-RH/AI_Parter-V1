@@ -85,6 +85,22 @@ describe('authenticated server API transport', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it('starts token providers in the originating request context', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    process.env.VERCEL = '1'
+    process.env.VERCEL_ENV = 'preview'
+    process.env.VERCEL_OIDC_TOKEN = unexpiredOidcToken()
+    const getToken = vi.fn(async (): Promise<null> => null)
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, {status: 204}))
+    const request = fetchAifansApi('/v1/me', {policy: 'private-cache', fetcher, getToken})
+
+    try {
+      expect([getVercelOidcToken.mock.calls.length, getToken.mock.calls.length]).toEqual([1, 1])
+    } finally {
+      await request
+    }
+  })
+
   it('starts OIDC and bearer acquisition together so both finish within one deadline', async () => {
     process.env.AIFANS_API_URL = 'https://api.example'
     process.env.VERCEL = '1'
