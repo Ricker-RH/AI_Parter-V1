@@ -204,6 +204,7 @@ describe('MyProfilePanel', () => {
     expect(globalStylesheet).toMatch(/--content-scroll-end-space:\s*16px/)
     expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]\s*\{[^}]*scroll-padding-bottom:\s*var\(--content-scroll-end-space\)/)
     expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]::after\s*\{[^}]*content:\s*""[^}]*display:\s*block[^}]*height:\s*var\(--content-scroll-end-space\)/)
+    expect(globalStylesheet).toMatch(/@media \(min-width:\s*700px\)\s*\{[\s\S]*?\.shell\[data-shell="public"\] \.content > main\s*\{[^}]*height:\s*100%[^}]*min-height:\s*0/)
 
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     expect(content).toHaveAttribute('aria-hidden', 'true')
