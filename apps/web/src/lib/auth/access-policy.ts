@@ -2,6 +2,7 @@ import {redirect as nextRedirect} from 'next/navigation'
 import {createHash} from 'node:crypto'
 import type {Locale} from '../../i18n/config'
 import {authHref} from './return-to'
+import {getApiBearerToken} from './server'
 
 export type AuthenticatedPageAccess = {status: 'authenticated'; token: string; viewerScope: string}
 export type AnonymousPageAccess = {status: 'anonymous'}
@@ -9,6 +10,10 @@ export type UnavailablePageAccess = {status: 'unavailable'}
 export type PageAccess = AuthenticatedPageAccess | UnavailablePageAccess
 export type OptionalPageAccess = AuthenticatedPageAccess | AnonymousPageAccess | UnavailablePageAccess
 export const OPTIONAL_PAGE_ACCESS_TIMEOUT_MS = 250
+
+function defaultToken(): Promise<string | null> {
+  return getApiBearerToken()
+}
 
 export function viewerScopeForToken(token: string): string {
   return `v1.${createHash('sha256').update(token).digest('base64url')}`
@@ -27,10 +32,7 @@ export async function getOptionalPageAccess({
 } = {}): Promise<OptionalPageAccess> {
   let timeout: ReturnType<typeof setTimeout> | undefined
   try {
-    const provider = getToken ?? (async () => {
-      const {getApiBearerToken} = await import('./server')
-      return getApiBearerToken()
-    })
+    const provider = getToken ?? defaultToken
     const outcome = await new Promise<{type: 'token'; token: string | null} | {type: 'failed'} | {type: 'timed-out'}>((resolve) => {
       const token = provider()
       timeout = setTimeout(() => resolve({type: 'timed-out'}), timeoutMs)
@@ -65,10 +67,7 @@ export async function requireAuthenticatedPage({
 }): Promise<PageAccess> {
   let token: string | null
   try {
-    const provider = getToken ?? (async () => {
-      const {getApiBearerToken} = await import('./server')
-      return getApiBearerToken()
-    })
+    const provider = getToken ?? defaultToken
     token = await provider()
   } catch {
     return {status: 'unavailable'}

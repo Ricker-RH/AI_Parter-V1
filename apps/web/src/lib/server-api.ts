@@ -1,5 +1,6 @@
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 import {getVercelOidcToken} from '@vercel/oidc'
+import {getApiBearerToken} from './auth/server'
 import {createRateLimitIdentity} from './rate-limit-identity'
 
 type SharedRequestOptions = {
@@ -13,8 +14,7 @@ export type AifansApiRequestOptions =
   | (SharedRequestOptions & {policy: 'private-cache'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: never})
   | (SharedRequestOptions & {policy: 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: string})
 
-async function defaultToken(): Promise<string | null> {
-  const {getApiBearerToken} = await import('./auth/server')
+function defaultToken(): Promise<string | null> {
   return getApiBearerToken()
 }
 

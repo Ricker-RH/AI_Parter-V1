@@ -1,18 +1,26 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {fetchAifansApi, readApiBaseUrl} from './server-api.js'
 
-const {getVercelOidcToken} = vi.hoisted(() => ({getVercelOidcToken: vi.fn<() => Promise<string>>()}))
+const {getVercelOidcToken, getApiBearerToken} = vi.hoisted(() => ({
+  getVercelOidcToken: vi.fn<() => Promise<string>>(),
+  getApiBearerToken: vi.fn<() => Promise<string | null>>(),
+}))
 vi.mock('@vercel/oidc', () => ({getVercelOidcToken}))
+vi.mock('./auth/server', () => ({getApiBearerToken}))
 
 beforeEach(() => {
+  getVercelOidcToken.mockReset()
   getVercelOidcToken.mockImplementation(async () => {
     if (!process.env.VERCEL_OIDC_TOKEN) throw new Error('managed OIDC token is missing')
     return process.env.VERCEL_OIDC_TOKEN
   })
+  getApiBearerToken.mockReset()
+  getApiBearerToken.mockResolvedValue(null)
 })
 
 afterEach(() => {
   getVercelOidcToken.mockReset()
+  getApiBearerToken.mockReset()
   delete process.env.AIFANS_API_URL
   delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET
   delete process.env.VERCEL
@@ -96,6 +104,21 @@ describe('authenticated server API transport', () => {
 
     try {
       expect([getVercelOidcToken.mock.calls.length, getToken.mock.calls.length]).toEqual([1, 1])
+    } finally {
+      await request
+    }
+  })
+
+  it('starts the default bearer provider in the originating request context', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    process.env.VERCEL = '1'
+    process.env.VERCEL_ENV = 'preview'
+    process.env.VERCEL_OIDC_TOKEN = unexpiredOidcToken()
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, {status: 204}))
+    const request = fetchAifansApi('/v1/me', {policy: 'private-cache', fetcher})
+
+    try {
+      expect(getApiBearerToken).toHaveBeenCalledOnce()
     } finally {
       await request
     }

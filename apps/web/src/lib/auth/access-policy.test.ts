@@ -1,7 +1,27 @@
-import {describe, expect, it, vi} from 'vitest'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {getOptionalPageAccess, requireAuthenticatedPage, viewerScopeForToken} from './access-policy.js'
 
+const {getApiBearerToken} = vi.hoisted(() => ({getApiBearerToken: vi.fn<() => Promise<string | null>>() }))
+vi.mock('./server', () => ({getApiBearerToken}))
+
+beforeEach(() => {
+  getApiBearerToken.mockReset()
+  getApiBearerToken.mockResolvedValue(null)
+})
+
+afterEach(() => {
+  getApiBearerToken.mockReset()
+})
+
 describe('requireAuthenticatedPage', () => {
+  it('starts the default bearer provider in the originating request context', async () => {
+    const redirect = vi.fn()
+    const access = requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages', redirect})
+
+    expect(getApiBearerToken).toHaveBeenCalledOnce()
+    await expect(access).resolves.toEqual({status: 'unavailable'})
+  })
+
   it('returns a non-empty token without redirecting', async () => {
     const redirect = vi.fn()
     await expect(requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages', getToken: async () => 'token', redirect})).resolves.toEqual({status: 'authenticated', token: 'token', viewerScope: viewerScopeForToken('token')})
@@ -22,6 +42,13 @@ describe('requireAuthenticatedPage', () => {
 })
 
 describe('getOptionalPageAccess', () => {
+  it('starts the default bearer provider in the originating request context', async () => {
+    const access = getOptionalPageAccess()
+
+    expect(getApiBearerToken).toHaveBeenCalledOnce()
+    await expect(access).resolves.toEqual({status: 'anonymous'})
+  })
+
   it('derives a stable opaque viewer scope without exposing a bearer token', () => {
     const token = 'eyJhbGciOiJIUzI1NiJ9.viewer-token.signature'
     const scope = viewerScopeForToken(token)
