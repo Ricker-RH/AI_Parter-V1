@@ -16,6 +16,10 @@ describe('search navigation contract', () => {
     expect(source).not.toMatch(/<h2[^>]*>\{labels\.searchResults/)
   })
 
+  it('keeps Search header and results inside the attached desktop boundary', () => {
+    expect(source).toContain('<SocialSurface className="search-page" frameMode="attached"')
+  })
+
   it('uses the compact recommendation identity layout without a feed-derived follower count', () => {
     expect(source).toContain('<ProfileResult {...(action ? {action} : {})} compact href=')
     expect(source).not.toContain('profile.followerCount')

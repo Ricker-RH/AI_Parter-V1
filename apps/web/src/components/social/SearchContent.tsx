@@ -94,6 +94,6 @@ export function SearchContent({locale, labels, query, category, cursor, result, 
 
   return <>
     {normalized ? <SearchAnalytics category={category} locale={locale} queryLength={normalized.length}/> : null}
-    <SocialSurface className="search-page" header={header} label={normalized ? labels.searchResults ?? searchLabel : labels.searchRecommended ?? labels.recommendations ?? searchLabel}>{content}</SocialSurface>
+    <SocialSurface className="search-page" frameMode="attached" header={header} label={normalized ? labels.searchResults ?? searchLabel : labels.searchRecommended ?? labels.recommendations ?? searchLabel}>{content}</SocialSurface>
   </>
 }
