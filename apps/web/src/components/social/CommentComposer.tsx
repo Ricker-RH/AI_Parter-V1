@@ -11,13 +11,13 @@ import {authHref} from '../../lib/auth/return-to'
 type Labels=Pick<SocialLabels,'commentPlaceholder'|'commentSubmit'|'commentSending'|'commentSuccess'|'interactionError'|'signInToComment'>
 export type CommentViewer = Pick<Account, 'displayName' | 'avatarUrl'>
 
-export function CommentComposer({postId,parentCommentId,authenticated,locale,labels,returnTo,onCommentCreated,viewer,viewerScope}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels;returnTo?:string;onCommentCreated?(comment:PublicComment):void;viewer?:CommentViewer;viewerScope?:string}) {
+export function CommentComposer({postId,parentCommentId,authenticated,locale,labels,returnTo,onCommentCreated,onFeedbackChange,viewer,viewerScope}: {postId:string;parentCommentId?:string;authenticated:boolean;locale:Locale;labels:Labels;returnTo?:string;onCommentCreated?(comment:PublicComment):void;onFeedbackChange?(visible:boolean):void;viewer?:CommentViewer;viewerScope?:string}) {
   if (authenticated && !viewerScope) throw new Error('viewerScope is required for authenticated comment mutations')
   const safeReturnTo = returnTo ?? `/${locale}/posts/${postId}`
   const variant = parentCommentId ? 'reply' : 'primary'
   if (!authenticated) return <p className={`comment-signin comment-signin--${variant}`}><Link href={authHref(locale, safeReturnTo)}>{labels.signInToComment}</Link></p>
   const scope = JSON.stringify([postId, viewerScope, viewer?.displayName ?? null, viewer?.avatarUrl ?? null])
-  return <ScopedCommentComposer key={scope} labels={labels} locale={locale} postId={postId} viewerScope={viewerScope!} {...(onCommentCreated ? {onCommentCreated} : {})} {...(parentCommentId ? {parentCommentId} : {})} {...(viewer ? {viewer} : {})}/>
+  return <ScopedCommentComposer key={scope} labels={labels} locale={locale} postId={postId} viewerScope={viewerScope!} {...(onCommentCreated ? {onCommentCreated} : {})} {...(onFeedbackChange ? {onFeedbackChange} : {})} {...(parentCommentId ? {parentCommentId} : {})} {...(viewer ? {viewer} : {})}/>
 }
 
 function ViewerAvatar({viewer}: {viewer?: CommentViewer}) {
@@ -32,7 +32,7 @@ function SendIcon() {
   return <svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M12 18V6m0 0-5 5m5-5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg>
 }
 
-function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCreated,viewer,viewerScope}: {postId:string;parentCommentId?:string;locale:Locale;labels:Labels;onCommentCreated?(comment:PublicComment):void;viewer?:CommentViewer;viewerScope:string}) {
+function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCreated,onFeedbackChange,viewer,viewerScope}: {postId:string;parentCommentId?:string;locale:Locale;labels:Labels;onCommentCreated?(comment:PublicComment):void;onFeedbackChange?(visible:boolean):void;viewer?:CommentViewer;viewerScope:string}) {
   const router=useRouter()
   const [body,setBody]=useState('')
   const [pending,setPending]=useState(false)
@@ -41,6 +41,8 @@ function ScopedCommentComposer({postId,parentCommentId,locale,labels,onCommentCr
   const mutationId=useRef(0)
   const controller=useRef<AbortController|null>(null)
   useEffect(()=>()=>{mutationId.current+=1;controller.current?.abort()},[])
+  useEffect(()=>()=>onFeedbackChange?.(false),[onFeedbackChange])
+  useEffect(()=>{onFeedbackChange?.(status!=='idle')},[onFeedbackChange,status])
   useEffect(()=>{if(status==='success'&&!pending)inputRef.current?.focus()},[pending,status])
   useEffect(()=>{if(parentCommentId&&!pending)inputRef.current?.focus()},[parentCommentId,pending])
   async function submit(event: React.FormEvent) {

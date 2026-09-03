@@ -113,6 +113,7 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
   const serverGroups = currentServerGroups ?? []
   const [storedComments, setStoredComments] = useState<StoredComments>(() => ({scope: pageScope, contextGroups: [], groups: serverGroups, localComments: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverGroups: currentServerGroups}))
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null)
+  const [composerFeedbackVisible, setComposerFeedbackVisible] = useState(false)
   const [anchorTarget, setAnchorTarget] = useState<string | null>(null)
   if (storedComments.scope !== pageScope) {
     setStoredComments({scope: pageScope, contextGroups: [], groups: serverGroups, localComments: [], optimisticCount: 0, serverCommentCount: currentResult?.commentCount ?? 0, serverGroups: currentServerGroups})
@@ -192,13 +193,14 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
   if (result.status !== 'ok') return <div className="post-detail-content social-surface-state" data-social-surface-fill><ResultState labels={labels} result={result}/></div>
   const resolvedPostReturnTo = postReturnTo ?? `/${locale}/posts/${result.data.id}`
   const replyingTo = replyTarget ? (labels.replyingTo ?? 'Replying to @{name}').replace('{name}', replyTarget.name) : null
-  return <div aria-label={labels.comments} className="post-detail-scroll-region post-detail-content" role="region" tabIndex={0}>
+  const composerMode = checkingAccess ? 'loading' : canMutate && Boolean(viewerScope) ? 'authenticated' : 'signin'
+  return <div aria-label={labels.comments} className="post-detail-scroll-region post-detail-content" data-composer-feedback={composerFeedbackVisible} data-composer-mode={composerMode} data-replying={replyTarget !== null} role="region" tabIndex={0}>
     <PostCard canMutate={canMutate} commentCountOverride={result.data.commentCount + storedComments.optimisticCount} labels={labels} linked={false} locale={locale} post={result.data} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} variant="detail" {...(viewerScope ? {viewerScope} : {})}/>
     <section className="comments-section">
       <div className="comments-toolbar"><h2>{labels.comments}</h2><span>{labels.commentSortChronological ?? labels.comments}</span></div>
       <div className="post-detail-composer-dock">
         {replyingTo ? <div className="comment-reply-target"><span>{replyingTo}</span><button aria-label={labels.cancelReply ?? 'Cancel reply'} onClick={() => setReplyTarget(null)} type="button">{labels.cancelReply ?? 'Cancel reply'}</button></div> : null}
-        {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={appendComment} postId={result.data.id} returnTo={resolvedPostReturnTo} {...(replyTarget ? {parentCommentId: replyTarget.id} : {})} {...(resolvedViewer ? {viewer: resolvedViewer} : {})} {...(viewerScope ? {viewerScope} : {})}/>}
+        {checkingAccess ? <div aria-busy="true" aria-label={labels.comments} className="comment-auth-loading" role="status"><span/></div> : <CommentComposer authenticated={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} onCommentCreated={appendComment} onFeedbackChange={setComposerFeedbackVisible} postId={result.data.id} returnTo={resolvedPostReturnTo} {...(replyTarget ? {parentCommentId: replyTarget.id} : {})} {...(resolvedViewer ? {viewer: resolvedViewer} : {})} {...(viewerScope ? {viewerScope} : {})}/>}
       </div>
       {groups.length === 0 ? <div className="comments-empty"><h3>{labels.commentsEmptyTitle ?? labels.comments}</h3>{labels.commentsEmptyDescription ? <p>{labels.commentsEmptyDescription}</p> : null}</div> : null}
       <div className="comment-thread">{groups.map((group) => <CommentThreadGroup authenticated={canMutate} group={group} key={group.root.id} labels={labels} locale={locale} onReply={setReplyTarget} postId={result.data.id} referenceTime={referenceTime} returnTo={resolvedPostReturnTo} {...(viewerScope ? {viewerScope} : {})}/>)}</div>

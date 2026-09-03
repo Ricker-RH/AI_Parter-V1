@@ -30,7 +30,7 @@ async function renderDetail(page: Page, width: number, height: number) {
     <main class="shell" data-mobile-top-bar="hidden" data-shell="public">
       <aside class="desktop-nav">Navigation</aside><section class="content"><article class="surface post-detail-page">
         <header class="header post-detail-header"><button class="post-detail-back">Back</button><h1>Post</h1></header>
-        <div class="frame dockedViewport"><div aria-label="Comments" class="post-detail-scroll-region post-detail-content" role="region" tabindex="0">
+        <div class="frame dockedViewport"><div aria-label="Comments" class="post-detail-scroll-region post-detail-content" data-composer-feedback="false" data-composer-mode="authenticated" data-replying="false" role="region" tabindex="0">
           <article class="post-card post-card--detail"><p>Post body</p>${actions(1)}</article>
           <section class="comments-section"><div class="comments-toolbar"><h2>Comments</h2><span>Chronological</span></div>
             <div class="post-detail-composer-dock"><form class="comment-composer comment-composer--primary"><span class="comment-composer-avatar">R</span><div class="comment-composer-field"><textarea aria-label="Write a comment" rows="1"></textarea><button aria-label="Comment" class="comment-submit" type="submit"><span class="comment-submit-visual"><svg viewBox="0 0 24 24"></svg></span></button></div><span class="interaction-error"></span></form></div>

@@ -165,9 +165,15 @@ describe('NotificationsWorkspace', () => {
   it('encodes a stable responsive and accessible two-pane CSS contract', () => {
     const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src'
     const css = readFileSync(`${root}/components/chat/MessagesWorkspace.module.css`, 'utf8')
+    const baseRules = css.slice(0, css.indexOf('@media (max-width: 699px)'))
+    const desktopRules = css.slice(css.indexOf('@media (min-width: 700px)'))
     expect(css).toMatch(/\.workspace\s*\{[^}]*overflow-x:\s*hidden/)
     expect(css).toMatch(/@media \(min-width: 700px\)[\s\S]*grid-template-columns:\s*minmax\(300px, 380px\) minmax\(0, 1fr\)/)
     expect(css).toMatch(/@media \(max-width: 699px\)[\s\S]*data-selected="true"[^}]*\.listPane[^}]*display:\s*none/)
+    expect(baseRules).toMatch(/\.sectionHeader \{[^}]*display: grid/)
+    expect(baseRules).not.toMatch(/\.sectionHeader \{[^}]*border-bottom/)
+    expect(baseRules).not.toMatch(/\.listPane \{[^}]*border-bottom/)
+    expect(desktopRules).toMatch(/\.listPane \{[^}]*border-right: 1px solid var\(--shell-border\)/)
     expect(css).toMatch(/focus-visible/)
     expect(css).toMatch(/safe-area-inset-bottom/)
   })

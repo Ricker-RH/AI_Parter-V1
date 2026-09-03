@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {flushSync} from "react-dom";
 import {createRoot} from "react-dom/client";
 import {readFileSync} from "node:fs";
@@ -455,6 +455,51 @@ describe("real social content", () => {
     expect(within(container.querySelector(".comment-thread-item--reply")!).getByRole("button", {name: "Reply 0"})).toBeVisible();
   });
 
+  it("publishes reply and composer feedback state on the detail scroll region", async () => {
+    const comment = testComment({id: "33333333-3333-4333-8333-333333333333", parentCommentId: null, body: "Parent", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}});
+    const detail: PostDetail = {...post, comments: {groups: rootGroups([comment]), nextCursor: null}};
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({code: 'RATE_LIMITED'}), {status: 429})));
+    const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
+    const scrollRegion = screen.getByRole('region', {name: 'Comments'});
+
+    expect(scrollRegion).toHaveAttribute('data-composer-mode', 'authenticated');
+    expect(scrollRegion).toHaveAttribute('data-replying', 'false');
+    expect(scrollRegion).toHaveAttribute('data-composer-feedback', 'false');
+
+    fireEvent.click(within(container.querySelector('.comment-thread-item')!).getByRole('button', {name: 'Reply 0'}));
+    expect(scrollRegion).toHaveAttribute('data-replying', 'true');
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel reply'}));
+    expect(scrollRegion).toHaveAttribute('data-replying', 'false');
+
+    fireEvent.change(screen.getByRole('textbox', {name: 'Write a comment'}), {target: {value: 'Keep this draft'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Comment'}));
+    expect(await screen.findByText('Action failed. Try again.')).toBeVisible();
+    await waitFor(() => expect(scrollRegion).toHaveAttribute('data-composer-feedback', 'true'));
+    fireEvent.change(screen.getByRole('textbox', {name: 'Write a comment'}), {target: {value: 'Revised draft'}});
+    await waitFor(() => expect(scrollRegion).toHaveAttribute('data-composer-feedback', 'false'));
+  });
+
+  it("publishes signin and loading composer modes while keeping their reachable reply state explicit", () => {
+    const comment = testComment({id: "33333333-3333-4333-8333-333333333333", parentCommentId: null, body: "Parent", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}});
+    const detail: PostDetail = {...post, comments: {groups: rootGroups([comment]), nextCursor: null}};
+    const {container, rerender} = render(<PostDetailContent labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    const scrollRegion = screen.getByRole('region', {name: 'Comments'});
+
+    expect(scrollRegion).toHaveAttribute('data-composer-mode', 'signin');
+    fireEvent.click(within(container.querySelector('.comment-thread-item')!).getByRole('button', {name: 'Reply 0'}));
+    expect(scrollRegion).toHaveAttribute('data-replying', 'true');
+    expect(container.querySelector('.comment-signin--reply')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel reply'}));
+
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
+    rerender(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    expect(scrollRegion).toHaveAttribute('data-composer-mode', 'loading');
+    expect(scrollRegion).toHaveAttribute('data-composer-feedback', 'false');
+    fireEvent.click(within(container.querySelector('.comment-thread-item')!).getByRole('button', {name: 'Reply 0'}));
+    expect(scrollRegion).toHaveAttribute('data-replying', 'true');
+    expect(within(container.querySelector('.post-detail-composer-dock')!).getByRole('status', {name: 'Comments'})).toBeVisible();
+  });
+
   it("keeps a comment author relationship after closing and reopening the preview", async () => {
     const comment = testComment({id: "55555555-5555-4555-8555-555555555555", parentCommentId: null, body: "IP reply", createdAt: "2026-08-31T12:06:00.000Z", author: ip});
     const detail: PostDetail = {...post, comments: {groups: rootGroups([comment]), nextCursor: null}};
@@ -558,7 +603,7 @@ describe("real social content", () => {
     expect(dock).not.toHaveStyle({overflowY: 'auto'});
   });
 
-  it("uses one CSS-adaptive composer with a bounded mobile content reserve", () => {
+  it("uses shared mobile scroll-clearance variables on the actual list and detail scroll surfaces", () => {
     const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src';
     const source = readFileSync(`${root}/components/social/PostDetailContent.tsx`, 'utf8');
     const stylesheet = readFileSync(`${root}/app/globals.css`, 'utf8');
@@ -571,8 +616,29 @@ describe("real social content", () => {
     expect(stylesheet).toMatch(/\.post-detail-scroll-region\s*\{[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain[^}]*scrollbar-width:\s*none/);
     expect(stylesheet).toMatch(/\.post-detail-scroll-region::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
     expect(stylesheet).toMatch(/\.post-detail-composer-dock\s*\{[^}]*background:\s*var\(--shell-surface\)/);
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.comments-section\s*\{[^}]*padding-bottom:\s*132px/);
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-composer-dock\s*\{[^}]*bottom:\s*calc\(50px \+ env\(safe-area-inset-bottom\)\)[^}]*position:\s*fixed/);
+    expect(stylesheet).toMatch(/--mobile-safe-area-bottom:\s*env\(safe-area-inset-bottom\)/);
+    expect(stylesheet).toMatch(/--mobile-bottom-nav-height:\s*calc\(50px \+ var\(--mobile-safe-area-bottom\)\)/);
+    expect(stylesheet).toMatch(/--mobile-scroll-breathing-room:\s*16px/);
+    expect(stylesheet).toMatch(/--post-detail-composer-clearance:\s*83px/);
+    expect(stylesheet).toMatch(/--post-detail-signin-clearance:\s*65px/);
+    expect(stylesheet).toMatch(/--post-detail-loading-clearance:\s*58px/);
+    expect(stylesheet).toMatch(/--post-detail-reply-clearance:\s*48px/);
+    expect(stylesheet).toMatch(/--post-detail-feedback-clearance:\s*27px/);
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\[data-social-surface-viewport\]\[data-social-surface-viewport-layout="scroll"\]\s*\{[^}]*--social-scroll-bottom-clearance:\s*var\(--mobile-scroll-breathing-room\)[^}]*scroll-padding-bottom:\s*var\(--social-scroll-bottom-clearance\)/);
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-scroll-region\s*\{[^}]*--post-detail-mode-clearance:\s*0px[^}]*--post-detail-reply-state-clearance:\s*0px[^}]*--post-detail-feedback-state-clearance:\s*0px[^}]*--social-scroll-bottom-clearance:\s*calc\(var\(--post-detail-mode-clearance\) \+ var\(--post-detail-reply-state-clearance\) \+ var\(--post-detail-feedback-state-clearance\) \+ var\(--mobile-scroll-breathing-room\)\)[^}]*scroll-padding-bottom:\s*var\(--social-scroll-bottom-clearance\)/);
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-page \[data-social-surface-frame\]\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*minmax\(0, 1fr\)/);
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-page \[data-social-surface-viewport\]\[data-social-surface-viewport-layout="docked"\]\s*\{[^}]*height:\s*auto/);
+    expect(stylesheet).toMatch(/\[data-social-surface-viewport\]\[data-social-surface-viewport-layout="scroll"\]::after\s*\{[^}]*content:\s*""[^}]*display:\s*block[^}]*height:\s*var\(--social-scroll-bottom-clearance\)/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region::after\s*\{[^}]*content:\s*""[^}]*display:\s*block[^}]*height:\s*var\(--social-scroll-bottom-clearance\)/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-replying="true"\]\s*\{[^}]*--post-detail-reply-state-clearance:\s*var\(--post-detail-reply-clearance\)/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="authenticated"\]\[data-composer-feedback="true"\]\s*\{[^}]*--post-detail-feedback-state-clearance:\s*var\(--post-detail-feedback-clearance\)/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="authenticated"\]\s*\{[^}]*--post-detail-mode-clearance:\s*var\(--post-detail-composer-clearance\)/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="signin"\]\s*\{[^}]*--post-detail-mode-clearance:\s*var\(--post-detail-signin-clearance\)/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="loading"\]\s*\{[^}]*--post-detail-mode-clearance:\s*var\(--post-detail-loading-clearance\)/);
+    expect(stylesheet).not.toContain(':has(');
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-composer-dock\s*\{[^}]*bottom:\s*var\(--mobile-bottom-nav-height\)[^}]*position:\s*fixed/);
+    expect(stylesheet).toMatch(/\.mobile-nav\s*\{[^}]*height:\s*var\(--mobile-bottom-nav-height\)[^}]*padding:\s*0 max\(8px, env\(safe-area-inset-left\)\) var\(--mobile-safe-area-bottom\)/);
+    expect(stylesheet).not.toMatch(/\.comments-section\s*\{[^}]*padding-bottom/);
     expect(source.match(/<CommentComposer/g)).toHaveLength(1);
     expect(stylesheet).not.toContain('--post-detail-composer-reserve');
   });

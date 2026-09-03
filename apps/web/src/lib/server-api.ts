@@ -17,6 +17,18 @@ async function defaultToken(): Promise<string | null> {
   return getApiBearerToken()
 }
 
+async function vercelOidcToken(): Promise<string | null> {
+  if (process.env.VERCEL !== '1') return null
+  try {
+    const {getVercelOidcToken} = await import('@vercel/oidc')
+    const token = await getVercelOidcToken()
+    if (!token) throw new Error('Vercel returned an empty OIDC token')
+    return token
+  } catch (cause) {
+    throw new Error('Failed to acquire Vercel OIDC token', {cause})
+  }
+}
+
 export function readApiBaseUrl(): string | null {
   const configured = process.env.AIFANS_API_URL?.trim()
   if (!configured) return null
@@ -34,7 +46,7 @@ function safePath(path: string): boolean {
   return (path === '/health' || path.startsWith('/v1/')) && !path.startsWith('//')
 }
 
-function outboundHeaders(input: HeadersInit | undefined, token: string | null, trustedClientHeaders?: Headers, trustedIdempotencyKey?: string): Headers {
+function outboundHeaders(input: HeadersInit | undefined, token: string | null, oidcToken: string | null, trustedClientHeaders?: Headers, trustedIdempotencyKey?: string): Headers {
   const incoming = new Headers(input)
   const headers = new Headers()
   for (const name of ['content-type', 'x-request-id']) {
@@ -45,6 +57,7 @@ function outboundHeaders(input: HeadersInit | undefined, token: string | null, t
   const identity = trustedClientHeaders && createRateLimitIdentity(trustedClientHeaders, Date.now(), process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET)
   if (identity) headers.set('x-aifans-rate-limit-identity', identity)
   if (trustedIdempotencyKey) headers.set('idempotency-key', trustedIdempotencyKey)
+  if (oidcToken) headers.set('x-vercel-trusted-oidc-idp-token', oidcToken)
   return headers
 }
 
@@ -74,8 +87,10 @@ export async function fetchAifansApi(
   const timer=setTimeout(()=>controller.abort(new Error('AIFANS API timeout')),timeoutMs)
   try {
     const timeout=new Promise<never>((_resolve,reject)=>{const rejectOnAbort=()=>reject(controller.signal.reason??new Error('AIFANS API timeout'));if(controller.signal.aborted)rejectOnAbort();else controller.signal.addEventListener('abort',rejectOnAbort,{once:true})})
-    const token=await Promise.race([getToken(),timeout])
-    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,trustedClientHeaders,trustedIdempotencyKey)),signal:controller.signal})
+    const oidcTokenPromise=Promise.resolve().then(vercelOidcToken)
+    const bearerTokenPromise=Promise.resolve().then(getToken)
+    const [oidcToken,token]=await Promise.race([Promise.all([oidcTokenPromise,bearerTokenPromise]),timeout])
+    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,oidcToken,trustedClientHeaders,trustedIdempotencyKey)),signal:controller.signal})
   } finally {
     clearTimeout(timer)
     requestInit.signal?.removeEventListener('abort',onAbort)
