@@ -1,5 +1,26 @@
 ALTER TABLE public.comments ADD COLUMN root_comment_id uuid;
 
+CREATE OR REPLACE FUNCTION public.guard_comment()
+RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN
+  IF TG_OP='UPDATE'
+    AND OLD.root_comment_id IS NULL
+    AND NEW.root_comment_id IS NOT NULL
+    AND OLD.id IS NOT DISTINCT FROM NEW.id
+    AND OLD.post_id IS NOT DISTINCT FROM NEW.post_id
+    AND OLD.parent_comment_id IS NOT DISTINCT FROM NEW.parent_comment_id
+    AND OLD.author_profile_id IS NOT DISTINCT FROM NEW.author_profile_id
+    AND OLD.acting_operator_profile_id IS NOT DISTINCT FROM NEW.acting_operator_profile_id
+    AND OLD.source IS NOT DISTINCT FROM NEW.source
+    AND OLD.body IS NOT DISTINCT FROM NEW.body
+    AND OLD.state IS NOT DISTINCT FROM NEW.state
+    AND OLD.created_at IS NOT DISTINCT FROM NEW.created_at
+    AND OLD.deleted_at IS NOT DISTINCT FROM NEW.deleted_at THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'comments may only backfill root identity during migration' USING ERRCODE='23514';
+END $$;
+
 WITH RECURSIVE roots AS (
   SELECT c.id,c.id AS root_id FROM public.comments c WHERE c.parent_comment_id IS NULL
   UNION ALL
