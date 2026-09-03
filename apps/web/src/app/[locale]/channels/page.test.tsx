@@ -17,10 +17,14 @@ describe('channel directory route', () => {
     expect(en.channelPages.description).not.toBe(zh.channelPages.description)
   })
 
-  it('renders the unboxed title and delegates q/cursor to the authoritative server read', async () => {
+  it('uses the shared social surface without the channel description and delegates q/cursor to the authoritative server read', async () => {
     render(await ChannelDirectoryPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'future', cursor: 'next'})}))
-    expect(screen.getByRole('heading', {level: 1, name: 'Channels'})).toBeVisible()
-    expect(screen.getByText('Discover AI/IP worlds by topic.')).toBeVisible()
+    const heading = screen.getByRole('heading', {level: 1, name: 'Channels'})
+    expect(heading).toHaveClass('page-title')
+    expect(heading.closest('.page-header')).not.toBeNull()
+    expect(document.querySelector('[data-social-surface]')).not.toBeNull()
+    expect(document.querySelector('[data-social-surface-frame]')).not.toBeNull()
+    expect(screen.queryByText('Discover AI/IP worlds by topic.')).not.toBeInTheDocument()
     expect(fetchChannels).toHaveBeenCalledWith({q: 'future', cursor: 'next'})
     expect(screen.getByRole('searchbox', {name: 'Search channels'})).toHaveValue('future')
   })

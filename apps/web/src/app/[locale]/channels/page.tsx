@@ -1,6 +1,7 @@
 import {notFound} from 'next/navigation'
 import {ChannelDirectory} from '../../../components/channels/ChannelDirectory'
 import styles from '../../../components/channels/ChannelPage.module.css'
+import {SocialSurface} from '../../../components/social/SocialSurface'
 import {getMessages, isLocale} from '../../../i18n/config'
 import {fetchChannels} from '../../../lib/channels-api'
 
@@ -13,10 +14,8 @@ export default async function ChannelDirectoryPage({params, searchParams}: {para
   const cursor = typeof query.cursor === 'string' ? query.cursor : undefined
   const result = await fetchChannels({...q ? {q} : {}, ...cursor ? {cursor} : {}})
   const messages = await getMessages(locale)
-  return <main className={styles.page}>
-    <div className={styles.pageInner}>
-      <header className={styles.directoryHeader}><h1>{messages.channels}</h1><p>{messages.channelPages.description}</p></header>
-      <ChannelDirectory labels={{...messages.channelPages, loadMore: messages.channelPages.loadMore}} locale={locale} query={q ?? ''} result={result} />
-    </div>
-  </main>
+  const header = <header className={`page-header ${styles.directoryHeader}`}><h1 className="page-title">{messages.channels}</h1></header>
+  return <SocialSurface header={header} label={messages.channels}>
+    <ChannelDirectory labels={{...messages.channelPages, loadMore: messages.channelPages.loadMore}} locale={locale} query={q ?? ''} result={result} />
+  </SocialSurface>
 }
