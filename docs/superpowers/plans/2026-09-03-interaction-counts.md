@@ -4,7 +4,7 @@
 
 **Goal:** Expose durable bookmark/share totals on every post payload and make successful native-share or copy actions record an idempotent, privacy-preserving server event for signed-in and signed-out viewers.
 
-**Architecture:** A forward PostgreSQL migration adds a write-only share ledger, a bounded optional-actor command, and two new fields in the existing post-metrics/search projections without changing ranking. The shared strict contract then forces every feed/detail producer and fixture to carry both counts; API and same-origin Web BFF layers validate the bodyless share command, and the shared post action component owns independent optimistic bookmark state plus post-success share state.
+**Architecture:** A forward PostgreSQL migration adds a write-only share ledger keyed by `(post_id, idempotency_key)`, a lock-safe optional-actor command, and two new fields in the existing post-metrics/search projections without changing ranking. The shared strict contract then forces every feed/detail producer and fixture to carry both counts; the API and same-origin Web BFF independently validate a UUID `Idempotency-Key` and the empty share command, while the shared post action component generates one key per completed browser share and reuses it across a bounded recording retry.
 
 **Tech Stack:** PostgreSQL, Drizzle schema declarations, TypeScript, Zod, Hono, Next.js 16 App Router, React 19, Vitest/Testing Library, pnpm, Docker Compose.
 
@@ -17,8 +17,8 @@
 - Create `packages/db/migrations/202609030002_interaction_counts.sql`: create `post_share_events`, its `post_id`-leading index, `record_post_share`, expanded `social_post_metrics`, and the recreated search-post projection.
 - Modify `packages/db/src/schema.ts`: declare the share ledger for schema parity.
 - Modify `packages/db/src/index.ts`: export `postShareEvents`.
-- Modify `packages/db/src/social.ts`: project both counts and implement `recordPostShare(viewer, postId, requestId)` through the correct anonymous/authenticated session.
-- Modify `packages/db/tests/social-repository.test.ts`: integration coverage for both actor modes, idempotency, visibility, privacy, and every post producer.
+- Modify `packages/db/src/social.ts`: project both counts and implement `recordPostShare(viewer, postId, idempotencyKey)` through the correct anonymous/authenticated session.
+- Modify `packages/db/tests/social-repository.test.ts`: integration coverage for both actor modes, post-scoped idempotency, visibility races, privacy, and every post producer.
 - Modify `packages/db/tests/social-feed-projection.unit.test.ts`: row fixture and mapping assertions.
 - Modify `packages/db/tests/social-search.test.ts`: expanded search projection/fixture assertions.
 - Modify `packages/db/tests/platform-social.test.ts`: published-post response fixture/expectations.
@@ -36,8 +36,10 @@
 
 ### Web BFF and UI
 
-- Modify `apps/web/src/app/api/social/[...path]/route.ts`: allow only same-origin, bodyless/queryless share POST and validate `{created:boolean}`.
+- Modify `apps/web/src/app/api/social/[...path]/route.ts`: allow only same-origin, queryless share POSTs with a UUID idempotency key and an absent or strict-empty JSON body; validate `{created:boolean}`.
 - Modify `apps/web/src/app/api/social/[...path]/route.test.tsx`: allow-list, empty-body, optional token, header hygiene, cache and response tests.
+- Modify `apps/web/src/lib/server-api.ts`: forward an already validated idempotency key only through a dedicated trusted option.
+- Modify `apps/web/src/lib/server-api.test.tsx`: prove browser-supplied keys are stripped and the explicit trusted key is forwarded.
 - Modify `apps/web/src/lib/social-invalidation.ts`: invalidate public feed tags after bookmark/share count changes.
 - Modify `apps/web/src/lib/social-invalidation.test.ts`: fixed invalidation mapping.
 - Modify `apps/web/src/components/social/PostActions.tsx`: render all counts, optimistic bookmark total, share/copy recording, cancellation neutrality, independent pending/error state, and stale-request reset.
@@ -99,18 +101,20 @@ Add these tests inside `integration('social repository local postgres', ...)`; t
 it('records authenticated and anonymous shares idempotently without network metadata', async () => tx(async (client) => {
   const author = await ip(client)
   const postId = await post(client, author)
+  const otherPostId = await post(client, author)
   const actor = await human(client)
   const social = repo(client)
-  const authenticatedRequest = randomUUID()
-  const anonymousRequest = randomUUID()
+  const authenticatedKey = randomUUID()
+  const anonymousKey = randomUUID()
 
-  await expect(social.recordPostShare(actor, postId, authenticatedRequest)).resolves.toEqual({created: true})
-  await expect(social.recordPostShare(actor, postId, authenticatedRequest)).resolves.toEqual({created: false})
-  await expect(social.recordPostShare(null, postId, anonymousRequest)).resolves.toEqual({created: true})
+  await expect(social.recordPostShare(actor, postId, authenticatedKey)).resolves.toEqual({created: true})
+  await expect(social.recordPostShare(actor, postId, authenticatedKey)).resolves.toEqual({created: false})
+  await expect(social.recordPostShare(null, postId, anonymousKey)).resolves.toEqual({created: true})
   await expect(social.recordPostShare(null, postId, randomUUID())).resolves.toEqual({created: true})
+  await expect(social.recordPostShare(null, otherPostId, authenticatedKey)).resolves.toEqual({created: true})
 
-  const rows = await client.query<{actor_profile_id: string | null; request_id: string}>(
-    'SELECT actor_profile_id,request_id FROM public.post_share_events WHERE post_id=$1 ORDER BY request_id',
+  const rows = await client.query<{actor_profile_id: string | null; idempotency_key: string}>(
+    'SELECT actor_profile_id,idempotency_key FROM public.post_share_events WHERE post_id=$1 ORDER BY idempotency_key',
     [postId],
   )
   expect(rows.rows).toHaveLength(3)
@@ -119,7 +123,11 @@ it('records authenticated and anonymous shares idempotently without network meta
   const columns = await client.query<{column_name: string}>(
     "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='post_share_events' ORDER BY ordinal_position",
   )
-  expect(columns.rows.map((row) => row.column_name)).toEqual(['id', 'post_id', 'actor_profile_id', 'request_id', 'created_at'])
+  expect(columns.rows.map((row) => row.column_name)).toEqual(['id', 'post_id', 'actor_profile_id', 'idempotency_key', 'created_at'])
+  const constraints = await client.query<{definition: string}>(
+    "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname='post_share_events_post_id_idempotency_key_unique'",
+  )
+  expect(constraints.rows[0]?.definition).toContain('UNIQUE (post_id, idempotency_key)')
   const indexes = await client.query<{indexdef: string}>(
     "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='post_share_events_post_created_idx'",
   )
@@ -152,6 +160,75 @@ it('rejects shares outside the public current projection and exposes only the bo
   )
   expect(authenticated.rows[0]).toEqual({execute: true, select_rows: false, insert_rows: false})
 }))
+```
+
+Add these committed-fixture and bounded lock-probe helpers beside the existing comment concurrency helpers:
+
+```ts
+async function committedShareFixture() {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const author = await ip(client)
+    const postId = await post(client, author)
+    await client.query('COMMIT')
+    return {author, postId}
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+async function expectSessionToWaitOnLock(
+  observer: PoolClient,
+  blockedPid: number,
+  attempt: Promise<unknown>,
+) {
+  let blocked = false
+  for (let poll = 0; poll < 50; poll += 1) {
+    const activity = await observer.query<{wait_event_type:string|null}>('SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1', [blockedPid])
+    if (activity.rows[0]?.wait_event_type === 'Lock') {
+      blocked = true
+      break
+    }
+    const settled = await Promise.race([attempt.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 10))])
+    if (settled) break
+  }
+  expect(blocked).toBe(true)
+}
+```
+
+Then add two two-connection tests. The state-changing transaction acquires its update lock first; the share call must block, observe the committed state, reject with `P0002`, and leave no ledger row:
+
+```ts
+it.each(['withdraw', 'unpublish'] as const)('does not record when concurrent %s wins the visibility lock', async (change) => {
+  const fixture = await committedShareFixture()
+  const stateClient = await pool.connect()
+  const shareClient = await pool.connect()
+  try {
+    await stateClient.query('BEGIN')
+    if (change === 'withdraw') {
+      await stateClient.query("UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1", [fixture.postId])
+    } else {
+      await stateClient.query("UPDATE public.ip_profiles SET public_state='unpublished',operation_enabled=false,updated_at=clock_timestamp() WHERE profile_id=$1", [fixture.author])
+    }
+    await shareClient.query('BEGIN')
+    const sharePid = (await shareClient.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+    const attempt = repo(shareClient).recordPostShare(null, fixture.postId, randomUUID()).then(() => ({ok:true as const})).catch((error:unknown) => ({ok:false as const,error}))
+    await expectSessionToWaitOnLock(stateClient, sharePid, attempt)
+    await stateClient.query('COMMIT')
+    const outcome = await attempt
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.error).toMatchObject({code:'P0002'})
+    await expect(shareClient.query('SELECT 1 FROM public.post_share_events WHERE post_id=$1', [fixture.postId])).resolves.toMatchObject({rowCount:0})
+  } finally {
+    await Promise.all([stateClient.query('ROLLBACK').catch(() => undefined), shareClient.query('ROLLBACK').catch(() => undefined)])
+    stateClient.release()
+    shareClient.release()
+  }
+})
 ```
 
 - [ ] **Step 3: Strengthen producer/count coverage in the existing integration tests**
@@ -213,6 +290,9 @@ const migration = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 
 expect(migration).toContain('bookmark_count integer')
 expect(migration).toContain('share_count integer')
 expect(migration).toContain('metrics.bookmark_count,metrics.share_count')
+expect(migration).toContain('post_share_events_post_id_idempotency_key_unique')
+expect(migration).toContain('ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING')
+expect(migration).toMatch(/FROM public\.posts post[\s\S]*FOR SHARE[\s\S]*FROM public\.ip_profiles ip[\s\S]*FOR SHARE/)
 expect(migration).toContain("SECURITY DEFINER SET search_path = ''")
 expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
 ```
@@ -254,23 +334,40 @@ CREATE TABLE public.post_share_events (
   id uuid PRIMARY KEY,
   post_id uuid NOT NULL REFERENCES public.posts(id),
   actor_profile_id uuid REFERENCES public.profiles(id),
-  request_id uuid NOT NULL UNIQUE,
-  created_at timestamptz NOT NULL DEFAULT now()
+  idempotency_key uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT post_share_events_post_id_idempotency_key_unique UNIQUE(post_id,idempotency_key)
 );
 CREATE INDEX post_share_events_post_created_idx ON public.post_share_events(post_id, created_at DESC);
 REVOKE ALL ON TABLE public.post_share_events FROM PUBLIC,aifans_anon,aifans_authenticated,aifans_platform;
 
-CREATE FUNCTION public.record_post_share(target_post_id uuid, request_id uuid)
+CREATE FUNCTION public.record_post_share(target_post_id uuid, command_idempotency_key uuid)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE actor_id uuid; did_create boolean := false;
+DECLARE actor_id uuid; owner_id uuid; current_revision_id uuid; did_create boolean := false;
 BEGIN
-  IF NOT public.is_published_post(target_post_id) THEN
+  SELECT post.author_profile_id INTO owner_id
+  FROM public.posts post
+  WHERE post.id=target_post_id AND post.state='published'
+  FOR SHARE;
+  IF owner_id IS NULL THEN
     RAISE EXCEPTION 'published post not found' USING ERRCODE = 'P0002';
   END IF;
+
+  SELECT ip.current_identity_revision_id INTO current_revision_id
+  FROM public.ip_profiles ip
+  WHERE ip.profile_id=owner_id AND ip.public_state='published'
+  FOR SHARE;
+  IF current_revision_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.ip_identity_revisions identity
+    WHERE identity.id=current_revision_id AND identity.ip_profile_id=owner_id
+  ) THEN
+    RAISE EXCEPTION 'published post not found' USING ERRCODE = 'P0002';
+  END IF;
+
   actor_id := public.social_current_human_profile_id();
-  INSERT INTO public.post_share_events(id,post_id,actor_profile_id,request_id)
-  VALUES(gen_random_uuid(),target_post_id,actor_id,request_id)
-  ON CONFLICT (request_id) DO NOTHING
+  INSERT INTO public.post_share_events(id,post_id,actor_profile_id,idempotency_key)
+  VALUES(gen_random_uuid(),target_post_id,actor_id,command_idempotency_key)
+  ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING
   RETURNING true INTO did_create;
   RETURN COALESCE(did_create,false);
 END $$;
@@ -346,10 +443,13 @@ export const postShareEvents = pgTable(
     id: uuid().primaryKey(),
     postId: uuid('post_id').notNull().references(() => posts.id),
     actorProfileId: uuid('actor_profile_id').references(() => profiles.id),
-    requestId: uuid('request_id').notNull().unique(),
+    idempotencyKey: uuid('idempotency_key').notNull(),
     createdAt: timestamp('created_at', {withTimezone: true}).notNull().defaultNow(),
   },
-  (table) => [index('post_share_events_post_created_idx').on(table.postId, table.createdAt)],
+  (table) => [
+    unique('post_share_events_post_id_idempotency_key_unique').on(table.postId, table.idempotencyKey),
+    index('post_share_events_post_created_idx').on(table.postId, table.createdAt.desc()),
+  ],
 )
 ```
 
@@ -361,7 +461,7 @@ Apply these exact shape changes in `packages/db/src/social.ts`:
 
 ```ts
 // SocialRepository
-recordPostShare(viewer: Actor | null, postId: string, requestId: string): Promise<{created: boolean}>
+recordPostShare(viewer: Actor | null, postId: string, idempotencyKey: string): Promise<{created: boolean}>
 
 // PostRow
 bookmark_count: number | string
@@ -378,11 +478,11 @@ shareCount: Number(row.share_count),
 Add this repository member after `unbookmarkPost`:
 
 ```ts
-recordPostShare: (viewer, postId, requestId) =>
+recordPostShare: (viewer, postId, idempotencyKey) =>
   read(viewer, async (client) => ({
     created: (await client.query<{created: boolean}>(
       'SELECT public.record_post_share($1,$2) AS created',
-      [postId, requestId],
+      [postId, idempotencyKey],
     )).rows[0]?.created === true,
   })),
 ```
@@ -582,30 +682,48 @@ git commit -m "feat(contracts): require all post interaction counts"
 Add `vi` to the Vitest import, add `recordPostShare: async () => ({created: true})` to the `socialPort` fixture, and add tests proving:
 
 ```ts
-it('records a share with optional auth and the server request id', async () => {
+it('records a share with optional auth and a validated idempotency key', async () => {
   for (const auth of [validAuth, missingAuth]) {
     const calls: unknown[] = []
-    const social = socialPort({recordPostShare: async (viewer, target, requestId) => {
-      calls.push([viewer, target, requestId])
+    const idempotencyKey = randomUUID()
+    const social = socialPort({recordPostShare: async (viewer, target, key) => {
+      calls.push([viewer, target, key])
       return {created: true}
     }})
-    const response = await createApp({auth, profiles: profilePort(), social}).request(`/v1/posts/${postId}/share`, {method: 'POST'})
+    const response = await createApp({auth, profiles: profilePort(), social}).request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': idempotencyKey}})
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({created: true})
     expect(calls).toEqual([[
       auth === validAuth ? {subject: identity.subject} : null,
       postId,
-      response.headers.get('x-request-id'),
+      idempotencyKey,
     ]])
+    expect(response.headers.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/)
   }
 })
 
-it('rejects invalid share ids, query, and nonempty bodies before the port', async () => {
+it('accepts only a strict empty JSON object when a share body is present', async () => {
+  const idempotencyKey = randomUUID()
+  const response = await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort()}).request(`/v1/posts/${postId}/share`, {
+    method: 'POST',
+    headers: {'content-type': 'application/json', 'idempotency-key': idempotencyKey},
+    body: '{}',
+  })
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({created:true})
+})
+
+it('rejects missing or invalid idempotency keys, ids, query, content type, and nonempty bodies before the port', async () => {
   const recordPostShare = vi.fn(async () => ({created: true}))
   const app = createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare})})
-  expect((await app.request('/v1/posts/not-a-uuid/share', {method: 'POST'})).status).toBe(400)
-  expect((await app.request(`/v1/posts/${postId}/share?count=1`, {method: 'POST'})).status).toBe(400)
-  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json'}, body: '{"count":1}'})).status).toBe(400)
+  const key = randomUUID()
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST'})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': 'not-a-uuid'}})).status).toBe(400)
+  expect((await app.request('/v1/posts/not-a-uuid/share', {method: 'POST', headers: {'idempotency-key': key}})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share?count=1`, {method: 'POST', headers: {'idempotency-key': key}})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: '{"count":1}'})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: 'x'.repeat(65_537)})).status).toBe(413)
   expect(recordPostShare).not.toHaveBeenCalled()
 })
 ```
@@ -615,8 +733,9 @@ Add these concrete error-boundary tests:
 ```ts
 it('keeps share authentication and not-found semantics strict', async () => {
   const invalidAuth = {verify: async () => ({status: 'invalid'} as const)} satisfies AuthVerifier
-  await expectError(await createApp({auth: invalidAuth, profiles: profilePort(), social: socialPort()}).request(`/v1/posts/${postId}/share`, {method: 'POST'}), 401, 'AUTH_INVALID')
-  await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare: async () => {throw Object.assign(new Error('hidden'), {code: 'P0002'})}})}).request(`/v1/posts/${postId}/share`, {method: 'POST'}), 404, 'POST_NOT_FOUND')
+  const headers = {'idempotency-key': randomUUID()}
+  await expectError(await createApp({auth: invalidAuth, profiles: profilePort(), social: socialPort()}).request(`/v1/posts/${postId}/share`, {method: 'POST', headers}), 401, 'AUTH_INVALID')
+  await expectError(await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare: async () => {throw Object.assign(new Error('hidden'), {code: 'P0002'})}})}).request(`/v1/posts/${postId}/share`, {method: 'POST', headers}), 404, 'POST_NOT_FOUND')
 })
 
 it('redacts invalid share responses and database constraint details', async () => {
@@ -625,14 +744,14 @@ it('redacts invalid share responses and database constraint details', async () =
     auth: missingAuth,
     profiles: profilePort(),
     social: socialPort({recordPostShare: async () => ({created: true, internal: 'secret'})}),
-  }).request(`/v1/posts/${postId}/share`, {method: 'POST'})
+  }).request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': randomUUID()}})
   await expectError(expanded, 500, 'INTERNAL_ERROR')
   const constrained = await createApp({
     auth: missingAuth,
     profiles: profilePort(),
     social: socialPort({recordPostShare: async () => {throw {name: 'DatabaseError', code: '23505', detail: 'secret constraint'}}}),
     onUnhandledError: (diagnostic) => diagnostics.push(diagnostic),
-  }).request(`/v1/posts/${postId}/share`, {method: 'POST'})
+  }).request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': randomUUID()}})
   const constrainedBody = await constrained.clone().text()
   await expectError(constrained, 500, 'INTERNAL_ERROR')
   expect(constrainedBody).not.toContain('secret constraint')
@@ -655,10 +774,25 @@ Expected: FAIL because the port member, route, and rate-limit mapping are absent
 Add to `SocialPort`:
 
 ```ts
-recordPostShare(viewer: Actor | null, postId: string, requestId: string): Promise<{created: boolean}>
+recordPostShare(viewer: Actor | null, postId: string, idempotencyKey: string): Promise<{created: boolean}>
 ```
 
-Import `ShareRecordedSchema` in `apps/api/src/routes/social.ts` and register this route before the authenticated relationship helper:
+Import `ShareRecordedSchema` in `apps/api/src/routes/social.ts`. Keep the existing `parseEmptyBody` for existing relationship commands and add this share-specific parser; the global 65,536-byte middleware remains the hard payload bound:
+
+```ts
+async function parseShareBody(c: ApiContext): Promise<boolean> {
+  const text = await c.req.text()
+  if (!text.trim()) return true
+  if (!c.req.header('content-type')?.toLowerCase().startsWith('application/json')) return false
+  try {
+    return EmptyBodySchema.safeParse(JSON.parse(text)).success
+  } catch {
+    return false
+  }
+}
+```
+
+Register the route before the authenticated relationship helper:
 
 ```ts
 app.post('/v1/posts/:postId/share', async (c) => {
@@ -666,12 +800,13 @@ app.post('/v1/posts/:postId/share', async (c) => {
   if (unavailable) return unavailable
   const query = safeQuery(c)
   const postId = parseId(c.req.param('postId'))
-  if (query === null || !EmptyQuerySchema.safeParse(query).success || !postId || !(await parseEmptyBody(c))) return invalidRequest(c)
+  const idempotencyKey = parseId(c.req.header('idempotency-key'))
+  if (query === null || !EmptyQuerySchema.safeParse(query).success || !postId || !idempotencyKey || !(await parseShareBody(c))) return invalidRequest(c)
   const viewer = await resolveActor(c, dependencies, false)
   if (!viewer.ok) return viewer.response
   try {
     return c.json(ShareRecordedSchema.parse(
-      await dependencies.social!.recordPostShare(viewer.actor, postId, c.get('requestId')),
+      await dependencies.social!.recordPostShare(viewer.actor, postId, idempotencyKey),
     ), 200)
   } catch (error) {
     return knownSocialError(c, error, {notFound: 'POST_NOT_FOUND'})
@@ -689,7 +824,7 @@ Add this branch in `policyFor` before the existing comment branch:
 if (method === 'POST' && /^\/v1\/posts\/[^/]+\/share$/.test(path)) return 'social_mutation'
 ```
 
-Add a hardening assertion that a signed rate-limit identity reaches `consume({policy:'social_mutation', ...})` for `POST /v1/posts/:id/share`, that a missing/forged identity fails closed when required, and that serialized calls contain neither the raw forwarded IP nor body data.
+Add a hardening assertion that a request with both a valid UUID `Idempotency-Key` and signed rate-limit identity reaches `consume({policy:'social_mutation', ...})` for `POST /v1/posts/:id/share`, that a missing/forged rate-limit identity fails closed when required, and that serialized calls contain neither the raw forwarded IP nor body data. The idempotency key may appear only in the route-port assertion, never as the rate-limit identifier.
 
 - [ ] **Step 5: Run API tests and typecheck and verify GREEN**
 
@@ -714,6 +849,8 @@ git commit -m "feat(api): record optional-actor post shares"
 **Files:**
 - Modify: `apps/web/src/app/api/social/[...path]/route.ts:1-116`
 - Modify: `apps/web/src/app/api/social/[...path]/route.test.tsx:30-109`
+- Modify: `apps/web/src/lib/server-api.ts`
+- Modify: `apps/web/src/lib/server-api.test.tsx`
 - Modify: `apps/web/src/lib/social-invalidation.ts`
 - Modify: `apps/web/src/lib/social-invalidation.test.ts`
 
@@ -722,25 +859,31 @@ git commit -m "feat(api): record optional-actor post shares"
 Add a test that invokes `POST` with both an absent body and `{}` and verifies the exact upstream request:
 
 ```ts
-it('proxies only same-origin bodyless share POSTs with strict private responses', async () => {
+it('proxies only same-origin empty share POSTs with strict private responses and one trusted key', async () => {
   process.env.AIFANS_API_URL = 'https://internal-api.example'
   process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
-  const upstream = vi.fn().mockResolvedValue(Response.json({created: true}, {status: 200, headers: {'x-request-id': 'upstream-id'}}))
+  const upstream = vi.fn()
+    .mockResolvedValueOnce(Response.json({created: true}, {status: 200, headers: {'x-request-id': 'upstream-id-1'}}))
+    .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-2'}}))
   vi.stubGlobal('fetch', upstream)
   const path = ['posts', '22222222-2222-4222-8222-222222222222', 'share']
-  for (const body of [undefined, '{}']) {
-    const headers = new Headers({origin: 'https://web.example', 'x-vercel-forwarded-for': '203.0.113.7', authorization: 'Bearer forged', 'x-aifans-rate-limit-identity': 'forged'})
+  const idempotencyKey = '33333333-3333-4333-8333-333333333333'
+  for (const [index, body] of [undefined, '{}'].entries()) {
+    const headers = new Headers({origin: 'https://web.example', 'idempotency-key': idempotencyKey, 'x-vercel-forwarded-for': '203.0.113.7', authorization: 'Bearer forged', 'x-aifans-rate-limit-identity': 'forged'})
     if (body !== undefined) headers.set('content-type', 'application/json')
     const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {method: 'POST', headers, ...(body === undefined ? {} : {body})}), {params: Promise.resolve({path})})
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('private, no-store')
-    expect(await response.json()).toEqual({created: true})
+    expect(await response.json()).toEqual({created: index === 0})
   }
-  const sent = new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers)
-  expect(sent.get('authorization')).toBe('Bearer signed-jwt')
-  expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
-  expect(sent.has('cookie')).toBe(false)
-  expect(sent.has('x-vercel-forwarded-for')).toBe(false)
+  for (const [, init] of upstream.mock.calls) {
+    const sent = new Headers((init as RequestInit).headers)
+    expect(sent.get('authorization')).toBe('Bearer signed-jwt')
+    expect(sent.get('idempotency-key')).toBe(idempotencyKey)
+    expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
+    expect(sent.has('cookie')).toBe(false)
+    expect(sent.has('x-vercel-forwarded-for')).toBe(false)
+  }
 })
 ```
 
@@ -748,10 +891,13 @@ Add these table/error cases after the success test:
 
 ```ts
 it.each([
-  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://evil.example'}}), 403],
-  [new Request(`https://web.example/api/social/posts/${postId}/share?count=1`, {method: 'POST', headers: {origin: 'https://web.example'}}), 400],
-  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json'}, body: '{"count":1}'}), 422],
-  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain'}, body: 'share'}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://evil.example', 'idempotency-key': postId}}), 403],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example'}}), 400],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': 'invalid'}}), 400],
+  [new Request(`https://web.example/api/social/posts/${postId}/share?count=1`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId}}), 400],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: '{"count":1}'}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: '{}'}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: 'x'.repeat(8193)}), 413],
 ] as const)('rejects an invalid share proxy request before transport', async (request, status) => {
   process.env.AIFANS_API_URL = 'https://internal-api.example'
   const upstream = vi.fn()
@@ -769,7 +915,7 @@ it.each([
   process.env.AIFANS_API_URL = 'https://internal-api.example'
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(payload, {status})))
   const path = ['posts', postId, 'share']
-  const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {method: 'POST', headers: {origin: 'https://web.example'}}), {params: Promise.resolve({path})})
+  const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId}}), {params: Promise.resolve({path})})
   expect(response.status).toBe(502)
   expect(await response.json()).toEqual({code: 'SOCIAL_INVALID_RESPONSE'})
   expect(revalidateTag).not.toHaveBeenCalled()
@@ -783,10 +929,10 @@ Define `const postId = '22222222-2222-4222-8222-222222222222'` once at the top o
 Run:
 
 ```bash
-PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web test -- src/app/api/social/'[...path]'/route.test.tsx src/lib/social-invalidation.test.ts
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web test -- src/app/api/social/'[...path]'/route.test.tsx src/lib/server-api.test.tsx src/lib/social-invalidation.test.ts
 ```
 
-Expected: FAIL because POST currently allows comments only and applies the comment body/status contract to every POST.
+Expected: FAIL because POST currently allows comments only, has no trusted idempotency-key path, and applies the comment body/status contract to every POST.
 
 - [ ] **Step 3: Split share POST validation from comment POST validation**
 
@@ -796,11 +942,75 @@ Import `ShareRecordedSchema`; allow `posts/:uuid/share` only for POST:
 if (method === 'POST' && parts[0] === 'posts' && (parts[2] === 'comments' || parts[2] === 'share')) return parts.join('/')
 ```
 
-Inside `proxy`, derive `const shareRequest = method === 'POST' && /\/share$/.test(path)`. For `shareRequest`, accept `''` or a parsed strict `{}` and normalize the forwarded body to `undefined`; reject any other content with `422 INVALID_REQUEST`. Retain the existing bounded comment parser only when `method === 'POST' && !shareRequest`. Use:
+Inside `proxy`, derive `const shareRequest = method === 'POST' && /\/share$/.test(path)`. Before reading a share body, require `request.headers.get('idempotency-key')` to match the existing UUID expression or return `400 INVALID_REQUEST`. Accept an absent body without a content type. When `request.body !== null`, require `application/json`, use the existing bounded reader, reject duplicate keys, and require the parsed value to be a non-array object with `Object.keys(value).length === 0`; normalize valid `''` or `{}` to an undefined upstream body. Reject other share bodies with `422 INVALID_REQUEST`, while retaining the bounded comment parser only for non-share POSTs. Use:
 
 ```ts
+const shareRequest = method === 'POST' && /\/share$/.test(path)
+const idempotencyKey = shareRequest ? request.headers.get('idempotency-key') : null
+if (shareRequest && (!idempotencyKey || !uuid.test(idempotencyKey))) {
+  return Response.json({code:'INVALID_REQUEST'}, {status:400})
+}
+
+let body: string | undefined
+if (shareRequest && request.body !== null) {
+  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+    return Response.json({code:'INVALID_REQUEST'}, {status:422})
+  }
+  let text: string
+  try {
+    text = await readCommentBody(request)
+  } catch {
+    return Response.json({code:'PAYLOAD_TOO_LARGE'}, {status:413})
+  }
+  if (text.trim()) {
+    if (duplicateTopLevelKey(text)) return Response.json({code:'INVALID_REQUEST'}, {status:422})
+    let parsed: unknown
+    try { parsed = JSON.parse(text) } catch { return Response.json({code:'INVALID_REQUEST'}, {status:422}) }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) || Object.keys(parsed).length !== 0) {
+      return Response.json({code:'INVALID_REQUEST'}, {status:422})
+    }
+  }
+}
+
 const expectedStatus = shareRequest ? 200 : method === 'POST' ? 201 : 200
 ```
+
+Do not add `idempotency-key` to the generic inbound-header allow-list. Split the existing combined private/live branch of `AifansApiRequestOptions`: keep `trustedIdempotencyKey?: never` on `public-cache` and `private-cache`, and allow `trustedIdempotencyKey?: string` only on `live-no-store`. Validate it against the UUID expression inside `fetchAifansApi`, and pass it separately to `outboundHeaders`:
+
+```ts
+export type AifansApiRequestOptions =
+  | (SharedRequestOptions & {policy: 'public-cache'; getToken?: never; trustedClientHeaders?: never; trustedIdempotencyKey?: never})
+  | (SharedRequestOptions & {policy: 'private-cache'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: never})
+  | (SharedRequestOptions & {policy: 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: string})
+
+const idempotencyKeyPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function outboundHeaders(input: HeadersInit | undefined, token: string | null, trustedClientHeaders?: Headers, trustedIdempotencyKey?: string): Headers {
+  const incoming = new Headers(input)
+  const headers = new Headers()
+  for (const name of ['content-type', 'x-request-id']) {
+    const value = incoming.get(name)
+    if (value) headers.set(name, value)
+  }
+  if (trustedIdempotencyKey) headers.set('idempotency-key', trustedIdempotencyKey)
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  const identity = trustedClientHeaders && createRateLimitIdentity(trustedClientHeaders, Date.now(), process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET)
+  if (identity) headers.set('x-aifans-rate-limit-identity', identity)
+  return headers
+}
+```
+
+In `fetchAifansApi`, derive and validate the trusted value before the fetch, then pass it to the helper:
+
+```ts
+if (options.policy !== 'live-no-store' && 'trustedIdempotencyKey' in options) throw new Error('Trusted idempotency keys require live no-store policy')
+const trustedIdempotencyKey = options.policy === 'live-no-store' ? options.trustedIdempotencyKey : undefined
+if (trustedIdempotencyKey !== undefined && !idempotencyKeyPattern.test(trustedIdempotencyKey)) throw new Error('Invalid trusted idempotency key')
+// ...existing token and timeout flow...
+headers: Object.fromEntries(outboundHeaders(requestInit.headers, token, trustedClientHeaders, trustedIdempotencyKey))
+```
+
+For a share request, call `fetchAifansApi` with `trustedIdempotencyKey: idempotencyKey`; never depend on `requestInit.headers` to forward it. Add a `server-api.test.tsx` case in which `requestInit.headers` contains a forged key but `trustedIdempotencyKey` contains a different valid UUID, and assert only the trusted UUID reaches the fetcher. Assert an invalid trusted value rejects before fetch.
 
 Add the response branch at the start of `mutationResponse`:
 
@@ -811,7 +1021,7 @@ if (method === 'POST' && /\/share$/.test(path)) {
 }
 ```
 
-Keep `fetchAifansApi(..., {policy:'live-no-store', trustedClientHeaders: request.headers})`; it strips browser authorization/cookie/forwarding headers, supplies the server token when a session exists, and creates the signed ephemeral rate-limit identity without persisting it.
+Keep `fetchAifansApi(..., {policy:'live-no-store', trustedClientHeaders: request.headers, trustedIdempotencyKey: idempotencyKey})`; it strips browser authorization/cookie/forwarding headers, forwards only the separately validated idempotency key, supplies the server token when a session exists, and creates the signed ephemeral rate-limit identity without persisting it.
 
 - [ ] **Step 4: Invalidate cached public counts**
 
@@ -843,7 +1053,7 @@ Expected: PASS; successful responses are `private, no-store`, malformed response
 - [ ] **Step 6: Commit the BFF slice**
 
 ```bash
-git add apps/web/src/app/api/social/'[...path]'/route.ts apps/web/src/app/api/social/'[...path]'/route.test.tsx apps/web/src/lib/social-invalidation.ts apps/web/src/lib/social-invalidation.test.ts
+git add apps/web/src/app/api/social/'[...path]'/route.ts apps/web/src/app/api/social/'[...path]'/route.test.tsx apps/web/src/lib/server-api.ts apps/web/src/lib/server-api.test.tsx apps/web/src/lib/social-invalidation.ts apps/web/src/lib/social-invalidation.test.ts
 git commit -m "feat(web): proxy post share recording safely"
 ```
 
@@ -895,7 +1105,7 @@ Add separate tests with `navigator.share` and clipboard stubs proving:
 ```ts
 // native success: record only after navigator.share resolves
 expect(navigator.share).toHaveBeenCalledWith({url: `${window.location.origin}/en/posts/${postId}`})
-expect(fetch).toHaveBeenCalledWith(`/api/social/posts/${postId}/share`, expect.objectContaining({credentials: 'include', method: 'POST', signal: expect.any(AbortSignal)}))
+expect(fetch).toHaveBeenCalledWith(`/api/social/posts/${postId}/share`, expect.objectContaining({credentials: 'include', headers: {'idempotency-key': expect.any(String)}, method: 'POST', signal: expect.any(AbortSignal)}))
 
 // fallback success: clipboard write precedes the same POST
 expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`${window.location.origin}/en/posts/${postId}`)
@@ -908,7 +1118,7 @@ expect(fetch).not.toHaveBeenCalled()
 expect(screen.getByRole('button', {name: 'Share 4'})).toHaveTextContent('4')
 ```
 
-Verify `{created:true}` increments from `4` to `5`; `{created:false}` remains `4` because it is an idempotent retry result. While share is pending, only share is disabled; like and bookmark remain enabled.
+Stub `crypto.randomUUID()` to a valid fixed UUID. Add a retry test in which the first recording fetch rejects after the server may have committed and the second returns `{created:false}`. Advance the 250 ms retry timer and assert both calls carry the same `Idempotency-Key`, native share/copy ran only once, and the visible count moves from `4` to `5` exactly once. A valid `{created:false}` is a durable acknowledgement of this locally completed action, not a reason to suppress the local increment. A fresh second completed share must use a different key and may increment again. While share is pending, only share is disabled; like and bookmark remain enabled.
 
 - [ ] **Step 4: Add failing stale-identity tests**
 
@@ -980,6 +1190,68 @@ async function completeBrowserShare(url: string): Promise<'completed' | 'cancell
   return 'completed'
 }
 
+function validCreatedResponse(value: unknown): value is {created: boolean} {
+  return typeof value === 'object' && value !== null && Object.keys(value).length === 1 && typeof (value as {created?: unknown}).created === 'boolean'
+}
+
+function retryDelay(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, 250)
+    signal.addEventListener('abort', onAbort, {once: true})
+  })
+}
+
+async function recordCompletedShare(postId: string, idempotencyKey: string, signal: AbortSignal): Promise<{created:boolean}> {
+  let lastError: unknown = new Error('share record failed')
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let response: Response
+    try {
+      response = await fetch(`/api/social/posts/${postId}/share`, {
+        credentials: 'include',
+        headers: {'idempotency-key': idempotencyKey},
+        method: 'POST',
+        signal,
+      })
+    } catch (error) {
+      if (signal.aborted) throw error
+      lastError = error
+      if (attempt === 0) {
+        await retryDelay(signal)
+        continue
+      }
+      throw error
+    }
+    if (!response.ok) {
+      lastError = new Error('share record failed')
+      if (attempt === 0 && response.status >= 500) {
+        await retryDelay(signal)
+        continue
+      }
+      throw lastError
+    }
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      throw new Error('share record failed')
+    }
+    if (!validCreatedResponse(body)) throw new Error('share record failed')
+    return body
+  }
+  throw lastError
+}
+
 async function share() {
   if (state.pending.share) return
   const requestedPostId = postId
@@ -991,11 +1263,10 @@ async function share() {
   try {
     const url = new URL(`/${locale}/posts/${requestedPostId}`, window.location.origin).toString()
     if (await completeBrowserShare(url) === 'cancelled') return
-    const response = await fetch(`/api/social/posts/${requestedPostId}/share`, {credentials: 'include', method: 'POST', signal: controller.signal})
+    const idempotencyKey = crypto.randomUUID()
+    await recordCompletedShare(requestedPostId, idempotencyKey, controller.signal)
     if (!isCurrent()) return
-    const body: unknown = await response.json()
-    if (!response.ok || !validCreatedResponse(body)) throw new Error('share record failed')
-    if (body.created) updateState((current) => ({...current, shareCount: current.shareCount + 1}))
+    updateState((current) => ({...current, shareCount: current.shareCount + 1}))
   } catch {
     if (isCurrent()) updateState((current) => ({...current, errors: {...current.errors, share: true}}))
   } finally {
@@ -1061,7 +1332,7 @@ Expected: all commands exit `0`; database tests run with no environment-gated sk
 Run:
 
 ```bash
-rg -n "post_share_events|record_post_share|bookmark_count|share_count" packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/social.ts
+rg -n "post_share_events|record_post_share|idempotency_key|bookmark_count|share_count" packages/db/migrations/202609030002_interaction_counts.sql packages/db/src/schema.ts packages/db/src/social.ts
 rg -n "ip|user.agent|destination|copied.url|share_count.*\+|bookmark_count.*\+" packages/db/migrations/202609030002_interaction_counts.sql
 ```
 
@@ -1082,7 +1353,7 @@ Expected: save the printed SHA; the worktree is clean; the first migration comma
 
 - [ ] **Step 4: Deploy the exact SHA to API and Web Preview**
 
-Use the Vercel project dashboard to deploy the Step 4 SHA to the API Preview project, then the Web Preview project. Verify both deployment detail pages show that exact SHA and Preview environment variables. Do not deploy or modify `main` during Preview acceptance.
+Use the Vercel project dashboard to deploy the Step 3 SHA to the API Preview project, then the Web Preview project. Verify both deployment detail pages show that exact SHA and Preview environment variables. Do not deploy or modify `main` during Preview acceptance.
 
 - [ ] **Step 5: Execute interaction acceptance**
 
@@ -1093,8 +1364,9 @@ Using one published test post, verify:
 3. Completing native share records once, increments after the API response, and persists after refresh.
 4. In a browser without native share, successful clipboard copy follows the same record/increment behavior.
 5. Signed-out share succeeds and persists without creating an account.
-6. A forced/observed recording failure shows the existing interaction error and does not increment the displayed total.
-7. Feed, following, liked, bookmarks, search, public profile, and detail all show numeric like/comment/bookmark/share values, including `0`.
+6. A forced first-attempt transport failure followed by a retry sends the same `Idempotency-Key` twice, invokes browser share/copy once, stores one event, and increments the displayed total once even when the acknowledgement is `{created:false}`.
+7. A forced/observed exhausted recording failure shows the existing interaction error and does not increment the displayed total.
+8. Feed, following, liked, bookmarks, search, public profile, and detail all show numeric like/comment/bookmark/share values, including `0`.
 
 Expected: counts agree after refresh and no endpoint exposes bookmark owners or share-event rows.
 
