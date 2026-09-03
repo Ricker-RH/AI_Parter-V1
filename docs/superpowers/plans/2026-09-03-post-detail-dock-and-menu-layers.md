@@ -49,9 +49,9 @@ git commit -m "fix(web): add docked social surface layout"
 
 - [ ] **Step 1: Write RED structure and CSS tests**
 
-Require a successful detail result to render exactly two direct layout children: a focusable `role="region"` named with the post/comments label and a following `.post-detail-composer-dock`. Require the scroll region to contain the post card, comments toolbar/list/replies/empty state/pagination, and require the primary composer/sign-in/loading state to live only in the dock. Require error/unavailable states to fill the surface without an empty dock.
+Require a successful detail result to return exactly two siblings that become direct children of the docked `SocialSurface` viewport: a focusable `.post-detail-scroll-region.post-detail-content` with `role="region"`, named with the post/comments label, and a following `.post-detail-composer-dock`. Require the scroll region to contain the post card, comments toolbar/list/replies/empty state/pagination, and require the primary composer/sign-in/loading state to live only in the dock. Require error/unavailable states to return one fill-state element without an empty dock.
 
-Add negative assertions for `ResizeObserver`, composer height state/ref, `CSSProperties`, `--post-detail-composer-reserve`, sticky positioning, measured padding, and mobile `bottom` offsets. Add positive CSS assertions for a two-row detail grid, `min-height:0`, `min-width:0`, and the single scroll region's `overflow-y:auto` plus `overscroll-behavior:contain` and hidden scrollbar behavior.
+Add negative assertions for `ResizeObserver`, composer height state/ref, `CSSProperties`, `--post-detail-composer-reserve`, sticky positioning, measured padding, and mobile `bottom` offsets. Add positive CSS assertions for `min-height:0`, `min-width:0`, and the single scroll region's `overflow-y:auto` plus `overscroll-behavior:contain` and hidden scrollbar behavior. The two-row grid belongs only to the docked shared viewport from Task 1; do not introduce a redundant inner grid wrapper.
 
 - [ ] **Step 2: Run focused tests and confirm RED**
 
@@ -61,7 +61,7 @@ corepack pnpm --dir apps/web test -- src/components/social/SocialContent.test.ts
 
 - [ ] **Step 3: Implement the structural dock**
 
-Remove the composer measurement ref/state/effect and reserve custom property. Render `.post-detail-scroll-region` first, containing the post and comments content, then `.post-detail-composer-dock` as its sibling. Give the actual scroll region its accessible role, label, and `tabIndex={0}`. Keep reply composers inline. Style the parent as `grid-template-rows:minmax(0,1fr) auto`, the region as the only vertical scroll owner, and the dock as an opaque normal-flow footer. Preserve all comment mutation/reconciliation behavior.
+Remove the composer measurement ref/state/effect and reserve custom property. For the success state, return a Fragment whose first child is `.post-detail-scroll-region.post-detail-content`, containing the post and comments content, and whose second child is `.post-detail-composer-dock`. These must be direct grid children of the docked shared viewport; do not retain or add a wrapping detail grid. Give the actual scroll region its accessible role, label, and `tabIndex={0}`. Keep reply composers inline. Style the region as the only vertical scroll owner and the dock as an opaque normal-flow footer. Preserve all comment mutation/reconciliation behavior.
 
 - [ ] **Step 4: Run GREEN and commit**
 
@@ -142,4 +142,3 @@ Push `codex/ux-slice-0-1` only. Do not modify or push `main`. Confirm the Vercel
 - [ ] **Step 4: Browser acceptance on the final Preview**
 
 At 430, 500, 768, 1024, and 1440 pixels in light and dark themes, verify the composer is fully visible, grows upward, remains above mobile navigation, and only the content region scrolls. Open the action menu over text/media and verify it is opaque with no leakage. Check Escape/outside-click/focus behavior, horizontal overflow, duplicate page scrollbars, and application console errors. Leave the final Preview open for the user.
-
