@@ -1,6 +1,9 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
-const {revalidateTag} = vi.hoisted(() => ({revalidateTag: vi.fn()}))
-vi.mock('../../../../lib/auth/server.js', () => ({getApiBearerToken: vi.fn(async () => 'signed-jwt')}))
+const {getApiBearerToken, revalidateTag} = vi.hoisted(() => ({
+  getApiBearerToken: vi.fn(async (): Promise<string | null> => 'signed-jwt'),
+  revalidateTag: vi.fn(),
+}))
+vi.mock('../../../../lib/auth/server.js', () => ({getApiBearerToken}))
 vi.mock('next/cache', () => ({revalidateTag}))
 import {DELETE, GET, POST, PUT} from './route.js'
 
@@ -10,9 +13,175 @@ afterEach(() => {
   delete process.env.NEXT_PUBLIC_AIFANS_API_URL
   delete process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET
   revalidateTag.mockReset()
+  getApiBearerToken.mockReset()
+  getApiBearerToken.mockResolvedValue('signed-jwt')
 })
 
 describe('same-origin social mutation proxy', () => {
+  const postId = '22222222-2222-4222-8222-222222222222'
+
+  it('proxies only same-origin empty share POSTs with strict private responses and one trusted key', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
+    const upstream = vi.fn()
+      .mockResolvedValueOnce(Response.json({created: true}, {status: 200, headers: {'x-request-id': 'upstream-id-1'}}))
+      .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-2'}}))
+      .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-3'}}))
+      .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-4'}}))
+      .mockResolvedValueOnce(Response.json({created: false}, {status: 200, headers: {'x-request-id': 'upstream-id-5'}}))
+    vi.stubGlobal('fetch', upstream)
+    const path = ['posts', postId, 'share']
+    const idempotencyKey = '33333333-3333-4333-8333-333333333333'
+    const inputs: Array<[string | undefined, string | undefined]> = [
+      [undefined, undefined],
+      ['{}', 'application/json'],
+      ['{}', 'application/json; charset=utf-8'],
+      ['   ', 'application/json'],
+      ['{}', 'application/json; charset="UTF-8"'],
+    ]
+    for (const [index, [body, contentType]] of inputs.entries()) {
+      const headers = new Headers({
+        origin: 'https://web.example',
+        'idempotency-key': idempotencyKey,
+        'x-vercel-forwarded-for': '203.0.113.7',
+        authorization: 'Bearer forged',
+        'x-aifans-rate-limit-identity': 'forged',
+      })
+      if (contentType !== undefined) headers.set('content-type', contentType)
+      const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {
+        method: 'POST',
+        headers,
+        ...(body === undefined ? {} : {body}),
+      }), {params: Promise.resolve({path})})
+      expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(await response.json()).toEqual({created: index === 0})
+    }
+    for (const [, init] of upstream.mock.calls) {
+      const sent = new Headers((init as RequestInit).headers)
+      expect((init as RequestInit).body).toBeUndefined()
+      expect(sent.has('content-type')).toBe(false)
+      expect(sent.get('authorization')).toBe('Bearer signed-jwt')
+      expect(sent.get('idempotency-key')).toBe(idempotencyKey)
+      expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
+      for (const name of ['cookie', 'x-vercel-forwarded-for']) expect(sent.has(name)).toBe(false)
+    }
+    expect(revalidateTag).toHaveBeenCalledTimes(inputs.length * 2)
+    expect(revalidateTag).toHaveBeenCalledWith('feed:for_you:en', 'max')
+    expect(revalidateTag).toHaveBeenCalledWith('feed:for_you:zh-CN', 'max')
+  })
+
+  it('proxies an anonymous share without Authorization and retains signed rate-limit enforcement', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
+    getApiBearerToken.mockResolvedValueOnce(null)
+    const upstream = vi.fn().mockResolvedValue(Response.json({created: true}))
+    vi.stubGlobal('fetch', upstream)
+    const path = ['posts', postId, 'share']
+    const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {
+      method: 'POST',
+      headers: {
+        origin: 'https://web.example',
+        'idempotency-key': postId,
+        'x-vercel-forwarded-for': '203.0.113.7',
+        cookie: 'session=must-not-leak',
+        authorization: 'Bearer forged',
+        'x-aifans-rate-limit-identity': 'forged',
+      },
+    }), {params: Promise.resolve({path})})
+
+    expect(response.status).toBe(200)
+    const sent = new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers)
+    expect(sent.has('authorization')).toBe(false)
+    expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
+    for (const name of ['cookie', 'x-vercel-forwarded-for']) expect(sent.has(name)).toBe(false)
+  })
+
+  it('rejects invalid share proxy requests before transport with private no-store errors', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    const upstream = vi.fn()
+    vi.stubGlobal('fetch', upstream)
+    const path = ['posts', postId, 'share']
+    const url = `https://web.example/api/social/${path.join('/')}`
+    const cases: Array<[Request, number]> = [
+      [new Request(url, {method: 'POST', headers: {origin: 'https://evil.example', 'idempotency-key': postId}}), 403],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example'}}), 400],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': 'invalid'}}), 400],
+      [new Request(`${url}?count=1`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId}}), 400],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: '{"count":1}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: '{}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json; charset=latin1', 'idempotency-key': postId}, body: '{}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json; charset=utf-8; profile=x', 'idempotency-key': postId}, body: '{}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/jsonx', 'idempotency-key': postId}, body: '{}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/jsonp', 'idempotency-key': postId}, body: '{}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'content-length': '8193', 'idempotency-key': postId}, body: '{}'}), 413],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'content-length': '-1', 'idempotency-key': postId}, body: '{}'}), 413],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'content-length': 'invalid', 'idempotency-key': postId}, body: '{}'}), 413],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'content-length': '1', 'idempotency-key': postId}, body: 'x'.repeat(8193)}), 413],
+    ]
+    for (const [request, status] of cases) {
+      const response = await POST(request, {params: Promise.resolve({path})})
+      expect(response.status).toBe(status)
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+    }
+    expect(upstream).not.toHaveBeenCalled()
+    expect(getApiBearerToken).not.toHaveBeenCalled()
+
+    const wrongPath = ['profiles', postId, 'share']
+    const wrong = await POST(new Request(`https://web.example/api/social/${wrongPath.join('/')}`, {
+      method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId},
+    }), {params: Promise.resolve({path: wrongPath})})
+    expect(wrong.status).toBe(404)
+    expect(wrong.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it.each([
+    [201, {created: true}],
+    [200, {created: 'yes'}],
+    [200, {created: true, internal: 'secret'}],
+  ] as const)('redacts invalid successful share responses', async (status, payload) => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(payload, {status})))
+    const path = ['posts', postId, 'share']
+    const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {
+      method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId},
+    }), {params: Promise.resolve({path})})
+    expect(response.status).toBe(502)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(await response.json()).toEqual({code: 'SOCIAL_INVALID_RESPONSE'})
+    expect(revalidateTag).not.toHaveBeenCalled()
+  })
+
+  it('redacts upstream error fields and security-sensitive response headers', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    const path = ['posts', postId, 'share']
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      code: 'RATE_LIMITED',
+      message: 'Try later',
+      requestId: 'body-request-id',
+      internal: 'must-not-leak',
+    }, {status: 429, headers: {
+      'x-request-id': 'header-request-id',
+      'set-cookie': 'admin=true',
+      location: 'https://evil.example',
+      'www-authenticate': 'Bearer secret',
+      'retry-after': '3600',
+      'access-control-allow-origin': '*',
+    }})))
+
+    const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {
+      method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId},
+    }), {params: Promise.resolve({path})})
+
+    expect(response.status).toBe(429)
+    expect(await response.json()).toEqual({code: 'RATE_LIMITED', message: 'Try later', requestId: 'body-request-id'})
+    expect(Object.fromEntries(response.headers)).toEqual({
+      'cache-control': 'private, no-store',
+      'content-type': 'application/json',
+      'x-request-id': 'header-request-id',
+    })
+    expect(revalidateTag).not.toHaveBeenCalled()
+  })
   it('forwards only a UUID public-profile read with one opaque cursor', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example'
     const upstream = vi.fn().mockImplementation(async () => Response.json({profile: {}, followerCount: 0, posts: {items: [], nextCursor: null}}))

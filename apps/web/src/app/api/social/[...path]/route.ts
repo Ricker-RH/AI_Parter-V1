@@ -1,4 +1,4 @@
-import {ApiErrorSchema, CreateHumanCommentSchema, PublicCommentSchema} from '@aifans/contracts'
+import {ApiErrorSchema, CreateHumanCommentSchema, PublicCommentSchema, ShareRecordedSchema} from '@aifans/contracts'
 import {fetchAifansApi} from '../../../../lib/server-api'
 import {invalidateSocialMutation} from '../../../../lib/social-invalidation'
 
@@ -10,6 +10,7 @@ const COMMENT_BODY_LIMIT=8192
 function allowedPath(parts: string[], method: 'POST' | 'PUT' | 'DELETE'): string | null {
   if (parts.length !== 3 || !uuid.test(parts[1] ?? '')) return null
   if (method === 'POST' && parts[0] === 'posts' && parts[2] === 'comments') return parts.join('/')
+  if (method === 'POST' && parts[0] === 'posts' && parts[2] === 'share') return parts.join('/')
   if (method === 'PUT' && parts[0] === 'notifications' && parts[2] === 'read') return parts.join('/')
   if (method !== 'POST' && parts[0] === 'posts' && (parts[2] === 'like' || parts[2] === 'bookmark')) return parts.join('/')
   if (method !== 'POST' && parts[0] === 'profiles' && parts[2] === 'follow') return parts.join('/')
@@ -52,6 +53,39 @@ function duplicateTopLevelKey(text: string): boolean {
 function declaredBodyTooLarge(request:Request):boolean { const value=request.headers.get('content-length');return value!==null&&(!/^\d+$/.test(value)||Number(value)>COMMENT_BODY_LIMIT) }
 async function readCommentBody(request:Request):Promise<string>{if(declaredBodyTooLarge(request))throw new Error('BODY_TOO_LARGE');if(!request.body)return'';const reader=request.body.getReader();const chunks:Uint8Array[]=[];let size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;if(value){size+=value.byteLength;if(size>COMMENT_BODY_LIMIT){await reader.cancel();throw new Error('BODY_TOO_LARGE')}chunks.push(value)}}}finally{reader.releaseLock()}const joined=new Uint8Array(size);let offset=0;for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength}return new TextDecoder().decode(joined)}
 
+const privateNoStore = {'cache-control': 'private, no-store'} as const
+
+function localMutationError(code: string, status: number): Response {
+  return Response.json({code}, {status, headers: privateNoStore})
+}
+
+function localMutationNotFound(): Response {
+  return new Response(null, {status: 404, headers: privateNoStore})
+}
+
+function jsonUtf8(contentType: string | null): boolean {
+  return contentType !== null && /^application\/json(?:\s*;\s*charset\s*=\s*(?:utf-8|"utf-8"))?\s*$/i.test(contentType)
+}
+
+async function normalizedShareBody(request: Request): Promise<'VALID' | 'INVALID' | 'TOO_LARGE'> {
+  if (declaredBodyTooLarge(request)) return 'TOO_LARGE'
+  if (request.body === null) return 'VALID'
+  if (!jsonUtf8(request.headers.get('content-type'))) return 'INVALID'
+  let body: string
+  try {
+    body = await readCommentBody(request)
+  } catch {
+    return 'TOO_LARGE'
+  }
+  if (!body.trim()) return 'VALID'
+  try {
+    const parsed = JSON.parse(body) as unknown
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 0 ? 'VALID' : 'INVALID'
+  } catch {
+    return 'INVALID'
+  }
+}
+
 function responseHeaders(upstream: Response): HeadersInit {
   const headers: Record<string, string> = {'cache-control': 'private, no-store', 'content-type': 'application/json'}
   const requestId = upstream.headers.get('x-request-id')
@@ -70,6 +104,10 @@ async function safeUpstreamError(upstream: Response): Promise<Response> {
 
 function mutationResponse(path: string, method: 'POST' | 'PUT' | 'DELETE', body: unknown): unknown | null {
   if (method === 'POST' && /\/comments$/.test(path)) return PublicCommentSchema.safeParse(body).success ? PublicCommentSchema.parse(body) : null
+  if (method === 'POST' && /\/share$/.test(path)) {
+    const parsed = ShareRecordedSchema.safeParse(body)
+    return parsed.success ? parsed.data : null
+  }
   const expected = method === 'PUT' ? 'created' : 'deleted'
   if (method === 'PUT' && /\/read$/.test(path)) {
     if (typeof body !== 'object' || body === null) return null
@@ -83,26 +121,36 @@ function mutationResponse(path: string, method: 'POST' | 'PUT' | 'DELETE', body:
 }
 
 async function proxy(request: Request, context: RouteContext, method: 'POST' | 'PUT' | 'DELETE') {
-  if (!sameOrigin(request)) return Response.json({code:'CSRF_REJECTED'},{status:403})
-  if(new URL(request.url).search) return Response.json({code:'INVALID_REQUEST'},{status:400})
+  if (!sameOrigin(request)) return localMutationError('CSRF_REJECTED', 403)
+  if(new URL(request.url).search) return localMutationError('INVALID_REQUEST', 400)
   const path = allowedPath((await context.params).path,method)
-  if (!path) return new Response(null, {status: 404})
+  if (!path) return localMutationNotFound()
   try {
     let body: string | undefined
-    if (method==='POST') {
-      if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return Response.json({code:'INVALID_REQUEST'},{status:422})
-      if(declaredBodyTooLarge(request)) return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})
-      try{body=await readCommentBody(request)}catch{return Response.json({code:'PAYLOAD_TOO_LARGE'},{status:413})}
-      if (!body.trim() || duplicateTopLevelKey(body)) return Response.json({code:'COMMENT_INVALID'},{status:422})
+    let trustedIdempotencyKey: string | undefined
+    if (method === 'POST' && /\/share$/.test(path)) {
+      const candidate = request.headers.get('idempotency-key')
+      if (candidate === null || !uuid.test(candidate)) return localMutationError('INVALID_REQUEST', 400)
+      trustedIdempotencyKey = candidate
+      const shareBody = await normalizedShareBody(request)
+      if (shareBody === 'TOO_LARGE') return localMutationError('PAYLOAD_TOO_LARGE', 413)
+      if (shareBody === 'INVALID') return localMutationError('INVALID_REQUEST', 422)
+    } else if (method==='POST') {
+      if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return localMutationError('INVALID_REQUEST', 422)
+      if(declaredBodyTooLarge(request)) return localMutationError('PAYLOAD_TOO_LARGE', 413)
+      try{body=await readCommentBody(request)}catch{return localMutationError('PAYLOAD_TOO_LARGE', 413)}
+      if (!body.trim() || duplicateTopLevelKey(body)) return localMutationError('COMMENT_INVALID', 422)
       let parsed: unknown
-      try { parsed=JSON.parse(body) } catch { return Response.json({code:'COMMENT_INVALID'},{status:422}) }
+      try { parsed=JSON.parse(body) } catch { return localMutationError('COMMENT_INVALID', 422) }
       const comment=CreateHumanCommentSchema.safeParse(parsed)
-      if(!comment.success)return Response.json({code:'COMMENT_INVALID'},{status:422})
+      if(!comment.success)return localMutationError('COMMENT_INVALID', 422)
       body=JSON.stringify(comment.data)
     }
-    const upstream = await fetchAifansApi(`/v1/${path}`, {policy: 'live-no-store', requestInit: {method, headers: request.headers, ...(body===undefined?{}:{body})}, trustedClientHeaders: request.headers})
+    const outboundInputHeaders = new Headers(request.headers)
+    if (trustedIdempotencyKey !== undefined) outboundInputHeaders.delete('content-type')
+    const upstream = await fetchAifansApi(`/v1/${path}`, {policy: 'live-no-store', requestInit: {method, headers: outboundInputHeaders, ...(body===undefined?{}:{body})}, trustedClientHeaders: request.headers, ...(trustedIdempotencyKey === undefined ? {} : {trustedIdempotencyKey})})
     if (!upstream.ok) return safeUpstreamError(upstream)
-    const expectedStatus = method === 'POST' ? 201 : 200
+    const expectedStatus = method === 'POST' && /\/comments$/.test(path) ? 201 : 200
     if (upstream.status !== expectedStatus) return Response.json({code:'SOCIAL_INVALID_RESPONSE'},{status:502,headers:responseHeaders(upstream)})
     let payload: unknown
     try { payload=await upstream.json() } catch { return Response.json({code:'SOCIAL_INVALID_RESPONSE'},{status:502,headers:responseHeaders(upstream)}) }
@@ -111,7 +159,7 @@ async function proxy(request: Request, context: RouteContext, method: 'POST' | '
     invalidateSocialMutation({method,path})
     return Response.json(parsed,{status:upstream.status,headers:responseHeaders(upstream)})
   } catch {
-    return Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})
+    return localMutationError('SOCIAL_UNAVAILABLE', 503)
   }
 }
 

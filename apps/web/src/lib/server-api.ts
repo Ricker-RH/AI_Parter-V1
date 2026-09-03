@@ -8,8 +8,9 @@ type SharedRequestOptions = {
 }
 
 export type AifansApiRequestOptions =
-  | (SharedRequestOptions & {policy: 'public-cache'; getToken?: never; trustedClientHeaders?: never})
-  | (SharedRequestOptions & {policy: 'private-cache' | 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers})
+  | (SharedRequestOptions & {policy: 'public-cache'; getToken?: never; trustedClientHeaders?: never; trustedIdempotencyKey?: never})
+  | (SharedRequestOptions & {policy: 'private-cache'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: never})
+  | (SharedRequestOptions & {policy: 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: string})
 
 async function defaultToken(): Promise<string | null> {
   const {getApiBearerToken} = await import('./auth/server')
@@ -33,7 +34,7 @@ function safePath(path: string): boolean {
   return (path === '/health' || path.startsWith('/v1/')) && !path.startsWith('//')
 }
 
-function outboundHeaders(input: HeadersInit | undefined, token: string | null, trustedClientHeaders?: Headers): Headers {
+function outboundHeaders(input: HeadersInit | undefined, token: string | null, trustedClientHeaders?: Headers, trustedIdempotencyKey?: string): Headers {
   const incoming = new Headers(input)
   const headers = new Headers()
   for (const name of ['content-type', 'x-request-id']) {
@@ -43,6 +44,7 @@ function outboundHeaders(input: HeadersInit | undefined, token: string | null, t
   if (token) headers.set('authorization', `Bearer ${token}`)
   const identity = trustedClientHeaders && createRateLimitIdentity(trustedClientHeaders, Date.now(), process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET)
   if (identity) headers.set('x-aifans-rate-limit-identity', identity)
+  if (trustedIdempotencyKey) headers.set('idempotency-key', trustedIdempotencyKey)
   return headers
 }
 
@@ -53,6 +55,9 @@ export async function fetchAifansApi(
   if (!options || !['public-cache', 'private-cache', 'live-no-store'].includes(options.policy)) throw new Error('Explicit API request policy required')
   if (!safePath(path)) throw new Error('Invalid API path')
   if (options.policy === 'public-cache' && ('getToken' in options || 'trustedClientHeaders' in options)) throw new Error('Public API cache cannot use authentication')
+  if (options.policy !== 'live-no-store' && 'trustedIdempotencyKey' in options) throw new Error('Trusted idempotency keys require a live request')
+  const trustedIdempotencyKey = options.policy === 'live-no-store' ? options.trustedIdempotencyKey : undefined
+  if (trustedIdempotencyKey !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trustedIdempotencyKey)) throw new Error('Invalid trusted idempotency key')
   const fetcher = options.fetcher ?? fetch
   const requestInit = options.requestInit ?? {}
   const timeoutMs = options.timeoutMs ?? 8000
@@ -70,7 +75,7 @@ export async function fetchAifansApi(
   try {
     const timeout=new Promise<never>((_resolve,reject)=>{const rejectOnAbort=()=>reject(controller.signal.reason??new Error('AIFANS API timeout'));if(controller.signal.aborted)rejectOnAbort();else controller.signal.addEventListener('abort',rejectOnAbort,{once:true})})
     const token=await Promise.race([getToken(),timeout])
-    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,trustedClientHeaders)),signal:controller.signal})
+    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,trustedClientHeaders,trustedIdempotencyKey)),signal:controller.signal})
   } finally {
     clearTimeout(timer)
     requestInit.signal?.removeEventListener('abort',onAbort)

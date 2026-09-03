@@ -74,6 +74,41 @@ describe('authenticated server API transport', () => {
     for (const name of ['cookie', 'x-forwarded-for', 'x-vercel-forwarded-for']) expect(headers.has(name)).toBe(false)
   })
 
+  it('forwards only an explicitly trusted live idempotency key', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    const fetcher = vi.fn().mockResolvedValue(Response.json({created: true}))
+    const trusted = '22222222-2222-4222-8222-222222222222'
+    await fetchAifansApi(`/v1/posts/${trusted}/share`, {
+      policy: 'live-no-store',
+      fetcher,
+      getToken: async () => null,
+      trustedIdempotencyKey: trusted,
+      requestInit: {method: 'POST', headers: {'idempotency-key': '33333333-3333-4333-8333-333333333333'}},
+    })
+    const headers = new Headers((fetcher.mock.calls[0]?.[1] as RequestInit).headers)
+    expect(headers.get('idempotency-key')).toBe(trusted)
+    await expect(fetchAifansApi(`/v1/posts/${trusted}/share`, {
+      policy: 'live-no-store',
+      fetcher,
+      trustedIdempotencyKey: 'invalid',
+      requestInit: {method: 'POST'},
+    })).rejects.toThrow('Invalid trusted idempotency key')
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it('drops a forged idempotency key when no trusted key is supplied', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    const fetcher = vi.fn().mockResolvedValue(Response.json({created: true}))
+    await fetchAifansApi('/v1/posts/22222222-2222-4222-8222-222222222222/share', {
+      policy: 'live-no-store',
+      fetcher,
+      getToken: async () => null,
+      requestInit: {method: 'POST', headers: {'idempotency-key': '33333333-3333-4333-8333-333333333333'}},
+    })
+    const headers = new Headers((fetcher.mock.calls[0]?.[1] as RequestInit).headers)
+    expect(headers.has('idempotency-key')).toBe(false)
+  })
+
   it('requires an explicit request policy at runtime', async () => {
     process.env.AIFANS_API_URL = 'https://api.example'
     await expect(fetchAifansApi('/health', {} as never)).rejects.toThrow('Explicit API request policy required')
