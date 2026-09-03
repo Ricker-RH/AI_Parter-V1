@@ -1,9 +1,9 @@
 import {randomUUID} from 'node:crypto'
 import {Pool, type PoolClient} from 'pg'
-import {afterAll, describe, expect, it} from 'vitest'
+import {afterAll, afterEach, describe, expect, it} from 'vitest'
 import {decodeCursor, decodeFollowedIpCursor, decodeLikedCursor, encodeCursor, encodeNotificationCursor, PublicIpSchema} from '@aifans/contracts'
 import {createSocialRepository} from '../src/social.js'
-import {createActorSession} from '../src/session.js'
+import {createActorSession, createPlatformSession} from '../src/session.js'
 
 const connectionString=process.env.DATABASE_URL ?? ''
 const integration=connectionString ? describe : describe.skip
@@ -14,7 +14,27 @@ async function ip(c:PoolClient, state:'published'|'draft'='published') { const i
 async function post(c:PoolClient, author:string, state:'published'|'draft'|'withdrawn'='published', publishedAt?:string, languageCode?:'en'|'zh-CN') { const id=randomUUID(); const timestamp=publishedAt??new Date().toISOString(); if(state==='draft') await c.query(`INSERT INTO public.posts(id,author_profile_id,source,state,body,language_code) VALUES($1,$2,'worker',$3,'fixture',$4)`,[id,author,state,languageCode??null]); else if(state==='published') await c.query(`INSERT INTO public.posts(id,author_profile_id,source,state,body,published_at,language_code) VALUES($1,$2,'worker',$3,'fixture',$4::timestamptz,$5)`,[id,author,state,timestamp,languageCode??null]); else await c.query(`INSERT INTO public.posts(id,author_profile_id,source,state,body,published_at,withdrawn_at,language_code) VALUES($1,$2,'worker',$3,'fixture',$4::timestamptz,$4::timestamptz,$5)`,[id,author,state,timestamp,languageCode??null]); return id }
 function notificationCursor(createdAt:string,id:string) { return encodeNotificationCursor({v:1,kind:'notifications',createdAt,id}) }
 function context() { return {requestId: randomUUID()} }
-function repo(c:PoolClient) { const session=createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})}, {transactionMode:'nested'}); return createSocialRepository({withActor:session.withActor,withPublic:async(fn)=>{await c.query('SAVEPOINT anon'); try {await c.query('SET LOCAL ROLE aifans_anon'); await c.query("SELECT set_config('request.jwt.claims','{}',true)"); const value=await fn({query:c.query.bind(c),release(){}}); await c.query('ROLLBACK TO SAVEPOINT anon'); return value} finally {await c.query('RELEASE SAVEPOINT anon').catch(()=>undefined)}}}) }
+function repo(c:PoolClient) {
+ const session=createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})}, {transactionMode:'nested'})
+ return createSocialRepository({
+  withActor:session.withActor,
+  withPublic:async(fn)=>{
+   await c.query('SAVEPOINT anon')
+   try {
+    await c.query('SET LOCAL ROLE aifans_anon')
+    await c.query("SELECT set_config('request.jwt.claims','{}',true)")
+    const value=await fn({query:c.query.bind(c),release(){}})
+    await c.query('SET LOCAL ROLE NONE')
+    await c.query('RELEASE SAVEPOINT anon')
+    return value
+   } catch(error) {
+    await c.query('ROLLBACK TO SAVEPOINT anon').catch(()=>undefined)
+    await c.query('RELEASE SAVEPOINT anon').catch(()=>undefined)
+    throw error
+   }
+  },
+ })
+}
 
 async function committedCommentFixture() {
  const client=await pool.connect()
@@ -53,6 +73,222 @@ async function expectVisibilityChangeToWin(change:(client:PoolClient,fixture:Awa
  }
 }
 
+type CommittedShareFixture = {
+ author:string
+ represented:string
+ actor:Awaited<ReturnType<typeof human>>
+ operator:Awaited<ReturnType<typeof human>>
+ postId:string
+}
+const committedShareFixtures=new Set<CommittedShareFixture>()
+
+async function committedShareFixture():Promise<CommittedShareFixture> {
+ const client=await pool.connect()
+ try {
+  await client.query('BEGIN')
+  const author=await ip(client)
+  const represented=await ip(client)
+  const actor=await human(client)
+  const operator=await human(client)
+  await client.query("INSERT INTO public.profile_roles(profile_id,role,granted_by_profile_id) VALUES($1,'operator',$1)",[operator.id])
+  const postId=await post(client,author)
+  await client.query('COMMIT')
+  const fixture={author,represented,actor,operator,postId}
+  committedShareFixtures.add(fixture)
+  return fixture
+ } catch(error) {
+  await client.query('ROLLBACK').catch(()=>undefined)
+  throw error
+ } finally {
+  client.release()
+ }
+}
+
+async function cleanupCommittedShareFixture(fixture:CommittedShareFixture) {
+ if(!committedShareFixtures.has(fixture)) return
+ const client=await pool.connect()
+ try {
+  await client.query('BEGIN')
+  await client.query('SET CONSTRAINTS ALL DEFERRED')
+  const comments=await client.query<{id:string}>('SELECT id FROM public.comments WHERE post_id=$1',[fixture.postId])
+  const commentIds=comments.rows.map((row)=>row.id)
+  if(commentIds.length) {
+   await client.query('ALTER TABLE public.analytics_outbox DISABLE TRIGGER analytics_outbox_guard')
+   await client.query('ALTER TABLE public.business_events DISABLE TRIGGER business_events_append_only')
+   await client.query('ALTER TABLE public.audit_events DISABLE TRIGGER audit_events_append_only')
+   await client.query('ALTER TABLE public.workflow_transitions DISABLE TRIGGER workflow_transitions_append_only')
+   await client.query("DELETE FROM public.analytics_outbox WHERE business_event_id IN (SELECT id FROM public.business_events WHERE subject_entity_type='comment' AND subject_entity_id=ANY($1::uuid[]))",[commentIds])
+   await client.query("DELETE FROM public.business_events WHERE subject_entity_type='comment' AND subject_entity_id=ANY($1::uuid[])",[commentIds])
+   await client.query("DELETE FROM public.audit_events WHERE entity_type='comment' AND entity_id=ANY($1::uuid[])",[commentIds])
+   await client.query("DELETE FROM public.workflow_transitions WHERE entity_type='comment' AND entity_id=ANY($1::uuid[])",[commentIds])
+   await client.query('SET CONSTRAINTS ALL IMMEDIATE')
+   await client.query('ALTER TABLE public.analytics_outbox ENABLE TRIGGER analytics_outbox_guard')
+   await client.query('ALTER TABLE public.business_events ENABLE TRIGGER business_events_append_only')
+   await client.query('ALTER TABLE public.audit_events ENABLE TRIGGER audit_events_append_only')
+   await client.query('ALTER TABLE public.workflow_transitions ENABLE TRIGGER workflow_transitions_append_only')
+   await client.query('DELETE FROM public.notifications WHERE comment_id=ANY($1::uuid[])',[commentIds])
+   await client.query('DELETE FROM public.comment_likes WHERE comment_id=ANY($1::uuid[])',[commentIds])
+   await client.query('ALTER TABLE public.comments DISABLE TRIGGER comments_reject_delete')
+   await client.query('DELETE FROM public.comments WHERE id=ANY($1::uuid[])',[commentIds])
+   await client.query('SET CONSTRAINTS ALL IMMEDIATE')
+   await client.query('ALTER TABLE public.comments ENABLE TRIGGER comments_reject_delete')
+  }
+  await client.query('DELETE FROM public.notifications WHERE post_id=$1',[fixture.postId])
+  const shareLedger=await client.query<{table_name:string|null}>("SELECT to_regclass('public.post_share_events')::text AS table_name")
+  if(shareLedger.rows[0]?.table_name) await client.query('DELETE FROM public.post_share_events WHERE post_id=$1',[fixture.postId])
+  await client.query('DELETE FROM public.post_likes WHERE post_id=$1',[fixture.postId])
+  await client.query('DELETE FROM public.bookmarks WHERE post_id=$1',[fixture.postId])
+  await client.query('ALTER TABLE public.posts DISABLE TRIGGER posts_reject_delete')
+  await client.query('DELETE FROM public.posts WHERE id=$1',[fixture.postId])
+  await client.query('SET CONSTRAINTS ALL IMMEDIATE')
+  await client.query('ALTER TABLE public.posts ENABLE TRIGGER posts_reject_delete')
+  await client.query('DELETE FROM public.profile_roles WHERE profile_id=$1',[fixture.operator.id])
+  const ipIds=[fixture.author,fixture.represented]
+  await client.query("UPDATE public.ip_profiles SET public_state='draft',operation_enabled=false,current_identity_revision_id=NULL WHERE profile_id=ANY($1::uuid[])",[ipIds])
+  await client.query('ALTER TABLE public.ip_identity_revisions DISABLE TRIGGER ip_identity_revisions_immutable')
+  await client.query('DELETE FROM public.ip_identity_revisions WHERE ip_profile_id=ANY($1::uuid[])',[ipIds])
+  await client.query('SET CONSTRAINTS ALL IMMEDIATE')
+  await client.query('ALTER TABLE public.ip_identity_revisions ENABLE TRIGGER ip_identity_revisions_immutable')
+  await client.query('DELETE FROM public.ip_profiles WHERE profile_id=ANY($1::uuid[])',[ipIds])
+  await client.query('DELETE FROM public.profiles WHERE id=ANY($1::uuid[])',[[...ipIds,fixture.actor.id,fixture.operator.id]])
+  await client.query('COMMIT')
+  committedShareFixtures.delete(fixture)
+ } catch(error) {
+  await client.query('ROLLBACK').catch(()=>undefined)
+  throw error
+ } finally {
+  client.release()
+ }
+}
+
+afterEach(async()=>{
+ for(const fixture of [...committedShareFixtures]) await cleanupCommittedShareFixture(fixture)
+})
+
+async function bounded<T>(promise:Promise<T>,label:string,timeoutMs=5_000):Promise<T> {
+ let timer:ReturnType<typeof setTimeout>|undefined
+ try {
+  return await Promise.race([
+   promise,
+   new Promise<T>((_,reject)=>{timer=setTimeout(()=>reject(new Error(`${label} timed out`)),timeoutMs)}),
+  ])
+ } finally {
+  if(timer) clearTimeout(timer)
+ }
+}
+
+async function beginBounded(client:PoolClient) {
+ await client.query('BEGIN')
+ await client.query("SET LOCAL lock_timeout='2s'")
+ await client.query("SET LOCAL statement_timeout='4s'")
+}
+
+async function rollbackAndRelease(client:PoolClient) {
+ try {
+  await bounded(client.query('ROLLBACK'),'rollback',5_000)
+  client.release()
+ } catch {
+  client.release(true)
+ }
+}
+
+async function expectSessionToWaitOnLock(observer:PoolClient,blockedPid:number,attempt:Promise<unknown>) {
+ let blocked=false
+ for(let poll=0;poll<50;poll+=1) {
+  const activity=await observer.query<{wait_event_type:string|null}>('SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1',[blockedPid])
+  if(activity.rows[0]?.wait_event_type==='Lock') {
+   blocked=true
+   break
+  }
+  const settled=await Promise.race([attempt.then(()=>true),new Promise<false>((resolve)=>setTimeout(()=>resolve(false),10))])
+  if(settled) break
+ }
+ expect(blocked).toBe(true)
+}
+
+type TaggedOutcome = {
+ kind:'share'|'comment'
+ outcome:{ok:true;value:unknown}|{ok:false;error:unknown}
+}
+
+async function expectShareCommentLockOrder(commentKind:'human'|'platform') {
+ const fixture=await committedShareFixture()
+ const blocker=await pool.connect()
+ const shareClient=await pool.connect()
+ const commentClient=await pool.connect()
+ const activePids:number[]=[]
+ let shareAttempt:Promise<{ok:true;value:unknown}|{ok:false;error:unknown}>|undefined
+ let commentAttempt:Promise<{ok:true;value:unknown}|{ok:false;error:unknown}>|undefined
+ try {
+  const definitions=await blocker.query<{name:string;definition:string}>(`
+   SELECT p.proname AS name,pg_get_functiondef(p.oid) AS definition
+   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='public' AND p.proname IN ('record_post_share','create_human_comment','platform_publish_ip_comment')
+  `)
+  const byName=new Map(definitions.rows.map((row)=>[row.name,row.definition]))
+  for(const name of ['record_post_share','create_human_comment','platform_publish_ip_comment']) {
+   expect(byName.has(name),`${name} is installed`).toBe(true)
+   expect(byName.get(name)!).toMatch(/FROM public\.posts[\s\S]*FOR (?:SHARE|UPDATE)(?: OF \w+)?;[\s\S]*FROM public\.ip_profiles/)
+  }
+  expect(byName.get('platform_publish_ip_comment')).toMatch(/WHERE ip\.profile_id IN \([^)]+\)[\s\S]*ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
+
+  await beginBounded(blocker)
+  await beginBounded(shareClient)
+  await beginBounded(commentClient)
+  const blockerPid=(await blocker.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+  const sharePid=(await shareClient.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+  const commentPid=(await commentClient.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+  activePids.push(blockerPid,sharePid,commentPid)
+  await blocker.query('SELECT id FROM public.posts WHERE id=$1 FOR UPDATE',[fixture.postId])
+
+  const shareKey=randomUUID()
+  const body=`lock-order-${commentKind}-${randomUUID()}`
+  const rawShareAttempt=repo(shareClient).recordPostShare(null,fixture.postId,shareKey)
+  const rawCommentAttempt=commentKind==='human'
+   ? repo(commentClient).createHumanComment(fixture.actor,fixture.postId,{body},context())
+   : createPlatformSession({connect:async()=>({query:commentClient.query.bind(commentClient),release(){}})},{transactionMode:'nested'}).withPlatformActor(
+    fixture.operator,
+    async(client)=>(await client.query('SELECT * FROM public.platform_publish_ip_comment($1,$2,$3,$4,$5)',[fixture.postId,fixture.represented,body,null,randomUUID()])).rows[0],
+   )
+  shareAttempt=bounded(rawShareAttempt.then((value)=>({ok:true as const,value})).catch((error:unknown)=>({ok:false as const,error})),'share statement')
+  commentAttempt=bounded(rawCommentAttempt.then((value)=>({ok:true as const,value})).catch((error:unknown)=>({ok:false as const,error})),'comment statement')
+  const taggedShare=shareAttempt.then((outcome):TaggedOutcome=>({kind:'share',outcome}))
+  const taggedComment=commentAttempt.then((outcome):TaggedOutcome=>({kind:'comment',outcome}))
+
+  await expectSessionToWaitOnLock(blocker,sharePid,shareAttempt)
+  await expectSessionToWaitOnLock(blocker,commentPid,commentAttempt)
+  await bounded(blocker.query('COMMIT'),'blocker commit')
+
+  const assertOwnTransactionRowCount=async(kind:'share'|'comment',count:number)=>{
+   const result=kind==='share'
+    ? await shareClient.query<{count:number}>('SELECT count(*)::int AS count FROM public.post_share_events WHERE post_id=$1 AND idempotency_key=$2',[fixture.postId,shareKey])
+    : await commentClient.query<{count:number}>('SELECT count(*)::int AS count FROM public.comments WHERE post_id=$1 AND body=$2',[fixture.postId,body])
+   expect(result.rows).toEqual([{count}])
+  }
+  const first=await bounded(Promise.race([taggedShare,taggedComment]),'first command settlement')
+  if(!first.outcome.ok) expect(first.outcome.error).not.toMatchObject({code:'40P01'})
+  expect(first.outcome.ok).toBe(true)
+  await bounded(assertOwnTransactionRowCount(first.kind,1),'first row assertion')
+  await bounded((first.kind==='share'?shareClient:commentClient).query('ROLLBACK'),'first command rollback')
+
+  const second=await bounded(first.kind==='share'?taggedComment:taggedShare,'second command settlement')
+  if(!second.outcome.ok) expect(second.outcome.error).not.toMatchObject({code:'40P01'})
+  expect(second.outcome.ok).toBe(true)
+  await bounded(assertOwnTransactionRowCount(second.kind,1),'second row assertion')
+  await bounded((second.kind==='share'?shareClient:commentClient).query('ROLLBACK'),'second command rollback')
+ } finally {
+  if(activePids.length) {
+   await bounded(pool.query('SELECT pg_cancel_backend(pid) FROM unnest($1::int[]) AS active(pid)',[activePids]),'backend cancellation').catch(()=>undefined)
+  }
+  await Promise.allSettled([
+   ...(shareAttempt?[bounded(shareAttempt,'share cleanup')]:[]),
+   ...(commentAttempt?[bounded(commentAttempt,'comment cleanup')]:[]),
+  ])
+  await Promise.all([rollbackAndRelease(blocker),rollbackAndRelease(shareClient),rollbackAndRelease(commentClient)])
+  await cleanupCommittedShareFixture(fixture)
+ }
+}
+
 integration('social repository local postgres',()=>{
  afterAll(async()=>pool.end())
  it('returns only published public posts and keeps viewer flags actor-scoped',async()=>tx(async c=>{
@@ -60,17 +296,100 @@ integration('social repository local postgres',()=>{
   const first=await human(c), second=await human(c); const social=repo(c);
   const ownerProjection=await c.query('SELECT post_id FROM public.social_public_posts()'); expect(ownerProjection.rows.map((row)=>row.post_id)).toContain(visible);
   await c.query('SAVEPOINT diagnostic_anon'); await c.query('SET LOCAL ROLE aifans_anon'); const anonProjection=await c.query('SELECT post_id FROM public.social_public_posts()'); const flags=await c.query('SELECT * FROM public.social_viewer_flags($1,$2)',[visible,author]); const metrics=await c.query('SELECT * FROM public.social_post_metrics($1,$2,$3)',[visible,author,'en']); const identity=await c.query("SELECT current_user, current_setting('request.jwt.claims',true) AS claims"); await c.query('ROLLBACK TO SAVEPOINT diagnostic_anon'); await c.query('RELEASE SAVEPOINT diagnostic_anon'); expect(identity.rows[0]?.current_user).toBe('aifans_anon'); expect(anonProjection.rows.map((row)=>row.post_id)).toContain(visible); expect(flags.rows).toHaveLength(1); expect(metrics.rows).toHaveLength(1);
-  await social.likePost(first,visible,context()); await social.bookmarkPost(first,visible); await social.follow(first,author,context());
-  const anon=await social.listFeed({viewer:null,kind:'for_you',limit:25,after:null}); expect(anon.items.map(x=>x.id)).toEqual([visible]); expect(anon.items[0]?.likeCount).toBe(1); expect(anon.items[0]?.viewerHasLiked).toBe(false); expect(PublicIpSchema.parse(anon.items[0]?.author)).toBeTruthy(); expect(anon.items[0]?.author).not.toHaveProperty('followerCount');
+  await social.likePost(first,visible,context()); await social.bookmarkPost(first,visible); await social.bookmarkPost(second,visible); await social.recordPostShare(first,visible,randomUUID()); await social.recordPostShare(null,visible,randomUUID()); await social.follow(first,author,context());
+  const anon=await social.listFeed({viewer:null,kind:'for_you',limit:25,after:null}); expect(anon.items.map(x=>x.id)).toEqual([visible]); expect(anon.items[0]).toMatchObject({likeCount:1,commentCount:0,bookmarkCount:2,shareCount:2}); expect(anon.items[0]?.viewerHasLiked).toBe(false); expect(PublicIpSchema.parse(anon.items[0]?.author)).toBeTruthy(); expect(anon.items[0]?.author).not.toHaveProperty('followerCount');
   const mine=await social.listFeed({viewer:first,kind:'for_you',limit:25,after:null}); expect(mine.items[0]).toMatchObject({viewerHasLiked:true,viewerHasBookmarked:true,viewerFollowsAuthor:true});
   const other=await social.listFeed({viewer:second,kind:'for_you',limit:25,after:null}); expect(other.items[0]).toMatchObject({viewerHasLiked:false,viewerHasBookmarked:false,viewerFollowsAuthor:false});
  }))
- it('keeps every legacy post response author parseable by the strict public IP schema',async()=>tx(async c=>{ const author=await ip(c),actor=await human(c),postId=await post(c,author),social=repo(c); await social.likePost(actor,postId,context()); await social.bookmarkPost(actor,postId); const responses=[await social.listFeed({viewer:null,kind:'for_you',limit:10,after:null}),await social.listBookmarks(actor,{limit:10}),await social.listLiked(actor,{limit:10})]; const profile=await social.getPublicProfile({viewer:null,profileId:author,limit:10,after:null}); if(profile) responses.push(profile.posts); const detail=await social.getPost({viewer:null,postId,commentLimit:10,commentAfter:null}); const authors=[...responses.flatMap(page=>page.items.map(item=>item.author)),...(detail?[detail.author]:[])]; expect(authors).toHaveLength(5); for(const value of authors) { expect(PublicIpSchema.parse(value)).toEqual(value); expect(value).not.toHaveProperty('followerCount') } }))
+ it('populates strict interaction counts for feed, following, liked, bookmarks, search, profile, and detail',async()=>tx(async client=>{
+  const author=await ip(client)
+  const actor=await human(client)
+  const postId=await post(client,author)
+  const social=repo(client)
+  await social.follow(actor,author,context())
+  await social.likePost(actor,postId,context())
+  await social.bookmarkPost(actor,postId)
+  await social.recordPostShare(actor,postId,randomUUID())
+
+  const pages=[
+   await social.listFeed({viewer:null,kind:'for_you',limit:10,after:null}),
+   await social.listFeed({viewer:actor,kind:'following',limit:10,after:null}),
+   await social.listBookmarks(actor,{limit:10}),
+   await social.listLiked(actor,{limit:10}),
+  ]
+  const search=await social.search({viewer:null,q:'fixture',category:'posts',limit:10,after:null})
+  const profile=await social.getPublicProfile({viewer:null,profileId:author,limit:10,after:null})
+  const detail=await social.getPost({viewer:null,postId,commentLimit:10,commentAfter:null})
+  if(profile) pages.push(profile.posts)
+  const posts=[
+   ...pages.flatMap((page)=>page.items),
+   ...search.items.flatMap((item)=>item.type==='post'?[item.post]:[]),
+   ...(detail?[detail]:[]),
+  ]
+  expect(posts).toHaveLength(7)
+  for(const value of posts) {
+   expect(value).toMatchObject({likeCount:1,commentCount:0,bookmarkCount:1,shareCount:1})
+   expect(PublicIpSchema.parse(value.author)).toEqual(value.author)
+  }
+ }))
  it('returns only published current IP profiles with paginated posts and viewer follow state',async()=>tx(async c=>{ const visible=await ip(c),hidden=await ip(c,'draft'),viewer=await human(c),social=repo(c); const older=await post(c,visible,'published','2026-09-01T00:00:00.000Z'); const newer=await post(c,visible,'published','2026-09-01T01:00:00.000Z'); await social.follow(viewer,visible,context()); const anonymous=await social.getPublicProfile({viewer:null,profileId:visible,limit:1,after:null}); expect(anonymous).toMatchObject({profile:{id:visible,kind:'ip'},followerCount:1,posts:{items:[{id:newer}]}}); expect(anonymous).not.toHaveProperty('viewerFollows'); expect(anonymous?.posts.nextCursor).toBeTruthy(); const after=decodeCursor(anonymous!.posts.nextCursor!,'following'); await expect(social.getPublicProfile({viewer:null,profileId:visible,limit:1,after})).resolves.toMatchObject({posts:{items:[{id:older}],nextCursor:null}}); await expect(social.getPublicProfile({viewer,profileId:visible,limit:10,after:null})).resolves.toMatchObject({viewerFollows:true}); await expect(social.getPublicProfile({viewer:null,profileId:hidden,limit:10,after:null})).resolves.toBeNull(); await expect(social.getPublicProfile({viewer:null,profileId:randomUUID(),limit:10,after:null})).resolves.toBeNull() }))
  it('uses the documented absolute score and changes order for the viewer relationship',async()=>tx(async c=>{ const publishedAt='2026-09-01T00:00:00.000Z'; const firstAuthor=await ip(c),secondAuthor=await ip(c); await c.query('UPDATE public.ip_profiles SET feed_weight=7 WHERE profile_id=$1',[firstAuthor]); const firstPost=await post(c,firstAuthor,'published',publishedAt,'en'),secondPost=await post(c,secondAuthor,'published',publishedAt); const viewer=await human(c),liker=await human(c),social=repo(c); await social.likePost(liker,firstPost,context()); const commentId=randomUUID(); await c.query(`INSERT INTO public.comments(id,post_id,author_profile_id,source,body) VALUES($1,$2,$3,'human','score')`,[commentId,firstPost,viewer.id]); const score=await createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})}, {transactionMode:'nested'}).withActor(viewer,async client=>(await client.query<{score:string;like_count:number;comment_count:number}>('SELECT * FROM public.social_post_metrics($1,$2,$3)',[firstPost,firstAuthor,'en'])).rows[0]!); expect(Number(score.score)).toBe(Date.parse(publishedAt)/3_600_000+7+10+2+3); expect(score).toMatchObject({like_count:1,comment_count:1}); const anonymous=await social.listFeed({viewer:null,kind:'for_you',limit:10,after:null}); const lower=anonymous.items.findIndex(item=>item.id===firstPost)>anonymous.items.findIndex(item=>item.id===secondPost)?{author:firstAuthor,post:firstPost}:{author:secondAuthor,post:secondPost}; await social.follow(viewer,lower.author,context()); const personalized=await social.listFeed({viewer,kind:'for_you',limit:10,after:null}); expect(personalized.items[0]?.id).toBe(lower.post) }))
  it('paginates every feed post once while preserving database microseconds',async()=>tx(async c=>{ const author=await ip(c); const ids=[await post(c,author,'published','2026-09-01T00:00:00.000100Z'),await post(c,author,'published','2026-09-01T00:00:00.000500Z'),await post(c,author,'published','2026-09-01T00:00:00.000900Z')]; const viewer=await human(c),social=repo(c); await social.follow(viewer,author,context()); for (const kind of ['for_you','following'] as const) { const found:string[]=[]; let after=null; do { const page=await social.listFeed({viewer:kind==='following'?viewer:null,kind,limit:1,after}); found.push(...page.items.map(item=>item.id)); after=page.nextCursor?decodeCursor(page.nextCursor,kind):null } while(after); expect(found).toEqual(ids.slice().reverse()); expect(new Set(found).size).toBe(ids.length) } }))
  it('rejects commands against posts and IPs outside the public current projection',async()=>tx(async c=>{ const actor=await human(c); const author=await ip(c); const draft=await post(c,author,'draft'); const withdrawn=await post(c,author,'withdrawn'); const hidden=await ip(c,'draft'); const hiddenPost=await post(c,hidden); const missing=randomUUID(); const social=repo(c); await expect(social.createHumanComment(actor,draft,{body:'no'},context())).rejects.toThrow(); await expect(social.createHumanComment(actor,withdrawn,{body:'no'},context())).rejects.toThrow(); await expect(social.follow(actor,hidden,context())).rejects.toThrow(); await expect(social.likePost(actor,hiddenPost,context())).rejects.toThrow(); for(const command of [()=>social.bookmarkPost(actor,hiddenPost),()=>social.bookmarkPost(actor,missing),()=>social.unfollow(actor,hidden),()=>social.unfollow(actor,missing),()=>social.unlikePost(actor,hiddenPost),()=>social.unlikePost(actor,missing),()=>social.unbookmarkPost(actor,hiddenPost),()=>social.unbookmarkPost(actor,missing)]) await expect(command()).rejects.toMatchObject({code:'P0002'}) }))
  it('keeps every visible relationship toggle idempotent through bounded commands',async()=>tx(async c=>{ const actor=await human(c),author=await ip(c),postId=await post(c,author),social=repo(c); await expect(social.follow(actor,author,context())).resolves.toEqual({created:true}); await expect(social.follow(actor,author,context())).resolves.toEqual({created:false}); await expect(social.unfollow(actor,author)).resolves.toEqual({deleted:true}); await expect(social.unfollow(actor,author)).resolves.toEqual({deleted:false}); await expect(social.likePost(actor,postId,context())).resolves.toEqual({created:true}); await expect(social.likePost(actor,postId,context())).resolves.toEqual({created:false}); await expect(social.unlikePost(actor,postId)).resolves.toEqual({deleted:true}); await expect(social.unlikePost(actor,postId)).resolves.toEqual({deleted:false}); await expect(social.bookmarkPost(actor,postId)).resolves.toEqual({created:true}); await expect(social.bookmarkPost(actor,postId)).resolves.toEqual({created:false}); await expect(social.unbookmarkPost(actor,postId)).resolves.toEqual({deleted:true}); await expect(social.unbookmarkPost(actor,postId)).resolves.toEqual({deleted:false}) }))
+ it('records authenticated and anonymous shares idempotently without network metadata',async()=>tx(async client=>{
+  const author=await ip(client)
+  const postId=await post(client,author)
+  const otherPostId=await post(client,author)
+  const actor=await human(client)
+  const social=repo(client)
+  const authenticatedKey=randomUUID()
+  const anonymousKey=randomUUID()
+
+  await expect(social.recordPostShare(actor,postId,authenticatedKey)).resolves.toEqual({created:true})
+  await expect(social.recordPostShare(actor,postId,authenticatedKey)).resolves.toEqual({created:false})
+  await expect(social.recordPostShare(null,postId,anonymousKey)).resolves.toEqual({created:true})
+  await expect(social.recordPostShare(null,postId,randomUUID())).resolves.toEqual({created:true})
+  await expect(social.recordPostShare(null,otherPostId,authenticatedKey)).resolves.toEqual({created:true})
+
+  const rows=await client.query<{actor_profile_id:string|null;idempotency_key:string}>('SELECT actor_profile_id,idempotency_key FROM public.post_share_events WHERE post_id=$1 ORDER BY idempotency_key',[postId])
+  expect(rows.rows).toHaveLength(3)
+  expect(rows.rows.filter((row)=>row.actor_profile_id===actor.id)).toHaveLength(1)
+  expect(rows.rows.filter((row)=>row.actor_profile_id===null)).toHaveLength(2)
+  const columns=await client.query<{column_name:string}>("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='post_share_events' ORDER BY ordinal_position")
+  expect(columns.rows.map((row)=>row.column_name)).toEqual(['id','post_id','actor_profile_id','idempotency_key','created_at'])
+  const constraints=await client.query<{definition:string}>("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname='post_share_events_post_id_idempotency_key_unique'")
+  expect(constraints.rows[0]?.definition).toContain('UNIQUE (post_id, idempotency_key)')
+  const indexes=await client.query<{indexdef:string}>("SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='post_share_events_post_created_idx'")
+  expect(indexes.rows[0]?.indexdef).toContain('(post_id, created_at DESC)')
+ }))
+ it('rejects shares outside the public current projection and exposes only the bounded command',async()=>tx(async client=>{
+  const actor=await human(client)
+  const visibleAuthor=await ip(client)
+  const hiddenAuthor=await ip(client,'draft')
+  const invalidCreatorAuthor=await ip(client)
+  await client.query("UPDATE public.ip_profiles SET source='creator',active_creator_revision_id=NULL WHERE profile_id=$1",[invalidCreatorAuthor])
+  const draft=await post(client,visibleAuthor,'draft')
+  const withdrawn=await post(client,visibleAuthor,'withdrawn')
+  const hidden=await post(client,hiddenAuthor)
+  const invalidCreatorPost=await post(client,invalidCreatorAuthor)
+  const targets=[draft,withdrawn,hidden,invalidCreatorPost,randomUUID()]
+  const social=repo(client)
+
+  for(const target of targets) {
+   await expect(social.recordPostShare(actor,target,randomUUID())).rejects.toMatchObject({code:'P0002'})
+   await expect(social.recordPostShare(null,target,randomUUID())).rejects.toMatchObject({code:'P0002'})
+  }
+  await expect(client.query('SELECT 1 FROM public.post_share_events WHERE post_id=ANY($1::uuid[])',[targets])).resolves.toMatchObject({rowCount:0})
+
+  await client.query('SET LOCAL ROLE aifans_anon')
+  const anon=await client.query<{execute:boolean;select_rows:boolean;insert_rows:boolean}>("SELECT has_function_privilege(current_user,'public.record_post_share(uuid,uuid)','EXECUTE') execute,has_table_privilege(current_user,'public.post_share_events','SELECT') select_rows,has_table_privilege(current_user,'public.post_share_events','INSERT') insert_rows")
+  expect(anon.rows[0]).toEqual({execute:true,select_rows:false,insert_rows:false})
+  await client.query('SET LOCAL ROLE NONE')
+  await client.query('SET LOCAL ROLE aifans_authenticated')
+  const authenticated=await client.query<{execute:boolean;select_rows:boolean;insert_rows:boolean}>("SELECT has_function_privilege(current_user,'public.record_post_share(uuid,uuid)','EXECUTE') execute,has_table_privilege(current_user,'public.post_share_events','SELECT') select_rows,has_table_privilege(current_user,'public.post_share_events','INSERT') insert_rows")
+  expect(authenticated.rows[0]).toEqual({execute:true,select_rows:false,insert_rows:false})
+ }))
  it('allows like, unlike, and re-like while retaining one notification and emitting each created-like event', async () => tx(async (client) => {
   const actor = await human(client)
   const author = await ip(client)
@@ -106,6 +425,38 @@ integration('social repository local postgres',()=>{
  it('notifies the published top-level parent author and rejects every invalid reply parent',async()=>tx(async c=>{ const postAuthor=await ip(c),parentAuthor=await human(c),replier=await human(c),otherPostAuthor=await ip(c),postId=await post(c,postAuthor),otherPost=await post(c,otherPostAuthor),social=repo(c); const parent=await social.createHumanComment(parentAuthor,postId,{body:'parent'},context()); const reply=await social.createHumanComment(replier,postId,{body:'reply',parentCommentId:parent.id},context()); await expect(c.query("SELECT recipient_profile_id,kind FROM public.notifications WHERE comment_id=$1",[reply.id])).resolves.toMatchObject({rows:[{recipient_profile_id:parentAuthor.id,kind:'reply'}]}); const nested=await social.createHumanComment(parentAuthor,postId,{body:'self reply',parentCommentId:parent.id},context()); await expect(c.query('SELECT 1 FROM public.notifications WHERE comment_id=$1',[nested.id])).resolves.toMatchObject({rowCount:0}); await c.query("UPDATE public.comments SET state='deleted',deleted_at=clock_timestamp() WHERE id=$1",[parent.id]); await expect(social.createHumanComment(replier,postId,{body:'deleted',parentCommentId:parent.id},context())).rejects.toThrow('invalid reply parent'); const wrong=await social.createHumanComment(parentAuthor,otherPost,{body:'wrong post parent'},context()); await expect(social.createHumanComment(replier,postId,{body:'wrong',parentCommentId:wrong.id},context())).rejects.toThrow('invalid reply parent'); await expect(social.createHumanComment(replier,postId,{body:'nested',parentCommentId:reply.id},context())).rejects.toThrow('invalid reply parent'); await expect(social.createHumanComment(replier,postId,{body:'missing',parentCommentId:randomUUID()},context())).rejects.toThrow('invalid reply parent') }))
  it('rejects a comment when a concurrent post withdrawal wins the visibility lock',async()=>expectVisibilityChangeToWin(async(client,{postId})=>{await client.query("UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1",[postId])}))
  it('rejects a comment when a concurrent IP unpublish wins the visibility lock',async()=>expectVisibilityChangeToWin(async(client,{author})=>{await client.query("UPDATE public.ip_profiles SET public_state='unpublished',operation_enabled=false,updated_at=clock_timestamp() WHERE profile_id=$1",[author])}))
+ it.each(['withdraw','unpublish'] as const)('does not record when concurrent %s wins the visibility lock',async change=>{
+  const fixture=await committedShareFixture()
+  const stateClient=await pool.connect()
+  const shareClient=await pool.connect()
+  const activePids:number[]=[]
+  let attempt:Promise<{ok:true;value:unknown}|{ok:false;error:unknown}>|undefined
+  try {
+   await beginBounded(stateClient)
+   await beginBounded(shareClient)
+   const statePid=(await stateClient.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+   const sharePid=(await shareClient.query<{pid:number}>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid
+   activePids.push(statePid,sharePid)
+   if(change==='withdraw') await stateClient.query("UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1",[fixture.postId])
+   else await stateClient.query("UPDATE public.ip_profiles SET public_state='unpublished',operation_enabled=false,updated_at=clock_timestamp() WHERE profile_id=$1",[fixture.author])
+   const rawAttempt=repo(shareClient).recordPostShare(null,fixture.postId,randomUUID())
+   attempt=bounded(rawAttempt.then((value)=>({ok:true as const,value})).catch((error:unknown)=>({ok:false as const,error})),'visibility share statement')
+   await expectSessionToWaitOnLock(stateClient,sharePid,attempt)
+   await bounded(stateClient.query('COMMIT'),'visibility change commit')
+   const outcome=await bounded(attempt,'visibility share settlement')
+   expect(outcome.ok).toBe(false)
+   if(!outcome.ok) expect(outcome.error).toMatchObject({code:'P0002'})
+   await bounded(shareClient.query('ROLLBACK'),'aborted share rollback')
+   await expect(stateClient.query('SELECT 1 FROM public.post_share_events WHERE post_id=$1',[fixture.postId])).resolves.toMatchObject({rowCount:0})
+  } finally {
+   if(activePids.length) await bounded(pool.query('SELECT pg_cancel_backend(pid) FROM unnest($1::int[]) AS active(pid)',[activePids]),'visibility backend cancellation').catch(()=>undefined)
+   if(attempt) await Promise.allSettled([bounded(attempt,'visibility share cleanup')])
+   await Promise.all([rollbackAndRelease(stateClient),rollbackAndRelease(shareClient)])
+   await cleanupCommittedShareFixture(fixture)
+  }
+ })
+ it('keeps share and human-comment commands on the canonical post-first lock order',async()=>expectShareCommentLockOrder('human'))
+ it('keeps share and platform-comment commands on the canonical post-first lock order',async()=>expectShareCommentLockOrder('platform'))
  it('keeps bookmarks private and bookmark toggles idempotent',async()=>tx(async c=>{ const author=await ip(c); const postId=await post(c,author); const first=await human(c),second=await human(c); const social=repo(c); await expect(social.bookmarkPost(first,postId)).resolves.toEqual({created:true}); await expect(social.bookmarkPost(first,postId)).resolves.toEqual({created:false}); await expect(social.listBookmarks(first,{limit:10})).resolves.toMatchObject({items:[{id:postId}]}); await expect(social.listBookmarks(second,{limit:10})).resolves.toEqual({items:[],nextCursor:null}); await expect(social.unbookmarkPost(first,postId)).resolves.toEqual({deleted:true}); await expect(social.unbookmarkPost(first,postId)).resolves.toEqual({deleted:false}) }))
  it('lists only an owner’s followed published IPs across stable cursor pages',async()=>tx(async c=>{ const older=await ip(c),newer=await ip(c),hidden=await ip(c,'draft'),otherIp=await ip(c),actor=await human(c),other=await human(c); await c.query(`UPDATE public.ip_profiles SET created_at=CASE profile_id WHEN $1 THEN '2026-09-01T00:00:00.000100Z'::timestamptz WHEN $2 THEN '2026-09-01T00:00:00.000900Z'::timestamptz ELSE created_at END WHERE profile_id IN ($1,$2)`,[older,newer]); await c.query(`INSERT INTO public.follows(follower_profile_id,followed_profile_id) VALUES($1,$2),($1,$3),($1,$4),($5,$6)`,[actor.id,older,newer,hidden,other.id,otherIp]); const social=repo(c); const first=await social.listFollowedIps(actor,{limit:1}); expect(first.items).toEqual([expect.objectContaining({id:newer,followerCount:1})]); expect(decodeFollowedIpCursor(first.nextCursor!)).toMatchObject({kind:'followed_ips',id:newer}); const second=await social.listFollowedIps(actor,{limit:10,cursor:first.nextCursor!}); expect(second).toEqual({items:[expect.objectContaining({id:older,followerCount:1})],nextCursor:null}); await expect(social.listFollowedIps(other,{limit:10})).resolves.toEqual({items:[expect.objectContaining({id:otherIp,followerCount:1})],nextCursor:null}) }))
  it('filters hidden followed IPs before applying the projection page bound',async()=>tx(async c=>{ const actor=await human(c),visible=await ip(c),hiddenIds=await Promise.all(Array.from({length:51},()=>ip(c,'draft'))); await c.query(`UPDATE public.ip_profiles SET created_at='2026-09-01T00:00:00.000100Z' WHERE profile_id=$1`,[visible]); await c.query(`INSERT INTO public.follows(follower_profile_id,followed_profile_id) SELECT $1,id FROM unnest($2::uuid[]) ids(id)`,[actor.id,[visible,...hiddenIds]]); const rows=await createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})},{transactionMode:'nested'}).withActor(actor,async client=>(await client.query<{id:string}>('SELECT id FROM public.social_followed_ip_profiles(NULL,NULL,51)')).rows); expect(rows).toEqual([{id:visible}]) }))

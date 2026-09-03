@@ -17,16 +17,16 @@ const post = (n: number): SearchResult => ({type: 'post', post: {
 
 describe('mixed public search pagination', () => {
   it('search post projection includes public metrics and viewer capability flags', () => {
-    const migration = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../migrations/202609020001_public_search.sql'), 'utf8')
-    expect(migration).toContain('like_count integer')
-    expect(migration).toContain('comment_count integer')
-    expect(migration).toContain('viewer_has_liked boolean')
-    expect(migration).toContain('viewer_has_bookmarked boolean')
-    expect(migration).toContain('viewer_follows_author boolean')
-    expect(migration).toContain('social_post_metrics')
-    expect(migration).toContain('social_viewer_flags')
-    expect(migration).toContain('SECURITY DEFINER SET search_path=\'\'')
-    expect(migration).toContain('REVOKE ALL ON FUNCTION public.social_public_search_posts')
+    const migration = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../migrations/202609030002_interaction_counts.sql'), 'utf8')
+    expect(migration).toContain('bookmark_count integer')
+    expect(migration).toContain('share_count integer')
+    expect(migration).toContain('metrics.bookmark_count,metrics.share_count')
+    expect(migration).toContain('post_share_events_post_id_idempotency_key_unique')
+    expect(migration).toContain('ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING')
+    expect(migration).toMatch(/FROM public\.posts post[\s\S]*FOR SHARE[\s\S]*FROM public\.ip_profiles ip[\s\S]*FOR SHARE/)
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION public.platform_publish_ip_comment')
+    expect(migration).toMatch(/platform_publish_ip_comment[\s\S]*FROM public\.posts target[\s\S]*FOR UPDATE OF target[\s\S]*FROM public\.ip_profiles ip[\s\S]*ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
+    expect(migration).toContain("SECURITY DEFINER SET search_path = ''")
     expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
   })
 
