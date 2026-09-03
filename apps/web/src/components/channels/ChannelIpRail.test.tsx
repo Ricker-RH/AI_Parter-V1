@@ -27,10 +27,12 @@ describe('ChannelIpRail', () => {
     expect(screen.queryByRole('link', {name: 'View all'})).toBeNull()
   })
 
-  it('uses the shared compact mobile spacing rhythm without reducing the tappable card', () => {
+  it('uses one compact 8px-based vertical rhythm with adaptive page gutters', () => {
     const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/channels/ChannelPage.module.css' : 'apps/web/src/components/channels/ChannelPage.module.css', 'utf8')
-    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipSection\s*\{[^}]*padding:\s*12px/)
-    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipRail\s*\{[^}]*margin-top:\s*8px[^}]*padding:\s*0 4px/)
-    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipCard\s*\{[^}]*min-height:\s*80px/)
+    expect(css).toMatch(/\.ipSection\s*\{[^}]*padding:\s*12px 20px/)
+    expect(css).toMatch(/\.ipRail\s*\{[^}]*margin-top:\s*8px[^}]*padding:\s*0 4px/)
+    expect(css).toMatch(/\.ipCard\s*\{[^}]*min-height:\s*80px/)
+    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipSection\s*\{[^}]*padding-inline:\s*12px/)
+    expect(css).not.toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.(?:ipRail|ipCard)\s*\{/)
   })
 })

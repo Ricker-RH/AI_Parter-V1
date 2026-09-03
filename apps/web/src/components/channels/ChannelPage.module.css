@@ -19,13 +19,13 @@
 .detailHeader { align-items: center; border-bottom: 1px solid var(--shell-border); display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; min-height: 60px; }
 .detailHeader a { align-items: center; display: flex; font-size: 24px; height: 44px; justify-content: center; width: 44px; }
 .detailHeader h1 { font-size: 18px; margin: 0; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.ipSection { border-bottom: 1px solid var(--shell-border); padding: 22px 20px 20px; }
+.ipSection { border-bottom: 1px solid var(--shell-border); padding: 12px 20px; }
 .ipHeader { align-items: center; display: flex; justify-content: space-between; padding: 0 4px; }
 .ipHeader h2 { font-size: 18px; margin: 0; }
 .ipHeader a { align-items: center; display: inline-flex; font-size: 14px; font-weight: 650; min-height: 44px; }
-.ipRail { display: flex; gap: 14px; margin-top: 12px; overflow-x: auto; padding: 2px 4px 8px; scrollbar-width: none; }
+.ipRail { display: flex; gap: 14px; margin-top: 8px; overflow-x: auto; padding: 0 4px; scrollbar-width: none; }
 .ipRail::-webkit-scrollbar { display: none; }
-.ipCard { align-items: center; display: flex; flex: 0 0 76px; flex-direction: column; gap: 7px; min-height: 94px; text-align: center; }
+.ipCard { align-items: center; display: flex; flex: 0 0 76px; flex-direction: column; gap: 7px; min-height: 80px; text-align: center; }
 .ipCard strong { font-size: 13px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ipEmpty { color: var(--shell-muted); margin: 14px 4px 2px; }
 .ipList { display: grid; }
@@ -44,8 +44,6 @@
   .page { padding: 20px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
   .directoryHeader { border-bottom: 0; }
   .directoryBody { padding: 14px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
-  .ipSection { padding: 12px; }
-  .ipRail { margin-top: 8px; padding: 0 4px; }
-  .ipCard { min-height: 80px; }
+  .ipSection { padding-inline: 12px; }
   .ipRow { padding-inline: 12px; }
 }
