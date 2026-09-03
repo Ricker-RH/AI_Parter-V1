@@ -1993,7 +1993,8 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .mobile-link .nav-icon { height: 24px; width: 24px; }
   .mobile-link span { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .shell[data-shell="public"] .content { height: 100dvh; overflow: hidden; }
-  .home-page, .collection-page, .post-detail-page { height: calc(100dvh - 56px - env(safe-area-inset-bottom) - 50px); }
+  .home-page, .collection-page { height: calc(100dvh - 56px - env(safe-area-inset-bottom) - 50px); }
+  .post-detail-page { height: calc(100dvh - 50px - env(safe-area-inset-bottom)); }
   .home-header { display: block; min-height: 0 !important; padding: 0 !important; }
   .home-title { height: 1px; margin: -1px !important; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .mobile-feed-tabs { background: var(--shell-surface); border-bottom: 1px solid var(--shell-border); gap: 0; margin-top: 4px; overflow: visible; width: 100%; z-index: 24; }

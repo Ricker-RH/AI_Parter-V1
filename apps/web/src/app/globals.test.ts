@@ -81,7 +81,9 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('uses the Home feed frame contract for liked and saved collections at every responsive boundary', () => {
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: calc\(100dvh - 56px - env\(safe-area-inset-bottom\) - 50px\)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*height: calc\(100dvh - 56px - env\(safe-area-inset-bottom\) - 50px\)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-page \{[^}]*height: calc\(100dvh - 50px - env\(safe-area-inset-bottom\)\)/)
+    expect(stylesheet).not.toMatch(/\.post-detail-page\s*\{[^}]*height:\s*calc\(100dvh - 56px/)
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
   })
