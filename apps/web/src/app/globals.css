@@ -400,7 +400,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .social-surface-state { display: grid; }
 .post-card {
   border-bottom: 1px solid var(--shell-border);
-  padding: 16px 24px 8px;
+  padding: 16px 24px 0;
   position: relative;
 }
 .post-card-navigation-target { inset: 0; pointer-events: none; position: absolute; z-index: 0; }
@@ -2062,7 +2062,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .search-empty { min-height: 280px; padding-inline: 20px; }
   .profile-result { padding-inline: 12px; }
   .activity-tabs { padding-inline: 20px; }
-  .post-card { padding: 12px 12px 8px; }
+  .post-card { padding: 12px 12px 0; }
   .post-action { min-height: 44px; }
   .comment-thread-item { padding-inline: 12px; }
   .comment-thread-item--reply { padding-left: 12px; }

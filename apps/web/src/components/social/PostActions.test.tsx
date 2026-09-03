@@ -88,9 +88,9 @@ describe('PostActions', () => {
     const postActionsRule = stylesheet.match(/\.post-actions\s*\{([^}]*)\}/)?.[1] ?? ''
     const postActionRule = stylesheet.match(/\.post-action\s*\{([^}]*)\}/)?.[1] ?? ''
 
-    expect.soft(postCardRule).toContain('padding: 16px 24px 8px')
+    expect.soft(postCardRule).toContain('padding: 16px 24px 0')
     expect.soft(postActionsRule).toContain('margin-top: 0')
-    expect.soft(stylesheet).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.post-card\s*\{[^}]*padding:\s*12px 12px 8px;?[^}]*\}/)
+    expect.soft(stylesheet).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.post-card\s*\{[^}]*padding:\s*12px 12px 0;?[^}]*\}/)
     expect.soft(postActionRule).toContain('min-height: 44px')
   })
 
