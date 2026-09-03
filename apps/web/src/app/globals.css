@@ -506,10 +506,12 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .author-preview-follow-action .profile-follow button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; width: 100%; }
 .author-preview-follow-action .profile-follow { display: block; width: 100%; }
 .comments-section { border-top: 0; }
-.post-detail-content .post-detail-comments-content { padding-bottom: var(--post-detail-composer-reserve); }
-.post-detail-content .post-detail-composer-dock { background: var(--shell-surface); bottom: 0; position: sticky; z-index: 8; }
-.post-detail-content .post-detail-composer-dock .comment-composer--primary,
-.post-detail-content .post-detail-composer-dock .comment-signin--primary { bottom: auto; position: static; }
+.post-detail-scroll-region { -ms-overflow-style: none; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.post-detail-scroll-region::-webkit-scrollbar { display: none; }
+.post-detail-scroll-region:focus-visible { outline-offset: -3px; }
+.post-detail-composer-dock { background: var(--shell-surface); }
+.post-detail-composer-dock .comment-composer--primary,
+.post-detail-composer-dock .comment-signin--primary { bottom: auto; position: static; }
 .comment-auth-loading { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; min-height: 58px; padding: 0 18px; }
 .comment-auth-loading span { animation: route-skeleton-pulse 1.2s ease-in-out infinite; background: var(--shell-hover); border-radius: 999px; display: block; height: 34px; width: 100%; }
 .comments-toolbar { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; justify-content: space-between; padding: 12px 24px; }
@@ -1970,7 +1972,6 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .mobile-search { align-items: center; display: flex; height: 44px; justify-content: center; width: 44px; }
   .mobile-search .nav-icon { height: 26px; width: 26px; }
   .post-detail-header { min-height: calc(56px + env(safe-area-inset-top)); padding: max(6px, env(safe-area-inset-top)) 12px 6px; }
-  .post-detail-content .post-detail-composer-dock { bottom: 0; }
   .post-detail-title { clip: rect(0, 0, 0, 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
   .post-detail-brand { align-items: center; display: flex; height: 44px; justify-content: center; left: 50%; position: absolute; transform: translateX(-50%); width: 44px; }
   .post-detail-brand svg { color: currentColor; display: block; height: 30px; width: 30px; }

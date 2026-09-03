@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import {flushSync} from "react-dom";
 import {createRoot} from "react-dom/client";
+import {readFileSync} from "node:fs";
 import type { AnchorHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { FeedPage, Notification, PostDetail } from "@aifans/contracts";
@@ -123,7 +124,7 @@ const post: FeedPagePost = {
 };
 
 describe("real social content", () => {
-  it("leaves scrolling and keyboard-region semantics to the shared social surface", () => {
+  it("leaves feed scrolling to the shared surface but makes detail content the single named scroll region", () => {
     const {container, rerender} = render(
       <FeedContent
         labels={labels}
@@ -141,8 +142,10 @@ describe("real social content", () => {
         result={{status: "ok", data: {...post, comments: {items: [], nextCursor: null}}}}
       />,
     );
-    expect(container.querySelector(".post-detail-content")).not.toHaveAttribute("tabindex");
-    expect(container.querySelector(".post-detail-content")).not.toHaveAttribute("role");
+    const detailRegion = container.querySelector(".post-detail-scroll-region.post-detail-content");
+    expect(detailRegion).toHaveAttribute("tabindex", "0");
+    expect(detailRegion).toHaveAttribute("role", "region");
+    expect(detailRegion).toHaveAttribute("aria-label", "Comments");
   });
 
   it("marks unavailable feed and detail states as the only fill-height surface content", () => {
@@ -155,6 +158,7 @@ describe("real social content", () => {
     );
     expect(container.querySelector(".post-detail-content")).toHaveAttribute("data-social-surface-fill");
     expect(container.querySelector(".post-detail-content")).toContainElement(screen.getByRole("alert"));
+    expect(container.querySelector('.post-detail-composer-dock')).toBeNull();
 
     rerender(<FeedContent labels={labels} locale="en" result={{status: "unavailable"}} />);
     expect(container.firstElementChild).toHaveAttribute("data-social-surface-fill");
@@ -500,15 +504,22 @@ describe("real social content", () => {
     expect(screen.getByRole("button", {name: "Comment"})).toBeDisabled();
   });
 
-  it("docks the detail composer in the shared viewport and reserves its measured height while optimistic comments update the action count", async () => {
+  it("renders one scroll row followed by one normal-flow composer dock while optimistic comments update the action count", async () => {
     const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
     const created = {id: "33333333-3333-4333-8333-833333333333", postId: post.id, parentCommentId: null, state: "published" as const, body: "Fresh reply", createdAt: "2026-09-02T12:00:00.000Z", author: {kind: "human" as const, id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}};
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(created, {status: 201})));
     const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
 
-    const comments = container.querySelector<HTMLElement>('.comments-section')!;
-    expect(comments.style.getPropertyValue('--post-detail-composer-reserve')).toBe('65px');
-    expect(comments.querySelector('.post-detail-composer-dock > .comment-composer--primary')).not.toBeNull();
+    const scrollRegion = screen.getByRole('region', {name: 'Comments'});
+    const dock = container.querySelector<HTMLElement>('.post-detail-composer-dock')!;
+    expect(container.children).toHaveLength(2);
+    expect(container.children[0]).toBe(scrollRegion);
+    expect(container.children[1]).toBe(dock);
+    expect(scrollRegion).toContainElement(screen.getByRole('article'));
+    expect(scrollRegion).toContainElement(container.querySelector('.comments-toolbar'));
+    expect(scrollRegion).toContainElement(container.querySelector('.comments-section'));
+    expect(scrollRegion).not.toContainElement(dock);
+    expect(dock.querySelector('.comment-composer--primary')).not.toBeNull();
     const initialCommentAction = screen.getByRole('link', {name: 'Comments 2'});
     expect(initialCommentAction).toHaveAttribute('aria-current', 'page');
     expect(initialCommentAction.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
@@ -518,27 +529,24 @@ describe("real social content", () => {
     const updatedCommentAction = await screen.findByRole('link', {name: 'Comments 3'});
     expect(updatedCommentAction).toHaveAttribute('aria-current', 'page');
     expect(updatedCommentAction.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
-    expect(comments.querySelector('.post-detail-composer-dock')).not.toHaveStyle({overflowY: 'auto'});
+    expect(dock).not.toHaveStyle({overflowY: 'auto'});
   });
 
-  it("starts measuring the dock when a detail result resolves after the initial render", () => {
-    const observe = vi.fn();
-    class TestResizeObserver {
-      constructor(_callback: ResizeObserverCallback) {}
-      disconnect() {}
-      observe = observe;
-    }
-    vi.stubGlobal("ResizeObserver", TestResizeObserver);
-    try {
-      const detail: PostDetail = {...post, comments: {items: [], nextCursor: null}};
-      const {container, rerender} = render(<PostDetailContent labels={labels} locale="en" result={{status: "unavailable"}} />);
+  it("uses layout flow rather than measuring or reserving composer height", () => {
+    const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src';
+    const source = readFileSync(`${root}/components/social/PostDetailContent.tsx`, 'utf8');
+    const stylesheet = readFileSync(`${root}/app/globals.css`, 'utf8');
 
-      rerender(<PostDetailContent labels={labels} locale="en" result={{status: "ok", data: detail}} />);
-
-      expect(observe).toHaveBeenCalledWith(container.querySelector('.post-detail-composer-dock'));
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    expect(source).not.toContain('ResizeObserver');
+    expect(source).not.toContain('composerDockHeight');
+    expect(source).not.toContain('composerDock =');
+    expect(source).not.toContain('CSSProperties');
+    expect(source).not.toContain('--post-detail-composer-reserve');
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\s*\{[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain[^}]*scrollbar-width:\s*none/);
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+    expect(stylesheet).toMatch(/\.post-detail-composer-dock\s*\{[^}]*background:\s*var\(--shell-surface\)/);
+    expect(stylesheet).not.toMatch(/\.post-detail-composer-dock\s*\{[^}]*(?:position:\s*sticky|bottom:)/);
+    expect(stylesheet).not.toContain('--post-detail-composer-reserve');
   });
 
   it("renders real notification rows and safe empty/auth states", () => {

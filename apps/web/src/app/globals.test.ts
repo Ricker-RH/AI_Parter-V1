@@ -172,11 +172,12 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
   })
 
-  it('docks only the detail composer at 430/768/1024/1440 with a measured content reserve and no nested scroll region', () => {
-    expect(stylesheet).toMatch(/\.post-detail-content \.post-detail-composer-dock \{[^}]*bottom:\s*0[^}]*position:\s*sticky/)
-    expect(stylesheet).toMatch(/\.post-detail-content \.post-detail-comments-content \{[^}]*padding-bottom:\s*var\(--post-detail-composer-reserve\)/)
-    expect(stylesheet).not.toMatch(/\.post-detail-content \.post-detail-composer-dock\s*\{[^}]*overflow(?:-y)?:/)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-content \.post-detail-composer-dock \{[^}]*bottom:\s*0/)
+  it('docks the detail composer through grid flow with one focusable scroll owner', () => {
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region\s*\{[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*overflow-y:\s*auto[^}]*overscroll-behavior:\s*contain[^}]*scrollbar-width:\s*none/)
+    expect(stylesheet).toMatch(/\.post-detail-scroll-region::-webkit-scrollbar\s*\{[^}]*display:\s*none/)
+    expect(stylesheet).toMatch(/\.post-detail-composer-dock\s*\{[^}]*background:\s*var\(--shell-surface\)/)
+    expect(stylesheet).not.toMatch(/\.post-detail-composer-dock\s*\{[^}]*(?:position:\s*sticky|bottom:)/)
+    expect(stylesheet).not.toContain('--post-detail-composer-reserve')
     expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.post-detail-page \{[^}]*height:\s*100%/)
   })
