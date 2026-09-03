@@ -11,6 +11,7 @@ import {
   PublicIpProfileSchema,
   SearchPageSchema,
   SearchQuerySchema,
+  ShareRecordedSchema,
   decodeCursor,
   decodeFollowedIpCursor,
   decodeLikedCursor,
@@ -88,6 +89,31 @@ async function parseEmptyBody(c: ApiContext): Promise<boolean> {
     return EmptyBodySchema.safeParse(JSON.parse(text)).success
   } catch {
     return false
+  }
+}
+
+function isJsonMediaType(value: string | undefined): boolean {
+  if (!value) return false
+  const [rawEssence, ...rawParameters] = value.split(';')
+  if (rawEssence?.trim().toLowerCase() !== 'application/json') return false
+  if (rawParameters.length > 1) return false
+  return rawParameters.every((parameter) => /^\s*charset\s*=\s*(?:"utf-8"|utf-8)\s*$/i.test(parameter))
+}
+
+async function parseShareBody(c: ApiContext): Promise<'valid' | 'invalid' | 'too_large'> {
+  if (c.req.raw.body === null) return 'valid'
+  if (!isJsonMediaType(c.req.header('content-type'))) return 'invalid'
+  let text: string
+  try {
+    text = await readBoundedBody(c.req.raw, 65_536)
+  } catch (error) {
+    return error instanceof Error && error.message === 'BODY_TOO_LARGE' ? 'too_large' : 'invalid'
+  }
+  if (!text.trim()) return 'valid'
+  try {
+    return EmptyBodySchema.safeParse(JSON.parse(text)).success ? 'valid' : 'invalid'
+  } catch {
+    return 'invalid'
   }
 }
 
@@ -188,6 +214,15 @@ function knownSocialError(c: ApiContext, error: unknown, context: SocialErrorCon
   if (code === '42501') return apiError(c, 403, 'FORBIDDEN', 'Action is not allowed')
   if (context.comment && (code === '23503' || code === '23514' || code === 'P0001')) {
     return apiError(c, 422, 'COMMENT_INVALID', 'Comment is invalid')
+  }
+  if (!(error instanceof Error)) {
+    const normalized = new Error('Unhandled social error') as Error & {code?: string}
+    const name = typeof error === 'object' && error !== null && 'name' in error
+      ? error.name
+      : undefined
+    if (typeof name === 'string') normalized.name = name
+    if (code) normalized.code = code
+    throw normalized
   }
   throw error
 }
@@ -321,6 +356,35 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
       return c.json(SearchPageSchema.parse(result), 200)
     } catch (error) {
       return knownSocialError(c, error)
+    }
+  })
+
+  app.post('/v1/posts/:postId/share', async (c) => {
+    const unavailable = socialUnavailable(c, dependencies.social)
+    if (unavailable) return unavailable
+    const query = safeQuery(c)
+    const postId = parseId(c.req.param('postId'))
+    const idempotencyKey = parseId(c.req.header('idempotency-key'))
+    if (
+      query === null ||
+      !EmptyQuerySchema.safeParse(query).success ||
+      !postId ||
+      !idempotencyKey
+    ) return invalidRequest(c)
+    const body = await parseShareBody(c)
+    if (body === 'too_large') return apiError(c, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large')
+    if (body === 'invalid') return invalidRequest(c)
+    const viewer = await resolveActor(c, dependencies, false)
+    if (!viewer.ok) return viewer.response
+    try {
+      return c.json(
+        ShareRecordedSchema.parse(
+          await dependencies.social!.recordPostShare(viewer.actor, postId, idempotencyKey),
+        ),
+        200,
+      )
+    } catch (error) {
+      return knownSocialError(c, error, {notFound: 'POST_NOT_FOUND'})
     }
   })
 

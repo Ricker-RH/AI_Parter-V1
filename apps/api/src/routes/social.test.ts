@@ -10,7 +10,7 @@ import {
   encodeSearchCursor,
   encodeFollowedIpCursor,
 } from '@aifans/contracts'
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {createApp} from '../application.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {ProfilePort} from '../ports/profiles.js'
@@ -106,6 +106,7 @@ function socialPort(overrides: Partial<SocialPort> = {}): SocialPort {
     unlikePost: async () => ({deleted: true}),
     bookmarkPost: async () => ({created: true}),
     unbookmarkPost: async () => ({deleted: true}),
+    recordPostShare: async () => ({created: true}),
     listBookmarks: async () => page,
     listLiked: async () => page,
     listFollowedIps: async () => followedPage,
@@ -277,6 +278,150 @@ describe('social read routes', () => {
 
 describe('authenticated social routes', () => {
   const dependencies = (social: SocialPort) => ({auth: validAuth, profiles: profilePort(), social})
+
+  it('records a share with optional authentication and a validated idempotency key', async () => {
+    for (const auth of [validAuth, missingAuth]) {
+      const calls: unknown[] = []
+      const idempotencyKey = randomUUID()
+      const social = socialPort({recordPostShare: async (viewer, target, key) => {
+        calls.push([viewer, target, key])
+        return {created: true}
+      }})
+      const response = await createApp({auth, profiles: profilePort(), social}).request(
+        `/v1/posts/${postId}/share`,
+        {method: 'POST', headers: {'idempotency-key': idempotencyKey}},
+      )
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({created: true})
+      expect(calls).toEqual([[
+        auth === validAuth ? {subject: identity.subject} : null,
+        postId,
+        idempotencyKey,
+      ]])
+      expect(response.headers.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/)
+    }
+  })
+
+  it('records an anonymous share when authentication and profiles are completely unconfigured', async () => {
+    const idempotencyKey = randomUUID()
+    const recordPostShare = vi.fn(async () => ({created: true}))
+    const response = await createApp({social: socialPort({recordPostShare})}).request(
+      `/v1/posts/${postId}/share`,
+      {method: 'POST', headers: {'idempotency-key': idempotencyKey}},
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({created: true})
+    expect(recordPostShare).toHaveBeenCalledOnce()
+    expect(recordPostShare).toHaveBeenCalledWith(null, postId, idempotencyKey)
+  })
+
+  it('returns an idempotent created false acknowledgement unchanged with status 200', async () => {
+    const idempotencyKey = randomUUID()
+    const recordPostShare = vi.fn(async () => ({created: false}))
+    const response = await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare})}).request(
+      `/v1/posts/${postId}/share`,
+      {method: 'POST', headers: {'idempotency-key': idempotencyKey}},
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({created: false})
+    expect(recordPostShare).toHaveBeenCalledOnce()
+  })
+
+  it('accepts strict empty JSON with an exact JSON media type when a body stream is present', async () => {
+    const idempotencyKey = randomUUID()
+    for (const contentType of ['application/json', 'application/json; charset=utf-8', 'application/json; charset="utf-8"']) {
+      const response = await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort()}).request(
+        `/v1/posts/${postId}/share`,
+        {method: 'POST', headers: {'content-type': contentType, 'idempotency-key': idempotencyKey}, body: '{}'},
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({created: true})
+    }
+  })
+
+  it('rejects invalid share inputs before calling the port', async () => {
+    const recordPostShare = vi.fn(async () => ({created: true}))
+    const app = createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare})})
+    const key = randomUUID()
+    const requests: Array<Promise<Response>> = [
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': 'not-a-uuid'}}),
+      app.request('/v1/posts/not-a-uuid/share', {method: 'POST', headers: {'idempotency-key': key}}),
+      app.request(`/v1/posts/${postId}/share?count=1`, {method: 'POST', headers: {'idempotency-key': key}}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '{}'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '   '}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: ''}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json; charset=latin1', 'idempotency-key': key}, body: '{}'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json; charset=utf-8; profile=x', 'idempotency-key': key}, body: '{}'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json; charset=utf-8; charset=utf-8', 'idempotency-key': key}, body: '{}'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/jsonx', 'idempotency-key': key}, body: '{}'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/jsonp', 'idempotency-key': key}, body: '{}'}),
+      app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: '{"count":1}'}),
+    ]
+    for (const request of requests) expect((await request).status).toBe(400)
+    expect((await app.request(`/v1/posts/${postId}/share`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json', 'idempotency-key': key},
+      body: 'x'.repeat(65_537),
+    })).status).toBe(413)
+    expect((await app.request(`/v1/posts/${postId}/share`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json', 'content-length': '1', 'idempotency-key': key},
+      body: 'x'.repeat(65_537),
+    })).status).toBe(413)
+    for (const contentLength of ['not-a-number', '-1']) {
+      expect((await app.request(`/v1/posts/${postId}/share`, {
+        method: 'POST',
+        headers: {'content-type': 'application/json', 'content-length': contentLength, 'idempotency-key': key},
+        body: '{}',
+      })).status).toBe(413)
+    }
+    expect(recordPostShare).not.toHaveBeenCalled()
+  })
+
+  it('keeps share authentication and not-found semantics strict', async () => {
+    const invalidAuth = {verify: async () => ({status: 'invalid'} as const)} satisfies AuthVerifier
+    const headers = {'idempotency-key': randomUUID()}
+    await expectError(
+      await createApp({auth: invalidAuth, profiles: profilePort(), social: socialPort()}).request(`/v1/posts/${postId}/share`, {method: 'POST', headers}),
+      401,
+      'AUTH_INVALID',
+    )
+    await expectError(
+      await createApp({
+        auth: missingAuth,
+        profiles: profilePort(),
+        social: socialPort({recordPostShare: async () => { throw Object.assign(new Error('hidden'), {code: 'P0002'}) }}),
+      })
+        .request(`/v1/posts/${postId}/share`, {method: 'POST', headers}),
+      404,
+      'POST_NOT_FOUND',
+    )
+  })
+
+  it('redacts invalid share responses and database constraint details', async () => {
+    const diagnostics: unknown[] = []
+    const expanded = await createApp({
+      auth: missingAuth,
+      profiles: profilePort(),
+      social: socialPort({recordPostShare: async () => ({created: true, internal: 'secret'})}),
+    }).request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': randomUUID()}})
+    await expectError(expanded, 500, 'INTERNAL_ERROR')
+
+    const constrained = await createApp({
+      auth: missingAuth,
+      profiles: profilePort(),
+      social: socialPort({recordPostShare: async () => { throw {name: 'DatabaseError', code: '23505', detail: 'secret constraint'} }}),
+      onUnhandledError: (diagnostic) => diagnostics.push(diagnostic),
+    }).request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'idempotency-key': randomUUID()}})
+    const constrainedBody = await constrained.clone().text()
+    await expectError(constrained, 500, 'INTERNAL_ERROR')
+    expect(constrainedBody).not.toContain('secret constraint')
+    expect(diagnostics).toEqual([{name: 'DatabaseError', code: '23505'}])
+  })
 
   it.each([
     ['GET', '/v1/feed?kind=for_you&kind=following'],

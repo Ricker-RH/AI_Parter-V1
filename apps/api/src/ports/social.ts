@@ -41,6 +41,7 @@ export type SocialPort = {
   unlikePost(actor: Actor, postId: string, context: MutationContext): Promise<{deleted: boolean}>
   bookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{created: boolean}>
   unbookmarkPost(actor: Actor, postId: string, context: MutationContext): Promise<{deleted: boolean}>
+  recordPostShare(viewer: Actor | null, postId: string, idempotencyKey: string): Promise<{created: boolean}>
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>
   listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>
   listFollowedIps(actor: Actor, page: PageQuery): Promise<FollowedIpPage>

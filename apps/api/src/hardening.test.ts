@@ -46,6 +46,27 @@ describe('API production hardening', () => {
     expect(consume).toHaveBeenCalledWith({policy:'social_mutation',identifierHash:expect.stringMatching(/^[a-f0-9]{64}$/)})
   })
 
+  it('rate limits share recording by signed client identity without using request data as identity', async () => {
+    const consume=vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))
+    const app=createApp({requireRateLimit:true,rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})
+    const now=Math.floor(Date.now()/60_000)
+    const key='11111111-1111-4111-8111-111111111112'
+    const path='/v1/posts/11111111-1111-4111-8111-111111111111/share'
+    const valid=await app.request(path,{method:'POST',headers:{'content-type':'application/json','idempotency-key':key,'x-aifans-rate-limit-identity':identity(now),'x-forwarded-for':'203.0.113.7'},body:'{}'})
+    const missing=await app.request(path,{method:'POST',headers:{'idempotency-key':key}})
+    const signed=identity(now)
+    const replacement=signed.endsWith('0')?'1':'0'
+    const forged=await app.request(path,{method:'POST',headers:{'idempotency-key':key,'x-aifans-rate-limit-identity':`${signed.slice(0,-1)}${replacement}`}})
+
+    expect((await valid.json()).code).toBe('SOCIAL_NOT_CONFIGURED')
+    expect((await missing.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
+    expect((await forged.json()).code).toBe('RATE_LIMIT_IDENTITY_UNAVAILABLE')
+    expect(consume).toHaveBeenCalledOnce()
+    expect(consume).toHaveBeenCalledWith({policy:'social_mutation',identifierHash:expect.stringMatching(/^[a-f0-9]{64}$/)})
+    const serialized=JSON.stringify(consume.mock.calls)
+    for(const value of [key,'203.0.113.7','{}']) expect(serialized).not.toContain(value)
+  })
+
   it('accepts only current signed mutation identities and never trusts forwarded client addresses', async () => {
     const consume = vi.fn(async()=>({allowed:true,retryAfterSeconds:0,remaining:1}))
     const app = createApp({requireRateLimit:true,rateLimit:{consume},rateLimitHmacSecret:rateLimitSecret,rateLimitIdentitySecret:identitySecret})
