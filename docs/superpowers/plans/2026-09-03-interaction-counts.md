@@ -307,7 +307,89 @@ it.each(['withdraw', 'unpublish'] as const)('does not record when concurrent %s 
 })
 ```
 
-Add deterministic three-connection lock-order probes for both comment commands. A blocker holds the target post, then share and comment start concurrently; `expectSessionToWaitOnLock` must observe both sessions waiting on that post before the blocker commits. After release, assert both commands resolve (neither has SQLSTATE `40P01`), then query inside each still-open command transaction to prove its share/comment exists exactly once. Roll back those command transactions after the assertions so the lock probe itself leaves no history rows. Run one case through `createHumanComment` and one through `createPlatformSession(..., {transactionMode:'nested'}).withPlatformActor(...)` calling `platform_publish_ip_comment` with `fixture.represented`. Use unique body markers and request IDs. Always rollback any still-open transaction and call `cleanupCommittedShareFixture(fixture)` in `finally`.
+Add deterministic three-connection lock-order probes for both comment commands. A blocker holds the target post, then share and comment start concurrently; `expectSessionToWaitOnLock` must observe both sessions waiting on that post before the blocker commits. Set transaction-local `lock_timeout='2s'` and `statement_timeout='4s'` immediately after every blocker/share/comment `BEGIN`, and wrap every command attempt plus the first/second settlement in the bounded helper below. This makes a non-deadlock lock regression fail instead of hanging Vitest.
+
+After the blocker commit, wait only for the first command statement to finish. Assert its outcome is not `40P01` and is successful, query its still-open transaction to prove its row exists exactly once, then immediately roll back that command transaction to release the post/IP locks. Only then wait for and assert the second command. Waiting for both statements before rolling back the winner would make the probe block itself because the winner retains its row locks until transaction end.
+
+Run one case through `createHumanComment` and one through `createPlatformSession(..., {transactionMode:'nested'}).withPlatformActor(...)` calling `platform_publish_ip_comment` with `fixture.represented`. Use unique body markers and request IDs. Capture all three backend PIDs after `BEGIN`. Every `finally` must use an independent pool query to cancel any still-active fixture backend, settle outstanding attempts within the deadline, roll back with a bound, destroy a client whose rollback cannot complete, release all clients, and call `cleanupCommittedShareFixture(fixture)`.
+
+```ts
+async function bounded<T>(promise: Promise<T>, label: string, timeoutMs = 5_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function beginBounded(client: PoolClient) {
+  await client.query('BEGIN')
+  await client.query("SET LOCAL lock_timeout='2s'")
+  await client.query("SET LOCAL statement_timeout='4s'")
+}
+
+async function rollbackAndRelease(client: PoolClient) {
+  try {
+    await bounded(client.query('ROLLBACK'), 'rollback', 5_000)
+    client.release()
+  } catch {
+    client.release(true) // cancel/remove a connection that cannot be recovered
+  }
+}
+
+type TaggedOutcome = {
+  kind: 'share' | 'comment'
+  outcome: {ok:true; value:unknown} | {ok:false; error:unknown}
+}
+
+// After beginBounded(blocker/share/comment), blocker locks fixture.postId and
+// both raw command statements are started and observed waiting on the blocker.
+const shareAttempt = bounded(
+  rawShareAttempt.then((value) => ({ok:true as const, value})).catch((error:unknown) => ({ok:false as const, error})),
+  'share statement',
+)
+const commentAttempt = bounded(
+  rawCommentAttempt.then((value) => ({ok:true as const, value})).catch((error:unknown) => ({ok:false as const, error})),
+  'comment statement',
+)
+const taggedShare = shareAttempt.then((outcome): TaggedOutcome => ({kind:'share', outcome}))
+const taggedComment = commentAttempt.then((outcome): TaggedOutcome => ({kind:'comment', outcome}))
+
+await bounded(blocker.query('COMMIT'), 'blocker commit')
+const first = await bounded(Promise.race([taggedShare, taggedComment]), 'first command settlement')
+if (!first.outcome.ok) expect(first.outcome.error).not.toMatchObject({code:'40P01'})
+expect(first.outcome.ok).toBe(true)
+await bounded(assertOwnTransactionRowCount(first.kind, 1), 'first row assertion')
+await bounded((first.kind === 'share' ? shareClient : commentClient).query('ROLLBACK'), 'first command rollback')
+
+const second = await bounded(first.kind === 'share' ? taggedComment : taggedShare, 'second command settlement')
+if (!second.outcome.ok) expect(second.outcome.error).not.toMatchObject({code:'40P01'})
+expect(second.outcome.ok).toBe(true)
+await bounded(assertOwnTransactionRowCount(second.kind, 1), 'second row assertion')
+await bounded((second.kind === 'share' ? shareClient : commentClient).query('ROLLBACK'), 'second command rollback')
+
+// In finally:
+await bounded(
+  pool.query('SELECT pg_cancel_backend(pid) FROM unnest($1::int[]) AS active(pid)', [[blockerPid, sharePid, commentPid]]),
+  'backend cancellation',
+).catch(() => undefined)
+await Promise.allSettled([
+  bounded(shareAttempt, 'share cleanup'),
+  bounded(commentAttempt, 'comment cleanup'),
+])
+await Promise.all([
+  rollbackAndRelease(blocker),
+  rollbackAndRelease(shareClient),
+  rollbackAndRelease(commentClient),
+])
+await cleanupCommittedShareFixture(fixture)
+```
 
 The lock probes must also assert the migrated function definitions, not timing alone: `create_human_comment`, `record_post_share`, and `platform_publish_ip_comment` each lock `public.posts` before any `public.ip_profiles`; the platform definition locks both IP rows with `WHERE ip.profile_id IN (...) ORDER BY ip.profile_id FOR UPDATE OF ip, r`. This proves the platform replacement preserves a deterministic order for distinct target-author and represented profiles.
 
@@ -707,7 +789,7 @@ DATABASE_URL=postgresql://aifans_owner:local_only_aifans@127.0.0.1:55432/aifans_
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir packages/db typecheck
 ```
 
-Expected: migration output includes `202609030002_interaction_counts.sql`; all focused tests PASS. The authenticated and anonymous role checks have execute-only access to the command, the ledger exposes exactly five columns, and all seven producer paths return both counts.
+Expected: migration output includes `202609030002_interaction_counts.sql`; all focused tests PASS. The authenticated and anonymous role checks have execute-only access to the command, the ledger exposes exactly five columns, and all seven producer paths return both counts. Both share/comment lock probes observe the blocker, settle the winner within five seconds, roll it back before the loser is awaited, settle the loser within five seconds, and report no `40P01` or hanging database session.
 
 - [ ] **Step 6: Commit the database slice**
 
@@ -1547,7 +1629,7 @@ PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node
 git diff --check
 ```
 
-Expected: all commands exit `0`; database tests run with no environment-gated skips under `db:test`; strict contract, API, BFF, component, typecheck, production builds, migration and license checks all pass.
+Expected: all commands exit `0`; database tests run with no environment-gated skips under `db:test`; strict contract, API, BFF, component, typecheck, production builds, migration and license checks all pass. The bounded share/platform-comment and share/human-comment probes terminate without `40P01`, lock timeout, statement timeout, leaked transaction, or test-process hang.
 
 - [ ] **Step 2: Audit the privacy/ranking invariants from source**
 
