@@ -27,6 +27,7 @@ describe('SocialSurface', () => {
     expect(frame).not.toBeNull()
     const viewport = within(frame as HTMLElement).getByRole('region', {name: 'Posts'})
     expect(surface).toHaveAttribute('data-social-surface')
+    expect(surface).toHaveAttribute('data-social-surface-frame-mode', 'detached')
     expect(surface).toHaveClass('home-page')
     expect(surface.firstElementChild).toContainElement(header)
     expect(surface.children[1]).toBe(frame)
@@ -39,13 +40,14 @@ describe('SocialSurface', () => {
   })
 
   it('keeps an attached-mode header and viewport inside the same frame', () => {
-    render(<SocialSurface frameMode="attached" header={<header><h1>Search</h1></header>} label="Results"><article>Result</article></SocialSurface>)
+    render(<SocialSurface frameMode="attached" header={<header className="page-header"><h1>Search</h1></header>} label="Results"><article>Result</article></SocialSurface>)
 
     const surface = screen.getByRole('main')
     const header = screen.getByRole('heading', {name: 'Search'}).parentElement
     const frame = surface.querySelector('[data-social-surface-frame]')
     const viewport = screen.getByRole('region', {name: 'Results'})
     expect(frame).not.toBeNull()
+    expect(surface).toHaveAttribute('data-social-surface-frame-mode', 'attached')
     expect(surface.children).toHaveLength(1)
     expect(surface.firstElementChild).toBe(frame)
     expect(frame).toContainElement(header)
@@ -69,10 +71,14 @@ describe('SocialSurface', () => {
     expect(stylesheet).toMatch(/\[data-social-surface-fill\]\s*\{[^}]*min-height:\s*100%/)
   })
 
-  it('removes the contextual page-header divider above the desktop frame', () => {
+  it('removes the desktop page-header divider only for detached surfaces', () => {
     const root = process.cwd().endsWith('/apps/web') ? 'src/components/social' : 'apps/web/src/components/social'
     const stylesheet = readFileSync(`${root}/SocialSurface.module.css`, 'utf8')
+    const globalStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
 
-    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.header\s+:global\(\.page-header\)\s*\{[^}]*border-bottom:\s*0/)
+    expect(globalStylesheet).toMatch(/\.page-header\s*\{[^}]*border-bottom:\s*1px solid var\(--shell-border\)/)
+    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\[data-social-surface-frame-mode="detached"\]\s+\.header\s+:global\(\.page-header\)\s*\{[^}]*border-bottom:\s*0/)
+    expect(stylesheet).not.toMatch(/\[data-social-surface-frame-mode="attached"\][^{]*:global\(\.page-header\)\s*\{[^}]*border-bottom:\s*0/)
+    expect(stylesheet).not.toMatch(/^\s*\.header\s+:global\(\.page-header\)\s*\{[^}]*border-bottom:\s*0/m)
   })
 })

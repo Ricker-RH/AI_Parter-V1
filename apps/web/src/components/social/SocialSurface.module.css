@@ -45,7 +45,7 @@
     border-radius: 16px;
   }
 
-  .header :global(.page-header) { border-bottom: 0; }
+  [data-social-surface-frame-mode="detached"] .header :global(.page-header) { border-bottom: 0; }
 }
 
 @media (max-width: 699px) {

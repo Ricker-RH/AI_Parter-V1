@@ -8,7 +8,7 @@ export function SocialSurface({children, className, frameMode = 'detached', head
     <div aria-label={label} className={styles.viewport} data-social-surface-viewport role="region" tabIndex={0}>{children}</div>
   </div>
 
-  return <main className={`${styles.surface}${className ? ` ${className}` : ''}`} data-social-surface>
+  return <main className={`${styles.surface}${className ? ` ${className}` : ''}`} data-social-surface data-social-surface-frame-mode={frameMode}>
     {frameMode === 'attached' ? frame : <>{headerContent}{frame}</>}
   </main>
 }

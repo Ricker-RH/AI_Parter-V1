@@ -1,5 +1,12 @@
 import {readFileSync} from 'node:fs'
-import {describe, expect, it} from 'vitest'
+import {render, screen, within} from '@testing-library/react'
+import type {FormHTMLAttributes, ReactNode} from 'react'
+import {describe, expect, it, vi} from 'vitest'
+import type {SocialLabels} from './types.js'
+import {SearchContent} from './SearchContent.js'
+
+vi.mock('next/navigation', () => ({useRouter: () => ({push: vi.fn()})}))
+vi.mock('next/form', () => ({default: ({children, ...props}: FormHTMLAttributes<HTMLFormElement> & {children: ReactNode}) => <form {...props}>{children}</form>}))
 
 const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/SearchContent.tsx' : 'apps/web/src/components/social/SearchContent.tsx', 'utf8')
 const composer = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/SearchComposer.tsx' : 'apps/web/src/components/social/SearchComposer.tsx', 'utf8')
@@ -17,7 +24,15 @@ describe('search navigation contract', () => {
   })
 
   it('keeps Search header and results inside the attached desktop boundary', () => {
-    expect(source).toContain('<SocialSurface className="search-page" frameMode="attached"')
+    const labels = {homeEmptyDescription: 'Empty', search: 'Search', searchInput: 'Search', searchRecommended: 'Recommended', searchSubmit: 'Search', searchSuggestions: 'Suggestions'} as SocialLabels
+    render(<SearchContent category="all" labels={labels} locale="en"/>)
+
+    const surface = screen.getByRole('main')
+    const frame = surface.querySelector('[data-social-surface-frame]')
+    expect(surface).toHaveAttribute('data-social-surface-frame-mode', 'attached')
+    expect(surface.children).toHaveLength(1)
+    expect(frame).toContainElement(screen.getByRole('heading', {name: 'Search'}))
+    expect(frame).toContainElement(within(frame as HTMLElement).getByRole('region', {name: 'Recommended'}))
   })
 
   it('uses the compact recommendation identity layout without a feed-derived follower count', () => {
