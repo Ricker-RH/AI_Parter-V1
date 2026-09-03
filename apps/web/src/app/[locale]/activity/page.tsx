@@ -1,6 +1,7 @@
 import {notFound} from 'next/navigation'
 import {ActivityTabs} from '../../../components/social/ActivityTabs'
 import {FeedContent} from '../../../components/social/FeedContent'
+import {SocialSurface} from '../../../components/social/SocialSurface'
 import {getMessages, isLocale} from '../../../i18n/config'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 import {fetchBookmarks, fetchLiked} from '../../../lib/social-api'
@@ -29,10 +30,11 @@ export default async function ActivityPage({params, searchParams}: {params: Prom
   const returnTo = `/${locale}/activity?${query}`
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} result={{status: 'unavailable'}} /></main>
+  const header = <><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/></>
+  if (access.status === 'unavailable') return <SocialSurface className="activity-page" frameMode="attached" header={header} label={messages.posts}><FeedContent empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} result={{status: 'unavailable'}} /></SocialSurface>
   const result = tab === 'liked' ? await fetchLiked({cursor, token: access.token}) : await fetchBookmarks({cursor, token: access.token})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   const moreHref = nextCursor ? `/${locale}/activity?${new URLSearchParams({tab, cursor: nextCursor})}` : undefined
-  return <main><h1 className="sr-only">{messages.collections}</h1><ActivityTabs labels={messages} locale={locale} selected={tab}/><FeedContent canMutate empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} viewerScope={access.viewerScope} /></main>
+  return <SocialSurface className="activity-page" frameMode="attached" header={header} label={messages.posts}><FeedContent canMutate empty={tab === 'liked' ? 'liked' : 'bookmarks'} labels={messages} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} viewerScope={access.viewerScope} /></SocialSurface>
 }

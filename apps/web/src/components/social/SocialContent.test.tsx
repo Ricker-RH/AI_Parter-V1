@@ -643,6 +643,18 @@ describe("real social content", () => {
     expect(stylesheet).not.toContain('--post-detail-composer-reserve');
   });
 
+  it("keeps the private activity feed inside the shared bounded scroll surface", () => {
+    const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src';
+    const source = readFileSync(`${root}/app/[locale]/activity/page.tsx`, 'utf8');
+
+    expect(source).toContain("import {SocialSurface} from '../../../components/social/SocialSurface'");
+    expect(source).toContain('<SocialSurface');
+    expect(source).toContain('className="activity-page"');
+    expect(source).toContain('frameMode="attached"');
+    expect(source).toContain('header={header}');
+    expect(source).not.toMatch(/return <main>/);
+  });
+
   it("renders real notification rows and safe empty/auth states", () => {
     const notification: Notification = {
       id: "66666666-6666-4666-8666-666666666666",

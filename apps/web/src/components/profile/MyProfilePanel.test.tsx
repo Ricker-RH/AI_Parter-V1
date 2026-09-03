@@ -198,6 +198,8 @@ describe('MyProfilePanel', () => {
     expect(content).not.toHaveAttribute('aria-hidden')
     expect(stylesheet).toMatch(/\.pageContent\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
     expect(stylesheet).toMatch(/\.surface\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*none/s)
+    expect(stylesheet).toMatch(/\.page\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+    expect(stylesheet).not.toMatch(/\.page\s*\{[^}]*height:\s*calc\([^}]*100dvh/s)
 
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     expect(content).toHaveAttribute('aria-hidden', 'true')
