@@ -298,6 +298,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 .content {
   min-width: 0;
+  position: relative;
 }
 .page-header {
   border-bottom: 1px solid var(--shell-border);
@@ -824,7 +825,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .mobile-nav {
   display: none;
 }
-.floating-creator-action { align-items: center; background: var(--shell-text); border-radius: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); box-shadow: var(--aifans-elevation-2); color: var(--shell-surface); display: flex; position: fixed; height: 52px; justify-content: center; min-height: 44px; min-width: 44px; right: max(24px, env(safe-area-inset-right)); width: 52px; z-index: 35; }
+.floating-creator-action { align-items: center; background: var(--shell-text); border-radius: 50%; bottom: 24px; box-shadow: var(--aifans-elevation-2); color: var(--shell-surface); display: flex; position: absolute; height: 52px; justify-content: center; min-height: 44px; min-width: 44px; right: 24px; width: 52px; z-index: 35; }
 .floating-creator-action:hover { transform: translateY(-1px); }
 .floating-creator-action:focus-visible { outline: 2px solid var(--shell-text); outline-offset: 3px; }
 .floating-creator-action svg { height: 26px; width: 26px; }
@@ -2040,8 +2041,8 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .mobile-nav { background: color-mix(in srgb, var(--shell-surface) 94%, transparent); border-top: 1px solid var(--shell-border); bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); height: var(--mobile-bottom-nav-height); left: 0; padding: 0 max(8px, env(safe-area-inset-left)) var(--mobile-safe-area-bottom); position: fixed; right: 0; z-index: 10; }
   .shell[data-shell="public"] .mobile-nav { bottom: auto; left: auto; position: static; right: auto; }
   .mobile-nav[data-count="4"] { grid-template-columns: repeat(4, 1fr); }
-  .floating-creator-action { bottom: calc(66px + env(safe-area-inset-bottom)); right: max(16px, env(safe-area-inset-right)); }
-  .shell[data-floating-creator-action="visible"] .content { padding-bottom: 68px; }
+  .shell[data-shell="public"] .floating-creator-action { bottom: 16px; right: max(16px, env(safe-area-inset-right)); }
+  .messages-shell .floating-creator-action { bottom: calc(66px + env(safe-area-inset-bottom)); right: max(16px, env(safe-area-inset-right)); }
   .mobile-link { border-radius: 0; justify-content: center; min-height: 49px; padding: 0; }
   .mobile-link:hover, .mobile-link[aria-current="page"] { background: transparent; }
   .mobile-link[aria-current="page"] .nav-icon { stroke-width: 2.5; }

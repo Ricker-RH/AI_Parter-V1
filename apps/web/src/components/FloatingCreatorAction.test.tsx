@@ -16,12 +16,13 @@ describe('FloatingCreatorAction', () => {
     expect(screen.getByRole('link', {name: labels.creatorCenter})).toHaveAttribute('href', href)
   })
 
-  it('uses a fixed 52px circle with safe-area-aware positioning and a 44px minimum target', () => {
+  it('anchors the 52px circle inside the content frame without reserving a blank mobile strip', () => {
     const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
-    expect(css).toMatch(/\.floating-creator-action\s*\{[^}]*position:\s*fixed[^}]*height:\s*52px[^}]*min-height:\s*44px[^}]*width:\s*52px/)
-    expect(css).toMatch(/\.floating-creator-action\s*\{[^}]*bottom:\s*calc\([^}]*safe-area-inset-bottom/)
+    expect(css).toMatch(/\.content\s*\{[^}]*position:\s*relative/)
+    expect(css).toMatch(/\.floating-creator-action\s*\{[^}]*bottom:\s*24px[^}]*position:\s*absolute[^}]*height:\s*52px[^}]*min-height:\s*44px[^}]*width:\s*52px/)
     expect(css).toMatch(/\.floating-creator-action\s*\{[^}]*border-radius:\s*50%/)
     expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.mobile-nav \{[^}]*grid-template-columns:\s*repeat\(4, 1fr\)/)
-    expect(css).toMatch(/\.shell\[data-floating-creator-action="visible"\] \.content \{[^}]*padding-bottom:\s*68px/)
+    expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.floating-creator-action \{[^}]*bottom:\s*16px/)
+    expect(css).not.toMatch(/\.shell\[data-floating-creator-action="visible"\] \.content \{[^}]*padding-bottom/)
   })
 })

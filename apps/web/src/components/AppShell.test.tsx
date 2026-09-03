@@ -147,6 +147,17 @@ describe('AppShell', () => {
     expect(document.querySelectorAll('.floating-creator-action')).toHaveLength(visible ? 1 : 0)
   })
 
+  it('mounts the floating creator action inside each primary content frame', () => {
+    pathname = '/en'
+    const {unmount} = render(<AppShell locale="en" labels={labels}><main>Home</main></AppShell>)
+    expect(document.querySelector('[data-shell="public"] .content > .floating-creator-action')).not.toBeNull()
+    unmount()
+
+    pathname = '/en/messages'
+    render(<AppShell locale="en" labels={labels}><main>Messages</main></AppShell>)
+    expect(document.querySelector('[data-shell="messages"] .content > .floating-creator-action')).not.toBeNull()
+  })
+
   it('provides both route-kind fallbacks while pathname resolution is pending', () => {
     suspendPathname = true
     const {container} = render(<AppShell locale="en" labels={labels}><main>Pending route</main></AppShell>)
