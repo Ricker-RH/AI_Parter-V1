@@ -1,4 +1,5 @@
 import {redirect as nextRedirect} from 'next/navigation'
+import {connection} from 'next/server'
 import {createHash} from 'node:crypto'
 import type {Locale} from '../../i18n/config'
 import {authHref} from './return-to'
@@ -30,6 +31,7 @@ export async function getOptionalPageAccess({
   getToken?: () => Promise<string | null>
   timeoutMs?: number
 } = {}): Promise<OptionalPageAccess> {
+  if (getToken === undefined) await connection()
   let timeout: ReturnType<typeof setTimeout> | undefined
   try {
     const provider = getToken ?? defaultToken
@@ -65,6 +67,7 @@ export async function requireAuthenticatedPage({
   getToken?: () => Promise<string | null>
   redirect?: (path: string) => void
 }): Promise<PageAccess> {
+  if (getToken === undefined) await connection()
   let token: string | null
   try {
     const provider = getToken ?? defaultToken

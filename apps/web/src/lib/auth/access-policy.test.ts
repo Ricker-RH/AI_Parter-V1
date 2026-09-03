@@ -1,25 +1,41 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {getOptionalPageAccess, requireAuthenticatedPage, viewerScopeForToken} from './access-policy.js'
 
-const {getApiBearerToken} = vi.hoisted(() => ({getApiBearerToken: vi.fn<() => Promise<string | null>>() }))
+const {connection, getApiBearerToken} = vi.hoisted(() => ({
+  connection: vi.fn<() => Promise<void>>(),
+  getApiBearerToken: vi.fn<() => Promise<string | null>>(),
+}))
+vi.mock('next/server', () => ({connection}))
 vi.mock('./server', () => ({getApiBearerToken}))
 
 beforeEach(() => {
+  connection.mockReset()
+  connection.mockResolvedValue(undefined)
   getApiBearerToken.mockReset()
   getApiBearerToken.mockResolvedValue(null)
 })
 
 afterEach(() => {
+  connection.mockReset()
   getApiBearerToken.mockReset()
 })
 
 describe('requireAuthenticatedPage', () => {
-  it('starts the default bearer provider in the originating request context', async () => {
+  it('waits for a live request before starting the default bearer provider', async () => {
     const redirect = vi.fn()
     const access = requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages', redirect})
 
-    expect(getApiBearerToken).toHaveBeenCalledOnce()
     await expect(access).resolves.toEqual({status: 'unavailable'})
+    expect(connection).toHaveBeenCalledOnce()
+    expect(connection.mock.invocationCallOrder[0]).toBeLessThan(getApiBearerToken.mock.invocationCallOrder[0] ?? Infinity)
+  })
+
+  it('does not swallow the request-boundary signal', async () => {
+    const boundary = new Error('NEXT_POSTPONE')
+    connection.mockRejectedValueOnce(boundary)
+
+    await expect(requireAuthenticatedPage({locale: 'en', returnTo: '/en/messages'})).rejects.toBe(boundary)
+    expect(getApiBearerToken).not.toHaveBeenCalled()
   })
 
   it('returns a non-empty token without redirecting', async () => {
@@ -42,11 +58,20 @@ describe('requireAuthenticatedPage', () => {
 })
 
 describe('getOptionalPageAccess', () => {
-  it('starts the default bearer provider in the originating request context', async () => {
+  it('waits for a live request before starting the default bearer provider', async () => {
     const access = getOptionalPageAccess()
 
-    expect(getApiBearerToken).toHaveBeenCalledOnce()
     await expect(access).resolves.toEqual({status: 'anonymous'})
+    expect(connection).toHaveBeenCalledOnce()
+    expect(connection.mock.invocationCallOrder[0]).toBeLessThan(getApiBearerToken.mock.invocationCallOrder[0] ?? Infinity)
+  })
+
+  it('does not swallow the request-boundary signal', async () => {
+    const boundary = new Error('NEXT_POSTPONE')
+    connection.mockRejectedValueOnce(boundary)
+
+    await expect(getOptionalPageAccess()).rejects.toBe(boundary)
+    expect(getApiBearerToken).not.toHaveBeenCalled()
   })
 
   it('derives a stable opaque viewer scope without exposing a bearer token', () => {
