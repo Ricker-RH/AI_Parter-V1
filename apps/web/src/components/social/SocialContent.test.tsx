@@ -294,17 +294,17 @@ describe("real social content", () => {
         }}
       />,
     );
-    expect(screen.getByRole("link", { name: "Like" })).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
-    expect(screen.getByRole("link", { name: "Bookmark" })).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
-    expect(screen.getByRole("link", { name: "Comments" })).toHaveAttribute("href", `/en/posts/${post.id}`);
-    expect(screen.queryByRole("button", {name: "Like"})).toBeNull();
+    expect(screen.getByRole("link", { name: "Like 4" })).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", { name: "Bookmark 1" })).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", { name: "Comments 2" })).toHaveAttribute("href", `/en/posts/${post.id}`);
+    expect(screen.queryByRole("button", {name: "Like 4"})).toBeNull();
   });
 
   it("keeps authenticated false relationship values interactive", () => {
     const signedIn = {...post, viewerHasLiked: false, viewerHasBookmarked: false, viewerFollowsAuthor: false};
     render(<FeedContent canMutate labels={labels} locale="en" result={{status: "ok", data: {items: [signedIn], nextCursor: null}}} viewerScope="viewer-a" />);
 
-    expect(screen.getByRole("button", {name: "Like"})).toBeEnabled();
+    expect(screen.getByRole("button", {name: "Like 4"})).toBeEnabled();
   });
 
   it("renders localized empty, authentication, and unavailable states without posts", () => {

@@ -71,12 +71,18 @@ function formatCount(value: number, locale: Locale) {
   return new Intl.NumberFormat(locale).format(value)
 }
 
-function actionLabel(label: string, count: number, locale: Locale, variant: 'feed' | 'detail') {
-  return variant === 'detail' ? `${label} ${formatCount(count, locale)}` : label
+function formatVisibleCount(value: number, locale: Locale, variant: 'feed' | 'detail') {
+  return variant === 'feed'
+    ? new Intl.NumberFormat(locale, {maximumSignificantDigits: 2, notation: 'compact'}).format(value)
+    : formatCount(value, locale)
+}
+
+function actionLabel(label: string, count: number, locale: Locale) {
+  return `${label} ${formatCount(count, locale)}`
 }
 
 function Count({children, locale, variant='feed'}: {children: number; locale: Locale; variant?: 'feed' | 'detail'}) {
-  return <span aria-hidden="true">{variant === 'detail' ? formatCount(children, locale) : children}</span>
+  return <span aria-hidden="true">{formatVisibleCount(children, locale, variant)}</span>
 }
 
 async function completeBrowserShare(url: string): Promise<'completed' | 'cancelled'> {
@@ -164,7 +170,7 @@ function ActionFrame({afterComment, beforeComment, commentActive, commentsLabel,
   return <footer aria-label={commentsLabel} className="post-actions">
     <div className="post-actions__controls post-action-controls">
       {beforeComment}
-      <Link {...intentHandlers(postHref)} aria-current={commentActive ? 'page' : undefined} aria-label={actionLabel(commentsLabel, commentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true" fill={commentActive ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
+      <Link {...intentHandlers(postHref)} aria-current={commentActive ? 'page' : undefined} aria-label={actionLabel(commentsLabel, commentCount, locale)} className="post-action" href={postHref} prefetch={false} title={actionLabel(commentsLabel, commentCount, locale)}><CommentIcon aria-hidden="true" fill={commentActive ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
       {afterComment}
       {shareAction}
     </div>
@@ -246,9 +252,9 @@ function ScopedAuthenticatedActions({bookmarked, bookmarkCount, commentCount, la
   const commentsLabel = labels.comments ?? 'Comments'
   const likeLabel = state.like ? labels.unlike : labels.like
   const bookmarkLabel = state.bookmark ? labels.removeBookmark : labels.bookmark
-  const likeAction = <button aria-busy={state.pending.like} aria-label={actionLabel(likeLabel, state.likeCount, locale, variant)} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.likeCount}</Count></button>
-  const bookmarkAction = <button aria-busy={state.pending.bookmark} aria-label={actionLabel(bookmarkLabel, state.bookmarkCount, locale, variant)} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.bookmarkCount}</Count></button>
-  const shareAction = <button aria-busy={state.pending.share} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale, variant)} className="post-action" disabled={state.pending.share} onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
+  const likeAction = <button aria-busy={state.pending.like} aria-label={actionLabel(likeLabel, state.likeCount, locale)} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} title={actionLabel(likeLabel, state.likeCount, locale)} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.likeCount}</Count></button>
+  const bookmarkAction = <button aria-busy={state.pending.bookmark} aria-label={actionLabel(bookmarkLabel, state.bookmarkCount, locale)} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} title={actionLabel(bookmarkLabel, state.bookmarkCount, locale)} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.bookmarkCount}</Count></button>
+  const shareAction = <button aria-busy={state.pending.share} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} className="post-action" disabled={state.pending.share} onClick={() => void share()} title={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
   const feedback = (['like', 'bookmark', 'share'] as const).map((action) => state.errors[action] ? <span className="interaction-error" data-action={action} key={action} role="status">{labels.interactionError}</span> : null)
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={commentsLabel} feedback={feedback} locale={locale} postId={postId} shareAction={shareAction} variant={variant}/>
 }
@@ -290,9 +296,9 @@ function ScopedGuestActions({bookmarkCount, commentCount, labels, likeCount, loc
     }
   }
 
-  const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCount}</Count></Link>
-  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.bookmark, bookmarkCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{bookmarkCount}</Count></Link>
-  const shareAction = <button aria-busy={state.pending} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale, variant)} className="post-action" disabled={state.pending} onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
+  const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCount, locale)} className="post-action" href={gatedHref} prefetch={false} title={actionLabel(labels.like, likeCount, locale)}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCount}</Count></Link>
+  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.bookmark, bookmarkCount, locale)} className="post-action" href={gatedHref} prefetch={false} title={actionLabel(labels.bookmark, bookmarkCount, locale)}><BookmarkIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{bookmarkCount}</Count></Link>
+  const shareAction = <button aria-busy={state.pending} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} className="post-action" disabled={state.pending} onClick={() => void share()} title={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
   const feedback = state.error ? <span className="interaction-error" data-action="share" role="status">{labels.interactionError}</span> : null
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} feedback={feedback} locale={locale} postId={postId} shareAction={shareAction} variant={variant}/>
 }

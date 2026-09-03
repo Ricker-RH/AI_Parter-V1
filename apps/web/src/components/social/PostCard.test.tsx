@@ -289,7 +289,7 @@ describe("PostCard public interaction hierarchy", () => {
     fireEvent.click(screen.getByRole('button', {name: 'Profile: Luma'}));
     fireEvent.keyDown(document, {key: 'Escape'});
     fireEvent.click(screen.getByRole('link', {name: 'Luma'}));
-    fireEvent.click(screen.getByRole('link', {name: labels.like}));
+    fireEvent.click(screen.getByRole('link', {name: `${labels.like} 4`}));
 
     expect(container.querySelector('.post-card-navigation-target')).toHaveAttribute('href', `/en/posts/${post.id}`)
     expect(capture).not.toHaveBeenCalled();
@@ -307,13 +307,13 @@ describe("PostCard public interaction hierarchy", () => {
     render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} returnTo="/en" />);
 
     expect(screen.queryByText(labels.signInToInteract)).toBeNull();
-    expect(screen.getByRole("link", {name: labels.like})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
-    expect(screen.getByRole("link", {name: labels.like})).toHaveTextContent('4');
-    expect(screen.getByRole("link", {name: labels.comments})).toHaveAttribute("href", `/en/posts/${post.id}`);
-    expect(screen.getByRole("link", {name: labels.comments})).toHaveTextContent('2');
-    expect(screen.getByRole("link", {name: labels.bookmark})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
-    expect(screen.getByRole("link", {name: labels.bookmark})).toHaveTextContent('1');
-    expect(screen.getByRole("button", {name: labels.share!})).toHaveTextContent('3');
+    expect(screen.getByRole("link", {name: `${labels.like} 4`})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", {name: `${labels.like} 4`})).toHaveTextContent('4');
+    expect(screen.getByRole("link", {name: `${labels.comments} 2`})).toHaveAttribute("href", `/en/posts/${post.id}`);
+    expect(screen.getByRole("link", {name: `${labels.comments} 2`})).toHaveTextContent('2');
+    expect(screen.getByRole("link", {name: `${labels.bookmark} 1`})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", {name: `${labels.bookmark} 1`})).toHaveTextContent('1');
+    expect(screen.getByRole("button", {name: `${labels.share!} 3`})).toHaveTextContent('3');
     expect(document.querySelectorAll(".post-action svg")).toHaveLength(4);
   });
 
