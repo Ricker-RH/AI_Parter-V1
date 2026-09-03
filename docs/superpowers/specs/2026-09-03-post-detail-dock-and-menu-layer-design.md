@@ -71,9 +71,11 @@ The detail route selects `viewportLayout="docked"`. Other `SocialSurface` consum
 
 ## Responsive behavior
 
-The public shell already reserves the mobile top bar and fixed bottom navigation from `.post-detail-page` height. The dock therefore uses `bottom: auto` and normal grid placement; no duplicated `50px` navigation offset is added.
+`PathAwareShell` suppresses the global mobile top bar on post-detail routes because the detail page renders its own header inside `SocialSurface`. The current shared mobile height rule nevertheless subtracts both `56px` and the bottom navigation, so detail loses an extra header-height of usable space. Split that rule: Home and collections continue reserving the external mobile top bar, while `.post-detail-page` reserves only the fixed bottom navigation and safe area. Its own detail header remains the first row inside the resulting height.
 
-- Under 700px, the detail surface fills the shell's reserved content height; the dock touches the top border of the bottom navigation and includes its own horizontal padding.
+The dock uses `bottom: auto` and normal grid placement; no duplicated `50px` navigation offset is added.
+
+- Under 700px, the detail surface uses `height: calc(100dvh - 50px - env(safe-area-inset-bottom))`; the dock touches the top border of the bottom navigation and includes its own horizontal padding.
 - At 700px and above, the dock stays inside the rounded frame and the frame clips its background and borders.
 - The scroll region has `min-height: 0` and `min-width: 0` so long comments, media, or narrow widths cannot force a second page scrollbar.
 - Safe-area handling remains owned by the shell and mobile navigation. The composer must not add the inset a second time.
@@ -104,6 +106,7 @@ The trigger and menu remain below document-level modal portals. Opening the auth
 - A successful post detail renders exactly one named scroll region followed by one composer dock.
 - The composer dock is outside the comments list and contains the primary composer/sign-in/loading state.
 - No `ResizeObserver`, height state, reserve custom property, sticky composer, or mobile bottom offset remains.
+- The mobile height contract proves detail does not subtract the suppressed global top bar, while Home and collections still do.
 - Growing composer content is handled by grid rows rather than measured padding.
 - Surface/header/frame layer tests prove that frame descendants cannot out-stack the header menu.
 - Menu remains opaque and keeps its keyboard/outside-click/focus tests.
