@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {useRouter} from 'next/navigation'
 import {useCallback,useEffect,useRef,useState} from 'react'
 import type {Locale} from '../../i18n/config'
-import {authHref} from '../../lib/auth/return-to'
+import {authHref,creatorHref} from '../../lib/auth/return-to'
 import {CreatorClientError,creatorJson} from './client'
 import {CreatorAnalytics} from './CreatorAnalytics'
 import {CreatorDraftForm} from './CreatorDraftForm'
@@ -13,13 +13,14 @@ import {CreatorHero} from './CreatorHero'
 import {CreatorRequestActions} from './CreatorRequestActions'
 import type {CreatorDraft,CreatorIp,CreatorLabels} from './types'
 
-export function CreatorCenter({locale,labels}:{locale:Locale;labels:CreatorLabels}){
+export function CreatorCenter({locale,labels,returnTo}:{locale:Locale;labels:CreatorLabels;returnTo?:string}){
   const router=useRouter()
   const [drafts,setDrafts]=useState<CreatorDraft[]>([]);const [ips,setIps]=useState<CreatorIp[]>([]);const [state,setState]=useState<'loading'|'ready'|'auth'|'error'>('loading');const [creating,setCreating]=useState(false);const [targetIp,setTargetIp]=useState<string|undefined>()
   const staleSessionRedirected=useRef(false)
-  const redirectStaleSession=useCallback(()=>{if(staleSessionRedirected.current)return;staleSessionRedirected.current=true;router.replace(authHref(locale,`/${locale}/creator`))},[locale,router])
+  const creatorReturnTo=returnTo?creatorHref(locale,returnTo):`/${locale}/creator`
+  const redirectStaleSession=useCallback(()=>{if(staleSessionRedirected.current)return;staleSessionRedirected.current=true;router.replace(authHref(locale,creatorReturnTo))},[creatorReturnTo,locale,router])
   useEffect(()=>{let active=true;(async()=>{try{const draftPage=CreatorDraftPageSchema.parse(await creatorJson('drafts'));const ipPage=CreatorIpPageSchema.parse(await creatorJson('ips'));if(active){setDrafts(draftPage.items);setIps(ipPage.items);setState('ready')}}catch(error){if(!active)return;if(error instanceof CreatorClientError&&error.status===401){redirectStaleSession();return}setState('error')}})();return()=>{active=false}},[redirectStaleSession])
-  return <main className="creator-page"><CreatorHero labels={labels} locale={locale} {...(state==='ready'&&!creating?{onNewIdentity:()=>setCreating(true)}:{})}/>
+  return <main className="creator-page"><CreatorHero labels={labels} locale={locale} {...(returnTo?{returnTo}:{})} {...(state==='ready'&&!creating?{onNewIdentity:()=>setCreating(true)}:{})}/>
     {state==='loading'?<p className="creator-notice" role="status">{labels.loading}</p>:null}
     {state==='error'?<p className="creator-notice" role="alert">{labels.unavailable}</p>:null}
     {state==='auth'?<p className="creator-notice" role="alert">{labels.authRequired} <Link href={`/${locale}/auth/sign-in`}>{labels.signIn}</Link></p>:null}

@@ -27,15 +27,15 @@ describe('creator center page',()=>{
   })
 
   it.each([
-    {locale:'en' as const,labels:en.creator,href:'/en/profile'},
-    {locale:'zh-CN' as const,labels:zh.creator,href:'/zh-CN/profile'},
+    {locale:'en' as const,labels:en.creator,href:'/en/messages'},
+    {locale:'zh-CN' as const,labels:zh.creator,href:'/zh-CN/channels'},
   ])('keeps the localized creator header and safe exit when access is unavailable in $locale',async({locale,labels,href})=>{
-    render(await CreatorPage({params:Promise.resolve({locale})}))
+    render(await CreatorPage({params:Promise.resolve({locale}),searchParams:Promise.resolve({returnTo:href})}))
 
     expect(screen.getByRole('heading',{level:1,name:labels.title})).toBeVisible()
     expect(screen.getByRole('link',{name:labels.cancel})).toHaveAttribute('href',href)
     expect(screen.getByRole('link',{name:labels.cancel})).toHaveClass('creator-exit')
     expect(screen.getByRole('alert')).toHaveTextContent(labels.unavailable)
-    expect(access).toHaveBeenCalledWith({locale,returnTo:`/${locale}/creator`})
+    expect(access).toHaveBeenCalledWith({locale,returnTo:`/${locale}/creator?returnTo=${encodeURIComponent(href)}`})
   })
 })

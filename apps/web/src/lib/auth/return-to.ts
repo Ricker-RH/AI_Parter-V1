@@ -6,6 +6,21 @@ export function authHref(locale: Locale, returnTo: string): string {
   return `/${locale}/auth/sign-in?next=${encodeURIComponent(safeReturn)}`
 }
 
+export function readCreatorReturnTo(locale: Locale, value: string | readonly string[] | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const splitAt = value.indexOf('?')
+  const pathname = splitAt === -1 ? value : value.slice(0, splitAt)
+  const base = `/${locale}`
+  if (pathname !== base && pathname !== `${base}/channels` && pathname !== `${base}/messages`) return undefined
+  if (value === base || value === `${base}/channels`) return value
+  return readUserReturnTo(locale, value)
+}
+
+export function creatorHref(locale: Locale, returnTo: string): string {
+  const safeReturn = readCreatorReturnTo(locale, returnTo) ?? `/${locale}`
+  return `/${locale}/creator?returnTo=${encodeURIComponent(safeReturn)}`
+}
+
 export function readAdminReturnTo(locale: Locale, value: string | readonly string[] | undefined): string | undefined {
   if (typeof value !== 'string') return undefined
   const allowed = new Set([`/${locale}/admin`, `/${locale}/admin/creator`])
@@ -120,7 +135,14 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
   if (pathname === `${base}/settings`) return hasOnlyQueryKeys(query, []) ? value : undefined
   if (pathname === `${base}/activity`) return hasCanonicalActivityQuery(query) ? value : undefined
 
-  const exactPaths = new Set([`${base}/profile`, `${base}/creator`])
+  if (pathname === `${base}/creator`) {
+    if (!query) return value
+    const params = new URLSearchParams(query)
+    const returnTo = params.get('returnTo')
+    return [...params.keys()].every((key) => key === 'returnTo') && params.getAll('returnTo').length === 1 && returnTo && readCreatorReturnTo(locale, returnTo) ? value : undefined
+  }
+
+  const exactPaths = new Set([`${base}/profile`])
   if (exactPaths.has(pathname)) return hasOnlyQueryKeys(query, []) ? value : undefined
 
   const cursorPaths = new Set([`${base}/notifications`, `${base}/bookmarks`])

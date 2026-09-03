@@ -37,6 +37,12 @@ describe('user auth return target', () => {
     expect(authHref('en', '/en/messages')).toBe('/en/auth/sign-in?next=%2Fen%2Fmessages')
     expect(authHref('en', 'https://attacker.example')).toBe('/en/auth/sign-in?next=%2Fen')
   })
+  it('accepts a creator route only when its nested origin is a validated primary page', () => {
+    const safe = '/en/creator?returnTo=%2Fen%2Fchannels'
+    expect(readUserReturnTo('en', safe)).toBe(safe)
+    expect(readUserReturnTo('en', '/en/creator?returnTo=https%3A%2F%2Fattacker.example')).toBeUndefined()
+    expect(readUserReturnTo('en', '/en/creator?returnTo=%2Fen%2Fprofile')).toBeUndefined()
+  })
   it('preserves canonical persistent-message list and detail targets in the real login href', () => {
     const id = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
     const listCursor = encodeChatConversationCursor({v: 1, kind: 'chat-conversations', updatedAt: '2026-09-01T00:00:00.000Z', id})

@@ -5,8 +5,9 @@ import {describe, expect, it, vi} from 'vitest'
 import nextConfig from '../../next.config.js'
 
 let pathname = '/en'
+let searchParams = new URLSearchParams()
 let suspendPathname = false
-vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname) throw new Promise(() => undefined); return pathname }, useSearchParams: () => new URLSearchParams()}))
+vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname) throw new Promise(() => undefined); return pathname }, useSearchParams: () => searchParams}))
 import {AppShell} from './AppShell.js'
 
 const labels = {
@@ -156,6 +157,14 @@ describe('AppShell', () => {
     pathname = '/en/messages'
     render(<AppShell locale="en" labels={labels}><main>Messages</main></AppShell>)
     expect(document.querySelector('[data-shell="messages"] .content > .floating-creator-action')).not.toBeNull()
+  })
+
+  it('preserves the complete primary-page origin in the creator action', () => {
+    pathname = '/en'
+    searchParams = new URLSearchParams({feed: 'following'})
+    render(<AppShell locale="en" labels={labels}><main>Following</main></AppShell>)
+    expect(document.querySelector('.floating-creator-action')).toHaveAttribute('href', '/en/creator?returnTo=%2Fen%3Ffeed%3Dfollowing')
+    searchParams = new URLSearchParams()
   })
 
   it('provides both route-kind fallbacks while pathname resolution is pending', () => {

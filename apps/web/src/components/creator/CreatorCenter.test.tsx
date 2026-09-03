@@ -11,12 +11,12 @@ afterEach(()=>{vi.unstubAllGlobals();replace.mockClear()})
 
 describe('CreatorCenter',()=>{
   it.each([
-    {locale:'en' as const,labels:en.creator,name:'Cancel',href:'/en/profile'},
-    {locale:'zh-CN' as const,labels:zh.creator,name:'取消',href:'/zh-CN/profile'},
-  ])('always offers a localized safe exit from creator mode in $locale',({locale,labels,name,href})=>{
+    {locale:'en' as const,labels:en.creator,name:'Cancel',href:'/en/messages'},
+    {locale:'zh-CN' as const,labels:zh.creator,name:'取消',href:'/zh-CN/channels'},
+  ])('returns to the validated originating page in $locale',({locale,labels,name,href})=>{
     vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(()=>{})))
 
-    render(<CreatorCenter labels={labels} locale={locale} />)
+    render(<CreatorCenter labels={labels} locale={locale} returnTo={href} />)
 
     expect(screen.getByRole('link',{name})).toHaveAttribute('href',href)
     expect(screen.getByRole('link',{name})).toHaveClass('creator-exit')

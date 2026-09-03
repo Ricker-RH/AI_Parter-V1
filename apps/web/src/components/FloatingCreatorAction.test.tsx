@@ -9,10 +9,10 @@ vi.mock('next/link', () => ({default: ({children, ...props}: {children: React.Re
 
 describe('FloatingCreatorAction', () => {
   it.each([
-    ['en', en, '/en/creator'],
-    ['zh-CN', zhCN, '/zh-CN/creator'],
-  ] as const)('links to the localized creator route for %s', (locale, labels, href) => {
-    render(<FloatingCreatorAction label={labels.creatorCenter} locale={locale} />)
+    ['en', en, '/en/messages', '/en/creator?returnTo=%2Fen%2Fmessages'],
+    ['zh-CN', zhCN, '/zh-CN/channels', '/zh-CN/creator?returnTo=%2Fzh-CN%2Fchannels'],
+  ] as const)('links to the localized creator route with its safe origin for %s', (locale, labels, returnTo, href) => {
+    render(<FloatingCreatorAction label={labels.creatorCenter} locale={locale} returnTo={returnTo} />)
     expect(screen.getByRole('link', {name: labels.creatorCenter})).toHaveAttribute('href', href)
   })
 

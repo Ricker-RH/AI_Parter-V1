@@ -1,7 +1,7 @@
 'use client'
 
 import {Suspense, type ReactNode} from 'react'
-import {usePathname} from 'next/navigation'
+import {usePathname, useSearchParams} from 'next/navigation'
 import type {Locale} from '../i18n/config'
 import type {ShellLabels} from './AppNav'
 import {AdminShell} from './admin/AdminShell'
@@ -16,8 +16,11 @@ import {FloatingCreatorAction} from './FloatingCreatorAction'
 
 export function PathAwareShell({authConfigured, children, creatorModeEnabled, labels, locale, release}: {authConfigured: boolean; children: ReactNode; creatorModeEnabled: boolean; labels: ShellLabels; locale: Locale; release: string}) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const showFloatingCreatorAction = creatorModeEnabled && shouldShowFloatingCreatorAction(pathname)
-  const floatingCreatorAction = showFloatingCreatorAction ? <FloatingCreatorAction label={labels.creatorCenter ?? labels.creatorNav} locale={locale}/> : null
+  const query = searchParams.toString()
+  const returnTo = query ? `${pathname}?${query}` : pathname
+  const floatingCreatorAction = showFloatingCreatorAction ? <FloatingCreatorAction label={labels.creatorCenter ?? labels.creatorNav} locale={locale} returnTo={returnTo}/> : null
   let shell: ReactNode
   switch (resolveShellKind(pathname)) {
     case 'admin': shell = <AdminShell authConfigured={authConfigured} locale={locale}>{children}</AdminShell>; break
