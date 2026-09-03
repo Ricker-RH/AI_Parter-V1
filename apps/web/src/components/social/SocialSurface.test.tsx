@@ -54,6 +54,35 @@ describe('SocialSurface', () => {
     expect(frame).toContainElement(viewport)
   })
 
+  it('uses a semantic scroll viewport by default and a non-semantic two-row layout viewport when docked', () => {
+    const {rerender} = render(<SocialSurface header={<header><h1>Post</h1></header>} label="Post and comments"><article>Post</article></SocialSurface>)
+
+    const defaultViewport = document.querySelector('[data-social-surface-viewport]')
+    expect(defaultViewport).toHaveAttribute('data-social-surface-viewport-layout', 'scroll')
+    expect(defaultViewport).toHaveAttribute('role', 'region')
+    expect(defaultViewport).toHaveAttribute('aria-label', 'Post and comments')
+    expect(defaultViewport).toHaveAttribute('tabindex', '0')
+
+    rerender(<SocialSurface header={<header><h1>Post</h1></header>} label="Post and comments" viewportLayout="docked"><article>Post</article><footer>Composer</footer></SocialSurface>)
+
+    const dockedViewport = document.querySelector('[data-social-surface-viewport]')
+    expect(dockedViewport).toHaveAttribute('data-social-surface-viewport-layout', 'docked')
+    expect(dockedViewport).not.toHaveAttribute('role')
+    expect(dockedViewport).not.toHaveAttribute('aria-label')
+    expect(dockedViewport).not.toHaveAttribute('tabindex')
+    expect(dockedViewport?.children).toHaveLength(2)
+  })
+
+  it('isolates the surface and keeps attached and detached content below the header layer', () => {
+    const root = process.cwd().endsWith('/apps/web') ? 'src/components/social' : 'apps/web/src/components/social'
+    const stylesheet = readFileSync(`${root}/SocialSurface.module.css`, 'utf8')
+
+    expect(stylesheet).toMatch(/\.surface\s*\{[^}]*isolation:\s*isolate/)
+    expect(stylesheet).toMatch(/\.frame\s*\{[^}]*position:\s*relative[^}]*z-index:\s*0/)
+    expect(stylesheet).toMatch(/\.viewport\s*\{[^}]*position:\s*relative[^}]*z-index:\s*0/)
+    expect(stylesheet).toMatch(/\.dockedViewport\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) auto[^}]*overflow:\s*hidden/)
+  })
+
   it('gives the content frame sole ownership of clipping and desktop shell edges', () => {
     const root = process.cwd().endsWith('/apps/web') ? 'src/components/social' : 'apps/web/src/components/social'
     const stylesheet = readFileSync(`${root}/SocialSurface.module.css`, 'utf8')
