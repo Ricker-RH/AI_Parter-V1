@@ -24,8 +24,17 @@ describe('mixed public search pagination', () => {
     expect(migration).toContain('post_share_events_post_id_idempotency_key_unique')
     expect(migration).toContain('ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING')
     expect(migration).toMatch(/FROM public\.posts post[\s\S]*FOR SHARE[\s\S]*FROM public\.ip_profiles ip[\s\S]*FOR SHARE/)
+    const recordShare = migration.match(/CREATE(?: OR REPLACE)? FUNCTION public\.record_post_share[\s\S]*?END\s*\$\$;/)?.[0]
+    expect(recordShare).toBeTruthy()
+    expect(recordShare!).toMatch(/SELECT\s+ip\.source\s*,\s*ip\.current_identity_revision_id\s*,\s*ip\.active_creator_revision_id\s+INTO\s+owner_source\s*,\s*current_revision_id\s*,\s*active_creator_revision_id[\s\S]*WHERE\s+ip\.profile_id\s*=\s*owner_id\s+AND\s+ip\.public_state\s*=\s*'published'[\s\S]*FOR SHARE/)
+    expect(recordShare!).toMatch(/owner_source\s+IS NULL\s+OR\s+current_revision_id\s+IS NULL\s+OR\s+NOT EXISTS\s*\([\s\S]*FROM public\.ip_identity_revisions\s+identity[\s\S]*identity\.id\s*=\s*current_revision_id[\s\S]*identity\.ip_profile_id\s*=\s*owner_id[\s\S]*owner_source\s*=\s*'creator'[\s\S]*active_creator_revision_id\s+IS NULL\s+OR\s+NOT EXISTS\s*\([\s\S]*FROM public\.creator_revisions\s+creator_revision[\s\S]*creator_revision\.id\s*=\s*active_creator_revision_id/)
     expect(migration).toContain('CREATE OR REPLACE FUNCTION public.platform_publish_ip_comment')
     expect(migration).toMatch(/platform_publish_ip_comment[\s\S]*FROM public\.posts target[\s\S]*FOR UPDATE OF target[\s\S]*FROM public\.ip_profiles ip[\s\S]*ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/)
+    const platformComment = migration.match(/CREATE OR REPLACE FUNCTION public\.platform_publish_ip_comment[\s\S]*?END\s*\$\$;/)?.[0]
+    expect(platformComment).toBeTruthy()
+    expect(platformComment!).toMatch(/SELECT\s+target\.author_profile_id\s*,\s*target\.state\s+INTO\s+target_author_profile_id\s*,\s*target_post_state\s+FROM public\.posts\s+target\s+WHERE\s+target\.id\s*=\s*target_post_id\s+FOR UPDATE OF target/)
+    expect(platformComment!).not.toMatch(/FROM public\.posts\s+target\s+WHERE\s+target\.id\s*=\s*target_post_id\s+AND\s+target\.state\s*=\s*'published'/)
+    expect(platformComment!).toMatch(/WHERE\s+ip\.profile_id\s*=\s*target_author_profile_id\s+AND\s+ip\.public_state\s*=\s*'published'[\s\S]*ERRCODE\s*=\s*'P0002'[\s\S]*WHERE\s+ip\.profile_id\s*=\s*represented_ip_profile_id\s+AND\s+ip\.public_state\s*=\s*'published'\s+AND\s+ip\.operation_enabled[\s\S]*ERRCODE\s*=\s*'P0001'[\s\S]*IF\s+target_post_state\s*<>\s*'published'[\s\S]*ERRCODE\s*=\s*'P0002'/)
     expect(migration).toContain("SECURITY DEFINER SET search_path = ''")
     expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.social_public_search_posts')
   })
