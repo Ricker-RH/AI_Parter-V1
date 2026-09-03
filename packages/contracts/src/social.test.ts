@@ -31,6 +31,9 @@ import {
   LikedCursorSchema,
   decodeLikedCursor,
   encodeLikedCursor,
+  SavedCursorSchema,
+  decodeSavedCursor,
+  encodeSavedCursor,
   FollowedIpCursorSchema,
   FollowedIpPageSchema,
   ShareRecordedSchema,
@@ -62,7 +65,7 @@ describe("social contracts", () => {
     };
     const reply = {...root, id: "d0a9170a-e727-4d88-bf31-1a795a7f88eb", parentCommentId: id, body: "reply", likeCount: 0, replyCount: 0, bookmarkCount: 0, shareCount: 0};
     expect(CommentPageSchema.parse({groups: [{root, replies: [reply]}], nextCursor: null})).toMatchObject({groups: [{root: {rootCommentId: id}}]});
-    expect(CommentCursorSchema.parse({v: 2, kind: "comment_roots", order: "root_created_at_asc_v1", postId: id, rootCreatedAt: timestamp, rootId: id})).toMatchObject({v: 2});
+    expect(CommentCursorSchema.parse({v: 3, kind: "comment_roots", order: "root_created_at_desc_v1", postId: id, rootCreatedAt: timestamp, rootId: id})).toMatchObject({v: 3});
     expect(() => CommentCursorSchema.parse({v: 1, kind: "comments", createdAt: timestamp, id})).toThrow();
     expect(() => CommentPageSchema.parse({items: [root], nextCursor: null})).toThrow();
     expect(() => CommentPageSchema.parse({groups: [{root: {...root, parentCommentId: reply.id}, replies: [reply]}], nextCursor: null})).toThrow();
@@ -83,11 +86,19 @@ describe("social contracts", () => {
   });
 
   it("round trips canonical post-bound comment cursors", () => {
-    const cursor = {v: 2 as const, kind: "comment_roots" as const, order: "root_created_at_asc_v1" as const, postId: id, rootCreatedAt: timestamp, rootId: id};
+    const cursor = {v: 3 as const, kind: "comment_roots" as const, order: "root_created_at_desc_v1" as const, postId: id, rootCreatedAt: timestamp, rootId: id};
     const encoded = encodeCommentCursor(cursor);
     expect(decodeCommentCursor(encoded, id)).toEqual(cursor);
     expect(() => decodeCommentCursor(encoded, "d0a9170a-e727-4d88-bf31-1a795a7f88eb")).toThrow("INVALID_CURSOR");
     expect(() => decodeCommentCursor(`${encoded}=`, id)).toThrow("INVALID_CURSOR");
+  });
+
+  it("round trips canonical latest-saved cursors", () => {
+    const cursor = {v: 1 as const, kind: "saved" as const, order: "saved_at_desc_v1" as const, savedAt: timestamp, id};
+    expect(SavedCursorSchema.parse(cursor)).toEqual(cursor);
+    const encoded = encodeSavedCursor(cursor);
+    expect(decodeSavedCursor(encoded)).toEqual(cursor);
+    expect(() => decodeSavedCursor(`${encoded}=`)).toThrow("INVALID_CURSOR");
   });
   it("round trips strict followed-IP cursors", () => {
     const cursor = {

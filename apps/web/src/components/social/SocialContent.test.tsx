@@ -576,7 +576,8 @@ describe("real social content", () => {
   });
 
   it("renders one composer after the toolbar in the single scroll region while optimistic comments update the action count", async () => {
-    const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
+    const older = testComment({id: "55555555-5555-4555-8555-555555555555", parentCommentId: null, body: "Older comment", createdAt: "2026-09-01T12:00:00.000Z", author: ip});
+    const detail: PostDetail = {...post, comments: {groups: rootGroups([older]), nextCursor: null}};
     const created = testComment({id: "33333333-3333-4333-8333-833333333333", parentCommentId: null, body: "Fresh reply", createdAt: "2026-09-02T12:00:00.000Z", author: {kind: "human", id: "44444444-4444-4444-8444-444444444444", username: "alex", displayName: "Alex"}});
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(created, {status: 201})));
     const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="viewer-a" />);
@@ -585,7 +586,7 @@ describe("real social content", () => {
     const dock = container.querySelector<HTMLElement>('.post-detail-composer-dock')!;
     expect(container.children).toHaveLength(1);
     expect(container.children[0]).toBe(scrollRegion);
-    expect(scrollRegion).toContainElement(screen.getByRole('article'));
+    expect(scrollRegion).toContainElement(container.querySelector('article.post-card'));
     expect(scrollRegion).toContainElement(container.querySelector('.comments-toolbar'));
     expect(scrollRegion).toContainElement(container.querySelector('.comments-section'));
     expect(scrollRegion).toContainElement(dock);
@@ -601,6 +602,7 @@ describe("real social content", () => {
     expect(updatedCommentAction).toHaveAttribute('aria-current', 'page');
     expect(updatedCommentAction.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
     expect(dock).not.toHaveStyle({overflowY: 'auto'});
+    expect([...container.querySelectorAll('.comment-thread-group')].map((group) => group.textContent)).toEqual([expect.stringContaining('Fresh reply'), expect.stringContaining('Older comment')]);
   });
 
   it("uses shared mobile scroll-clearance variables on the actual list and detail scroll surfaces", () => {

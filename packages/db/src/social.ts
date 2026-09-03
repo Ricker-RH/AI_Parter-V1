@@ -15,6 +15,7 @@ import {
   FollowedIpPageSchema,
   type Locale,
   type LikedCursor,
+  type SavedCursor,
   type Notification,
   type NotificationPage,
   NotificationSchema,
@@ -33,8 +34,10 @@ import {
   decodeCursor,
   decodeFollowedIpCursor,
   decodeLikedCursor,
+  decodeSavedCursor,
   decodeNotificationCursor,
   encodeLikedCursor,
+  encodeSavedCursor,
   encodeFollowedIpCursor,
   encodeNotificationCursor,
   encodeCommentCursor,
@@ -226,6 +229,7 @@ type PostRow = PublicIpRow & {
   viewer_follows_author?: boolean;
   score?: number | string;
   liked_at?: string;
+  saved_at?: string;
 };
 const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at,
   p.id, p.username, p.display_name, p.bio, p.languages, p.visual_type,
@@ -238,6 +242,10 @@ const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at
 const likedPostSql = publicPostSql.replace(
   " FROM public.social_public_posts() p",
   ", to_char(liked.created_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS liked_at FROM public.social_public_posts() p JOIN public.post_likes liked ON liked.post_id = p.post_id AND liked.profile_id = public.current_profile_id()",
+);
+const savedPostSql = publicPostSql.replace(
+  " FROM public.social_public_posts() p",
+  ", to_char(saved.created_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS saved_at FROM public.social_public_posts() p JOIN public.bookmarks saved ON saved.post_id = p.post_id AND saved.profile_id = public.current_profile_id()",
 );
 
 function iso(value: Date | string): string {
@@ -435,7 +443,7 @@ export function createSocialRepository({
       kind: FeedKind;
       locale?: Locale;
       limit: number;
-      after: Cursor | LikedCursor | null;
+      after: Cursor | LikedCursor | SavedCursor | null;
       authorProfileId?: string;
     },
     bookmarkedOnly = false,
@@ -451,10 +459,8 @@ export function createSocialRepository({
       !input.authorProfileId
     )
       filters.push("public.social_viewer_follows(p.author_profile_id)");
-    if (bookmarkedOnly)
-      filters.push(
-        "EXISTS (SELECT 1 FROM public.bookmarks saved WHERE saved.profile_id = public.current_profile_id() AND saved.post_id = p.post_id)",
-      );
+    if (bookmarkedOnly && after && after.kind !== "saved")
+      throw new Error("INVALID_CURSOR");
     if (likedOnly && after && after.kind !== "liked")
       throw new Error("INVALID_CURSOR");
     if (!publicMediaBaseUrl)
@@ -485,21 +491,37 @@ export function createSocialRepository({
         `(liked.created_at, liked.post_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`,
       );
     }
+    if (after?.kind === "saved") {
+      params.push(after.savedAt, after.id);
+      filters.push(
+        `(saved.created_at, saved.post_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`,
+      );
+    }
     params.push(input.limit + 1);
-    const order = likedOnly
+    const order = bookmarkedOnly
+      ? "saved.created_at DESC, saved.post_id DESC"
+      : likedOnly
       ? "liked.created_at DESC, liked.post_id DESC"
       : input.kind === "for_you"
         ? `${score} DESC, p.published_at DESC, p.post_id DESC`
         : "p.published_at DESC, p.post_id DESC";
     const result = await client.query<PostRow>(
-      `${(likedOnly ? likedPostSql : publicPostSql).replace("NULL::text", "$1::text").replace(" FROM public.social_public_posts() p", `, ${score} AS score FROM public.social_public_posts() p`)} WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT $${params.length}`,
+      `${(bookmarkedOnly ? savedPostSql : likedOnly ? likedPostSql : publicPostSql).replace("NULL::text", "$1::text").replace(" FROM public.social_public_posts() p", `, ${score} AS score FROM public.social_public_posts() p`)} WHERE ${filters.join(" AND ")} ORDER BY ${order} LIMIT $${params.length}`,
       params,
     );
     const rows = result.rows.slice(0, input.limit);
     const last = rows.at(-1);
     const nextCursor =
       result.rows.length > input.limit && last
-        ? likedOnly
+        ? bookmarkedOnly
+          ? encodeSavedCursor({
+              v: 1,
+              kind: "saved",
+              order: "saved_at_desc_v1",
+              savedAt: last.saved_at!,
+              id: last.post_id,
+            })
+          : likedOnly
           ? encodeLikedCursor({
               v: 1,
               kind: "liked",
@@ -626,7 +648,7 @@ export function createSocialRepository({
             groups,
             nextCursor:
               hasMore && last && lastRootRow?.root_created_at
-                ? encodeCommentCursor({v: 2,kind: "comment_roots",order: "root_created_at_asc_v1",postId: input.postId,rootCreatedAt: lastRootRow.root_created_at,rootId: last.id})
+                ? encodeCommentCursor({v: 3,kind: "comment_roots",order: "root_created_at_desc_v1",postId: input.postId,rootCreatedAt: lastRootRow.root_created_at,rootId: last.id})
                 : null,
           },
         };
@@ -826,7 +848,7 @@ export function createSocialRepository({
           {
             kind: "following",
             limit: page.limit,
-            after: page.cursor ? decodeCursor(page.cursor, "following") : null,
+            after: page.cursor ? decodeSavedCursor(page.cursor) : null,
           },
           true,
         ),

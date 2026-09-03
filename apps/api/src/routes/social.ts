@@ -17,6 +17,7 @@ import {
   decodeCommentCursor,
   decodeFollowedIpCursor,
   decodeLikedCursor,
+  decodeSavedCursor,
   decodeNotificationCursor,
   decodeSearchCursor,
 } from '@aifans/contracts'
@@ -471,6 +472,13 @@ export function registerSocialRoutes(app: Hono<{Variables: ApiVariables}>, depen
       if (path === '/v1/likes' && query.data.cursor) {
         try {
           decodeLikedCursor(query.data.cursor)
+        } catch {
+          return invalidCursor(c)
+        }
+      }
+      if (path === '/v1/bookmarks' && query.data.cursor) {
+        try {
+          decodeSavedCursor(query.data.cursor)
         } catch {
           return invalidCursor(c)
         }

@@ -41,7 +41,7 @@ function groupCommentIds(groups: CommentGroup[]): Set<string> {
 
 function insertComment(groups: CommentGroup[], comment: PublicComment): CommentGroup[] {
   if (comment.parentCommentId === null || comment.rootCommentId === comment.id) {
-    return groups.some((group) => group.root.id === comment.id) ? groups : [...groups, {root: comment, replies: []}]
+    return groups.some((group) => group.root.id === comment.id) ? groups : [{root: comment, replies: []}, ...groups]
   }
   let inserted = false
   const next = groups.map((group) => {

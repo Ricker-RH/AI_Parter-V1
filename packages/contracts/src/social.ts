@@ -57,9 +57,9 @@ export const CursorSchema = z.discriminatedUnion("kind", [
   ForYouCursorSchema,
 ]);
 export const CommentCursorSchema = z.strictObject({
-  v: z.literal(2),
+  v: z.literal(3),
   kind: z.literal("comment_roots"),
-  order: z.literal("root_created_at_asc_v1"),
+  order: z.literal("root_created_at_desc_v1"),
   postId: uuid,
   rootCreatedAt: dateTime,
   rootId: uuid,
@@ -74,6 +74,13 @@ export const LikedCursorSchema = z.strictObject({
   v: z.literal(1),
   kind: z.literal("liked"),
   likedAt: dateTime,
+  id: uuid,
+});
+export const SavedCursorSchema = z.strictObject({
+  v: z.literal(1),
+  kind: z.literal("saved"),
+  order: z.literal("saved_at_desc_v1"),
+  savedAt: dateTime,
   id: uuid,
 });
 export const FollowedIpCursorSchema = z.strictObject({
@@ -111,6 +118,7 @@ export type Cursor = z.infer<typeof CursorSchema>;
 export type CommentCursor = z.infer<typeof CommentCursorSchema>;
 export type NotificationCursor = z.infer<typeof NotificationCursorSchema>;
 export type LikedCursor = z.infer<typeof LikedCursorSchema>;
+export type SavedCursor = z.infer<typeof SavedCursorSchema>;
 export type FollowedIpCursor = z.infer<typeof FollowedIpCursorSchema>;
 export type Locale = z.infer<typeof LocaleSchema>;
 
@@ -236,6 +244,24 @@ export function decodeLikedCursor(value: string): LikedCursor {
     throw new Error("INVALID_CURSOR");
   }
   const cursor = LikedCursorSchema.safeParse(decoded);
+  if (!cursor.success) throw new Error("INVALID_CURSOR");
+  return cursor.data;
+}
+export function encodeSavedCursor(cursor: SavedCursor): string {
+  return base64urlEncode(JSON.stringify(SavedCursorSchema.parse(cursor)));
+}
+export function decodeSavedCursor(value: string): SavedCursor {
+  let decoded: unknown;
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1)
+      throw new Error("invalid base64url");
+    const json = base64urlDecode(value);
+    if (base64urlEncode(json) !== value) throw new Error("non-canonical base64url");
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error("INVALID_CURSOR");
+  }
+  const cursor = SavedCursorSchema.safeParse(decoded);
   if (!cursor.success) throw new Error("INVALID_CURSOR");
   return cursor.data;
 }

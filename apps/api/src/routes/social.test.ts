@@ -617,6 +617,7 @@ describe('authenticated social routes', () => {
       ['notifications', {subject: identity.subject}, {limit: 3}],
     ])
     await expectError(await app.request('/v1/bookmarks?limit=2&limit=3'), 400, 'INVALID_REQUEST')
+    await expectError(await app.request('/v1/bookmarks?cursor=not-a-cursor'), 400, 'INVALID_CURSOR')
     await expectError(await app.request('/v1/notifications?limit=2&limit=3'), 400, 'INVALID_REQUEST')
   })
 
