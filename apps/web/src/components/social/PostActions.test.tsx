@@ -142,7 +142,8 @@ describe('PostActions', () => {
     expect(feedback).toHaveTextContent(longLabels.interactionError)
     expect(feedback.querySelectorAll('[role="status"]')).toHaveLength(2)
     const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
-    expect(stylesheet).toMatch(/\.post-actions__controls\s*\{[^}]*flex-wrap:\s*nowrap/)
+    expect(stylesheet).toMatch(/\.post-actions__controls\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/)
+    expect(stylesheet).toMatch(/\.post-actions__controls \.post-action\s*\{[^}]*min-width:\s*0[^}]*width:\s*100%/)
     expect(stylesheet).toMatch(/\.post-actions__feedback\s*\{[^}]*min-width:\s*0[^}]*width:\s*100%/)
   })
 
@@ -159,6 +160,33 @@ describe('PostActions', () => {
     request.resolve(Response.json({created: true}))
     await waitFor(() => expect(screen.getByRole('button', {name: 'Remove bookmark'})).toBeEnabled())
     expect(screen.getByRole('button', {name: 'Remove bookmark'})).toHaveTextContent('3')
+  })
+
+  it('optimistically removes a bookmark and keeps the acknowledged lower count', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({deleted: true})))
+    render(<PostActions {...authoritativeCounts} bookmarked canMutate labels={labels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Remove bookmark'}))
+
+    expect(screen.getByRole('button', {name: 'Bookmark'})).toHaveTextContent('1')
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Bookmark'})).toBeEnabled())
+    expect(fetch).toHaveBeenCalledWith(`/api/social/posts/${postId}/bookmark`, expect.objectContaining({method: 'DELETE'}))
+    expect(screen.getByRole('button', {name: 'Bookmark'})).toHaveTextContent('1')
+  })
+
+  it.each([
+    ['like', false, 4, 'Like', 'Unlike', {created: false}],
+    ['like', true, 4, 'Unlike', 'Like', {deleted: false}],
+    ['bookmark', false, 2, 'Bookmark', 'Remove bookmark', {created: false}],
+    ['bookmark', true, 2, 'Remove bookmark', 'Bookmark', {deleted: false}],
+  ] as const)('does not change the %s count when the target relationship already exists or is absent', async (action, active, count, initialLabel, targetLabel, response) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(response)))
+    render(<PostActions {...authoritativeCounts} bookmarked={action === 'bookmark' ? active : false} bookmarkCount={action === 'bookmark' ? count : 2} canMutate labels={labels} liked={action === 'like' ? active : false} likeCount={action === 'like' ? count : 4} locale="en" postId={postId} viewerScope="viewer-a" />)
+
+    fireEvent.click(screen.getByRole('button', {name: initialLabel}))
+    await waitFor(() => expect(screen.getByRole('button', {name: targetLabel})).toBeEnabled())
+
+    expect(screen.getByRole('button', {name: targetLabel})).toHaveTextContent(String(count))
   })
 
   it('rolls a failed bookmark back exactly and redirects an expired bookmark session', async () => {
@@ -428,6 +456,28 @@ describe('PostActions', () => {
     expect(container.querySelectorAll('button:disabled')).toHaveLength(0)
     expect(container.querySelector('[role="status"]')).toBeNull()
     flushSync(() => root.unmount())
+  })
+
+  it('aborts pending work and restores authoritative state when the viewer scope changes', async () => {
+    const request = deferred<Response>()
+    let signal: AbortSignal | undefined
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      signal = init?.signal as AbortSignal
+      return request.promise
+    }))
+    const view = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
+    fireEvent.click(screen.getByRole('button', {name: 'Bookmark'}))
+    expect(screen.getByRole('button', {name: 'Remove bookmark'})).toHaveTextContent('3')
+
+    view.rerender(<PostActions {...authoritativeCounts} bookmarked canMutate labels={labels} liked locale="en" postId={postId} viewerScope="viewer-b" />)
+
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByRole('button', {name: 'Remove bookmark'})).toHaveTextContent('2')
+    expect(screen.getByRole('button', {name: 'Unlike'})).toHaveTextContent('4')
+    expect(screen.queryByRole('status')).toBeNull()
+    request.resolve(Response.json({created: true}))
+    await act(async () => {})
+    expect(screen.getByRole('button', {name: 'Remove bookmark'})).toHaveTextContent('2')
   })
 
   it('announces mutation errors accessibly', async () => {

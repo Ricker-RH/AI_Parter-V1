@@ -207,6 +207,10 @@ function ScopedAuthenticatedActions({bookmarked, bookmarkCount, commentCount, la
       }
       const body: unknown = await response.json()
       if (!response.ok || !validMutationResponse(body, method)) throw new Error('mutation failed')
+      const changed = method === 'PUT'
+        ? (body as {created: boolean}).created
+        : (body as {deleted: boolean}).deleted
+      if (!changed && isCurrent()) setState((current) => ({...current, [countKey]: previousCount}))
     } catch {
       if (isCurrent()) setState((current) => ({...current, [action]: active, [countKey]: previousCount, errors: {...current.errors, [action]: true}}))
     } finally {

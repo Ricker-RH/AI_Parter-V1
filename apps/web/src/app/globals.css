@@ -459,9 +459,9 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 .post-actions__controls {
   align-items: center;
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 14px;
+  display: grid;
+  gap: clamp(0px, 1.5vw, 14px);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   min-width: 0;
 }
 .post-actions__feedback {
@@ -486,6 +486,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   min-width: 36px;
   padding: 0 4px;
 }
+.post-actions__controls .post-action { min-width: 0; width: 100%; }
 .post-action svg { height: 20px; width: 20px; }
 .post-action span { color: var(--shell-muted); font-size: 13px; }
 .post-action:hover { background: transparent; color: var(--shell-muted); }
@@ -2022,7 +2023,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .profile-result { padding-inline: 12px; }
   .activity-tabs { padding-inline: 20px; }
   .post-card { padding: 12px; }
-  .post-action { min-height: 44px; min-width: 44px; }
+  .post-action { min-height: 44px; }
   .comment-thread-item { padding-inline: 12px; }
   .comment-thread-item--reply { padding-left: 56px; }
   .comment-thread-item--reply::before { left: 34px; }
