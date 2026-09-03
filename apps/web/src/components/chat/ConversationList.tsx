@@ -6,6 +6,7 @@ import {useDeferredValue, useEffect, useRef, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import {MessagesSectionHeader, type MessagesSectionLabels} from './MessagesSectionHeader'
+import {SectionSearchField} from '../SectionSearchField'
 import {UnavailableRetry} from '../social/UnavailableRetry'
 import styles from './MessagesWorkspace.module.css'
 
@@ -67,7 +68,7 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
     }
   }
   return <aside aria-label={labels.title} className={styles.listPane}>
-    <MessagesSectionHeader active="chat" labels={labels} locale={locale}>{!unavailable ? <label className={styles.searchField}><span className="sr-only">{labels.searchLabel}</span><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><input aria-label={labels.searchLabel} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={labels.searchPlaceholder} type="search" value={query}/></label> : null}</MessagesSectionHeader>
+    <MessagesSectionHeader active="chat" labels={labels} locale={locale}>{!unavailable ? <SectionSearchField label={labels.searchLabel} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={labels.searchPlaceholder} value={query}/> : null}</MessagesSectionHeader>
     {unavailable ? <div className={styles.unavailableState} role="alert"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M24 7v20"/><path d="M24 36.5v.5"/><circle cx="24" cy="24" r="18"/></svg><h2>{labels.unavailable}</h2><p>{labels.unavailableDescription}</p><UnavailableRetry label={labels.unavailableAction} pendingLabel={labels.unavailablePending}/></div> : <>
     {entries.length === 0 && !nextCursor ? <div className={styles.inboxEmpty}><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M10 27.5 38 10 27 38l-5.5-10.5L10 27.5Z"/><path d="m21.5 27.5 8-8"/></svg><h2>{labels.noConversations}</h2><p>{labels.emptyDescription}</p><Link href={`/${locale}`}>{labels.emptyAction}</Link></div> : null}
     {entries.length > 0 && visibleEntries.length === 0 ? <p className={styles.searchEmpty} role="status">{nextCursor ? labels.partialSearchResults : labels.noSearchResults}</p> : null}

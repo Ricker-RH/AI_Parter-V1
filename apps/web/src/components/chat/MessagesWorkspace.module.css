@@ -3,12 +3,7 @@
 .listPane { display: flex; flex-direction: column; }
 .sectionHeader { display: grid; gap: 14px; padding: 20px 16px 14px; }
 .titleRow { align-items: center; display: flex; min-height: 44px; }
-.titleRow h1 { font-size: clamp(24px, 2.6vw, 30px); letter-spacing: -.035em; line-height: 1.1; margin: 0; }
-.searchField { align-items: center; background: var(--shell-hover); border: 1px solid transparent; border-radius: 14px; display: grid; grid-template-columns: 20px minmax(0, 1fr); min-height: 46px; padding: 0 14px; transition: border-color .18s ease, background-color .18s ease; }
-.searchField:focus-within { background: var(--shell-surface); border-color: var(--shell-muted); }
-.searchField svg { fill: none; height: 20px; stroke: var(--shell-muted); stroke-linecap: round; stroke-width: 1.8; width: 20px; }
-.searchField input { background: transparent; border: 0; color: inherit; font: inherit; min-width: 0; outline: 0; padding: 0 0 0 10px; width: 100%; }
-.searchField input::placeholder { color: var(--shell-muted); }
+.titleRow h1 { font-size: 19px; font-weight: 650; letter-spacing: -.015em; line-height: 1.2; margin: 0; }
 .sectionTabs { display: flex; gap: 4px; }
 .sectionTabs a { align-items: center; background: transparent; border: 0; border-radius: 999px; display: inline-flex; font-size: 13px; font-weight: 500; isolation: isolate; justify-content: center; min-height: 44px; padding: 0 12px; position: relative; }
 .sectionTabs a::before { background: transparent; border: 1px solid var(--shell-border); border-radius: 999px; content: ""; inset: 7px 0; position: absolute; transition: background-color .18s ease, border-color .18s ease; z-index: -1; }

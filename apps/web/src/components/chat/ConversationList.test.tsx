@@ -168,11 +168,14 @@ describe('ConversationList', () => {
 
   it('keeps unbroken display names within the conversation pane', () => {
     const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/chat/MessagesWorkspace.module.css' : 'apps/web/src/components/chat/MessagesWorkspace.module.css', 'utf8')
+    const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/chat/ConversationList.tsx' : 'apps/web/src/components/chat/ConversationList.tsx', 'utf8')
     const baseRules = stylesheet.slice(0, stylesheet.indexOf('@media (max-width: 699px)'))
     const mobileRules = stylesheet.slice(stylesheet.indexOf('@media (max-width: 699px)'), stylesheet.indexOf('@media (min-width: 700px)'))
     expect(stylesheet).toMatch(/\.conversationTitle strong \{[^}]*overflow-wrap: anywhere/)
     expect(stylesheet).toMatch(/\.listPane \{[^}]*display: flex[^}]*flex-direction: column/)
     expect(baseRules).toMatch(/\.sectionTabs \{[^}]*gap: 4px/)
+    expect(baseRules).toMatch(/\.titleRow h1 \{[^}]*font-size: 19px/)
+    expect(source).toContain('<SectionSearchField')
     expect(baseRules).toMatch(/\.sectionTabs a \{[^}]*background: transparent[^}]*border: 0[^}]*font-size: 13px[^}]*font-weight: 500[^}]*isolation: isolate[^}]*min-height: 44px[^}]*padding: 0 12px[^}]*position: relative/)
     expect(baseRules).toMatch(/\.sectionTabs a::before \{[^}]*border: 1px solid var\(--shell-border\)[^}]*border-radius: 999px[^}]*inset: 7px 0/)
     expect(baseRules).toMatch(/\.sectionTabs a:hover::before \{[^}]*background: var\(--shell-hover\)/)

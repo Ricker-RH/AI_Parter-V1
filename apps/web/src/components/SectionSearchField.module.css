@@ -1,0 +1,5 @@
+.field { align-items: center; background: var(--shell-hover); border: 1px solid transparent; border-radius: 14px; display: grid; grid-template-columns: 20px minmax(0, 1fr); min-height: 46px; padding: 0 14px; transition: border-color .18s ease, background-color .18s ease; }
+.field:focus-within { background: var(--shell-surface); border-color: var(--shell-muted); }
+.field svg { fill: none; height: 20px; stroke: var(--shell-muted); stroke-linecap: round; stroke-width: 1.8; width: 20px; }
+.field input { background: transparent; border: 0; color: inherit; font: inherit; min-width: 0; outline: 0; padding: 0 0 0 10px; width: 100%; }
+.field input::placeholder { color: var(--shell-muted); }

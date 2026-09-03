@@ -23,9 +23,14 @@ describe('ChannelDirectory', () => {
 
   it('keeps a full-width directory row, the approved mobile rail, and readable detail width contracts', () => {
     const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/channels/ChannelPage.module.css' : 'apps/web/src/components/channels/ChannelPage.module.css', 'utf8')
+    const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/channels/ChannelDirectory.tsx' : 'apps/web/src/components/channels/ChannelDirectory.tsx', 'utf8')
+    const mobileRules = css.slice(css.indexOf('@media (max-width: 699px)'))
     expect(css).toMatch(/\.ipRail\s*\{[^}]*overflow-x:\s*auto/)
     expect(css).not.toMatch(/\.directoryGrid\s*\{[^}]*grid-template-columns/)
     expect(css).toMatch(/\.detailInner\s*\{[^}]*max-width:\s*640px/)
+    expect(mobileRules).toMatch(/\.directoryHeader\s*\{[^}]*border-bottom:\s*0/)
+    expect(mobileRules).not.toMatch(/\.directoryHeader\s*\{[^}]*display:\s*none/)
+    expect(source).toContain('<SectionSearchField')
   })
 
   it('renders compact localized channel entries and server pagination links', () => {

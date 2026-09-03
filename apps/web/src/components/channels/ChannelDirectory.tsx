@@ -6,6 +6,7 @@ import {useRouter} from 'next/navigation'
 import {useEffect, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import type {ChannelsApiResult} from '../../lib/channels-api'
+import {SectionSearchField} from '../SectionSearchField'
 import styles from './ChannelPage.module.css'
 import {ChannelState} from './ChannelState'
 
@@ -46,10 +47,7 @@ export function ChannelDirectory({labels, locale, query, result}: {labels: Chann
 
   const clear = () => {setDraft(''); router.replace(`/${locale}/channels`)}
   return <div className={styles.directoryBody}>
-    <label className={styles.search}>
-      <span className={styles.srOnly}>{labels.searchLabel}</span>
-      <input aria-label={labels.searchLabel} onChange={(event) => setDraft(event.target.value)} placeholder={labels.searchPlaceholder} type="search" value={draft} />
-    </label>
+    <SectionSearchField label={labels.searchLabel} onChange={(event) => setDraft(event.currentTarget.value)} placeholder={labels.searchPlaceholder} value={draft}/>
     {result.status !== 'ok'
       ? <ChannelState description={labels.unavailableDescription} retry={labels.retry} title={labels.unavailableTitle} />
       : result.data.items.length === 0
