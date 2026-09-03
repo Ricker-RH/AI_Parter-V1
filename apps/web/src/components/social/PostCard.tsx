@@ -82,7 +82,7 @@ export function PostCard({
         post.body ? <p className="post-body">{post.body}</p> : null
       )}
       <PostMedia authorName={post.author.displayName} items={mediaItems} label={labels.postMedia} {...(linked ? {onPostIntent: () => prefetch(postHref), onPostOpen: trackView, postHref} : {})}/>
-      <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={commentCountOverride ?? post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} variant={variant} {...(viewerScope ? {viewerScope} : {})}/>
+      <PostActions bookmarked={post.viewerHasBookmarked ?? false} bookmarkCount={post.bookmarkCount} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={commentCountOverride ?? post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} shareCount={post.shareCount} variant={variant} {...(viewerScope ? {viewerScope} : {})}/>
       </div></> : <div className="post-layout">
         <AuthorPreview author={post.author} canMutate={canMutate && Boolean(viewerScope)} labels={labels} locale={locale} returnTo={returnTo ?? `/${locale}`} {...(viewerScope ? {viewerScope} : {})} {...(post.viewerFollowsAuthor === undefined ? {} : {followsAuthor: post.viewerFollowsAuthor})}/>
         <div className="post-content">
@@ -105,7 +105,7 @@ export function PostCard({
         post.body ? <p className="post-body">{post.body}</p> : null
       )}
       <PostMedia authorName={post.author.displayName} items={mediaItems} label={labels.postMedia} {...(linked ? {onPostIntent: () => prefetch(postHref), onPostOpen: trackView, postHref} : {})}/>
-      <PostActions bookmarked={post.viewerHasBookmarked ?? false} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={commentCountOverride ?? post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} variant={variant} {...(viewerScope ? {viewerScope} : {})}/>
+      <PostActions bookmarked={post.viewerHasBookmarked ?? false} bookmarkCount={post.bookmarkCount} canMutate={canMutate && Boolean(viewerScope) && post.viewerHasLiked !== undefined && post.viewerHasBookmarked !== undefined} commentCount={commentCountOverride ?? post.commentCount} labels={labels} liked={post.viewerHasLiked ?? false} likeCount={post.likeCount} locale={locale} postId={post.id} returnTo={returnTo ?? `/${locale}`} shareCount={post.shareCount} variant={variant} {...(viewerScope ? {viewerScope} : {})}/>
         </div>
       </div>}
     </article>

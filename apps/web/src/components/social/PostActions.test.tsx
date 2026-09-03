@@ -1,4 +1,4 @@
-import {fireEvent, render, screen, waitFor} from '@testing-library/react'
+import {act, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
 import {flushSync} from 'react-dom'
 import {createRoot} from 'react-dom/client'
@@ -8,6 +8,20 @@ import {PostActions} from './PostActions.js'
 const {prefetch, refresh, replace} = vi.hoisted(() => ({prefetch: vi.fn(), refresh: vi.fn(), replace: vi.fn()}))
 vi.mock('next/navigation', () => ({useRouter: () => ({prefetch, refresh, replace})}))
 vi.mock('next/link', () => ({default: ({children, prefetch: linkPrefetch, ...props}: {children: React.ReactNode; prefetch?: boolean | null; [key: string]: unknown}) => <a {...props} data-prefetch={linkPrefetch === false ? 'false' : 'shell'}>{children}</a>}))
+
+const postId = '22222222-2222-4222-8222-222222222222'
+const authoritativeCounts = {likeCount: 4, commentCount: 2, bookmarkCount: 2, shareCount: 4}
+const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return {promise, reject, resolve}
+}
 
 afterEach(() => { vi.unstubAllGlobals(); prefetch.mockReset(); refresh.mockReset(); replace.mockReset() })
 
@@ -21,7 +35,7 @@ describe('PostActions', () => {
 
   it('defers comment and guest auth navigation prefetches until intent, then de-duplicates their URLs', () => {
     const labels = {bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike', comments: 'Comments'}
-    render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" returnTo="/en" />)
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" returnTo="/en" />)
 
     const comments = screen.getByRole('link', {name: 'Comments'})
     const like = screen.getByRole('link', {name: 'Like'})
@@ -45,7 +59,7 @@ describe('PostActions', () => {
 
   it('uses only a currentColor solid icon for active like and bookmark feedback', () => {
     const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
-    render(<PostActions bookmarked labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked locale="en" postId="22222222-2222-4222-8222-222222222222" />)
+    render(<PostActions {...authoritativeCounts} bookmarked labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked locale="en" postId="22222222-2222-4222-8222-222222222222" />)
 
     const unlike = screen.getByRole('button', {name: 'Unlike'})
     const removeBookmark = screen.getByRole('button', {name: 'Remove bookmark'})
@@ -68,57 +82,247 @@ describe('PostActions', () => {
     expect(stylesheet).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--shell-focus\)/)
   })
 
-  it('formats only authoritative like and comment counts in the Detail variant', () => {
+  it('formats all authoritative counts in the Detail variant', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
-    render(<PostActions bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
 
     expect(screen.getByRole('link', {name: 'Like 12,345'})).toHaveTextContent('12,345')
     expect(screen.getByRole('link', {name: 'Comments 5,678'})).toHaveTextContent('5,678')
-    expect(screen.getByRole('link', {name: 'Bookmark'}).querySelector('span')).toBeNull()
-    expect(screen.getByRole('button', {name: 'Share'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('link', {name: 'Bookmark 2'})).toHaveTextContent('2')
+    expect(screen.getByRole('button', {name: 'Share 4'})).toHaveTextContent('4')
   })
 
   it('marks the comment action active only on the Detail surface', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
-    const {rerender} = render(<PostActions bookmarked={false} canMutate={false} commentCount={2} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
+    const {rerender} = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} commentCount={2} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
 
     const detailComment = screen.getByRole('link', {name: 'Comments 2'})
     expect(detailComment).toHaveAttribute('aria-current', 'page')
     expect(detailComment.querySelector('svg')).toHaveAttribute('fill', 'currentColor')
 
-    rerender(<PostActions bookmarked={false} canMutate={false} commentCount={2} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="feed" />)
+    rerender(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} commentCount={2} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="feed" />)
     const feedComment = screen.getByRole('link', {name: 'Comments'})
     expect(feedComment).not.toHaveAttribute('aria-current')
     expect(feedComment.querySelector('svg')).toHaveAttribute('fill', 'none')
   })
 
-  it('does not fabricate Detail counts when an authoritative total is unavailable', () => {
-    const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
-    const {rerender} = render(<PostActions bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" />)
+  it('renders all four authoritative zero counts with accessible Detail labels', () => {
+    render(<PostActions {...authoritativeCounts} bookmarked={false} bookmarkCount={0} canMutate={false} commentCount={0} labels={labels} liked={false} likeCount={0} locale="en" postId={postId} shareCount={0} variant="detail" />)
 
-    expect(screen.getByRole('link', {name: 'Like'}).querySelector('span')).toBeNull()
-    expect(screen.getByRole('link', {name: 'Comments'}).querySelector('span')).toBeNull()
-    expect(screen.getByRole('link', {name: 'Bookmark'}).querySelector('span')).toBeNull()
-    expect(screen.getByRole('button', {name: 'Share'}).querySelector('span')).toBeNull()
-
-    rerender(<PostActions bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" variant="detail" viewerScope="viewer-a" />)
-    expect(screen.getByRole('button', {name: 'Like'}).querySelector('span')).toBeNull()
-    expect(screen.getByRole('button', {name: 'Bookmark'}).querySelector('span')).toBeNull()
+    expect(screen.getByRole('link', {name: 'Like 0'})).toHaveTextContent('0')
+    expect(screen.getByRole('link', {name: 'Comments 0'})).toHaveTextContent('0')
+    expect(screen.getByRole('link', {name: 'Bookmark 0'})).toHaveTextContent('0')
+    expect(screen.getByRole('button', {name: 'Share 0'})).toHaveTextContent('0')
   })
 
   it('keeps raw action counts and labels in the Feed variant', () => {
     const labels = {bookmark: 'Bookmark', comments: 'Comments', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', share: 'Share', unlike: 'Unlike'}
-    render(<PostActions bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" />)
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} commentCount={5678} labels={labels} liked={false} likeCount={12345} locale="en" postId="22222222-2222-4222-8222-222222222222" />)
 
     expect(screen.getByRole('link', {name: 'Like'})).toHaveTextContent('12345')
     expect(screen.getByRole('link', {name: 'Comments'})).toHaveTextContent('5678')
+    expect(screen.getByRole('link', {name: 'Bookmark'})).toHaveTextContent('2')
+    expect(screen.getByRole('button', {name: 'Share'})).toHaveTextContent('4')
+  })
+
+  it('keeps four controls in a fixed row and independent long errors in a full-width feedback row', async () => {
+    const longLabels = {...labels, interactionError: 'This deliberately long localized action error must wrap below every control without moving them.'}
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})))
+    const {container} = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={longLabels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Like'}))
+    await screen.findByRole('status')
+    fireEvent.click(screen.getByRole('button', {name: 'Bookmark'}))
+    await waitFor(() => expect(screen.getAllByRole('status')).toHaveLength(2))
+
+    const controls = container.querySelector('.post-actions__controls')!
+    const feedback = container.querySelector('.post-actions__feedback')!
+    expect(controls.querySelectorAll('.post-action')).toHaveLength(4)
+    expect(controls.querySelector('[role="status"]')).toBeNull()
+    expect(feedback).toHaveTextContent(longLabels.interactionError)
+    expect(feedback.querySelectorAll('[role="status"]')).toHaveLength(2)
+    const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
+    expect(stylesheet).toMatch(/\.post-actions__controls\s*\{[^}]*flex-wrap:\s*nowrap/)
+    expect(stylesheet).toMatch(/\.post-actions__feedback\s*\{[^}]*min-width:\s*0[^}]*width:\s*100%/)
+  })
+
+  it('optimistically bookmarks with an independent pending state and keeps the acknowledged count', async () => {
+    const request = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(request.promise))
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Bookmark'}))
+    expect(screen.getByRole('button', {name: 'Remove bookmark'})).toHaveTextContent('3')
+    expect(screen.getByRole('button', {name: 'Remove bookmark'})).toBeDisabled()
+    expect(screen.getByRole('button', {name: 'Like'})).toBeEnabled()
+    expect(screen.getByRole('button', {name: 'Share'})).toBeEnabled()
+    request.resolve(Response.json({created: true}))
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Remove bookmark'})).toBeEnabled())
+    expect(screen.getByRole('button', {name: 'Remove bookmark'})).toHaveTextContent('3')
+  })
+
+  it('rolls a failed bookmark back exactly and redirects an expired bookmark session', async () => {
+    window.history.replaceState({}, '', `/en/posts/${postId}?commentCursor=next`)
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503}))
+      .mockResolvedValueOnce(new Response(null, {status: 401}))
+    vi.stubGlobal('fetch', fetcher)
+    const first = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
+    fireEvent.click(screen.getByRole('button', {name: 'Bookmark'}))
+    expect(await screen.findByRole('status')).toHaveTextContent(labels.interactionError)
+    expect(screen.getByRole('button', {name: 'Bookmark'})).toHaveTextContent('2')
+    first.unmount()
+
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
+    fireEvent.click(screen.getByRole('button', {name: 'Bookmark'}))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(`/en/auth/sign-in?next=%2Fen%2Fposts%2F${postId}%3FcommentCursor%3Dnext`))
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('records a native share only after browser completion and treats cancellation as neutral', async () => {
+    const browserShare = deferred<void>()
+    const nativeShare = vi.fn().mockReturnValueOnce(browserShare.promise).mockRejectedValueOnce(new DOMException('cancelled', 'AbortError'))
+    vi.stubGlobal('navigator', {share: nativeShare})
+    vi.stubGlobal('crypto', {randomUUID: vi.fn().mockReturnValue('33333333-3333-4333-8333-333333333333')})
+    const fetcher = vi.fn().mockResolvedValue(Response.json({created: true}))
+    vi.stubGlobal('fetch', fetcher)
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    expect(nativeShare).toHaveBeenCalledWith({url: `${window.location.origin}/en/posts/${postId}`})
+    expect(fetcher).not.toHaveBeenCalled()
+    browserShare.resolve()
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith(`/api/social/posts/${postId}/share`, expect.objectContaining({
+      credentials: 'include',
+      headers: {'idempotency-key': '33333333-3333-4333-8333-333333333333'},
+      method: 'POST',
+      signal: expect.any(AbortSignal),
+    })))
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
+
+    fireEvent.click(screen.getByRole('button', {name: 'Share 5'}))
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('uses clipboard fallback for a guest and records the anonymous completed share', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', {clipboard: {writeText}})
+    vi.stubGlobal('crypto', {randomUUID: vi.fn().mockReturnValue('33333333-3333-4333-8333-333333333333')})
+    const fetcher = vi.fn().mockResolvedValue(Response.json({created: false}))
+    vi.stubGlobal('fetch', fetcher)
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId={postId} variant="detail" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/en/posts/${postId}`))
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it('retries recording once with the same key, shares once, and gives a later completion a fresh key', async () => {
+    vi.useFakeTimers()
+    try {
+      const nativeShare = vi.fn().mockResolvedValue(undefined)
+      const randomUUID = vi.fn()
+        .mockReturnValueOnce('33333333-3333-4333-8333-333333333333')
+        .mockReturnValueOnce('44444444-4444-4444-8444-444444444444')
+      vi.stubGlobal('navigator', {share: nativeShare})
+      vi.stubGlobal('crypto', {randomUUID})
+      const fetcher = vi.fn()
+        .mockRejectedValueOnce(new TypeError('network lost after commit'))
+        .mockResolvedValueOnce(Response.json({created: false}))
+        .mockResolvedValueOnce(Response.json({created: true}))
+      vi.stubGlobal('fetch', fetcher)
+      render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
+
+      fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+      await act(async () => {})
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole('button', {name: 'Share 4'})).toBeDisabled()
+      expect(screen.getByRole('button', {name: 'Like 4'})).toBeEnabled()
+      expect(screen.getByRole('button', {name: 'Bookmark 2'})).toBeEnabled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled()
+      expect(nativeShare).toHaveBeenCalledTimes(1)
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      const firstKey = new Headers((fetcher.mock.calls[0]?.[1] as RequestInit).headers).get('idempotency-key')
+      const retryKey = new Headers((fetcher.mock.calls[1]?.[1] as RequestInit).headers).get('idempotency-key')
+      expect(firstKey).toBe('33333333-3333-4333-8333-333333333333')
+      expect(retryKey).toBe(firstKey)
+
+      fireEvent.click(screen.getByRole('button', {name: 'Share 5'}))
+      await act(async () => {})
+      expect(screen.getByRole('button', {name: 'Share 6'})).toBeEnabled()
+      expect(nativeShare).toHaveBeenCalledTimes(2)
+      expect(new Headers((fetcher.mock.calls[2]?.[1] as RequestInit).headers).get('idempotency-key')).toBe('44444444-4444-4444-8444-444444444444')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    [Response.json({created: true}, {status: 503})],
+    [Response.json({created: 'yes'})],
+    [Response.json({created: true, extra: 'leak'})],
+  ])('does not claim a share count for an unacknowledged record', async (recordResponse) => {
+    vi.stubGlobal('navigator', {share: vi.fn().mockResolvedValue(undefined)})
+    vi.stubGlobal('crypto', {randomUUID: vi.fn().mockReturnValue('33333333-3333-4333-8333-333333333333')})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(recordResponse))
+    render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(labels.interactionError)
+    expect(screen.getByRole('button', {name: 'Share 4'})).toBeEnabled()
+    expect(screen.getByRole('button', {name: 'Like 4'})).toBeEnabled()
+  })
+
+  it('aborts and isolates a pending share when locale changes for the same viewer and post', async () => {
+    const record = deferred<Response>()
+    let signal: AbortSignal | undefined
+    vi.stubGlobal('navigator', {share: vi.fn().mockResolvedValue(undefined)})
+    vi.stubGlobal('crypto', {randomUUID: vi.fn().mockReturnValue('33333333-3333-4333-8333-333333333333')})
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      signal = init?.signal as AbortSignal
+      return record.promise
+    }))
+    const view = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
+    fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    await waitFor(() => expect(signal).toBeDefined())
+
+    view.rerender(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="zh-CN" postId={postId} variant="detail" viewerScope="viewer-a" />)
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByRole('button', {name: 'Share 4'})).toBeEnabled()
+    expect(screen.queryByRole('status')).toBeNull()
+    record.resolve(Response.json({created: true}))
+    await act(async () => {})
+    expect(screen.getByRole('button', {name: 'Share 4'})).toBeEnabled()
+  })
+
+  it('removes a settled share controller so unmount does not abort it again', async () => {
+    let signal: AbortSignal | undefined
+    vi.stubGlobal('navigator', {share: vi.fn().mockResolvedValue(undefined)})
+    vi.stubGlobal('crypto', {randomUUID: vi.fn().mockReturnValue('33333333-3333-4333-8333-333333333333')})
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      signal = init?.signal as AbortSignal
+      return Promise.resolve(Response.json({created: true}))
+    }))
+    const view = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
+    fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
+
+    view.unmount()
+
+    expect(signal?.aborted).toBe(false)
   })
 
   it('optimistically updates the affected like state and exact count without refreshing the route', async () => {
     let finish!: (value: Response) => void
     const request = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { finish = resolve }))
     vi.stubGlobal('fetch', request)
-    render(<PostActions authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} likeCount={4} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
+    render(<PostActions {...authoritativeCounts} authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} likeCount={4} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Like'}))
 
@@ -134,7 +338,7 @@ describe('PostActions', () => {
 
   it('rolls back only a rejected optimistic like to its exact previous count', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({code: 'SOCIAL_UNAVAILABLE'}), {status: 503})))
-    render(<PostActions bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} likeCount={4} locale="en" postId="22222222-2222-4222-8222-222222222222" />)
+    render(<PostActions {...authoritativeCounts} bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} likeCount={4} locale="en" postId="22222222-2222-4222-8222-222222222222" />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Like'}))
     expect(screen.getByRole('button', {name: 'Unlike'})).toHaveTextContent('5')
@@ -152,17 +356,17 @@ describe('PostActions', () => {
     const root = createRoot(container)
     const firstPostId = '22222222-2222-4222-8222-222222222222'
     const nextPostId = '33333333-3333-4333-8333-333333333333'
-    flushSync(() => root.render(<PostActions bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
     fireEvent.click(container.querySelector('button[aria-label="Like"]')!)
     expect(container.querySelector('button[aria-label="Unlike"]')).toHaveTextContent('5')
 
-    flushSync(() => root.render(<PostActions bookmarked labels={labels} liked locale="en" likeCount={9} postId={nextPostId}/>))
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked labels={labels} liked locale="en" likeCount={9} postId={nextPostId}/>))
 
     expect(container.querySelector('button[aria-label="Unlike"]')).toHaveTextContent('9')
     expect(container.querySelector('button[aria-label="Remove bookmark"]')).toBeEnabled()
     expect(container.querySelector('button[aria-label="Unlike"]')).toBeEnabled()
 
-    flushSync(() => root.render(<PostActions bookmarked labels={labels} liked={false} likeCount={2} locale="en" postId={nextPostId}/>))
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked labels={labels} liked={false} likeCount={2} locale="en" postId={nextPostId}/>))
     expect(container.querySelector('button[aria-label="Like"]')).toHaveTextContent('2')
     expect(container.querySelector('button[aria-label="Remove bookmark"]')).toBeEnabled()
     flushSync(() => root.unmount())
@@ -176,12 +380,12 @@ describe('PostActions', () => {
     const firstPostId = '22222222-2222-4222-8222-222222222222'
     const nextPostId = '33333333-3333-4333-8333-333333333333'
 
-    flushSync(() => root.render(<PostActions bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
     fireEvent.click(container.querySelector('button[aria-label="Like"]')!)
     expect(container.querySelector('button[aria-label="Unlike"]')).toBeDisabled()
 
-    flushSync(() => root.render(<PostActions bookmarked labels={labels} liked locale="en" likeCount={9} postId={nextPostId}/>))
-    flushSync(() => root.render(<PostActions bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked labels={labels} liked locale="en" likeCount={9} postId={nextPostId}/>))
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked={false} labels={labels} liked={false} likeCount={4} locale="en" postId={firstPostId}/>))
 
     expect(container.querySelector('button[aria-label="Like"]')).toHaveTextContent('4')
     expect(container.querySelector('button[aria-label="Like"]')).toBeEnabled()
@@ -189,9 +393,46 @@ describe('PostActions', () => {
     flushSync(() => root.unmount())
   })
 
+  it('aborts and isolates pending bookmark and share work across post identity changes', async () => {
+    const bookmarkRecord = deferred<Response>()
+    const shareRecord = deferred<Response>()
+    const signals: AbortSignal[] = []
+    vi.stubGlobal('navigator', {share: vi.fn().mockResolvedValue(undefined)})
+    vi.stubGlobal('crypto', {randomUUID: vi.fn().mockReturnValue('44444444-4444-4444-8444-444444444444')})
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      signals.push(init?.signal as AbortSignal)
+      return url.endsWith('/bookmark') ? bookmarkRecord.promise : shareRecord.promise
+    }))
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    const firstPostId = postId
+    const nextPostId = '33333333-3333-4333-8333-333333333333'
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked={false} bookmarkCount={2} labels={labels} liked={false} locale="en" postId={firstPostId} shareCount={4}/>))
+    fireEvent.click(container.querySelector('button[aria-label="Bookmark"]')!)
+    fireEvent.click(container.querySelector('button[aria-label="Share"]')!)
+    await waitFor(() => expect(signals).toHaveLength(2))
+
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked bookmarkCount={8} labels={labels} liked locale="en" postId={nextPostId} shareCount={9}/>))
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+    expect(container.querySelector('button[aria-label="Remove bookmark"]')).toHaveTextContent('8')
+    expect(container.querySelector('button[aria-label="Share"]')).toHaveTextContent('9')
+    expect(container.querySelectorAll('button:disabled')).toHaveLength(0)
+    expect(container.querySelector('[role="status"]')).toBeNull()
+
+    bookmarkRecord.resolve(Response.json({created: true}))
+    shareRecord.resolve(Response.json({created: true}))
+    await act(async () => {})
+    flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked={false} bookmarkCount={2} labels={labels} liked={false} locale="en" postId={firstPostId} shareCount={4}/>))
+    expect(container.querySelector('button[aria-label="Bookmark"]')).toHaveTextContent('2')
+    expect(container.querySelector('button[aria-label="Share"]')).toHaveTextContent('4')
+    expect(container.querySelectorAll('button:disabled')).toHaveLength(0)
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    flushSync(() => root.unmount())
+  })
+
   it('announces mutation errors accessibly', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({code: 'SOCIAL_UNAVAILABLE'}), {status: 503})))
-    render(<PostActions authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
+    render(<PostActions {...authoritativeCounts} authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
     fireEvent.click(screen.getByRole('button', {name: 'Bookmark'}))
     expect(await screen.findByRole('status')).toHaveTextContent('Action failed.')
   })
@@ -199,7 +440,7 @@ describe('PostActions', () => {
   it('sends an expired session to localized full-page sign in without retrying the mutation', async () => {
     window.history.replaceState({}, '', '/en/posts/22222222-2222-4222-8222-222222222222?commentCursor=next')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
-    render(<PostActions authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
+    render(<PostActions {...authoritativeCounts} authorId="11111111-1111-4111-8111-111111111111" bookmarked={false} labels={{bookmark: 'Bookmark', follow: 'Follow', followingAction: 'Following', interactionError: 'Action failed.', like: 'Like', removeBookmark: 'Remove bookmark', unlike: 'Unlike'}} liked={false} locale="en" postId="22222222-2222-4222-8222-222222222222" followsAuthor={false} />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Like'}))
 

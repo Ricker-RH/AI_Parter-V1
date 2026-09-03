@@ -8,35 +8,36 @@ import {authHref} from '../../lib/auth/return-to'
 import type {SocialLabels} from './types'
 import {useIntentPrefetch} from './useIntentPrefetch'
 
-type ActionLabels = Pick<
-  SocialLabels,
-  'bookmark' | 'follow' | 'followingAction' | 'interactionError' | 'like' | 'removeBookmark' | 'unlike'
-> & Pick<Partial<SocialLabels>, 'comments' | 'share'>
+type ActionLabels = Pick<SocialLabels, 'bookmark' | 'follow' | 'followingAction' | 'interactionError' | 'like' | 'removeBookmark' | 'unlike'> & Pick<Partial<SocialLabels>, 'comments' | 'share'>
 
 type PostActionsProps = {
   postId: string
-  authorId?: string
   liked: boolean
   bookmarked: boolean
-  followsAuthor?: boolean
   labels: ActionLabels
   locale: Locale
+  likeCount: number
+  commentCount: number
+  bookmarkCount: number
+  shareCount: number
+  authorId?: string
+  followsAuthor?: boolean
   canMutate?: boolean
-  commentCount?: number
-  likeCount?: number
   returnTo?: string
   variant?: 'feed' | 'detail'
   viewerScope?: string
 }
 
-type MutationAction = 'like' | 'bookmark'
-
+type AsyncAction = 'like' | 'bookmark' | 'share'
+type RelationshipAction = Exclude<AsyncAction, 'share'>
 type ActionState = {
   like: boolean
   bookmark: boolean
-  likeCount: number | undefined
-  pending: Record<MutationAction, boolean>
-  error: MutationAction | null
+  likeCount: number
+  bookmarkCount: number
+  shareCount: number
+  pending: Record<AsyncAction, boolean>
+  errors: Record<AsyncAction, boolean>
 }
 
 function HeartIcon(props: SVGProps<SVGSVGElement>) {
@@ -62,101 +63,178 @@ function validMutationResponse(value: unknown, method: 'PUT' | 'DELETE'): boolea
   return entries.length === 1 && entries[0]?.[0] === expected && typeof entries[0][1] === 'boolean'
 }
 
+function validCreatedResponse(value: unknown): value is {created: boolean} {
+  return typeof value === 'object' && value !== null && Object.keys(value).length === 1 && typeof (value as {created?: unknown}).created === 'boolean'
+}
+
 function formatCount(value: number, locale: Locale) {
   return new Intl.NumberFormat(locale).format(value)
 }
 
-function actionLabel(label: string, count: number | undefined, locale: Locale, variant: 'feed' | 'detail') {
-  return variant === 'detail' && count !== undefined ? `${label} ${formatCount(count, locale)}` : label
+function actionLabel(label: string, count: number, locale: Locale, variant: 'feed' | 'detail') {
+  return variant === 'detail' ? `${label} ${formatCount(count, locale)}` : label
 }
 
-function Count({children, locale, variant='feed'}: {children: number | undefined; locale: Locale; variant?: 'feed' | 'detail'}) {
-  return children === undefined ? null : <span aria-hidden="true">{variant === 'detail' ? formatCount(children, locale) : children}</span>
+function Count({children, locale, variant='feed'}: {children: number; locale: Locale; variant?: 'feed' | 'detail'}) {
+  return <span aria-hidden="true">{variant === 'detail' ? formatCount(children, locale) : children}</span>
 }
 
-function ShareButton({label, postId, locale}: {label: string; postId: string; locale: Locale}) {
-  async function share() {
-    const path = `/${locale}/posts/${postId}`
-    const url = typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString()
+async function completeBrowserShare(url: string): Promise<'completed' | 'cancelled'> {
+  if (typeof navigator.share === 'function') {
     try {
-      if (navigator.share) await navigator.share({url})
-      else await navigator.clipboard?.writeText(url)
-    } catch {
-      // Native share cancellation is not an error.
+      await navigator.share({url})
+      return 'completed'
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+      throw error
     }
   }
-  return <button aria-label={label} className="post-action" onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/></button>
+  if (!navigator.clipboard?.writeText) throw new Error('share unavailable')
+  await navigator.clipboard.writeText(url)
+  return 'completed'
 }
 
-function ActionFrame({afterComment, beforeComment, commentActive, commentsLabel, commentCount, locale, postId, shareLabel, variant}: {
+function retryDelay(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, 250)
+    signal.addEventListener('abort', onAbort, {once: true})
+  })
+}
+
+async function recordCompletedShare(postId: string, idempotencyKey: string, signal: AbortSignal): Promise<{created: boolean}> {
+  let lastError: unknown = new Error('share record failed')
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let response: Response
+    try {
+      response = await fetch(`/api/social/posts/${postId}/share`, {credentials: 'include', headers: {'idempotency-key': idempotencyKey}, method: 'POST', signal})
+    } catch (error) {
+      if (signal.aborted) throw error
+      lastError = error
+      if (attempt === 0) {
+        await retryDelay(signal)
+        continue
+      }
+      throw error
+    }
+    if (!response.ok) {
+      lastError = new Error('share record failed')
+      if (attempt === 0 && response.status >= 500) {
+        await retryDelay(signal)
+        continue
+      }
+      throw lastError
+    }
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      throw new Error('share record failed')
+    }
+    if (!validCreatedResponse(body)) throw new Error('share record failed')
+    return body
+  }
+  throw lastError
+}
+
+function ActionFrame({afterComment, beforeComment, commentActive, commentsLabel, commentCount, feedback, locale, postId, shareAction, variant}: {
   afterComment: ReactNode
   beforeComment: ReactNode
   commentActive: boolean
   commentsLabel: string
-  commentCount: number | undefined
+  commentCount: number
+  feedback: ReactNode
   locale: Locale
   postId: string
-  shareLabel: string
+  shareAction: ReactNode
   variant: 'feed' | 'detail'
 }) {
   const {intentHandlers} = useIntentPrefetch()
   const postHref = `/${locale}/posts/${postId}`
   return <footer aria-label={commentsLabel} className="post-actions">
-    {beforeComment}
-    <Link {...intentHandlers(postHref)} aria-current={commentActive ? 'page' : undefined} aria-label={actionLabel(commentsLabel, commentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true" fill={commentActive ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
-    {afterComment}
-    <ShareButton label={shareLabel} locale={locale} postId={postId}/>
+    <div className="post-actions__controls post-action-controls">
+      {beforeComment}
+      <Link {...intentHandlers(postHref)} aria-current={commentActive ? 'page' : undefined} aria-label={actionLabel(commentsLabel, commentCount, locale, variant)} className="post-action" href={postHref} prefetch={false}><CommentIcon aria-hidden="true" fill={commentActive ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{commentCount}</Count></Link>
+      {afterComment}
+      {shareAction}
+    </div>
+    <div aria-atomic="false" className="post-actions__feedback post-action-feedback">{feedback}</div>
   </footer>
 }
 
-function AuthenticatedActions({bookmarked, commentCount, labels, liked, likeCount, locale, postId, variant='feed', viewerScope}: PostActionsProps & {viewerScope: string}) {
-  const scope = JSON.stringify([viewerScope, postId, liked, bookmarked, likeCount, variant])
-  return <ScopedAuthenticatedActions key={scope} bookmarked={bookmarked} labels={labels} liked={liked} locale={locale} postId={postId} variant={variant} {...(commentCount === undefined ? {} : {commentCount})} {...(likeCount === undefined ? {} : {likeCount})}/>
+function AuthenticatedActions({bookmarked, bookmarkCount, commentCount, labels, liked, likeCount, locale, postId, shareCount, variant='feed', viewerScope}: PostActionsProps & {viewerScope: string}) {
+  const scope = JSON.stringify([viewerScope, postId, liked, bookmarked, likeCount, bookmarkCount, shareCount, locale, variant])
+  return <ScopedAuthenticatedActions key={scope} bookmarked={bookmarked} bookmarkCount={bookmarkCount} commentCount={commentCount} labels={labels} liked={liked} likeCount={likeCount} locale={locale} postId={postId} shareCount={shareCount} variant={variant}/>
 }
 
-function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, likeCount, locale, postId, variant}: Pick<PostActionsProps, 'bookmarked' | 'commentCount' | 'labels' | 'liked' | 'likeCount' | 'locale' | 'postId' | 'variant'> & {variant: 'feed' | 'detail'}) {
+function ScopedAuthenticatedActions({bookmarked, bookmarkCount, commentCount, labels, liked, likeCount, locale, postId, shareCount, variant}: Pick<PostActionsProps, 'bookmarked' | 'bookmarkCount' | 'commentCount' | 'labels' | 'liked' | 'likeCount' | 'locale' | 'postId' | 'shareCount' | 'variant'> & {variant: 'feed' | 'detail'}) {
   const router = useRouter()
-  const authoritative: ActionState = {like: liked, bookmark: bookmarked, likeCount, pending: {like: false, bookmark: false}, error: null}
-  const [state, setState] = useState(authoritative)
-  const mutationId = useRef<Record<MutationAction, number>>({like: 0, bookmark: 0})
-  const controllers = useRef<Partial<Record<MutationAction, AbortController>>>({})
-
-  function updateState(update: (current: ActionState) => ActionState) {
-    setState(update)
-  }
+  const [state, setState] = useState<ActionState>({like: liked, bookmark: bookmarked, likeCount, bookmarkCount, shareCount, pending: {like: false, bookmark: false, share: false}, errors: {like: false, bookmark: false, share: false}})
+  const mutationId = useRef<Record<AsyncAction, number>>({like: 0, bookmark: 0, share: 0})
+  const controllers = useRef<Partial<Record<AsyncAction, AbortController>>>({})
 
   useEffect(() => () => { for (const controller of Object.values(controllers.current)) controller?.abort() }, [])
 
-  async function mutate(action: MutationAction) {
+  async function mutate(action: RelationshipAction) {
     if (state.pending[action]) return
-    const requestedPostId = postId
     const active = state[action]
-    const previousLikeCount = state.likeCount
+    const countKey = action === 'like' ? 'likeCount' : 'bookmarkCount'
+    const previousCount = state[countKey]
     const next = !active
     const method = active ? 'DELETE' : 'PUT'
     const requestId = ++mutationId.current[action]
     const controller = new AbortController()
     controllers.current[action] = controller
     const isCurrent = () => !controller.signal.aborted && mutationId.current[action] === requestId
-    updateState((current) => ({...current, [action]: next, ...(action === 'like' ? {likeCount: previousLikeCount === undefined ? undefined : Math.max(0, previousLikeCount + (next ? 1 : -1))} : {}), pending: {...current.pending, [action]: true}, error: null}))
+    setState((current) => ({...current, [action]: next, [countKey]: Math.max(0, previousCount + (next ? 1 : -1)), pending: {...current.pending, [action]: true}, errors: {...current.errors, [action]: false}}))
     try {
-      const response = await fetch(`/api/social/posts/${requestedPostId}/${action}`, {credentials: 'include', method, signal: controller.signal})
+      const response = await fetch(`/api/social/posts/${postId}/${action}`, {credentials: 'include', method, signal: controller.signal})
       if (!isCurrent()) return
       if (response.status === 401) {
-        updateState((current) => ({...current, [action]: active, ...(action === 'like' ? {likeCount: previousLikeCount} : {})}))
+        setState((current) => ({...current, [action]: active, [countKey]: previousCount}))
         router.replace(authHref(locale, `${window.location.pathname}${window.location.search}`))
         return
       }
       const body: unknown = await response.json()
       if (!response.ok || !validMutationResponse(body, method)) throw new Error('mutation failed')
     } catch {
-      if (isCurrent()) {
-        updateState((current) => ({...current, [action]: active, ...(action === 'like' ? {likeCount: previousLikeCount} : {}), error: action}))
-      }
+      if (isCurrent()) setState((current) => ({...current, [action]: active, [countKey]: previousCount, errors: {...current.errors, [action]: true}}))
     } finally {
       if (isCurrent()) {
         delete controllers.current[action]
-        updateState((current) => ({...current, pending: {...current.pending, [action]: false}}))
+        setState((current) => ({...current, pending: {...current.pending, [action]: false}}))
+      }
+    }
+  }
+
+  async function share() {
+    if (state.pending.share) return
+    const requestId = ++mutationId.current.share
+    const controller = new AbortController()
+    controllers.current.share = controller
+    const isCurrent = () => !controller.signal.aborted && mutationId.current.share === requestId
+    setState((current) => ({...current, pending: {...current.pending, share: true}, errors: {...current.errors, share: false}}))
+    try {
+      const url = new URL(`/${locale}/posts/${postId}`, window.location.origin).toString()
+      if (await completeBrowserShare(url) === 'cancelled' || !isCurrent()) return
+      await recordCompletedShare(postId, crypto.randomUUID(), controller.signal)
+      if (isCurrent()) setState((current) => ({...current, shareCount: current.shareCount + 1}))
+    } catch {
+      if (isCurrent()) setState((current) => ({...current, errors: {...current.errors, share: true}}))
+    } finally {
+      if (isCurrent()) {
+        delete controllers.current.share
+        setState((current) => ({...current, pending: {...current.pending, share: false}}))
       }
     }
   }
@@ -165,17 +243,54 @@ function ScopedAuthenticatedActions({bookmarked, commentCount, labels, liked, li
   const likeLabel = state.like ? labels.unlike : labels.like
   const bookmarkLabel = state.bookmark ? labels.removeBookmark : labels.bookmark
   const likeAction = <button aria-busy={state.pending.like} aria-label={actionLabel(likeLabel, state.likeCount, locale, variant)} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.likeCount}</Count></button>
-  const bookmarkAction = <><button aria-busy={state.pending.bookmark} aria-label={bookmarkLabel} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/></button>{state.error ? <span className="interaction-error" role="status">{labels.interactionError}</span> : null}</>
-
-  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={commentsLabel} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
+  const bookmarkAction = <button aria-busy={state.pending.bookmark} aria-label={actionLabel(bookmarkLabel, state.bookmarkCount, locale, variant)} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.bookmarkCount}</Count></button>
+  const shareAction = <button aria-busy={state.pending.share} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale, variant)} className="post-action" disabled={state.pending.share} onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
+  const feedback = (['like', 'bookmark', 'share'] as const).map((action) => state.errors[action] ? <span className="interaction-error" data-action={action} key={action} role="status">{labels.interactionError}</span> : null)
+  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={commentsLabel} feedback={feedback} locale={locale} postId={postId} shareAction={shareAction} variant={variant}/>
 }
 
-function GuestActions({commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`, variant='feed'}: PostActionsProps) {
+function GuestActions(props: PostActionsProps) {
+  const variant = props.variant ?? 'feed'
+  const scope = JSON.stringify([props.postId, props.shareCount, props.locale, variant])
+  return <ScopedGuestActions key={scope} {...props} variant={variant}/>
+}
+
+function ScopedGuestActions({bookmarkCount, commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`, shareCount, variant}: PostActionsProps & {variant: 'feed' | 'detail'}) {
   const gatedHref = authHref(locale, returnTo)
   const {intentHandlers} = useIntentPrefetch()
+  const [state, setState] = useState({shareCount, pending: false, error: false})
+  const mutationId = useRef(0)
+  const controller = useRef<AbortController | undefined>(undefined)
+
+  useEffect(() => () => controller.current?.abort(), [])
+
+  async function share() {
+    if (state.pending) return
+    const requestId = ++mutationId.current
+    const activeController = new AbortController()
+    controller.current = activeController
+    const isCurrent = () => !activeController.signal.aborted && mutationId.current === requestId
+    setState((current) => ({...current, pending: true, error: false}))
+    try {
+      const url = new URL(`/${locale}/posts/${postId}`, window.location.origin).toString()
+      if (await completeBrowserShare(url) === 'cancelled' || !isCurrent()) return
+      await recordCompletedShare(postId, crypto.randomUUID(), activeController.signal)
+      if (isCurrent()) setState((current) => ({...current, shareCount: current.shareCount + 1}))
+    } catch {
+      if (isCurrent()) setState((current) => ({...current, error: true}))
+    } finally {
+      if (isCurrent()) {
+        controller.current = undefined
+        setState((current) => ({...current, pending: false}))
+      }
+    }
+  }
+
   const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCount}</Count></Link>
-  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={labels.bookmark} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/></Link>
-  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} locale={locale} postId={postId} shareLabel={labels.share ?? 'Share'} variant={variant}/>
+  const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.bookmark, bookmarkCount, locale, variant)} className="post-action" href={gatedHref} prefetch={false}><BookmarkIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{bookmarkCount}</Count></Link>
+  const shareAction = <button aria-busy={state.pending} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale, variant)} className="post-action" disabled={state.pending} onClick={() => void share()} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
+  const feedback = state.error ? <span className="interaction-error" data-action="share" role="status">{labels.interactionError}</span> : null
+  return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} feedback={feedback} locale={locale} postId={postId} shareAction={shareAction} variant={variant}/>
 }
 
 export function PostActions(props: PostActionsProps) {

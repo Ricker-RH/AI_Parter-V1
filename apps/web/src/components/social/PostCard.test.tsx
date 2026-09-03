@@ -308,9 +308,12 @@ describe("PostCard public interaction hierarchy", () => {
 
     expect(screen.queryByText(labels.signInToInteract)).toBeNull();
     expect(screen.getByRole("link", {name: labels.like})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
+    expect(screen.getByRole("link", {name: labels.like})).toHaveTextContent('4');
     expect(screen.getByRole("link", {name: labels.comments})).toHaveAttribute("href", `/en/posts/${post.id}`);
+    expect(screen.getByRole("link", {name: labels.comments})).toHaveTextContent('2');
     expect(screen.getByRole("link", {name: labels.bookmark})).toHaveAttribute("href", "/en/auth/sign-in?next=%2Fen");
-    expect(screen.getByRole("button", {name: labels.share!})).toBeVisible();
+    expect(screen.getByRole("link", {name: labels.bookmark})).toHaveTextContent('1');
+    expect(screen.getByRole("button", {name: labels.share!})).toHaveTextContent('3');
     expect(document.querySelectorAll(".post-action svg")).toHaveLength(4);
   });
 

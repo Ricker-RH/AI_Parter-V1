@@ -450,11 +450,28 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   white-space: pre-wrap;
 }
 .post-actions {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.post-actions__controls {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 14px;
-  margin-top: 8px;
+  min-width: 0;
+}
+.post-actions__feedback {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.post-actions__feedback .interaction-error {
+  overflow-wrap: anywhere;
 }
 .post-action {
   align-items: center;
