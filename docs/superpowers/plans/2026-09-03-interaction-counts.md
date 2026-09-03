@@ -29,7 +29,7 @@
 - Modify `packages/contracts/src/social.test.ts`: required-field and numeric-boundary contract tests.
 - Modify `apps/api/src/ports/social.ts`: optional-viewer share command.
 - Modify `apps/api/src/routes/social.ts`: strict optional-auth `POST /v1/posts/:postId/share`.
-- Modify `apps/api/src/routes/social.test.ts`: route, optional auth, validation, strict response, not-found and redaction tests.
+- Modify `apps/api/src/routes/social.test.ts`: route, configured-missing and fully unconfigured optional auth, `created:false` acknowledgement, validation, strict response, not-found and redaction tests.
 - Modify `apps/api/src/middleware/rate-limit.ts`: classify share recording as `social_mutation`.
 - Modify `apps/api/src/hardening.test.ts`: prove anonymous share recording is rate limited through the signed identity path.
 - Modify `apps/api/src/routes/admin.test.ts`: update its strict published-post fixture.
@@ -1045,6 +1045,33 @@ it('records a share with optional auth and a validated idempotency key', async (
   }
 })
 
+it('records an anonymous share when authentication and profiles are completely unconfigured', async () => {
+  const idempotencyKey = randomUUID()
+  const recordPostShare = vi.fn(async () => ({created: true}))
+  const response = await createApp({social: socialPort({recordPostShare})}).request(`/v1/posts/${postId}/share`, {
+    method: 'POST',
+    headers: {'idempotency-key': idempotencyKey},
+  })
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({created: true})
+  expect(recordPostShare).toHaveBeenCalledTimes(1)
+  expect(recordPostShare).toHaveBeenCalledWith(null, postId, idempotencyKey)
+})
+
+it('returns an idempotent created false acknowledgement unchanged with status 200', async () => {
+  const idempotencyKey = randomUUID()
+  const recordPostShare = vi.fn(async () => ({created: false}))
+  const response = await createApp({auth: missingAuth, profiles: profilePort(), social: socialPort({recordPostShare})}).request(`/v1/posts/${postId}/share`, {
+    method: 'POST',
+    headers: {'idempotency-key': idempotencyKey},
+  })
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({created: false})
+  expect(recordPostShare).toHaveBeenCalledTimes(1)
+})
+
 it('accepts strict empty JSON with an exact JSON media type when a body stream is present', async () => {
   const idempotencyKey = randomUUID()
   for (const contentType of ['application/json', 'application/json; charset=utf-8']) {
@@ -1069,6 +1096,7 @@ it('rejects missing or invalid idempotency keys, ids, query, content type, and n
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: '   '})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'text/plain', 'idempotency-key': key}, body: ''})).status).toBe(400)
+  expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json; charset=latin1', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/jsonx', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/jsonp', 'idempotency-key': key}, body: '{}'})).status).toBe(400)
   expect((await app.request(`/v1/posts/${postId}/share`, {method: 'POST', headers: {'content-type': 'application/json', 'idempotency-key': key}, body: '{"count":1}'})).status).toBe(400)
@@ -1196,7 +1224,7 @@ PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/api typecheck
 ```
 
-Expected: PASS for anonymous/authenticated success, all invalid inputs, fixed rate-limit policy, strict output, not-found semantics, and normal error redaction.
+Expected: PASS for authenticated success, configured-verifier `missing` success, completely unconfigured auth/profiles success with `viewer:null`, strict `200` passthrough for `{created:false}`, all invalid inputs including `charset=latin1` rejection before the port, fixed rate-limit policy, strict output, not-found semantics, and normal error redaction.
 
 - [ ] **Step 6: Commit the API slice**
 
