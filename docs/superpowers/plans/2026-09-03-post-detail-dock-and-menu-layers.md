@@ -19,17 +19,17 @@
 
 - [ ] **Step 1: Write RED component and CSS tests**
 
-Add tests requiring `viewportLayout="docked"` to mark the frame/viewport mode, make the viewport a non-scrolling two-row grid, and keep the default mode unchanged. Require `isolation:isolate` on the surface, a positioned base-layer frame, and a positioned higher-layer header. Preserve attached/detached header structure.
+Add tests requiring `viewportLayout="docked"` to mark the frame/viewport mode, make the viewport a non-scrolling two-row grid, and keep the default mode unchanged. The docked viewport must have no `role="region"`, no `tabIndex`, and no `aria-label`; the default scroll viewport must retain its named region and `tabIndex={0}`. Require `isolation:isolate` on the surface, a positioned base-layer frame, and a positioned higher-layer header. For attached mode, also require the viewport itself to establish the base stacking context below its sibling header inside the same frame. Preserve attached/detached header structure.
 
 - [ ] **Step 2: Run the focused test and confirm RED**
 
 ```bash
-corepack pnpm --dir apps/web test -- src/components/social/SocialSurface.test.tsx
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web exec vitest run --project web src/components/social/SocialSurface.test.tsx
 ```
 
 - [ ] **Step 3: Implement the explicit viewport layout**
 
-Add an optional `viewportLayout?: 'scroll' | 'docked'` prop with `scroll` as the default. Expose stable data attributes/classes for the selected layout. In docked mode, make the viewport `display:grid; grid-template-rows:minmax(0,1fr) auto; overflow:hidden`; do not assign scroll semantics to the viewport itself. Add `isolation:isolate` to the surface, keep the frame at the base stacking layer, and keep the header above the frame without raising either above document-level portals.
+Add an optional `viewportLayout?: 'scroll' | 'docked'` prop with `scroll` as the default. Expose stable data attributes/classes for the selected layout. In docked mode, make the viewport `display:grid; grid-template-rows:minmax(0,1fr) auto; overflow:hidden` and omit `role`, `tabIndex`, and `aria-label`; the default viewport retains all three. Add `isolation:isolate` to the surface. Give `.frame` and `.viewport` `position:relative; z-index:0`, and keep `.header` at `position:relative; z-index:1`. This bounds high-z descendants in both detached mode (frame below header) and attached mode (viewport below its header sibling) without raising either above document-level portals.
 
 - [ ] **Step 4: Run GREEN and commit**
 
@@ -56,7 +56,7 @@ Add negative assertions for `ResizeObserver`, composer height state/ref, `CSSPro
 - [ ] **Step 2: Run focused tests and confirm RED**
 
 ```bash
-corepack pnpm --dir apps/web test -- src/components/social/SocialContent.test.tsx src/app/globals.test.ts
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web exec vitest run --project web src/components/social/SocialContent.test.tsx src/app/globals.test.ts
 ```
 
 - [ ] **Step 3: Implement the structural dock**
@@ -86,7 +86,7 @@ Require the detail route to select `viewportLayout="docked"`. Split the phone he
 - [ ] **Step 2: Run focused tests and confirm RED**
 
 ```bash
-corepack pnpm --dir apps/web test -- 'src/app/[locale]/posts/[postId]/page.test.tsx' src/app/globals.test.ts
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web exec vitest run --project web 'src/app/[locale]/posts/[postId]/page.test.tsx' src/app/globals.test.ts
 ```
 
 - [ ] **Step 3: Wire the route and responsive rule**
@@ -115,7 +115,7 @@ Require the menu list to use the fully opaque shell surface and retain its bound
 - [ ] **Step 2: Run the focused header/surface tests**
 
 ```bash
-corepack pnpm --dir apps/web test -- src/components/social/PostDetailHeader.test.tsx src/components/social/SocialSurface.test.tsx src/app/globals.test.ts
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web exec vitest run --project web src/components/social/PostDetailHeader.test.tsx src/components/social/SocialSurface.test.tsx src/app/globals.test.ts
 ```
 
 If tests expose a concrete gap, first preserve the failing assertion, make the smallest layer/opacity fix, rerun GREEN, and commit it separately as `fix(web): contain post detail action menu`. If the Task 1 layer contract already satisfies this task, do not create an empty commit.
@@ -125,9 +125,9 @@ If tests expose a concrete gap, first preserve the failing assertion, make the s
 - [ ] **Step 1: Run complete local verification**
 
 ```bash
-corepack pnpm --dir apps/web test
-corepack pnpm --dir apps/web typecheck
-corepack pnpm --dir apps/web build
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web test
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web typecheck
+PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web build
 git diff --check
 ```
 
