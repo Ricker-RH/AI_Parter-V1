@@ -46,6 +46,7 @@
 - Modify `apps/web/src/components/social/PostActions.test.tsx`: zero/count accessibility, bookmark/share state transitions, cancellation/failure and identity reset.
 - Modify `apps/web/src/components/social/PostCard.tsx`: pass both authoritative totals.
 - Modify `apps/web/src/components/social/PostCard.test.tsx`: update the post fixture and integration assertions.
+- Modify `apps/web/src/app/globals.css`: keep all four controls on one stable row and place independently scoped action feedback on its own full-width wrapping row.
 
 ### Strict `FeedPost` fixture updates
 
@@ -1218,6 +1219,23 @@ git commit -m "feat(api): record optional-actor post shares"
 
 - [ ] **Step 1: Add failing BFF tests**
 
+Change the route-test auth mock to a controllable hoisted function so the same suite can prove both authenticated and anonymous transport:
+
+```ts
+const {getApiBearerToken, revalidateTag} = vi.hoisted(() => ({
+  getApiBearerToken: vi.fn(async (): Promise<string | null> => 'signed-jwt'),
+  revalidateTag: vi.fn(),
+}))
+vi.mock('../../../../lib/auth/server.js', () => ({getApiBearerToken}))
+```
+
+Reset it to the authenticated default in `afterEach`:
+
+```ts
+getApiBearerToken.mockReset()
+getApiBearerToken.mockResolvedValue('signed-jwt')
+```
+
 Add a test that invokes `POST` with both an absent body and `{}` and verifies the exact upstream request:
 
 ```ts
@@ -1246,12 +1264,35 @@ it('proxies only same-origin empty share POSTs with strict private responses and
   for (const [, init] of upstream.mock.calls) {
     const sent = new Headers((init as RequestInit).headers)
     expect((init as RequestInit).body).toBeUndefined()
+    expect(sent.has('content-type')).toBe(false)
     expect(sent.get('authorization')).toBe('Bearer signed-jwt')
     expect(sent.get('idempotency-key')).toBe(idempotencyKey)
     expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
     expect(sent.has('cookie')).toBe(false)
     expect(sent.has('x-vercel-forwarded-for')).toBe(false)
   }
+})
+```
+
+Add an explicit token-`null` request. Anonymous success must not synthesize bearer authentication, but it still uses the trusted signed rate-limit identity:
+
+```ts
+it('proxies an anonymous share without Authorization and retains signed rate-limit enforcement', async () => {
+  process.env.AIFANS_API_URL = 'https://internal-api.example'
+  process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
+  getApiBearerToken.mockResolvedValueOnce(null)
+  const upstream = vi.fn().mockResolvedValue(Response.json({created: true}))
+  vi.stubGlobal('fetch', upstream)
+  const path = ['posts', postId, 'share']
+  const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {
+    method: 'POST',
+    headers: {origin: 'https://web.example', 'idempotency-key': postId, 'x-vercel-forwarded-for': '203.0.113.7'},
+  }), {params: Promise.resolve({path})})
+
+  expect(response.status).toBe(200)
+  const sent = new Headers((upstream.mock.calls[0]?.[1] as RequestInit).headers)
+  expect(sent.has('authorization')).toBe(false)
+  expect(sent.get('x-aifans-rate-limit-identity')).toMatch(/^v1\./)
 })
 ```
 
@@ -1269,6 +1310,7 @@ it.each([
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: ''}), 422],
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/jsonx', 'idempotency-key': postId}, body: '{}'}), 422],
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/jsonp', 'idempotency-key': postId}, body: '{}'}), 422],
+  [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'content-length': '8193', 'idempotency-key': postId}, body: '{}'}), 413],
   [new Request(`https://web.example/api/social/posts/${postId}/share`, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: 'x'.repeat(8193)}), 413],
 ] as const)('rejects an invalid share proxy request before transport', async (request, status) => {
   process.env.AIFANS_API_URL = 'https://internal-api.example'
@@ -1276,6 +1318,7 @@ it.each([
   vi.stubGlobal('fetch', upstream)
   const response = await POST(request, {params: Promise.resolve({path: ['posts', postId, 'share']})})
   expect(response.status).toBe(status)
+  expect(response.headers.get('cache-control')).toBe('private, no-store')
   expect(upstream).not.toHaveBeenCalled()
 })
 
@@ -1294,7 +1337,7 @@ it.each([
 })
 ```
 
-Define `const postId = '22222222-2222-4222-8222-222222222222'` once at the top of the describe block. Add a wrong-path assertion with `POST .../profiles/:id/share` returning `404` and no upstream call.
+Define `const postId = '22222222-2222-4222-8222-222222222222'` once at the top of the describe block. Add a wrong-path assertion with `POST .../profiles/:id/share` returning `404`, `cache-control: private, no-store`, and no upstream call. In the declared-length case, also assert `getApiBearerToken` was not called; the 8193-byte header must fail before token acquisition as well as before `fetch`.
 
 - [ ] **Step 2: Run BFF/invalidation tests and verify RED**
 
@@ -1345,6 +1388,33 @@ if (shareRequest && request.body !== null) {
 }
 
 const expectedStatus = shareRequest ? 200 : method === 'POST' ? 201 : 200
+```
+
+All locally generated mutation responses use one cache policy, including empty 404s and the outer 503 boundary. Add these helpers and use them for every pre-transport 400/403/413/422, disallowed-path 404, invalid-success 502, and caught 503 returned by `proxy`:
+
+```ts
+const privateNoStore = {'cache-control': 'private, no-store'} as const
+
+function localMutationError(code: string, status: number): Response {
+  return Response.json({code}, {status, headers: privateNoStore})
+}
+
+function localMutationNotFound(): Response {
+  return new Response(null, {status: 404, headers: privateNoStore})
+}
+```
+
+After valid blank JSON or `{}` has been normalized to `body === undefined`, remove the now-inaccurate entity header before calling the transport. This applies even when the browser supplied `application/json; charset=utf-8`:
+
+```ts
+const upstreamHeaders = new Headers(request.headers)
+if (shareRequest && body === undefined) upstreamHeaders.delete('content-type')
+const upstream = await fetchAifansApi(`/v1/${path}`, {
+  policy: 'live-no-store',
+  requestInit: {method, headers: upstreamHeaders, ...(body === undefined ? {} : {body})},
+  trustedClientHeaders: request.headers,
+  ...(idempotencyKey === null ? {} : {trustedIdempotencyKey: idempotencyKey}),
+})
 ```
 
 Do not add `idempotency-key` to the generic inbound-header allow-list. Split the existing combined private/live branch of `AifansApiRequestOptions`: keep `trustedIdempotencyKey?: never` on `public-cache` and `private-cache`, and allow `trustedIdempotencyKey?: string` only on `live-no-store`. Validate it against the UUID expression inside `fetchAifansApi`, and pass it separately to `outboundHeaders`:
@@ -1420,7 +1490,7 @@ PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web typecheck
 ```
 
-Expected: PASS; successful responses are `private, no-store`, malformed responses are redacted, and no untrusted authorization, cookie, forwarded address, or client-supplied rate-limit header reaches the API.
+Expected: PASS; successful responses and every local early error are `private, no-store`; an exact declared 8193-byte request fails before token/fetch transport; normalized empty share requests carry neither body nor content type; token-`null` anonymous requests carry no authorization but do carry signed rate-limit identity; malformed responses are redacted; and no untrusted authorization, cookie, forwarded address, or client-supplied rate-limit header reaches the API.
 
 - [ ] **Step 6: Commit the BFF slice**
 
@@ -1438,6 +1508,7 @@ git commit -m "feat(web): proxy post share recording safely"
 - Modify: `apps/web/src/components/social/PostActions.test.tsx`
 - Modify: `apps/web/src/components/social/PostCard.tsx:84-108`
 - Modify: `apps/web/src/components/social/PostCard.test.tsx`
+- Modify: `apps/web/src/app/globals.css:452-489`
 
 - [ ] **Step 1: Add failing component tests for counts and accessible labels**
 
@@ -1458,6 +1529,19 @@ expect(screen.getByRole('button', {name: 'Share 0'})).toHaveTextContent('0')
 ```
 
 Also assert the feed variant renders raw numeric text for all four actions but keeps concise names `Like`, `Comments`, `Bookmark`, and `Share`.
+
+Add a structural regression test with a deliberately long localized `interactionError`. It must prove the four action controls remain direct children of one controls row while all live regions are outside that row in one feedback row:
+
+```ts
+const controls = container.querySelector('.post-actions__controls')!
+const feedback = container.querySelector('.post-actions__feedback')!
+expect(controls.querySelectorAll('.post-action')).toHaveLength(4)
+expect(controls.querySelector('[role="status"]')).toBeNull()
+expect(feedback).toHaveTextContent('This deliberately long localized action error must wrap below every control without moving them.')
+expect(feedback.querySelectorAll('[role="status"]')).toHaveLength(1)
+```
+
+Read `globals.css` in the same test and assert `.post-actions__controls` uses a non-wrapping row, while `.post-actions__feedback` has both `width: 100%` and `min-width: 0`. Trigger a second action failure without clearing the first and assert the controls row still has exactly four controls and the feedback row contains two independently keyed status nodes.
 
 - [ ] **Step 2: Add failing bookmark transition tests**
 
@@ -1497,6 +1581,10 @@ Stub `crypto.randomUUID()` to a valid fixed UUID. Add a retry test in which the 
 - [ ] **Step 4: Add failing stale-identity tests**
 
 Extend the existing synchronous rerender test so post A has `{bookmarkCount:2, shareCount:4}`, post B has `{bookmarkCount:8, shareCount:9}`, and an unresolved bookmark/share request on A cannot update B or revive when rendering A again. Assert each new keyed render immediately shows authoritative props, clears action-local errors, and has no pending buttons.
+
+Add a same-viewer, same-post locale transition while a share recording request is unresolved. Render `locale="en"`, complete browser share so the fetch is pending, capture its signal, and rerender the same authoritative props with `locale="zh-CN"`. Assert the old signal is aborted synchronously, the new subtree shows authoritative counts with no pending/error state, and resolving the old request cannot increment it. This is the RED proof that locale belongs to the authenticated subtree identity.
+
+Add a settled-controller lifecycle test. Capture the share fetch signal, resolve the valid response, wait for the share count increment and enabled button, then unmount. Assert the captured signal remains `aborted === false`; unmount must abort only controllers still registered as outstanding.
 
 - [ ] **Step 5: Run component tests and verify RED**
 
@@ -1542,7 +1630,7 @@ type ActionState = {
 }
 ```
 
-Include `likeCount`, `bookmarkCount`, and `shareCount` in the authenticated subtree key. Key the guest share subtree with `JSON.stringify([postId, shareCount, locale, variant])`. Abort every outstanding controller during keyed-subtree unmount.
+Include `likeCount`, `bookmarkCount`, `shareCount`, and `locale` in the authenticated subtree key. Key the guest share subtree with `JSON.stringify([postId, shareCount, locale, variant])`. Abort every outstanding controller during keyed-subtree unmount, so a locale transition immediately cancels the old subtree and stale completions cannot update the new locale.
 
 For like/bookmark optimistic state, capture the exact prior boolean/count, update only that action, and restore only those captured values on failure. Use `Math.max(0, previous + (next ? 1 : -1))` for both relationship counts. Set and clear only `pending[action]` and `errors[action]`; do not erase a different action's error.
 
@@ -1644,12 +1732,43 @@ async function share() {
   } catch {
     if (isCurrent()) updateState((current) => ({...current, errors: {...current.errors, share: true}}))
   } finally {
-    if (isCurrent()) updateState((current) => ({...current, pending: {...current.pending, share: false}}))
+    if (isCurrent()) {
+      delete controllers.current.share
+      updateState((current) => ({...current, pending: {...current.pending, share: false}}))
+    }
   }
 }
 ```
 
-Render `<Count>` for bookmark and share in authenticated and guest variants. Use `actionLabel(..., count, locale, variant)` for all four actions, so Detail labels include formatted authoritative totals and Feed labels remain concise. Render action-local `role="status"` errors adjacent to the failing action.
+Render `<Count>` for bookmark and share in authenticated and guest variants. Use `actionLabel(..., count, locale, variant)` for all four actions, so Detail labels include formatted authoritative totals and Feed labels remain concise. Keep the four buttons/links in a dedicated `.post-actions__controls` element and render independently keyed action-local `role="status"` nodes in a sibling `.post-actions__feedback` element:
+
+```tsx
+<footer aria-label={commentsLabel} className="post-actions">
+  <div className="post-actions__controls">{beforeComment}{commentAction}{afterComment}{shareAction}</div>
+  <div className="post-actions__feedback" aria-atomic="false">{feedback}</div>
+</footer>
+```
+
+Use these stable layout rules; do not let feedback participate in the controls flex line:
+
+```css
+.post-actions__controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 14px;
+  min-width: 0;
+}
+.post-actions__feedback {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.post-actions__feedback .interaction-error {
+  overflow-wrap: anywhere;
+}
+```
 
 - [ ] **Step 7: Pass authoritative counts from `PostCard`**
 
@@ -1671,12 +1790,12 @@ PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node
 PATH="/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/luorh/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH" pnpm --dir apps/web typecheck
 ```
 
-Expected: PASS for zero rendering, feed/detail labels, exact bookmark rollback, native and clipboard success, cancellation neutrality, record failure, independent pending/error scopes, and post/viewer reset.
+Expected: PASS for zero rendering, feed/detail labels, exact bookmark rollback, native and clipboard success, cancellation neutrality, record failure, independent pending/error scopes in a full-width row, a fixed four-control row under long localized feedback, post/viewer/locale reset, synchronous abortion of old-locale work, and removal of settled share controllers.
 
 - [ ] **Step 9: Commit the UI slice**
 
 ```bash
-git add apps/web/src/components/social/PostActions.tsx apps/web/src/components/social/PostActions.test.tsx apps/web/src/components/social/PostCard.tsx apps/web/src/components/social/PostCard.test.tsx
+git add apps/web/src/components/social/PostActions.tsx apps/web/src/components/social/PostActions.test.tsx apps/web/src/components/social/PostCard.tsx apps/web/src/components/social/PostCard.test.tsx apps/web/src/app/globals.css
 git commit -m "feat(web): show authoritative interaction counts"
 ```
 
