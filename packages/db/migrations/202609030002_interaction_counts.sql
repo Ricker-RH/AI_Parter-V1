@@ -19,6 +19,17 @@ DECLARE
   active_creator_revision_id uuid;
   did_create boolean := false;
 BEGIN
+  actor_id := public.social_current_human_profile_id();
+  IF actor_id IS NOT NULL THEN
+    PERFORM 1
+    FROM public.profiles actor
+    WHERE actor.id=actor_id AND actor.account_kind='human'
+    FOR KEY SHARE OF actor;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'authenticated human required' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
   SELECT post.author_profile_id INTO owner_id
   FROM public.posts post
   WHERE post.id=target_post_id AND post.state='published'
@@ -45,8 +56,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'published post not found' USING ERRCODE = 'P0002';
   END IF;
-
-  actor_id := public.social_current_human_profile_id();
   INSERT INTO public.post_share_events(id,post_id,actor_profile_id,idempotency_key)
   VALUES(gen_random_uuid(),target_post_id,actor_id,command_idempotency_key)
   ON CONFLICT ON CONSTRAINT post_share_events_post_id_idempotency_key_unique DO NOTHING

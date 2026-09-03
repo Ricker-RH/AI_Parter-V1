@@ -26,6 +26,7 @@ describe('mixed public search pagination', () => {
     expect(migration).toMatch(/FROM public\.posts post[\s\S]*FOR SHARE[\s\S]*FROM public\.ip_profiles ip[\s\S]*FOR SHARE/)
     const recordShare = migration.match(/CREATE(?: OR REPLACE)? FUNCTION public\.record_post_share[\s\S]*?END\s*\$\$;/)?.[0]
     expect(recordShare).toBeTruthy()
+    expect(recordShare!).toMatch(/actor_id\s*:=\s*public\.social_current_human_profile_id\(\)[\s\S]*FROM public\.profiles actor[\s\S]*actor\.id\s*=\s*actor_id\s+AND\s+actor\.account_kind\s*=\s*'human'[\s\S]*FOR KEY SHARE OF actor[\s\S]*FROM public\.posts post/)
     expect(recordShare!).toMatch(/SELECT\s+ip\.source\s*,\s*ip\.current_identity_revision_id\s*,\s*ip\.active_creator_revision_id\s+INTO\s+owner_source\s*,\s*current_revision_id\s*,\s*active_creator_revision_id[\s\S]*WHERE\s+ip\.profile_id\s*=\s*owner_id\s+AND\s+ip\.public_state\s*=\s*'published'[\s\S]*FOR SHARE/)
     expect(recordShare!).toMatch(/owner_source\s+IS NULL\s+OR\s+current_revision_id\s+IS NULL\s+OR\s+NOT EXISTS\s*\([\s\S]*FROM public\.ip_identity_revisions\s+identity[\s\S]*identity\.id\s*=\s*current_revision_id[\s\S]*identity\.ip_profile_id\s*=\s*owner_id[\s\S]*owner_source\s*=\s*'creator'[\s\S]*active_creator_revision_id\s+IS NULL\s+OR\s+NOT EXISTS\s*\([\s\S]*FROM public\.creator_revisions\s+creator_revision[\s\S]*creator_revision\.id\s*=\s*active_creator_revision_id/)
     expect(migration).toContain('CREATE OR REPLACE FUNCTION public.platform_publish_ip_comment')

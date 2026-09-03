@@ -211,7 +211,10 @@ type TaggedOutcome = {
  outcome:{ok:true;value:unknown}|{ok:false;error:unknown}
 }
 
-async function expectShareCommentLockOrder(commentKind:'human'|'platform') {
+async function expectShareCommentLockOrder(
+ commentKind:'human'|'platform',
+ shareActor:'anonymous'|'operator'='anonymous',
+) {
  const fixture=await committedShareFixture()
  const blocker=await pool.connect()
  const shareClient=await pool.connect()
@@ -243,7 +246,11 @@ async function expectShareCommentLockOrder(commentKind:'human'|'platform') {
 
   const shareKey=randomUUID()
   const body=`lock-order-${commentKind}-${randomUUID()}`
-  const rawShareAttempt=repo(shareClient).recordPostShare(null,fixture.postId,shareKey)
+  const rawShareAttempt=repo(shareClient).recordPostShare(
+   shareActor==='operator'?fixture.operator:null,
+   fixture.postId,
+   shareKey,
+  )
   const rawCommentAttempt=commentKind==='human'
    ? repo(commentClient).createHumanComment(fixture.actor,fixture.postId,{body},context())
    : createPlatformSession({connect:async()=>({query:commentClient.query.bind(commentClient),release(){}})},{transactionMode:'nested'}).withPlatformActor(
@@ -457,6 +464,7 @@ integration('social repository local postgres',()=>{
  })
  it('keeps share and human-comment commands on the canonical post-first lock order',async()=>expectShareCommentLockOrder('human'))
  it('keeps share and platform-comment commands on the canonical post-first lock order',async()=>expectShareCommentLockOrder('platform'))
+ it('orders an authenticated operator share before the same operator platform comment',async()=>expectShareCommentLockOrder('platform','operator'))
  it('keeps bookmarks private and bookmark toggles idempotent',async()=>tx(async c=>{ const author=await ip(c); const postId=await post(c,author); const first=await human(c),second=await human(c); const social=repo(c); await expect(social.bookmarkPost(first,postId)).resolves.toEqual({created:true}); await expect(social.bookmarkPost(first,postId)).resolves.toEqual({created:false}); await expect(social.listBookmarks(first,{limit:10})).resolves.toMatchObject({items:[{id:postId}]}); await expect(social.listBookmarks(second,{limit:10})).resolves.toEqual({items:[],nextCursor:null}); await expect(social.unbookmarkPost(first,postId)).resolves.toEqual({deleted:true}); await expect(social.unbookmarkPost(first,postId)).resolves.toEqual({deleted:false}) }))
  it('lists only an owner’s followed published IPs across stable cursor pages',async()=>tx(async c=>{ const older=await ip(c),newer=await ip(c),hidden=await ip(c,'draft'),otherIp=await ip(c),actor=await human(c),other=await human(c); await c.query(`UPDATE public.ip_profiles SET created_at=CASE profile_id WHEN $1 THEN '2026-09-01T00:00:00.000100Z'::timestamptz WHEN $2 THEN '2026-09-01T00:00:00.000900Z'::timestamptz ELSE created_at END WHERE profile_id IN ($1,$2)`,[older,newer]); await c.query(`INSERT INTO public.follows(follower_profile_id,followed_profile_id) VALUES($1,$2),($1,$3),($1,$4),($5,$6)`,[actor.id,older,newer,hidden,other.id,otherIp]); const social=repo(c); const first=await social.listFollowedIps(actor,{limit:1}); expect(first.items).toEqual([expect.objectContaining({id:newer,followerCount:1})]); expect(decodeFollowedIpCursor(first.nextCursor!)).toMatchObject({kind:'followed_ips',id:newer}); const second=await social.listFollowedIps(actor,{limit:10,cursor:first.nextCursor!}); expect(second).toEqual({items:[expect.objectContaining({id:older,followerCount:1})],nextCursor:null}); await expect(social.listFollowedIps(other,{limit:10})).resolves.toEqual({items:[expect.objectContaining({id:otherIp,followerCount:1})],nextCursor:null}) }))
  it('filters hidden followed IPs before applying the projection page bound',async()=>tx(async c=>{ const actor=await human(c),visible=await ip(c),hiddenIds=await Promise.all(Array.from({length:51},()=>ip(c,'draft'))); await c.query(`UPDATE public.ip_profiles SET created_at='2026-09-01T00:00:00.000100Z' WHERE profile_id=$1`,[visible]); await c.query(`INSERT INTO public.follows(follower_profile_id,followed_profile_id) SELECT $1,id FROM unnest($2::uuid[]) ids(id)`,[actor.id,[visible,...hiddenIds]]); const rows=await createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})},{transactionMode:'nested'}).withActor(actor,async client=>(await client.query<{id:string}>('SELECT id FROM public.social_followed_ip_profiles(NULL,NULL,51)')).rows); expect(rows).toEqual([{id:visible}]) }))
