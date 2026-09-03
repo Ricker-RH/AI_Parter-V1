@@ -39,6 +39,8 @@ const post = {
   author: ip,
   likeCount: 0,
   commentCount: 0,
+  bookmarkCount: 0,
+  shareCount: 0,
 }
 const page = FeedPageSchema.parse({items: [post], nextCursor: null})
 const followedPage = FollowedIpPageSchema.parse({items: [{...ip, followerCount: 4}], nextCursor: null})

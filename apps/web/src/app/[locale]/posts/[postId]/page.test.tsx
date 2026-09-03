@@ -11,7 +11,7 @@ import PostPage from './page.js'
 
 const postId = '22222222-2222-4222-8222-222222222222'
 const detail: PostDetail = {
-  id: postId, body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', likeCount: 0, commentCount: 0,
+  id: postId, body: 'A real post', languageCode: 'en', publishedAt: '2026-08-31T12:00:00.000Z', likeCount: 0, commentCount: 0, bookmarkCount: 0, shareCount: 0,
   author: {kind: 'ip', id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en'], visualType: 'anime'},
   comments: {items: [], nextCursor: null},
 }

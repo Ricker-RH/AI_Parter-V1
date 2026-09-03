@@ -60,6 +60,8 @@ describe('social feed follower projection', () => {
       published_at: `2026-09-01T0${index}:00:00.000Z`,
       like_count: 0,
       comment_count: 0,
+      bookmark_count: 0,
+      share_count: 0,
       viewer_has_liked: false,
       viewer_has_bookmarked: false,
       viewer_follows_author: false,

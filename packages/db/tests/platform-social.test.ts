@@ -286,8 +286,14 @@ integration("platform social repository", () => {
         /ORDER BY ip\.profile_id[\s\S]*FOR UPDATE OF ip, r/,
       );
       const commentDefinition = byName.get("platform_publish_ip_comment") ?? "";
-      expect(commentDefinition.indexOf("ORDER BY ip.profile_id")).toBeLessThan(
-        commentDefinition.indexOf("FOR UPDATE OF target"),
+      expect(commentDefinition.indexOf("FOR UPDATE OF target")).toBeLessThan(
+        commentDefinition.indexOf("ORDER BY ip.profile_id"),
+      );
+      expect(commentDefinition.indexOf("IP not publishable")).toBeLessThan(
+        commentDefinition.indexOf("target_post_state<>'published'"),
+      );
+      expect(commentDefinition.indexOf("target_post_state<>'published'")).toBeLessThan(
+        commentDefinition.indexOf("INSERT INTO public.comments"),
       );
     }));
 
@@ -314,6 +320,8 @@ integration("platform social repository", () => {
         author: { id: ip.id },
         likeCount: 0,
         commentCount: 0,
+        bookmarkCount: 0,
+        shareCount: 0,
       });
       expect(published).not.toHaveProperty("actingOperatorProfileId");
       const feed = await social.listFeed({
@@ -585,6 +593,93 @@ integration("platform social repository", () => {
           comment: { ipProfileId: first.id, body: "Hidden" },
         }),
       ).rejects.toMatchObject({ code: "P0002" });
+    }));
+
+  it("preserves combined platform-comment error precedence without partial writes", async () =>
+    tx(async (client) => {
+      const operator = await human(client, true);
+      const { platform } = repositories(client);
+      const targetAuthor = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Target author",
+        },
+      });
+      const represented = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Represented",
+        },
+      });
+      const hiddenAuthor = await platform.createIp({
+        actor: operator,
+        requestId: randomUUID(),
+        ip: {
+          username: `ip_${randomUUID().replaceAll("-", "").slice(0, 20)}`,
+          displayName: "Hidden author",
+        },
+      });
+      const withdrawnPost = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: { ipProfileId: targetAuthor.id, body: "Withdrawn target" },
+      });
+      const hiddenAuthorPost = await platform.publishPost({
+        actor: operator,
+        requestId: randomUUID(),
+        post: { ipProfileId: hiddenAuthor.id, body: "Hidden-author target" },
+      });
+      await client.query(
+        "UPDATE public.posts SET state='withdrawn',withdrawn_at=clock_timestamp() WHERE id=$1",
+        [withdrawnPost.id],
+      );
+      await client.query(
+        "UPDATE public.ip_profiles SET public_state='paused',operation_enabled=false WHERE profile_id=$1",
+        [hiddenAuthor.id],
+      );
+      const invalidRepresented = randomUUID();
+      const before = await client.query<{ table_name: string; row_count: number }>(`
+        SELECT 'comments' table_name,count(*)::int row_count FROM public.comments
+        UNION ALL SELECT 'audit_events',count(*)::int FROM public.audit_events
+        UNION ALL SELECT 'workflow_transitions',count(*)::int FROM public.workflow_transitions
+        UNION ALL SELECT 'business_events',count(*)::int FROM public.business_events
+        UNION ALL SELECT 'analytics_outbox',count(*)::int FROM public.analytics_outbox
+        ORDER BY table_name
+      `);
+      const publishComment = (postId: string, representedIpId: string) =>
+        platform.publishIpComment({
+          actor: operator,
+          requestId: randomUUID(),
+          postId,
+          comment: { ipProfileId: representedIpId, body: "Must not persist" },
+        });
+
+      await expect(
+        publishComment(hiddenAuthorPost.id, invalidRepresented),
+      ).rejects.toMatchObject({ code: "P0002" });
+      await expect(
+        publishComment(withdrawnPost.id, invalidRepresented),
+      ).rejects.toMatchObject({ code: "P0001" });
+      await expect(
+        publishComment(withdrawnPost.id, represented.id),
+      ).rejects.toMatchObject({ code: "P0002" });
+      await expect(
+        publishComment(randomUUID(), invalidRepresented),
+      ).rejects.toMatchObject({ code: "P0002" });
+
+      const after = await client.query<{ table_name: string; row_count: number }>(`
+        SELECT 'comments' table_name,count(*)::int row_count FROM public.comments
+        UNION ALL SELECT 'audit_events',count(*)::int FROM public.audit_events
+        UNION ALL SELECT 'workflow_transitions',count(*)::int FROM public.workflow_transitions
+        UNION ALL SELECT 'business_events',count(*)::int FROM public.business_events
+        UNION ALL SELECT 'analytics_outbox',count(*)::int FROM public.analytics_outbox
+        ORDER BY table_name
+      `);
+      expect(after.rows).toEqual(before.rows);
     }));
 
   it("atomically rolls back visible rows when history or outbox insertion fails", async () =>

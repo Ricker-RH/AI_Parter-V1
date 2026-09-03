@@ -25,6 +25,8 @@ const cachedPost = {
   },
   likeCount: 4,
   commentCount: 2,
+  bookmarkCount: 1,
+  shareCount: 3,
 }
 
 describe('public social cache', () => {

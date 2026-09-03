@@ -12,7 +12,7 @@ const profile = (n: number): SearchResult => ({type: 'profile', profile: {
 }})
 const post = (n: number): SearchResult => ({type: 'post', post: {
   id: id(100 + n), body: `Post ${n}`, languageCode: 'en', publishedAt: `2026-09-01T12:${n.toString().padStart(2, '0')}:00.000Z`,
-  author: profile(1).profile, likeCount: 0, commentCount: 0,
+  author: profile(1).profile, likeCount: 0, commentCount: 0, bookmarkCount: 0, shareCount: 0,
 }})
 
 describe('mixed public search pagination', () => {

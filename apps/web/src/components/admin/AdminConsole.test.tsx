@@ -76,6 +76,8 @@ const post = {
   author: ip,
   likeCount: 0,
   commentCount: 0,
+  bookmarkCount: 0,
+  shareCount: 0,
 };
 const comment = {
   id: commentId,

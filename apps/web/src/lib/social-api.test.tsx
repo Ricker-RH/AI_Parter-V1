@@ -27,6 +27,8 @@ const post = {
   author: ip,
   likeCount: 4,
   commentCount: 2,
+  bookmarkCount: 1,
+  shareCount: 3,
 }
 
 afterEach(() => {

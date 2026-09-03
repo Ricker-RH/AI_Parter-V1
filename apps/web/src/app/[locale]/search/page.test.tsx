@@ -38,7 +38,7 @@ describe('public search page', () => {
   })
 
   it('deduplicates real feed authors for recommendations without mock identities', async () => {
-    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount: 1, commentCount: 0}
+    const feedPost = {id: '22222222-2222-4222-8222-222222222222', body: 'Moon', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount: 1, commentCount: 0, bookmarkCount: 0, shareCount: 0}
     fetchFeed.mockResolvedValue({status: 'ok', data: {items: [feedPost, {...feedPost, id: '33333333-3333-4333-8333-333333333333'}], nextCursor: null}})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}))
 
@@ -107,6 +107,7 @@ describe('public search page', () => {
     fetchSearch.mockResolvedValue({status: 'ok', data: {items: [{type: 'post', post: {
       id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf31', body: 'A post', languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile,
       likeCount: 0, commentCount: 0,
+      bookmarkCount: 0, shareCount: 0,
     }}], nextCursor: null}})
     render(await SearchPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({q: 'luna', category: 'posts', cursor: 'abc_DEF-123'})}))
     expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({cursor: 'abc_DEF-123'}))

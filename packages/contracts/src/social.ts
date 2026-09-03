@@ -314,6 +314,8 @@ export const FeedPostSchema = z.strictObject({
   media: z.array(PublicPostMediaSchema).max(4).optional(),
   likeCount: z.number().int().nonnegative(),
   commentCount: z.number().int().nonnegative(),
+  bookmarkCount: z.number().int().nonnegative(),
+  shareCount: z.number().int().nonnegative(),
   viewerHasLiked: z.boolean().optional(),
   viewerHasBookmarked: z.boolean().optional(),
   viewerFollowsAuthor: z.boolean().optional(),
@@ -447,6 +449,7 @@ export const CreateIpCommentSchema = z.strictObject({
 export const CreateIpResponseSchema = PublicIpSchema;
 export const CreatePostResponseSchema = FeedPostSchema;
 export const CreateIpCommentResponseSchema = PublicCommentSchema;
+export const ShareRecordedSchema = z.strictObject({ created: z.boolean() });
 export type PublicIp = z.infer<typeof PublicIpSchema>;
 export type FeedPost = z.infer<typeof FeedPostSchema>;
 export type PublicPostMedia = z.infer<typeof PublicPostMediaSchema>;
@@ -475,6 +478,7 @@ export type CreatePostInput = z.infer<typeof CreatePostSchema>;
 export type CreateIpCommentInput = z.infer<typeof CreateIpCommentSchema>;
 export type CreateIpResponse = z.infer<typeof CreateIpResponseSchema>;
 export type CreatePostResponse = z.infer<typeof CreatePostResponseSchema>;
+export type ShareRecorded = z.infer<typeof ShareRecordedSchema>;
 export type CreateIpCommentResponse = z.infer<
   typeof CreateIpCommentResponseSchema
 >;

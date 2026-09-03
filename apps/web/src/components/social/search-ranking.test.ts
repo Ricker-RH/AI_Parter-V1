@@ -3,7 +3,7 @@ import {describe, expect, it} from 'vitest'
 import {rankPopularSearchResults} from './search-ranking.js'
 
 const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luna_ip', displayName: 'Luna', bio: 'Moon stories', languages: ['en' as const], visualType: 'anime' as const}
-const post = (id: string, body: string, likeCount: number, commentCount: number): SearchResult => ({type: 'post', post: {id, body, languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount, commentCount}})
+const post = (id: string, body: string, likeCount: number, commentCount: number): SearchResult => ({type: 'post', post: {id, body, languageCode: 'en', publishedAt: '2026-09-01T12:00:00.000Z', author: profile, likeCount, commentCount, bookmarkCount: 0, shareCount: 0}})
 
 describe('rankPopularSearchResults', () => {
   it('uses explainable text relevance before engagement and a stable id tie-break', () => {

@@ -28,6 +28,7 @@ import {
   encodeLikedCursor,
   FollowedIpCursorSchema,
   FollowedIpPageSchema,
+  ShareRecordedSchema,
   decodeFollowedIpCursor,
   encodeFollowedIpCursor,
 } from "./social.js";
@@ -158,17 +159,24 @@ describe("social contracts", () => {
     expect(() =>
       PublicIpSchema.parse({ ...ip, creator: { ...ip.creator, draftId: id } }),
     ).toThrow();
-    expect(
-      FeedPostSchema.parse({
-        id,
-        body: "Hello",
-        languageCode: "en",
-        publishedAt: timestamp,
-        author: ip,
-        likeCount: 0,
-        commentCount: 0,
-      }),
-    ).toMatchObject({ id });
+    const strictPost = {
+      id,
+      body: "Hello",
+      languageCode: "en",
+      publishedAt: timestamp,
+      author: ip,
+      likeCount: 0,
+      commentCount: 0,
+      bookmarkCount: 0,
+      shareCount: 0,
+    };
+    expect(FeedPostSchema.parse(strictPost)).toEqual(strictPost);
+    expect(() => FeedPostSchema.parse({ ...strictPost, bookmarkCount: undefined })).toThrow();
+    expect(() => FeedPostSchema.parse({ ...strictPost, shareCount: undefined })).toThrow();
+    expect(() => FeedPostSchema.parse({ ...strictPost, bookmarkCount: -1 })).toThrow();
+    expect(() => FeedPostSchema.parse({ ...strictPost, shareCount: 1.5 })).toThrow();
+    expect(ShareRecordedSchema.parse({ created: true })).toEqual({ created: true });
+    expect(() => ShareRecordedSchema.parse({ created: true, shareCount: 10 })).toThrow();
     const media = {
       id,
       type: "image" as const,
@@ -261,6 +269,8 @@ describe("social contracts", () => {
       author: feedAuthor,
       likeCount: 0,
       commentCount: 0,
+      bookmarkCount: 0,
+      shareCount: 0,
     })).toThrow();
   });
 
@@ -280,6 +290,8 @@ describe("social contracts", () => {
       },
       likeCount: 0,
       commentCount: 0,
+      bookmarkCount: 0,
+      shareCount: 0,
     };
 
     expect(FeedPageSchema.parse({items: [post], nextCursor: null})).toEqual({items: [post], nextCursor: null});

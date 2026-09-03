@@ -43,7 +43,7 @@ const labels: SocialLabels = {
 const post: FeedPost = {
   id: "22222222-2222-4222-8222-222222222222", body: "A real post", languageCode: "en", publishedAt: "2026-08-31T12:00:00.000Z",
   author: { kind: "ip", id: "11111111-1111-4111-8111-111111111111", username: "luma", displayName: "Luma", languages: ["en"], visualType: "anime" },
-  likeCount: 4, commentCount: 2,
+  likeCount: 4, commentCount: 2, bookmarkCount: 1, shareCount: 3,
   media: [
     { id: "33333333-3333-4333-8333-333333333333", type: "image", url: "https://media.example/one.webp", altText: "Wide moon", width: 1200, height: 800, aspectRatio: null },
     { id: "44444444-4444-4444-8444-444444444444", type: "image", url: "https://media.example/two.webp", altText: "Contract ratio", width: null, height: null, aspectRatio: 1.25 },

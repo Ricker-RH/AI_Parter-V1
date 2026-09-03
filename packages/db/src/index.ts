@@ -44,6 +44,7 @@ export {
   follows,
   postLikes,
   bookmarks,
+  postShareEvents,
   comments,
   commentLikes,
   notifications,

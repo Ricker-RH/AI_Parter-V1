@@ -101,6 +101,11 @@ export type SocialRepository = {
   unlikePost(actor: Actor, postId: string): Promise<{ deleted: boolean }>;
   bookmarkPost(actor: Actor, postId: string): Promise<{ created: boolean }>;
   unbookmarkPost(actor: Actor, postId: string): Promise<{ deleted: boolean }>;
+  recordPostShare(
+    viewer: Actor | null,
+    postId: string,
+    idempotencyKey: string,
+  ): Promise<{ created: boolean }>;
   listBookmarks(actor: Actor, page: PageQuery): Promise<FeedPage>;
   listLiked(actor: Actor, page: PageQuery): Promise<FeedPage>;
   listFollowedIps(actor: Actor, page: PageQuery): Promise<FollowedIpPage>;
@@ -202,6 +207,8 @@ type PostRow = PublicIpRow & {
   published_at: Date | string;
   like_count: number | string;
   comment_count: number | string;
+  bookmark_count: number | string;
+  share_count: number | string;
   viewer_has_liked?: boolean;
   viewer_has_bookmarked?: boolean;
   viewer_follows_author?: boolean;
@@ -211,7 +218,7 @@ type PostRow = PublicIpRow & {
 const publicPostSql = `SELECT p.post_id, p.body, p.language_code, p.published_at,
   p.id, p.username, p.display_name, p.bio, p.languages, p.visual_type,
   p.creator_id, p.creator_username, p.creator_display_name,
-  metrics.like_count, metrics.comment_count,
+  metrics.like_count, metrics.comment_count, metrics.bookmark_count, metrics.share_count,
   flags.viewer_has_liked, flags.viewer_has_bookmarked, flags.viewer_follows_author
   FROM public.social_public_posts() p
   CROSS JOIN LATERAL public.social_viewer_flags(p.post_id, p.author_profile_id) flags
@@ -254,6 +261,8 @@ function post(row: PostRow, media: PublicPostMedia[] = []): FeedPost {
     media,
     likeCount: Number(row.like_count),
     commentCount: Number(row.comment_count),
+    bookmarkCount: Number(row.bookmark_count),
+    shareCount: Number(row.share_count),
     ...(row.viewer_has_liked === undefined
       ? {}
       : {
@@ -695,6 +704,16 @@ export function createSocialRepository({
             )
           ).rows[0]?.deleted === true,
       })),
+    recordPostShare: (viewer, postId, idempotencyKey) =>
+      read(viewer, async (client) => ({
+        created:
+          (
+            await client.query<{ created: boolean }>(
+              "SELECT public.record_post_share($1,$2) AS created",
+              [postId, idempotencyKey],
+            )
+          ).rows[0]?.created === true,
+      })),
     listBookmarks: (actor, page) =>
       runWithActor(actor, (client) =>
         feed(
@@ -887,7 +906,7 @@ export function createSocialRepository({
 
 export type { SocialCursor };
 
-type PlatformPostRow = PostRow;
+type PlatformPostRow = Omit<PostRow, "bookmark_count" | "share_count">;
 type PlatformCommentRow = PublicIpRow & {
   comment_id: string;
   post_id: string;
@@ -1014,7 +1033,7 @@ export function createPlatformSocialRepository({
         if (!created) throw new Error("IP_NOT_PUBLISHABLE");
         return FeedPostSchema.parse(
           post(
-            created,
+            { ...created, bookmark_count: 0, share_count: 0 },
             await publicMedia(client, created.post_id, publicMediaBaseUrl),
           ),
         );

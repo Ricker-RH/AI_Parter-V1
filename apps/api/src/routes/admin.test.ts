@@ -57,6 +57,8 @@ const post = CreatePostResponseSchema.parse({
   author: ip,
   likeCount: 0,
   commentCount: 0,
+  bookmarkCount: 0,
+  shareCount: 0,
 });
 const comment = CreateIpCommentResponseSchema.parse({
   id: randomUUID(),

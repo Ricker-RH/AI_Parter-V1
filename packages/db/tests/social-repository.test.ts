@@ -299,7 +299,7 @@ integration('social repository local postgres',()=>{
   await social.likePost(first,visible,context()); await social.bookmarkPost(first,visible); await social.bookmarkPost(second,visible); await social.recordPostShare(first,visible,randomUUID()); await social.recordPostShare(null,visible,randomUUID()); await social.follow(first,author,context());
   const anon=await social.listFeed({viewer:null,kind:'for_you',limit:25,after:null}); expect(anon.items.map(x=>x.id)).toEqual([visible]); expect(anon.items[0]).toMatchObject({likeCount:1,commentCount:0,bookmarkCount:2,shareCount:2}); expect(anon.items[0]?.viewerHasLiked).toBe(false); expect(PublicIpSchema.parse(anon.items[0]?.author)).toBeTruthy(); expect(anon.items[0]?.author).not.toHaveProperty('followerCount');
   const mine=await social.listFeed({viewer:first,kind:'for_you',limit:25,after:null}); expect(mine.items[0]).toMatchObject({viewerHasLiked:true,viewerHasBookmarked:true,viewerFollowsAuthor:true});
-  const other=await social.listFeed({viewer:second,kind:'for_you',limit:25,after:null}); expect(other.items[0]).toMatchObject({viewerHasLiked:false,viewerHasBookmarked:false,viewerFollowsAuthor:false});
+  const other=await social.listFeed({viewer:second,kind:'for_you',limit:25,after:null}); expect(other.items[0]).toMatchObject({viewerHasLiked:false,viewerHasBookmarked:true,viewerFollowsAuthor:false});
  }))
  it('populates strict interaction counts for feed, following, liked, bookmarks, search, profile, and detail',async()=>tx(async client=>{
   const author=await ip(client)

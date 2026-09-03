@@ -1238,6 +1238,30 @@ export const bookmarks = pgTable(
   },
   (table) => [primaryKey({ columns: [table.postId, table.profileId] })],
 );
+export const postShareEvents = pgTable(
+  "post_share_events",
+  {
+    id: uuid().primaryKey(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id),
+    actorProfileId: uuid("actor_profile_id").references(() => profiles.id),
+    idempotencyKey: uuid("idempotency_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("post_share_events_post_id_idempotency_key_unique").on(
+      table.postId,
+      table.idempotencyKey,
+    ),
+    index("post_share_events_post_created_idx").on(
+      table.postId,
+      table.createdAt.desc(),
+    ),
+  ],
+);
 export const comments = pgTable(
   "comments",
   {
