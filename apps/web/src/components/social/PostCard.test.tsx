@@ -338,6 +338,24 @@ describe("PostCard public interaction hierarchy", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("isolates portal dialog and backdrop clicks from whole-card navigation", () => {
+    const {container} = render(<PostCard labels={labels} locale="en" post={post} referenceTime={cardReferenceTime} />);
+    const navigationTarget = container.querySelector<HTMLAnchorElement>('.post-card-navigation-target')!;
+    const open = vi.spyOn(navigationTarget, 'click');
+    fireEvent.click(screen.getByRole("button", {name: "Profile: Luma"}));
+    open.mockClear();
+    capture.mockClear();
+    const dialog = screen.getByRole("dialog", {name: "Luma"});
+    const backdrop = dialog.parentElement!;
+
+    fireEvent.click(within(dialog).getByText('@luma'));
+    fireEvent.click(dialog);
+    fireEvent.click(backdrop);
+
+    expect(open).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
   it("keeps a delayed profile request alive until follower data resolves", async () => {
     let resolveProfile!: (response: Response) => void;
     const request = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveProfile = resolve; }));

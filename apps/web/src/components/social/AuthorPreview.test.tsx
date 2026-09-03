@@ -83,6 +83,26 @@ describe('AuthorPreview modal', () => {
     expect(await screen.findByText('Action failed')).toBeVisible()
     expect(screen.getByRole('button', {name: 'Follow'})).toBeEnabled()
   })
+
+  it('rolls back an optimistic follow when the pending modal is closed and reopened', async () => {
+    let followSignal: AbortSignal | undefined
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/follow')) followSignal = init?.signal as AbortSignal
+      return new Promise<Response>(() => undefined)
+    }))
+    render(<AuthorPreview author={author} canMutate followsAuthor={false} labels={labels} locale="en" returnTo="/en" viewerScope="viewer-a"/>)
+    const trigger = screen.getByRole('button', {name: 'Profile: Luma'})
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('button', {name: 'Follow'}))
+    expect(screen.getByRole('button', {name: 'Following'})).toBeDisabled()
+
+    const dialog = screen.getByRole('dialog', {name: 'Luma'})
+    fireEvent.mouseDown(dialog.parentElement!)
+
+    await waitFor(() => expect(followSignal).toHaveProperty('aborted', true))
+    fireEvent.click(trigger)
+    expect(screen.getByRole('button', {name: 'Follow'})).toBeEnabled()
+  })
 })
 
 describe('AuthorPreview viewer scope', () => {

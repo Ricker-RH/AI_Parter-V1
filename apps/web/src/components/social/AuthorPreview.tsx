@@ -86,11 +86,11 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
 
   const resolvedFollowing = followingOverride ?? followsAuthor ?? profile?.viewerFollows
   const followAction = canMutate
-    ? resolvedFollowing === undefined || !viewerScope ? null : <ProfileFollowButton following={resolvedFollowing} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id} viewerScope={viewerScope}/>
+    ? resolvedFollowing === undefined || !viewerScope ? null : <ProfileFollowButton following={resolvedFollowing} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id} rollbackOnUnmount viewerScope={viewerScope}/>
     : <Link className="author-preview-primary" href={authHref(locale, returnTo)}>{labels.follow}</Link>
   const triggerClass = context === 'comment' ? 'comment-avatar-trigger' : 'post-avatar-trigger'
   const avatarClass = context === 'comment' ? 'comment-avatar' : 'avatar'
-  const modal = <div className="author-preview-backdrop" data-author-preview-backdrop onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
+  const modal = <div className="author-preview-backdrop" data-author-preview-backdrop onClick={(event) => event.stopPropagation()} onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
     <div aria-label={author.displayName} aria-modal="true" className="author-preview-dialog" onMouseDown={(event) => event.stopPropagation()} ref={dialog} role="dialog">
       <div className="author-preview-heading">
         <div><Link href={profileHref}><strong>{author.displayName}</strong></Link><span>@{author.username}</span></div>

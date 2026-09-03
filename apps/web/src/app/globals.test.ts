@@ -6,9 +6,9 @@ const surfaceStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'sr
 const mediaStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/PostMedia.module.css' : 'apps/web/src/components/social/PostMedia.module.css', 'utf8')
 
 describe('ordinary-user fluid shell CSS contract', () => {
-  it('keeps the author preview above every application layer on a uniform viewport scrim', () => {
-    expect(stylesheet).toMatch(/\.author-preview-backdrop \{[^}]*background: color-mix\(in srgb, #000 40%, transparent\)[^}]*inset: 0[^}]*position: fixed[^}]*z-index: 110/)
-    expect(stylesheet).toMatch(/\.author-preview-dialog \{[^}]*border-radius: 20px[^}]*max-width: 380px[^}]*width: min\(380px, calc\(100vw - 32px\)\)/)
+  it('uses the author preview modal overlay contract', () => {
+    expect(stylesheet).toMatch(/\.author-preview-backdrop \{[^}]*background: color-mix\(in srgb, #000 40%, transparent\)[^}]*inset: 0[^}]*max-height: 100dvh[^}]*overflow-y: auto[^}]*position: fixed[^}]*z-index: 110/)
+    expect(stylesheet).toMatch(/\.author-preview-dialog \{[^}]*border-radius: 20px[^}]*max-height: calc\(100dvh - 32px\)[^}]*max-width: 380px[^}]*overflow-y: auto[^}]*width: min\(380px, calc\(100vw - 32px\)\)/)
     expect(stylesheet).not.toContain('.author-preview-close')
   })
 
