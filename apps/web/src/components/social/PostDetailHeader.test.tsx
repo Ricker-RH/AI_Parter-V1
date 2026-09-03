@@ -26,6 +26,16 @@ describe('PostDetailHeader', () => {
     expect(router.back).not.toHaveBeenCalled()
   })
 
+  it('supports the same header actions for a non-post detail resource', async () => {
+    render(<PostDetailHeader actionsLabel="Channel actions" canonicalPath="/en/channels/future-city" fallbackHref="/en/channels" labels={labels} locale="en" referrer="" title="Future City" />)
+    expect(screen.getByRole('heading', {name: 'Future City'})).toBeVisible()
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}))
+    expect(router.push).toHaveBeenCalledWith('/en/channels')
+    fireEvent.click(screen.getByRole('button', {name: 'Channel actions'}))
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Copy link'}))
+    await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(new URL('/en/channels/future-city', window.location.origin).toString()))
+  })
+
   it('uses a centered AIFANS mark on phone chrome while retaining an accessible localized heading', () => {
     const {container} = render(<PostDetailHeader labels={labels} locale="en" postId={postId} referrer="" />)
 

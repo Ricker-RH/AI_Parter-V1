@@ -21,10 +21,10 @@ describe('ChannelDirectory', () => {
   beforeEach(() => {vi.useFakeTimers(); replace.mockReset(); refresh.mockReset()})
   afterEach(() => vi.useRealTimers())
 
-  it('keeps the approved mobile rail, medium directory, and readable detail width contracts', () => {
+  it('keeps a full-width directory row, the approved mobile rail, and readable detail width contracts', () => {
     const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/channels/ChannelPage.module.css' : 'apps/web/src/components/channels/ChannelPage.module.css', 'utf8')
     expect(css).toMatch(/\.ipRail\s*\{[^}]*overflow-x:\s*auto/)
-    expect(css).toMatch(/@media \(min-width:\s*700px\)\s*\{[\s\S]*?\.directoryGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/)
+    expect(css).not.toMatch(/\.directoryGrid\s*\{[^}]*grid-template-columns/)
     expect(css).toMatch(/\.detailInner\s*\{[^}]*max-width:\s*640px/)
   })
 

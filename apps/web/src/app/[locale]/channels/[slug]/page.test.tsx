@@ -23,9 +23,12 @@ describe('channel detail route', () => {
     getOptionalPageAccess.mockReset().mockResolvedValue({status: 'anonymous'})
   })
 
-  it('renders back + channel name once, server-ordered IPs, then PostCard content with no latest heading', async () => {
+  it('renders the shared framed detail surface with channel actions, server-ordered IPs, and PostCard content', async () => {
     render(await ChannelDetailPage({params: Promise.resolve({locale: 'en', slug: 'future-city'}), searchParams: Promise.resolve({})}))
-    expect(screen.getByRole('link', {name: 'Back to channels'})).toHaveAttribute('href', '/en/channels')
+    expect(document.querySelector('[data-social-surface]')).not.toBeNull()
+    expect(document.querySelector('[data-social-surface-frame]')).not.toBeNull()
+    expect(screen.getByRole('button', {name: 'Back to channels'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'More'})).toBeVisible()
     expect(screen.getAllByText('Future City')).toHaveLength(1)
     expect(screen.queryByText('Urban futures')).toBeNull()
     expect(screen.getByRole('heading', {name: 'Channel IPs'})).toBeVisible()

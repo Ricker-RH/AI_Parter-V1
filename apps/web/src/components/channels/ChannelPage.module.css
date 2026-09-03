@@ -21,7 +21,7 @@
 .detailHeader { align-items: center; border-bottom: 1px solid var(--shell-border); display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; min-height: 60px; }
 .detailHeader a { align-items: center; display: flex; font-size: 24px; height: 44px; justify-content: center; width: 44px; }
 .detailHeader h1 { font-size: 18px; margin: 0; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.ipSection { border-bottom: 1px solid var(--shell-border); padding: 22px 0 20px; }
+.ipSection { border-bottom: 1px solid var(--shell-border); padding: 22px 20px 20px; }
 .ipHeader { align-items: center; display: flex; justify-content: space-between; padding: 0 4px; }
 .ipHeader h2 { font-size: 18px; margin: 0; }
 .ipHeader a { align-items: center; display: inline-flex; font-size: 14px; font-weight: 650; min-height: 44px; }
@@ -38,7 +38,6 @@
 .ipRow p { font-size: 14px; margin: 4px 0 0; }
 
 @media (min-width: 700px) {
-  .directoryGrid { column-gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .page { padding-inline: 28px; }
   .ipRail { flex-wrap: wrap; overflow-x: visible; }
 }
@@ -47,4 +46,5 @@
   .page { padding: 20px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
   .directoryHeader { display: none; }
   .directoryBody { padding: 12px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
+  .ipSection { padding-inline: 12px; }
 }
