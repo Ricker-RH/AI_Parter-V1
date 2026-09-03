@@ -2,9 +2,6 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
 }
 
 .header {
@@ -14,8 +11,15 @@
   z-index: 1;
 }
 
+.frame {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .viewport {
   -ms-overflow-style: none;
+  height: 100%;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -27,15 +31,17 @@
 .viewport > [data-social-surface-fill] { min-height: 100%; }
 
 @media (min-width: 700px) {
-  .surface {
+  .frame {
     background: var(--shell-surface);
     border: 1px solid var(--shell-border);
     border-radius: 16px;
   }
+
+  .header :global(.page-header) { border-bottom: 0; }
 }
 
 @media (max-width: 699px) {
-  .surface {
+  .frame {
     border: 0;
     border-radius: 0;
   }

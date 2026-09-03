@@ -72,9 +72,10 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.home-page, \.collection-page, \.post-detail-page \{[^}]*height: 100%/)
   })
 
-  it('uses one fixed rounded desktop surface instead of attaching frame edges to content children', () => {
-    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.surface\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
-    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*overflow:\s*hidden/)
+  it('uses one fixed rounded desktop content frame beneath the page header', () => {
+    expect(surfaceStylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*?\.frame\s*\{[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
+    expect(surfaceStylesheet).toMatch(/\.frame\s*\{[^}]*overflow:\s*hidden/)
+    expect(surfaceStylesheet).not.toMatch(/\.surface\s*\{[^}]*(?:border(?:-radius)?|overflow):/)
     expect(stylesheet).not.toMatch(/\.home-page > \.feed-list > :(?:first|last|only)-child/)
     expect(stylesheet).not.toMatch(/\.post-detail-content > :(?:first|last|only)-child/)
   })
@@ -143,8 +144,9 @@ describe('ordinary-user fluid shell CSS contract', () => {
 
   it('makes post detail one bounded scroll region beneath opaque fixed chrome', () => {
     expect(stylesheet).toMatch(/\.post-detail-page \{[^}]*height: 100%/)
-    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*overflow:\s*hidden/)
-    expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*overflow-y:\s*auto/)
+    expect(surfaceStylesheet).toMatch(/\.surface\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[^}]*height:\s*100%/)
+    expect(surfaceStylesheet).toMatch(/\.frame\s*\{[^}]*overflow:\s*hidden/)
+    expect(surfaceStylesheet).toMatch(/\.viewport\s*\{[^}]*height:\s*100%[^}]*overflow-y:\s*auto/)
   })
 
   it('keeps 430/768/1024/1440 detail-post alignment isolated from the Home feed card layout', () => {
