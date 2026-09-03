@@ -44,6 +44,8 @@
   .page { padding: 20px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
   .directoryHeader { border-bottom: 0; }
   .directoryBody { padding: 14px 16px max(72px, calc(48px + env(safe-area-inset-bottom))); }
-  .ipSection { padding-inline: 12px; }
+  .ipSection { padding: 12px; }
+  .ipRail { margin-top: 8px; padding: 0 4px; }
+  .ipCard { min-height: 80px; }
   .ipRow { padding-inline: 12px; }
 }

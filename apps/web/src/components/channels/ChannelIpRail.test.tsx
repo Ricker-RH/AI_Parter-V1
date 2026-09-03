@@ -1,4 +1,5 @@
 import {render, screen} from '@testing-library/react'
+import {readFileSync} from 'node:fs'
 import type {AnchorHTMLAttributes, ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
 
@@ -24,5 +25,12 @@ describe('ChannelIpRail', () => {
     expect(screen.getByRole('heading', {name: 'Channel IPs'})).toBeVisible()
     expect(screen.getByText('No IPs in this channel yet')).toBeVisible()
     expect(screen.queryByRole('link', {name: 'View all'})).toBeNull()
+  })
+
+  it('uses the shared compact mobile spacing rhythm without reducing the tappable card', () => {
+    const css = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/channels/ChannelPage.module.css' : 'apps/web/src/components/channels/ChannelPage.module.css', 'utf8')
+    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipSection\s*\{[^}]*padding:\s*12px/)
+    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipRail\s*\{[^}]*margin-top:\s*8px[^}]*padding:\s*0 4px/)
+    expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[\s\S]*?\.ipCard\s*\{[^}]*min-height:\s*80px/)
   })
 })
