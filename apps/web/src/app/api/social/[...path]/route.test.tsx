@@ -97,6 +97,25 @@ describe('same-origin social mutation proxy', () => {
     for (const name of ['cookie', 'x-vercel-forwarded-for']) expect(sent.has(name)).toBe(false)
   })
 
+  it('accepts an empty streamed share body produced by the deployed Next runtime', async () => {
+    process.env.AIFANS_API_URL = 'https://internal-api.example'
+    process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET = 's'.repeat(32)
+    const upstream = vi.fn().mockResolvedValue(Response.json({created: true}))
+    vi.stubGlobal('fetch', upstream)
+    const path = ['posts', postId, 'share']
+    const body = new ReadableStream<Uint8Array>({start(controller) { controller.close() }})
+    const response = await POST(new Request(`https://web.example/api/social/${path.join('/')}`, {
+      method: 'POST',
+      headers: {origin: 'https://web.example', 'idempotency-key': postId},
+      body,
+      duplex: 'half',
+    } as RequestInit), {params: Promise.resolve({path})})
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({created: true})
+    expect(upstream).toHaveBeenCalledOnce()
+  })
+
   it('rejects invalid share proxy requests before transport with private no-store errors', async () => {
     process.env.AIFANS_API_URL = 'https://internal-api.example'
     const upstream = vi.fn()
@@ -109,6 +128,7 @@ describe('same-origin social mutation proxy', () => {
       [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': 'invalid'}}), 400],
       [new Request(`${url}?count=1`, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId}}), 400],
       [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json', 'idempotency-key': postId}, body: '{"count":1}'}), 422],
+      [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'idempotency-key': postId}, body: '   '}), 422],
       [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'text/plain', 'idempotency-key': postId}, body: '{}'}), 422],
       [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json; charset=latin1', 'idempotency-key': postId}, body: '{}'}), 422],
       [new Request(url, {method: 'POST', headers: {origin: 'https://web.example', 'content-type': 'application/json; charset=utf-8; profile=x', 'idempotency-key': postId}, body: '{}'}), 422],

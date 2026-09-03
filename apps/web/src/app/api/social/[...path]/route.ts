@@ -70,13 +70,14 @@ function jsonUtf8(contentType: string | null): boolean {
 async function normalizedShareBody(request: Request): Promise<'VALID' | 'INVALID' | 'TOO_LARGE'> {
   if (declaredBodyTooLarge(request)) return 'TOO_LARGE'
   if (request.body === null) return 'VALID'
-  if (!jsonUtf8(request.headers.get('content-type'))) return 'INVALID'
   let body: string
   try {
     body = await readCommentBody(request)
   } catch {
     return 'TOO_LARGE'
   }
+  if (body.length === 0) return 'VALID'
+  if (!jsonUtf8(request.headers.get('content-type'))) return 'INVALID'
   if (!body.trim()) return 'VALID'
   try {
     const parsed = JSON.parse(body) as unknown
