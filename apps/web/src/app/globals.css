@@ -10,6 +10,7 @@
   --shell-hover: #f6f6f6;
   --shell-focus: #27272a;
   --entity-action-gap: 8px;
+  --content-scroll-end-space: 16px;
   --mobile-safe-area-bottom: env(safe-area-inset-bottom);
   --mobile-bottom-nav-height: calc(50px + var(--mobile-safe-area-bottom));
   --mobile-scroll-breathing-room: 16px;
@@ -300,6 +301,8 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   min-width: 0;
   position: relative;
 }
+[data-profile-content-frame] { scroll-padding-bottom: var(--content-scroll-end-space); }
+[data-profile-content-frame]::after { content: ""; display: block; height: var(--content-scroll-end-space); }
 .page-header {
   border-bottom: 1px solid var(--shell-border);
   padding: 25px 24px 0;

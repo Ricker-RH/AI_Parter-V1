@@ -19,6 +19,7 @@ const labels = {
 const account = {id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30', kind: 'human', username: 'rui', displayName: 'Rui', bio: null, preferredLocale: 'en', creatorModeEnabled: false}
 const moduleUrl = import.meta.url
 const stylesheet = readFileSync(fileURLToPath(new URL('./MyProfilePanel.module.css', moduleUrl)), 'utf8')
+const globalStylesheet = readFileSync(fileURLToPath(new URL('../../app/globals.css', moduleUrl)), 'utf8')
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -200,6 +201,9 @@ describe('MyProfilePanel', () => {
     expect(stylesheet).toMatch(/\.surface\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto[^}]*scrollbar-width:\s*none/s)
     expect(stylesheet).toMatch(/\.page\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
     expect(stylesheet).not.toMatch(/\.page\s*\{[^}]*height:\s*calc\([^}]*100dvh/s)
+    expect(globalStylesheet).toMatch(/--content-scroll-end-space:\s*16px/)
+    expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]\s*\{[^}]*scroll-padding-bottom:\s*var\(--content-scroll-end-space\)/)
+    expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]::after\s*\{[^}]*content:\s*""[^}]*display:\s*block[^}]*height:\s*var\(--content-scroll-end-space\)/)
 
     fireEvent.click(screen.getByRole('button', {name: 'Edit profile'}))
     expect(content).toHaveAttribute('aria-hidden', 'true')
