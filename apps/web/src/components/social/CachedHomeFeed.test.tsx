@@ -26,6 +26,20 @@ describe('CachedHomeFeed',()=>{
     vi.unstubAllGlobals()
   })
 
+  it('keeps each feed cached when switching back to For You',()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const forYou={status:'ok' as const,data:{items:[],nextCursor:null}}
+    const following={status:'unavailable' as const}
+    const first=render(shared(client,<CachedHomeFeed canMutate={false} initialResult={forYou} kind="for_you" labels={labels} locale="en" returnTo="/en"/>))
+    expect(screen.getByText('Nothing here yet')).toBeVisible()
+    first.unmount()
+    const second=render(shared(client,<CachedHomeFeed canMutate={false} initialResult={following} kind="following" labels={labels} locale="en" returnTo="/en?feed=following"/>))
+    expect(screen.queryByText('Nothing here yet')).not.toBeInTheDocument()
+    second.unmount()
+    render(shared(client,<CachedHomeFeed canMutate={false} initialResult={{status:'unavailable'}} kind="for_you" labels={labels} locale="en" returnTo="/en"/>))
+    expect(screen.getByText('Nothing here yet')).toBeVisible()
+  })
+
   it('does not reuse a personalized feed for another viewer scope',()=>{
     const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
     const first=render(shared(client,<CachedHomeFeed canMutate initialResult={initial} kind="for_you" labels={labels} locale="en" returnTo="/en" viewerScope="viewer-a"/>))
