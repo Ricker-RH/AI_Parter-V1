@@ -424,6 +424,7 @@ function HumanDetail({
               ) : message.content.kind === "image" ||
                 message.content.kind === "voice" ? (
                 <HumanMediaMessage
+                  selfProfileId={selfProfileId}
                   attachmentId={message.content.attachmentId}
                   kind={message.content.kind}
                   zh={locale === "zh-CN"}

@@ -1,77 +1,47 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { HumanMediaDownloadSchema } from "@aifans/contracts";
-import { humanRequest } from "../../lib/human-chat-client";
 import styles from "./MessagesWorkspace.module.css";
+import { useHumanAttachment } from "./useHumanAttachment";
 export function HumanMediaMessage({
+  selfProfileId,
   attachmentId,
   kind,
   zh,
   onError,
 }: {
+  selfProfileId: string;
   attachmentId: string;
   kind: "image" | "voice";
   zh: boolean;
   onError: (cause: unknown) => void;
 }) {
-  const [url, setUrl] = useState<string | null>(null),
-    [failed, setFailed] = useState(false),
-    [attempt, setAttempt] = useState(0);
   const callback = useRef(onError);
-  const expiresAt = useRef(0),
-    activeAttachmentId = useRef<string | null>(null),
-    resume = useRef(false),
+  const resume = useRef(false),
     audio = useRef<HTMLAudioElement | null>(null);
+  const [renderFailed, setRenderFailed] = useState(false);
+  const attachment = useHumanAttachment(selfProfileId, attachmentId, kind);
   callback.current = onError;
   useEffect(() => {
-    const owner = new AbortController();
-    if (activeAttachmentId.current !== attachmentId) setUrl(null);
-    activeAttachmentId.current = attachmentId;
-    setFailed(false);
-    void (async () => {
-      try {
-        const result = HumanMediaDownloadSchema.parse(
-          await humanRequest(
-            `attachments/${attachmentId}/download`,
-            owner.signal,
-          ),
-        );
-        if (owner.signal.aborted) return;
-        const parsed = new URL(result.url);
-        if (
-          parsed.username ||
-          parsed.password ||
-          result.attachment.attachmentId !== attachmentId ||
-          result.attachment.kind !== kind ||
-          Date.parse(result.expiresAt) <= Date.now()
-        )
-          throw Error("HUMAN_MEDIA_INVALID");
-        setUrl(result.url);
-        expiresAt.current = Date.parse(result.expiresAt);
-      } catch (cause) {
-        if (!owner.signal.aborted) {
-          setFailed(true);
-          callback.current(cause);
-        }
-      }
-    })();
-    return () => owner.abort();
-  }, [attachmentId, kind, attempt]);
+    if (attachment.error) callback.current(attachment.error);
+  }, [attachment.error]);
+  useEffect(() => setRenderFailed(false), [attachmentId, attachment.data?.url]);
   useEffect(() => {
-    if (url && resume.current) {
+    if (attachment.data?.url && resume.current) {
       resume.current = false;
       void audio.current?.play().catch(() => {
         /* Native controls remain available if autoplay is blocked. */
       });
     }
-  }, [url]);
+  }, [attachment.data?.url]);
   function renewVoice() {
-    if (Date.now() < expiresAt.current) return false;
+    if (Date.now() < attachment.expiresAt) return false;
     resume.current = true;
     audio.current?.pause();
-    setAttempt((value) => value + 1);
+    void attachment.refetch({ cancelRefetch: false });
     return true;
   }
+  const url = attachment.data?.url;
+  const failed = attachment.isError || renderFailed;
   return (
     <div className={styles.mediaBubble}>
       {url && !failed ? (
@@ -80,7 +50,7 @@ export function HumanMediaMessage({
             src={url}
             alt={zh ? "聊天图片" : "Chat image"}
             referrerPolicy="no-referrer"
-            onError={() => setFailed(true)}
+            onError={() => setRenderFailed(true)}
           />
         ) : (
           <audio
@@ -90,7 +60,7 @@ export function HumanMediaMessage({
             src={url}
             onPlay={() => renewVoice()}
             onError={() => {
-              if (!renewVoice()) setFailed(true);
+              if (!renewVoice()) setRenderFailed(true);
             }}
           />
         )
@@ -98,7 +68,7 @@ export function HumanMediaMessage({
         <button
           type="button"
           className={styles.older}
-          onClick={() => setAttempt((x) => x + 1)}
+          onClick={() => void attachment.refetch()}
         >
           {zh ? "重新加载附件" : "Reload attachment"}
         </button>

@@ -8,13 +8,21 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { HumanMediaMessage } from "./HumanMediaMessage";
+import { HumanChatQueryProvider } from "./HumanChatQueryProvider";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 const id = "11111111-1111-4111-8111-111111111111";
-it("loads private images only through the authenticated download endpoint and aborts on unmount", async () => {
+function renderMedia(props: Omit<Parameters<typeof HumanMediaMessage>[0], "selfProfileId">) {
+  return render(
+    <HumanChatQueryProvider profileId={id}>
+      <HumanMediaMessage selfProfileId={id} {...props} />
+    </HumanChatQueryProvider>,
+  );
+}
+it("loads private images only through the authenticated download endpoint", async () => {
   const fetcher = vi.fn().mockResolvedValue(
     Response.json({
       url: "https://assets.test/short-lived",
@@ -30,14 +38,7 @@ it("loads private images only through the authenticated download endpoint and ab
     }),
   );
   vi.stubGlobal("fetch", fetcher);
-  const view = render(
-    <HumanMediaMessage
-      attachmentId={id}
-      kind="image"
-      zh={false}
-      onError={() => {}}
-    />,
-  );
+  const view = renderMedia({ attachmentId: id, kind: "image", zh: false, onError() {} });
   expect(await screen.findByAltText("Chat image")).toHaveAttribute(
     "referrerpolicy",
     "no-referrer",
@@ -46,7 +47,24 @@ it("loads private images only through the authenticated download endpoint and ab
     `/api/human-chat/attachments/${id}/download`,
   );
   view.unmount();
-  expect(fetcher.mock.calls[0]?.[1].signal.aborted).toBe(true);
+});
+it("shares an in-memory private attachment descriptor across message remounts", async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      url: "https://assets.test/short-lived",
+      expiresAt: "2099-01-01T00:00:00Z",
+      attachment: { attachmentId: id, kind: "image", contentType: "image/webp", sizeBytes: 10, width: 10, height: 10 },
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <HumanChatQueryProvider profileId={id}>
+      <HumanMediaMessage selfProfileId={id} attachmentId={id} kind="image" zh={false} onError={() => {}} />
+      <HumanMediaMessage selfProfileId={id} attachmentId={id} kind="image" zh={false} onError={() => {}} />
+    </HumanChatQueryProvider>,
+  );
+  await waitFor(() => expect(screen.getAllByAltText("Chat image")).toHaveLength(2));
+  expect(fetcher).toHaveBeenCalledTimes(1);
 });
 it("refreshes expired voice authorization on playback before resuming", async () => {
   const expiredAt = Date.now() + 60000;
@@ -69,14 +87,7 @@ it("refreshes expired voice authorization on playback before resuming", async ()
   vi.stubGlobal("fetch", fetcher);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
-  const view = render(
-    <HumanMediaMessage
-      attachmentId={id}
-      kind="voice"
-      zh={false}
-      onError={() => {}}
-    />,
-  );
+  const view = renderMedia({ attachmentId: id, kind: "voice", zh: false, onError() {} });
   await waitFor(() =>
     expect(view.container.querySelector("audio")).toBeTruthy(),
   );
@@ -104,14 +115,7 @@ it("reports revoked attachment access instead of showing a stale URL", async () 
       ),
   );
   const error = vi.fn();
-  render(
-    <HumanMediaMessage
-      attachmentId={id}
-      kind="voice"
-      zh={false}
-      onError={error}
-    />,
-  );
+  renderMedia({ attachmentId: id, kind: "voice", zh: false, onError: error });
   await waitFor(() =>
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ message: "HUMAN_CHAT_BLOCKED" }),
