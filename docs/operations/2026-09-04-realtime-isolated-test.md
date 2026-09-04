@@ -2,6 +2,17 @@
 
 ## Recorded state
 
+### Latest deployment checkpoint (supersedes the initial setup below)
+
+- Preview Neon branch `br-sparkling-sun-ay5943bs` was explicitly resolved to `ep-rapid-math-ayrsz9wl.c-5.us-east-2.aws.neon.tech`. The normal migration runner applied `005` through `016`; a second run applied zero migrations. Production was not targeted.
+- Worker version `c253ea77-50c7-4de1-ad65-7d8daa78a3ac` is deployed at `https://aifans-realtime-isolated-test.2632604095.workers.dev`. Both server secrets are configured; exact test origins are enabled. Unauthenticated connection request returned `403`.
+- API preview `aifans-api-6edy77j1h-ruihao-luos-projects.vercel.app` and Web preview `ai-parter-v1-d18bifjlv-ruihao-luos-projects.vercel.app` reached Ready at commit `889b51c`. API `/health` through authenticated Vercel CLI returned `{"status":"ok","service":"aifans-api"}`.
+- API realtime settings and Web socket URL are scoped to Preview branch `codex/ux-slice-0-1`. R2 private bucket CORS retains prior entries and adds only the exact test Web origin.
+- Dify credentials were authorized and configured only in test API. `/info` and `/parameters` returned `200`, mode `agent-chat`, no declared input variables. A synthetic real request returned Agent SSE events, including embedded thought tags. Adapter compatibility and thought separation are still being completed; these changes are not covered by the Ready deployments above.
+- Deployed read-only mobile checks passed for inbox navigation, human profile privacy and AI chat entry. Real message delivery/read/reconnect, media and final Dify visible-output acceptance are still pending. Do not report this checkpoint as complete acceptance.
+
+### Initial setup history
+
 Operator-reported Cloudflare account: `44ceaad318c815a8f3ee980b8c722fe3`; Worker: `aifans-realtime-isolated-test`; initial deployed version: `66941970-81f9-4509-921c-ba2b6e111500`.
 
 The Worker is **not connected end-to-end**. Its public URL remains disabled (`workers_dev: false`, `preview_urls: false`); no route is added by this configuration. The operator confirmed the optional `VERCEL_AUTOMATION_BYPASS_SECRET` binding through the remote secret-name listing. No secret value is recorded here. API internal authentication and Vercel/Neon environment integration remain pending. No real Dify provider is configured or exercised by this record.
