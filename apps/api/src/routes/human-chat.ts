@@ -7,11 +7,13 @@ import type {ApiVariables} from '../middleware/request-id.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {HumanChatPort} from '../ports/human-chat.js'
 import type {HumanChatMediaPort} from '../ports/human-chat-media.js'
+import type {HumanChatRichContentPort} from '../ports/human-chat-rich-content.js'
+import {HumanStickerIdSchema} from '@aifans/contracts'
 import type {ProfilePort} from '../ports/profiles.js'
 import {strictJsonBody, strictQuery} from './strict-input.js'
 
 type ApiContext = Context<{Variables: ApiVariables}>
-type Dependencies = {auth?: AuthVerifier; profiles?: ProfilePort; humanChat?: HumanChatPort;humanChatMedia?:HumanChatMediaPort}
+type Dependencies = {auth?: AuthVerifier; profiles?: ProfilePort; humanChat?: HumanChatPort;humanChatMedia?:HumanChatMediaPort;humanChatRichContent?:HumanChatRichContentPort}
 const uuid = z.uuid()
 const emptyQuery = z.strictObject({})
 const integerQuery = z.string().regex(/^(0|[1-9]\d*)$/).transform(Number).pipe(z.number().int().min(0).max(Number.MAX_SAFE_INTEGER))
@@ -76,7 +78,8 @@ export function registerHumanChatRoutes(app: Hono<{Variables: ApiVariables}>, de
       if (!peer.success || !strictQuery(c, emptyQuery)) return invalid(c)
       const input = await strictJsonBody(c, HumanSendInputSchema)
       if (!input) return invalid(c)
-      if (input.content.kind !== 'text' && !(dependencies.humanChatMedia && ['image','voice'].includes(input.content.kind))) return apiError(c, 422, 'HUMAN_MESSAGE_KIND_UNSUPPORTED', 'This message format is not available')
+      if (input.content.kind !== 'text' && !(dependencies.humanChatMedia && ['image','voice'].includes(input.content.kind)) && !(dependencies.humanChatRichContent && ['sticker','share'].includes(input.content.kind))) return apiError(c, 422, 'HUMAN_MESSAGE_KIND_UNSUPPORTED', 'This message format is not available')
+      if(input.content.kind==='sticker'&&!HumanStickerIdSchema.safeParse(input.content.stickerId).success)return invalid(c)
       return c.json(sentSchema.parse({message: await dependencies.humanChat!.send(current.actor, {...input, peerProfileId: peer.data})}))
     } catch (error) {return failure(c, error)}
   })

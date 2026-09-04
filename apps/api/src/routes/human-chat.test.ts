@@ -19,6 +19,17 @@ const sendBody = {clientRequestId, content: {kind: 'text', text: ' hello '}}
 const conversation = {v: 1 as const, id: conversationId, participants: [{kind: 'HUMAN', id: profileId, username: 'actor_human', displayName: 'Actor', avatarUrl: null}, {kind: 'HUMAN', id: peerProfileId, username: 'peer_human', displayName: 'Peer', avatarUrl: null}], createdAt: message.createdAt, updatedAt: message.createdAt}
 
 describe('human text chat routes', () => {
+  it('accepts catalog stickers and ID-only shares only with rich content support',async()=>{
+    const humanChatRichContent={listTargets:vi.fn(),resolveTarget:vi.fn()}
+    const {app,humanChat}=setup('authenticated','human',{humanChatRichContent} as never)
+    for(const content of [{kind:'sticker',stickerId:'wave'},{kind:'share',target:{kind:'post',id:randomUUID()}}]){
+      humanChat.send.mockResolvedValue({...message,content} as never)
+      expect((await app.request(sendPath,post({clientRequestId,content}))).status).toBe(200)
+    }
+    const before=humanChat.send.mock.calls.length
+    expect((await app.request(sendPath,post({clientRequestId,content:{kind:'sticker',stickerId:'forged'}}))).status).toBe(400)
+    expect(humanChat.send).toHaveBeenCalledTimes(before)
+  })
   it('allows image and voice references only when private media validation is configured',async()=>{
     const humanChatMedia={reserve:vi.fn(),finalize:vi.fn(),download:vi.fn()}
     const {app,humanChat}=setup('authenticated','human',{humanChatMedia})
