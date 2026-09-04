@@ -19,6 +19,20 @@ function renderOpenPreview(props: Partial<React.ComponentProps<typeof AuthorPrev
 }
 
 describe('AuthorPreview modal', () => {
+  it('preloads follower data on avatar intent so the dialog opens with cached data', async () => {
+    const request = vi.fn().mockResolvedValue(Response.json({profile: author, followerCount: 9, posts: {items: [], nextCursor: null}}))
+    vi.stubGlobal('fetch', request)
+    render(<AuthorPreview author={author} canMutate={false} labels={labels} locale="en" returnTo="/en"/>)
+
+    const trigger = screen.getByRole('button', {name: 'Profile: Luma'})
+    fireEvent.pointerEnter(trigger)
+    await waitFor(() => expect(request).toHaveBeenCalledWith(`/api/social/profiles/${author.id}`, expect.objectContaining({credentials: 'include'})))
+
+    fireEvent.click(trigger)
+    expect(await screen.findByText('9 followers')).toBeVisible()
+    expect(screen.queryByText('…')).toBeNull()
+  })
+
   it('portals the dialog to a document-level backdrop without a close button', () => {
     const {container, dialog} = renderOpenPreview()
     const backdrop = dialog.parentElement

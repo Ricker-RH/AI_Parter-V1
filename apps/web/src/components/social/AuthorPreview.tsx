@@ -1,11 +1,13 @@
 'use client'
 
 import {PublicIpProfileSchema, type FeedPost} from '@aifans/contracts'
+import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
-import {useEffect, useRef, useState} from 'react'
+import {useContext, useEffect, useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
+import {AppQueryContext, createAppQueryClient} from '../AppQueryProvider'
 import {ProfileFollowButton} from './ProfileFollowButton'
 import type {SocialLabels} from './types'
 
@@ -20,16 +22,44 @@ type AuthorPreviewProps = {
   viewerScope?: string
 }
 
+type ProfilePreview = {followerCount: number; viewerFollows?: boolean}
+
+function profilePreviewKey(authorId: string, viewerScope?: string) {
+  return ['ip-profile-preview', viewerScope ?? 'guest', authorId] as const
+}
+
+async function loadProfilePreview(authorId: string, signal?: AbortSignal): Promise<ProfilePreview> {
+  const response = await fetch(`/api/social/profiles/${authorId}`, {credentials: 'include', ...(signal ? {signal} : {})})
+  const parsed = response.ok ? PublicIpProfileSchema.safeParse(await response.json()) : null
+  if (!parsed?.success || parsed.data.profile.id !== authorId) throw new Error('profile unavailable')
+  return {followerCount: parsed.data.followerCount, ...(parsed.data.viewerFollows === undefined ? {} : {viewerFollows: parsed.data.viewerFollows})}
+}
+
 function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, returnTo, context = 'post', viewerScope}: AuthorPreviewProps) {
   const [open, setOpen] = useState(false)
-  const [profile, setProfile] = useState<{followerCount: number; viewerFollows?: boolean} | null>(null)
   const [followingOverride, setFollowingOverride] = useState<boolean>()
-  const [profileState, setProfileState] = useState<'idle' | 'loading' | 'error'>('idle')
   const trigger = useRef<HTMLButtonElement>(null)
   const dialog = useRef<HTMLDivElement>(null)
-  const profileRequestId = useRef(0)
+  const queryClient = useQueryClient()
   const profileHref = `/${locale}/profiles/${author.id}`
   const profileLabel = labels.profile ?? 'Profile'
+  const queryKey = profilePreviewKey(author.id, viewerScope)
+  const preview = useQuery({
+    queryKey,
+    queryFn: ({signal}) => loadProfilePreview(author.id, signal),
+    enabled: open,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const profile = preview.data ?? null
+
+  function prefetchProfile() {
+    void queryClient.prefetchQuery({
+      queryKey,
+      queryFn: ({signal}) => loadProfilePreview(author.id, signal),
+      staleTime: 30_000,
+    })
+  }
 
   function close() {
     setOpen(false)
@@ -65,25 +95,6 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
     return () => document.removeEventListener('keydown', keydown)
   }, [open])
 
-  useEffect(() => {
-    if (!open || profile) return
-    const requestId = ++profileRequestId.current
-    const controller = new AbortController()
-    setProfileState('loading')
-    void fetch(`/api/social/profiles/${author.id}`, {credentials: 'include', signal: controller.signal})
-      .then(async (response) => {
-        const parsed = response.ok ? PublicIpProfileSchema.safeParse(await response.json()) : null
-        if (!parsed?.success) throw new Error('profile unavailable')
-        if (controller.signal.aborted || requestId !== profileRequestId.current) return
-        setProfile({followerCount: parsed.data.followerCount, ...(parsed.data.viewerFollows === undefined ? {} : {viewerFollows: parsed.data.viewerFollows})})
-        setProfileState('idle')
-      })
-      .catch(() => {
-        if (!controller.signal.aborted && requestId === profileRequestId.current) setProfileState('error')
-      })
-    return () => controller.abort()
-  }, [author.id, open, profile])
-
   const resolvedFollowing = followingOverride ?? followsAuthor ?? profile?.viewerFollows
   const followAction = canMutate
     ? resolvedFollowing === undefined || !viewerScope ? null : <ProfileFollowButton following={resolvedFollowing} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id} rollbackOnUnmount viewerScope={viewerScope}/>
@@ -98,13 +109,13 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
       </div>
       {author.bio ? <p className="author-preview-bio">{author.bio}</p> : null}
       {author.creator ? <p className="creator-attribution">{labels.createdBy} @{author.creator.username}</p> : null}
-      {profileState === 'loading' ? <p aria-live="polite" className="author-preview-followers">…</p> : profile ? <p className="author-preview-followers">{profile.followerCount} {labels.followers}</p> : profileState === 'error' ? <p className="author-preview-followers">{labels.unavailableDescription}</p> : null}
+      {preview.isPending ? <p aria-live="polite" className="author-preview-followers">…</p> : profile ? <p className="author-preview-followers">{profile.followerCount} {labels.followers}</p> : preview.isError ? <p className="author-preview-followers">{labels.unavailableDescription}</p> : null}
       {followAction ? <div className="author-preview-actions"><div className="author-preview-follow-action">{followAction}</div></div> : null}
     </div>
   </div>
 
   return <div className="author-preview">
-    <button aria-expanded={open} aria-haspopup="dialog" aria-label={`${profileLabel}: ${author.displayName}`} className={triggerClass} onClick={() => setOpen(true)} ref={trigger} type="button">
+    <button aria-expanded={open} aria-haspopup="dialog" aria-label={`${profileLabel}: ${author.displayName}`} className={triggerClass} onClick={() => setOpen(true)} onFocus={prefetchProfile} onPointerDown={prefetchProfile} onPointerEnter={prefetchProfile} ref={trigger} type="button">
       <span aria-hidden="true" className={avatarClass}>{author.displayName.slice(0, 1)}</span>
     </button>
     {open && typeof document !== 'undefined' ? createPortal(modal, document.body) : null}
@@ -113,5 +124,8 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
 
 export function AuthorPreview(props: AuthorPreviewProps) {
   const scope = `${props.author.id}\u0000${props.viewerScope ?? 'guest'}`
-  return <ScopedAuthorPreview {...props} key={scope}/>
+  const shared = useContext(AppQueryContext)
+  const [client] = useState(createAppQueryClient)
+  const preview = <ScopedAuthorPreview {...props} key={scope}/>
+  return shared ? preview : <QueryClientProvider client={client}>{preview}</QueryClientProvider>
 }
