@@ -1,15 +1,24 @@
 import {expect, test, type Page} from '@playwright/test'
 import {waitForHomeShell} from './performance-helpers'
 
+async function waitForSettledShell(page: Page, path: string) {
+  // Streaming temporarily stages another shell in a hidden React segment.
+  // Measure the hydrated route, not its fallback or the staging fragment.
+  await page.locator(`[data-route-ready="${path}"]`).waitFor({state: 'attached'})
+  await expect(page.locator('.shell[data-shell="public"]')).toHaveCount(1)
+}
+
 async function openAt(page: Page, width: number) {
   await page.setViewportSize({width, height: 900})
   await page.goto('/en')
+  await waitForSettledShell(page, '/en')
   await waitForHomeShell(page)
 }
 
 async function openMobileAt(page: Page, width: number, height: number, path = '/en') {
   await page.setViewportSize({width, height})
   await page.goto(path)
+  await waitForSettledShell(page, path)
   await page.locator('.shell[data-shell="public"]').waitFor()
   if (path === '/en') await page.locator('article.post-card, [role="alert"]').or(page.getByText('Nothing here yet')).first().waitFor()
 }
@@ -44,11 +53,12 @@ test('ordinary public shell keeps its navigation left of content through desktop
   expect(Math.abs(primaryLeft(1328) - primaryLeft(1327)), 'showing recommendations must not move the primary column').toBeLessThanOrEqual(1)
 })
 
-test('ordinary public shell switches to the five-item mobile navigation below 700px', async ({page}) => {
+test('ordinary public shell switches to the four-item mobile navigation below 700px', async ({page}) => {
   for (const width of [375, 430, 699]) {
     await openAt(page, width)
     const current = await geometry(page)
     await expect(page.locator('.mobile-nav')).toBeVisible()
+    await expect(page.locator('.mobile-nav a')).toHaveText(['Home', 'Channels', 'Messages', 'Me'])
     await expect(page.locator('.desktop-nav')).toBeHidden()
     expect(current.overflow, `unexpected horizontal overflow at ${width}px`).toBe(false)
   }
@@ -105,6 +115,7 @@ test('refresh preserves public content geometry at responsive boundaries', async
     await openAt(page, width)
     const before = await geometry(page)
     await page.reload()
+    await waitForSettledShell(page, '/en')
     await waitForHomeShell(page)
     const after = await geometry(page)
 

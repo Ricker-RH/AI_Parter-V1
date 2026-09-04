@@ -34,7 +34,7 @@ async function renderSurface(page: Page, width: number, height: number, detailSt
       : '<div aria-busy="true" aria-label="Comments" class="comment-auth-loading" role="status"><span></span></div>'
   const viewport = detailState
     ? `<div class="viewport dockedViewport" data-social-surface-viewport data-social-surface-viewport-layout="docked"><div aria-label="Comments" class="post-detail-scroll-region post-detail-content" data-composer-feedback="${feedback}" data-composer-mode="${mode}" data-replying="${replying}" role="region" tabindex="0"><article class="post-card post-card--detail">Post</article><section class="comments-section"><div class="comments-toolbar"><h2>Comments</h2></div><div class="post-detail-composer-dock">${replying ? '<div class="comment-reply-target"><span>Replying to @author</span><button type="button">Cancel</button></div>' : ''}${composer}</div><div class="comment-thread">${comments(12)}</div></section></div></div>`
-    : `<div class="viewport" data-social-surface-viewport data-social-surface-viewport-layout="scroll">${cards(12)}</div>`
+    : `<div class="viewport" data-social-surface-viewport data-social-surface-viewport-layout="scroll">${cards(24)}</div>`
 
   await page.setContent(`
     <head><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"></head>
@@ -55,6 +55,9 @@ test('mobile list scroll surfaces end above the in-flow navigation with breathin
       const last = document.querySelector<HTMLElement>('[data-last-card]')!.getBoundingClientRect()
       const nav = document.querySelector<HTMLElement>('.mobile-nav')!
       return {
+        clientHeight: scroll.clientHeight,
+        scrollHeight: scroll.scrollHeight,
+        scrollTop: scroll.scrollTop,
         gap: scroll.getBoundingClientRect().bottom - last.bottom,
         navPosition: getComputedStyle(nav).position,
         overflow: document.documentElement.scrollWidth > window.innerWidth,
@@ -62,6 +65,9 @@ test('mobile list scroll surfaces end above the in-flow navigation with breathin
       }
     })
     expect(geometry.overflow, `horizontal overflow at ${viewport.width}px`).toBe(false)
+    expect(geometry.scrollHeight, `fixture must overflow at ${viewport.width}px`).toBeGreaterThan(geometry.clientHeight)
+    expect(geometry.scrollTop, `fixture must reach its scroll end at ${viewport.width}px`).toBeGreaterThan(0)
+    expect(Math.abs(geometry.scrollHeight - geometry.clientHeight - geometry.scrollTop), `scroll end at ${viewport.width}px`).toBeLessThanOrEqual(1)
     if (viewport.width < 700) {
       expect(geometry.navPosition).toBe('static')
       expect(geometry.tailHeight).toBe(16)
