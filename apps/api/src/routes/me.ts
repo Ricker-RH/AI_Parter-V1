@@ -73,6 +73,9 @@ export function registerMeRoutes(
     if (message.startsWith('PROFILE_ASSET_INVALID')) {
       return apiError(c, 422, 'PROFILE_ASSET_INVALID', 'The profile asset upload is invalid')
     }
+    if (message.startsWith('PROFILE_ASSET_STORAGE_UNAVAILABLE')) {
+      return apiError(c, 503, 'PROFILE_ASSETS_UNAVAILABLE', 'Profile asset storage is unavailable')
+    }
     if (code === '23505' && candidate.constraint === 'profiles_username_unique') {
       return apiError(c, 409, 'USERNAME_TAKEN', 'Username is already taken')
     }
@@ -133,8 +136,9 @@ export function registerMeRoutes(
       await provision(authenticated)
       const reservation = await profileRepository.reserveProfileAsset({subject: authenticated.subject}, body)
       const intent = await profileAssets.createUploadIntent({
-        objectKey: reservation.objectKey,
-        contentType: reservation.contentType,
+        stagingObjectKey: reservation.stagingObjectKey,
+        finalObjectKey: reservation.finalObjectKey,
+        contentType: reservation.uploadContentType,
         sizeBytes: reservation.sizeBytes,
         expiresAt: reservation.expiresAt,
       })
@@ -163,12 +167,20 @@ export function registerMeRoutes(
       const actor = {subject: authenticated.subject}
       const reservation = await profileRepository.getProfileAssetReservation(actor, pathId.data)
       if (!reservation) return apiError(c, 404, 'PROFILE_ASSET_NOT_FOUND', 'Profile asset was not found')
-      await profileAssets.inspectUpload({
-        objectKey: reservation.objectKey,
-        contentType: reservation.contentType,
+      const finalized = await profileAssets.finalizeUpload({
+        stagingObjectKey: reservation.stagingObjectKey,
+        finalObjectKey: reservation.finalObjectKey,
+        role: reservation.role,
+        contentType: reservation.uploadContentType,
         sizeBytes: reservation.sizeBytes,
+        width: reservation.width,
+        height: reservation.height,
       })
-      const confirmed = await profileRepository.confirmProfileAsset(actor, pathId.data)
+      if (finalized.finalObjectKey !== reservation.finalObjectKey
+        || finalized.contentType !== reservation.finalContentType) {
+        return apiError(c, 422, 'PROFILE_ASSET_INVALID', 'The profile asset upload is invalid')
+      }
+      const confirmed = await profileRepository.confirmProfileAsset(actor, pathId.data, finalized.finalObjectKey)
       if (!confirmed) return apiError(c, 409, 'PROFILE_ASSET_EXPIRED', 'Profile asset reservation expired')
       return c.json(ProfileAssetConfirmationResponseSchema.parse({assetId: confirmed.id, role: confirmed.role}), 200)
     } catch (error) {

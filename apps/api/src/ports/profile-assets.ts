@@ -1,10 +1,12 @@
-import type {ProfileImageContentType} from '@aifans/contracts'
+import type {ProfileAssetRole, ProfileImageContentType} from '@aifans/contracts'
 
 export const PROFILE_ASSET_MAX_BYTES = 10_485_760 as const
+export const PROFILE_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable' as const
 
 export type ProfileAssetPort = {
   createUploadIntent(input: {
-    objectKey: string
+    stagingObjectKey: string
+    finalObjectKey: string
     contentType: ProfileImageContentType
     sizeBytes: number
     expiresAt: string
@@ -15,9 +17,19 @@ export type ProfileAssetPort = {
     expiresAt: string
     maxBytes: typeof PROFILE_ASSET_MAX_BYTES
   }>
-  inspectUpload(input: {
-    objectKey: string
+  finalizeUpload(input: {
+    stagingObjectKey: string
+    finalObjectKey: string
+    role: ProfileAssetRole
     contentType: ProfileImageContentType
     sizeBytes: number
-  }): Promise<{contentType: ProfileImageContentType; sizeBytes: number}>
+    width: number
+    height: number
+  }): Promise<{
+    finalObjectKey: string
+    contentType: 'image/webp'
+    sizeBytes: number
+    width: number
+    height: number
+  }>
 }

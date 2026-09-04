@@ -6,7 +6,8 @@ import {registerMeRoutes} from './me.js'
 
 const profileId = '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30'
 const assetId = 'f7568bb8-315d-44e9-8c1a-4f9ce93ba210'
-const objectKey = `public/profiles/${profileId}/avatar/${assetId}.png`
+const stagingObjectKey = `staging/profiles/${profileId}/avatar/${assetId}.png`
+const finalObjectKey = `public/profiles/${profileId}/avatar/${assetId}.webp`
 const account = {
   id: profileId, kind: 'human' as const,
   username: 'rui', displayName: 'Rui', bio: null,
@@ -18,8 +19,10 @@ const reservation = {
   id: assetId,
   ownerProfileId: profileId,
   role: 'avatar' as const,
-  objectKey,
-  contentType: 'image/png' as const,
+  stagingObjectKey,
+  finalObjectKey,
+  uploadContentType: 'image/png' as const,
+  finalContentType: 'image/webp' as const,
   sizeBytes: 4_096,
   width: 512,
   height: 512,
@@ -46,7 +49,8 @@ function setup(overrides: {auth?: unknown; profiles?: unknown; profileAssets?: u
       expiresAt: reservation.expiresAt,
       maxBytes: 10_485_760 as const,
     })),
-    inspectUpload: vi.fn(async () => ({contentType: 'image/png' as const, sizeBytes: 4_096})),
+    finalizeUpload: vi.fn(async () => ({finalObjectKey, contentType: 'image/webp' as const,
+      sizeBytes: 1_024, width: 512, height: 512})),
   } : overrides.profileAssets
   const app = new Hono<{Variables: ApiVariables}>()
   app.use('*', requestIdMiddleware)
@@ -55,7 +59,7 @@ function setup(overrides: {auth?: unknown; profiles?: unknown; profileAssets?: u
     profiles,
     profileAssets: profileAssets as never,
   })
-  return {app, profiles, profileAssets: profileAssets as {createUploadIntent: ReturnType<typeof vi.fn>; inspectUpload: ReturnType<typeof vi.fn>}}
+  return {app, profiles, profileAssets: profileAssets as {createUploadIntent: ReturnType<typeof vi.fn>; finalizeUpload: ReturnType<typeof vi.fn>}}
 }
 
 async function expectError(response: Response, status: number, code: string) {
@@ -150,7 +154,8 @@ describe('current account routes', () => {
       role: 'avatar', contentType: 'image/png', sizeBytes: 4_096, width: 512, height: 512,
     })
     expect(profileAssets.createUploadIntent).toHaveBeenCalledWith({
-      objectKey, contentType: 'image/png', sizeBytes: 4_096, expiresAt: reservation.expiresAt,
+      stagingObjectKey, finalObjectKey, contentType: 'image/png', sizeBytes: 4_096,
+      expiresAt: reservation.expiresAt,
     })
   })
 
@@ -160,7 +165,7 @@ describe('current account routes', () => {
       method: 'POST', headers: {'content-type': 'application/json'}, body: '{}',
     }), 400, 'INVALID_REQUEST')
     for (const body of [
-      {role: 'avatar', contentType: 'image/png', sizeBytes: 4_096, width: 512, height: 512, objectKey},
+      {role: 'avatar', contentType: 'image/png', sizeBytes: 4_096, width: 512, height: 512, objectKey: finalObjectKey},
       {role: 'portrait', contentType: 'image/png', sizeBytes: 4_096, width: 512, height: 512},
     ]) {
       await expectError(await app.request('/v1/me/assets/upload-intent', {
@@ -177,16 +182,19 @@ describe('current account routes', () => {
     expect(profiles.reserveProfileAsset).not.toHaveBeenCalled()
   })
 
-  it('loads an actor-owned reservation, inspects storage, then confirms it', async () => {
+  it('loads an actor-owned reservation, finalizes storage, then confirms the immutable final key', async () => {
     const {app, profiles, profileAssets} = setup()
     const response = await app.request(`/v1/me/assets/${assetId}/confirm`, {
       method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
     })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({assetId, role: 'avatar'})
-    expect(profileAssets.inspectUpload).toHaveBeenCalledWith({objectKey, contentType: 'image/png', sizeBytes: 4_096})
-    expect(profileAssets.inspectUpload).toHaveBeenCalledBefore(profiles.confirmProfileAsset)
-    expect(profiles.confirmProfileAsset).toHaveBeenCalledWith({subject: 'subject'}, assetId)
+    expect(profileAssets.finalizeUpload).toHaveBeenCalledWith({
+      stagingObjectKey, finalObjectKey, role: 'avatar', contentType: 'image/png',
+      sizeBytes: 4_096, width: 512, height: 512,
+    })
+    expect(profileAssets.finalizeUpload).toHaveBeenCalledBefore(profiles.confirmProfileAsset)
+    expect(profiles.confirmProfileAsset).toHaveBeenCalledWith({subject: 'subject'}, assetId, finalObjectKey)
   })
 
   it('maps a reservation that expires between inspection and confirmation to a safe conflict', async () => {
@@ -195,7 +203,9 @@ describe('current account routes', () => {
       method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
     })
     await expectError(response, 409, 'PROFILE_ASSET_EXPIRED')
-    expect(await response.text()).not.toContain(objectKey)
+    const errorBody = await response.text()
+    expect(errorBody).not.toContain(stagingObjectKey)
+    expect(errorBody).not.toContain(finalObjectKey)
   })
 
   it('rejects invalid/mismatched confirmation IDs and strict query/body input', async () => {
@@ -204,7 +214,7 @@ describe('current account routes', () => {
       ['/v1/me/assets/not-a-uuid/confirm', JSON.stringify({assetId})],
       [`/v1/me/assets/${assetId}/confirm?extra=1`, JSON.stringify({assetId})],
       [`/v1/me/assets/${assetId}/confirm`, JSON.stringify({assetId: randomUUID()})],
-      [`/v1/me/assets/${assetId}/confirm`, JSON.stringify({assetId, objectKey})],
+      [`/v1/me/assets/${assetId}/confirm`, JSON.stringify({assetId, objectKey: finalObjectKey})],
       [`/v1/me/assets/${assetId}/confirm`, `{"assetId":"${assetId}","assetId":"${assetId}"}`],
     ] as const) {
       const response = await app.request(request[0], {
@@ -234,13 +244,31 @@ describe('current account routes', () => {
     ] as const) {
       const configured = setup({profileAssets: {
         createUploadIntent: vi.fn(),
-        inspectUpload: vi.fn(async () => { throw new Error(`${message}: ${objectKey}`) }),
+        finalizeUpload: vi.fn(async () => { throw new Error(`${message}: ${stagingObjectKey}`) }),
       }})
       const response = await configured.app.request(`/v1/me/assets/${assetId}/confirm`, {
         method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
       })
       await expectError(response, status, code)
-      expect(await response.clone().text()).not.toContain(objectKey)
+      expect(await response.clone().text()).not.toContain(stagingObjectKey)
+      expect(await response.clone().text()).not.toContain(finalObjectKey)
+    }
+  })
+
+  it('maps corrupt images to 422 and storage failures to 503 without confirming or leaking keys', async () => {
+    for (const [message, status, code] of [
+      [`PROFILE_ASSET_INVALID: ${stagingObjectKey}`, 422, 'PROFILE_ASSET_INVALID'],
+      [`PROFILE_ASSET_STORAGE_UNAVAILABLE: ${stagingObjectKey}`, 503, 'PROFILE_ASSETS_UNAVAILABLE'],
+    ] as const) {
+      const configured = setup({profileAssets: {createUploadIntent: vi.fn(), finalizeUpload: vi.fn(async () => {
+        throw new Error(message)
+      })}})
+      const response = await configured.app.request(`/v1/me/assets/${assetId}/confirm`, {
+        method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
+      })
+      await expectError(response, status, code)
+      expect(await response.text()).not.toContain(stagingObjectKey)
+      expect(configured.profiles.confirmProfileAsset).not.toHaveBeenCalled()
     }
   })
 

@@ -234,8 +234,10 @@ export const profileAssetUploadReservations = pgTable(
       .notNull()
       .references(() => profiles.id),
     role: profileAssetRoleEnum("role").notNull(),
-    objectKey: text("object_key").notNull().unique(),
-    contentType: text("content_type").notNull(),
+    stagingObjectKey: text("staging_object_key").notNull().unique(),
+    finalObjectKey: text("final_object_key").notNull().unique(),
+    uploadContentType: text("upload_content_type").notNull(),
+    finalContentType: text("final_content_type").notNull().default("image/webp"),
     declaredSizeBytes: integer("declared_size_bytes").notNull(),
     width: integer().notNull(),
     height: integer().notNull(),
@@ -251,12 +253,20 @@ export const profileAssetUploadReservations = pgTable(
       .on(table.ownerProfileId, table.role, table.createdAt)
       .where(sql`${table.consumedAt} IS NULL`),
     check(
-      "profile_asset_reservations_object_key_length_check",
-      sql`char_length(${table.objectKey}) BETWEEN 1 AND 512`,
+      "profile_asset_reservations_staging_key_length_check",
+      sql`char_length(${table.stagingObjectKey}) BETWEEN 1 AND 512`,
     ),
     check(
-      "profile_asset_reservations_content_type_check",
-      sql`${table.contentType} IN ('image/jpeg','image/png','image/webp')`,
+      "profile_asset_reservations_final_key_length_check",
+      sql`char_length(${table.finalObjectKey}) BETWEEN 1 AND 512`,
+    ),
+    check(
+      "profile_asset_reservations_upload_content_type_check",
+      sql`${table.uploadContentType} IN ('image/jpeg','image/png','image/webp')`,
+    ),
+    check(
+      "profile_asset_reservations_final_content_type_check",
+      sql`${table.finalContentType} = 'image/webp'`,
     ),
     check(
       "profile_asset_reservations_size_check",
@@ -279,8 +289,12 @@ export const profileAssetUploadReservations = pgTable(
       sql`${table.consumedAt} IS NULL OR ${table.verifiedAt} IS NOT NULL`,
     ),
     check(
-      "profile_asset_reservations_object_key_check",
-      sql`${table.objectKey} = format('public/profiles/%s/%s/%s.%s', ${table.ownerProfileId}, ${table.role}, ${table.id}, CASE ${table.contentType} WHEN 'image/jpeg' THEN 'jpg' WHEN 'image/png' THEN 'png' WHEN 'image/webp' THEN 'webp' END)`,
+      "profile_asset_reservations_staging_key_check",
+      sql`${table.stagingObjectKey} = format('staging/profiles/%s/%s/%s.%s', ${table.ownerProfileId}, ${table.role}, ${table.id}, CASE ${table.uploadContentType} WHEN 'image/jpeg' THEN 'jpg' WHEN 'image/png' THEN 'png' WHEN 'image/webp' THEN 'webp' END)`,
+    ),
+    check(
+      "profile_asset_reservations_final_key_check",
+      sql`${table.finalObjectKey} = format('public/profiles/%s/%s/%s.webp', ${table.ownerProfileId}, ${table.role}, ${table.id})`,
     ),
   ],
 );

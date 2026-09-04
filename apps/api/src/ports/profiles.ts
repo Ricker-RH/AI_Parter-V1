@@ -11,8 +11,10 @@ export type ProfileAssetReservation = {
   id: string
   ownerProfileId: string
   role: ProfileAssetRole
-  objectKey: string
-  contentType: ProfileImageContentType
+  stagingObjectKey: string
+  finalObjectKey: string
+  uploadContentType: ProfileImageContentType
+  finalContentType: 'image/webp'
   sizeBytes: number
   width: number
   height: number
@@ -26,5 +28,5 @@ export type ProfilePort = {
   updateCurrentAccount?(actor: Actor | null, input: UpdateCurrentAccount): Promise<Account | null>
   reserveProfileAsset?(actor: Actor, input: ProfileAssetIntentRequest): Promise<ProfileAssetReservation>
   getProfileAssetReservation?(actor: Actor, assetId: string): Promise<ProfileAssetReservation | null>
-  confirmProfileAsset?(actor: Actor, assetId: string): Promise<ProfileAssetReservation | null>
+  confirmProfileAsset?(actor: Actor, assetId: string, finalObjectKey: string): Promise<ProfileAssetReservation | null>
 }

@@ -55,8 +55,10 @@ type ProfileAssetReservationRow = {
   asset_id: string
   owner_profile_id: string
   role: ProfileAssetRole
-  object_key: string
-  content_type: ProfileImageContentType
+  staging_object_key: string
+  final_object_key: string
+  upload_content_type: ProfileImageContentType
+  final_content_type: 'image/webp'
   size_bytes: number
   width: number
   height: number
@@ -68,8 +70,10 @@ export type ProfileAssetReservation = {
   id: string
   ownerProfileId: string
   role: ProfileAssetRole
-  objectKey: string
-  contentType: ProfileImageContentType
+  stagingObjectKey: string
+  finalObjectKey: string
+  uploadContentType: ProfileImageContentType
+  finalContentType: 'image/webp'
   sizeBytes: number
   width: number
   height: number
@@ -82,7 +86,7 @@ export type ProfileRepository = {
   getCurrentAccount(actor: Actor | null): Promise<CurrentAccount | null>
   reserveProfileAsset(actor: Actor, input: ProfileAssetIntentRequest): Promise<ProfileAssetReservation>
   getProfileAssetReservation(actor: Actor, assetId: string): Promise<ProfileAssetReservation | null>
-  confirmProfileAsset(actor: Actor, assetId: string): Promise<ProfileAssetReservation | null>
+  confirmProfileAsset(actor: Actor, assetId: string, finalObjectKey: string): Promise<ProfileAssetReservation | null>
   updateCurrentAccount(actor: Actor | null, input: UpdateCurrentAccount): Promise<CurrentAccount | null>
 }
 
@@ -145,7 +149,7 @@ function profileMediaUrl(
   if (objectKey === null) return null
   const escapedProfileId = profileId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const keyPattern = new RegExp(
-    `^public/profiles/${escapedProfileId}/${role}/[0-9a-f-]+\\.(?:jpg|png|webp)$`,
+    `^public/profiles/${escapedProfileId}/${role}/[0-9a-f-]+\\.webp$`,
   )
   if (!keyPattern.test(objectKey)) throw new Error('INVALID_PUBLIC_MEDIA_KEY')
   if (!baseUrl) throw new Error('PUBLIC_MEDIA_BASE_URL_REQUIRED')
@@ -231,8 +235,10 @@ function normalizeReservation(row: ProfileAssetReservationRow): ProfileAssetRese
     id: row.asset_id,
     ownerProfileId: row.owner_profile_id,
     role: row.role,
-    objectKey: row.object_key,
-    contentType: row.content_type,
+    stagingObjectKey: row.staging_object_key,
+    finalObjectKey: row.final_object_key,
+    uploadContentType: row.upload_content_type,
+    finalContentType: row.final_content_type,
     sizeBytes: Number(row.size_bytes),
     width: Number(row.width),
     height: Number(row.height),
@@ -367,10 +373,11 @@ export function createProfileRepository({
         const profileId = profile.rows[0]?.id
         if (!profileId) throw new Error('PROFILE_NOT_FOUND')
         const assetId = randomUUID()
-        const objectKey = `public/profiles/${profileId}/${value.role}/${assetId}.${profileAssetExtension(value.contentType)}`
+        const stagingObjectKey = `staging/profiles/${profileId}/${value.role}/${assetId}.${profileAssetExtension(value.contentType)}`
+        const finalObjectKey = `public/profiles/${profileId}/${value.role}/${assetId}.webp`
         const result = await client.query<ProfileAssetReservationRow>(
-          'SELECT * FROM public.profile_reserve_asset($1,$2,$3,$4,$5,$6,$7)',
-          [assetId, value.role, objectKey, value.contentType, value.sizeBytes, value.width, value.height],
+          'SELECT * FROM public.profile_reserve_asset($1,$2,$3,$4,$5,$6,$7,$8)',
+          [assetId, value.role, stagingObjectKey, finalObjectKey, value.contentType, value.sizeBytes, value.width, value.height],
         )
         const row = result.rows[0]
         if (!row) throw new Error('PROFILE_ASSET_RESERVATION_FAILED')
@@ -388,11 +395,11 @@ export function createProfileRepository({
       })
     },
 
-    async confirmProfileAsset(actor: Actor, assetId: string): Promise<ProfileAssetReservation | null> {
+    async confirmProfileAsset(actor: Actor, assetId: string, finalObjectKey: string): Promise<ProfileAssetReservation | null> {
       return runWithActor(actor, async (client) => {
         const result = await client.query<ProfileAssetReservationRow>(
-          'SELECT * FROM public.profile_confirm_asset($1)',
-          [assetId],
+          'SELECT * FROM public.profile_confirm_asset($1,$2)',
+          [assetId, finalObjectKey],
         )
         return result.rows[0] ? normalizeReservation(result.rows[0]) : null
       })

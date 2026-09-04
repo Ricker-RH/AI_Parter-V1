@@ -178,32 +178,46 @@ describeIntegration('authenticated profile repository', () => {
     expect(avatar).toMatchObject({
       ownerProfileId: first.id,
       role: 'avatar',
-      contentType: 'image/jpeg',
+      uploadContentType: 'image/jpeg',
+      finalContentType: 'image/webp',
       sizeBytes: 1_200,
       width: 512,
       height: 512,
       verifiedAt: null,
     })
-    expect(avatar.objectKey).toBe(`public/profiles/${first.id}/avatar/${avatar.id}.jpg`)
-    expect(background.objectKey).toBe(
+    expect(avatar.stagingObjectKey).toBe(`staging/profiles/${first.id}/avatar/${avatar.id}.jpg`)
+    expect(avatar.finalObjectKey).toBe(`public/profiles/${first.id}/avatar/${avatar.id}.webp`)
+    expect(background.stagingObjectKey).toBe(
+      `staging/profiles/${first.id}/background/${background.id}.webp`,
+    )
+    expect(background.finalObjectKey).toBe(
       `public/profiles/${first.id}/background/${background.id}.webp`,
     )
     await expect(
       repository.getProfileAssetReservation({subject: second.authSubject}, avatar.id),
     ).resolves.toBeNull()
     await expect(
-      repository.confirmProfileAsset({subject: second.authSubject}, avatar.id),
+      repository.confirmProfileAsset({subject: second.authSubject}, avatar.id, avatar.finalObjectKey),
+    ).resolves.toBeNull()
+    await expect(
+      repository.confirmProfileAsset({subject: first.authSubject}, avatar.id, background.finalObjectKey),
     ).resolves.toBeNull()
 
     const confirmed = await repository.confirmProfileAsset(
       {subject: first.authSubject},
       avatar.id,
+      avatar.finalObjectKey,
     )
     expect(confirmed).toMatchObject({id: avatar.id, role: 'avatar'})
     expect(confirmed?.verifiedAt).toBeTruthy()
     await expect(
       repository.getProfileAssetReservation({subject: first.authSubject}, avatar.id),
-    ).resolves.toMatchObject({id: avatar.id, objectKey: avatar.objectKey})
+    ).resolves.toMatchObject({
+      id: avatar.id,
+      stagingObjectKey: avatar.stagingObjectKey,
+      finalObjectKey: avatar.finalObjectKey,
+      finalContentType: 'image/webp',
+    })
   })
 
   it('atomically binds verified visual assets and increments the profile version exactly once', async () => {
@@ -222,8 +236,8 @@ describeIntegration('authenticated profile repository', () => {
       {subject: authSubject},
       {role: 'background', contentType: 'image/webp', sizeBytes: 2_400, width: 1_600, height: 900},
     )
-    await repository.confirmProfileAsset({subject: authSubject}, avatar.id)
-    await repository.confirmProfileAsset({subject: authSubject}, background.id)
+    await repository.confirmProfileAsset({subject: authSubject}, avatar.id, avatar.finalObjectKey)
+    await repository.confirmProfileAsset({subject: authSubject}, background.id, background.finalObjectKey)
 
     const updated = await repository.updateCurrentAccount({subject: authSubject}, {
       profileVersion: account.profileVersion,
@@ -239,10 +253,10 @@ describeIntegration('authenticated profile repository', () => {
     expect(updated).toMatchObject({
       displayName: 'Updated visual',
       profileVersion: 2,
-      avatarUrl: `https://media.example/assets/${avatar.objectKey}`,
+      avatarUrl: `https://media.example/assets/${avatar.finalObjectKey}`,
       background: {
         type: 'image',
-        url: `https://media.example/assets/${background.objectKey}`,
+        url: `https://media.example/assets/${background.finalObjectKey}`,
         focalX: 0.25,
         focalY: 0.75,
       },
@@ -264,8 +278,8 @@ describeIntegration('authenticated profile repository', () => {
       [account.id],
     )
     expect(persisted.rows[0]).toEqual({
-      avatar_object_key: avatar.objectKey,
-      background_object_key: background.objectKey,
+      avatar_object_key: avatar.finalObjectKey,
+      background_object_key: background.finalObjectKey,
       profile_version: '2',
     })
     await expect(
@@ -341,7 +355,7 @@ describeIntegration('authenticated profile repository', () => {
       {subject: firstSubject},
       {...input, role: 'avatar'},
     )
-    await repository.confirmProfileAsset({subject: firstSubject}, expired.id)
+    await repository.confirmProfileAsset({subject: firstSubject}, expired.id, expired.finalObjectKey)
     await adminPool.query(
       `UPDATE public.profile_asset_upload_reservations
        SET created_at = clock_timestamp() - interval '11 minutes',
@@ -358,7 +372,7 @@ describeIntegration('authenticated profile repository', () => {
       {subject: firstSubject},
       {...input, role: 'background'},
     )
-    await repository.confirmProfileAsset({subject: firstSubject}, wrongRole.id)
+    await repository.confirmProfileAsset({subject: firstSubject}, wrongRole.id, wrongRole.finalObjectKey)
     await expect(repository.updateCurrentAccount({subject: firstSubject}, {
       profileVersion: first.profileVersion,
       avatarAssetId: wrongRole.id,
@@ -368,7 +382,7 @@ describeIntegration('authenticated profile repository', () => {
       {subject: secondSubject},
       {...input, role: 'avatar'},
     )
-    await repository.confirmProfileAsset({subject: secondSubject}, wrongOwner.id)
+    await repository.confirmProfileAsset({subject: secondSubject}, wrongOwner.id, wrongOwner.finalObjectKey)
     await expect(repository.updateCurrentAccount({subject: firstSubject}, {
       profileVersion: first.profileVersion,
       avatarAssetId: wrongOwner.id,
@@ -378,7 +392,7 @@ describeIntegration('authenticated profile repository', () => {
       {subject: firstSubject},
       {...input, role: 'avatar'},
     )
-    await repository.confirmProfileAsset({subject: firstSubject}, consumed.id)
+    await repository.confirmProfileAsset({subject: firstSubject}, consumed.id, consumed.finalObjectKey)
     const bound = await repository.updateCurrentAccount({subject: firstSubject}, {
       profileVersion: first.profileVersion,
       avatarAssetId: consumed.id,
