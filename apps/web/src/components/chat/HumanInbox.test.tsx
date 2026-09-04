@@ -175,6 +175,25 @@ it("does not poll the human inbox while realtime is ready", async () => {
 
   expect(fetcher).toHaveBeenCalledTimes(calls);
 });
+it("does not reload open history when a visible page reconciles its inbox", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  const fetcher = vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(
+      Response.json(
+        url.includes("/messages?")
+          ? { items: [] }
+          : { items: [{ conversation, latestMessage: null, unreadCount: 0, lastReadSequence: 0 }], nextCursor: null },
+      ),
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
+  await screen.findByText("No messages yet");
+  const historyCalls = fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length;
+  fireEvent.focus(window);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(historyCalls + 2));
+  expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length).toBe(historyCalls);
+});
 it("subscribes selected AI separately and refreshes authoritative history on its generation event", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   mocks.send.mockReturnValue(true);

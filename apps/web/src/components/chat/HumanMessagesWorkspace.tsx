@@ -202,7 +202,6 @@ export function HumanMessagesWorkspace({
   );
   const changed = useCallback(() => {
     void refresh();
-    setRevision((value) => value + 1);
   }, [refresh]);
   const revokeConversation = useCallback((id: string) => {
     setRevoked((current) => new Set([...current, id]));
@@ -249,6 +248,9 @@ export function HumanMessagesWorkspace({
           setReadCursors({});
           syncSubscriptions();
           changed();
+          // A reconnect can have missed messages. Reconcile only the open
+          // conversation; its retained history never returns to a loader.
+          setRevision((value) => value + 1);
         },
         onStateChange: (state) => {
           connectionRef.current = state;
