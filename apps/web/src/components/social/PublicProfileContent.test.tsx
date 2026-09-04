@@ -81,7 +81,7 @@ describe('PublicProfileContent', () => {
 
     expect(screen.getByRole('heading', {level: 1, name: '@luma'})).toBeInTheDocument()
     expect(screen.getByRole('link', {name: 'Back'})).toHaveAttribute('href', '/en')
-    expect(screen.getByRole('link', {name: 'Search'})).toHaveAttribute('href', '/en/search')
+    expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
     expect(screen.getByRole('button', {name: 'More'})).toBeVisible()
     expect(screen.getByRole('heading', {level: 2, name: 'Luma'})).toBeVisible()
     expect(screen.getAllByRole('heading', {level: 1})).toHaveLength(1)
