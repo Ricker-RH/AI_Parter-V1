@@ -53,6 +53,20 @@ function fakeWithActor(responses: Array<QueryResult<Row>>) {
 }
 
 describe('chat repository', () => {
+  it('returns persisted partial generation progress without exposing provider identifiers',async()=>{
+    const fake=fakeWithActor([result([conversationRow()]),result([messageRow({generation_state:'partial',generation_answer:'Already generated'})])])
+    const page=await createChatRepository(fake.withActor).listMessages(actor,{conversationId,limit:20,sendEnabled:true})
+    expect(page?.items[0]?.generation).toEqual({state:'partial',answer:'Already generated'})
+    expect(fake.queries[1]?.text).toContain('generation_state')
+  })
+  it('checkpoints only monotonic partial answers for a pending owner message',async()=>{
+    const fake=fakeWithActor([result([{id:humanMessageId}])])
+    const saved=await createChatRepository(fake.withActor).checkpointProviderReply(actor,{conversationId,humanMessageId,answer:'Partial'})
+    expect(saved).toBe(true)
+    expect(fake.queries[0]?.text).toContain("delivery_state = 'pending'")
+    expect(fake.queries[0]?.text).toContain('left($3')
+    expect(fake.queries[0]?.values).toEqual([humanMessageId,conversationId,'Partial'])
+  })
   it('excludes conversations with no sent or received messages before applying list pagination', async () => {
     const fake = fakeWithActor([result([conversationRow()])])
 
@@ -143,7 +157,7 @@ describe('chat repository', () => {
   it.each([
     ['new insert', [result([{id: humanMessageId}]), result([messageRow()]), result([])], 'ready'],
     ['pending replay', [result([]), result([messageRow()])], 'inflight'],
-    ['failed retry', [result([]), result([messageRow({delivery_state: 'failed'})]), result([messageRow()]), result([])], 'ready'],
+    ['failed replay', [result([]), result([messageRow({delivery_state: 'failed'})])], 'failed'],
     ['sent replay', [result([]), result([messageRow({delivery_state: 'sent'})]), result([messageRow({id: assistantMessageId, role: 'assistant', body: 'Reply', delivery_state: 'sent'})])], 'complete'],
     ['body conflict', [result([]), result([messageRow({body: 'Different'})])], 'conflict'],
     ['inaccessible conversation', [result([]), result([])], null],
@@ -152,16 +166,17 @@ describe('chat repository', () => {
     const outcome = await createChatRepository(fake.withActor).beginHumanMessage(actor, {conversationId, requestId, body: 'Hello'})
     expect(fake.actor()).toEqual(actor)
     expect(fake.queries[0]?.text).toContain('ON CONFLICT (conversation_id, client_request_id) DO NOTHING')
-    expect(fake.queries.some((query) => query.text.includes(expectedType === 'complete' ? 'in_reply_to_client_request_id' : expectedType === 'ready' && _name === 'failed retry' ? "SET delivery_state = 'pending'" : 'FOR UPDATE'))).toBe(true)
+    expect(fake.queries.some((query) => query.text.includes(expectedType === 'complete' ? 'in_reply_to_client_request_id' : 'FOR UPDATE'))).toBe(true)
     expect(outcome?.type ?? null).toBe(expectedType)
     expect(JSON.stringify(outcome)).not.toContain('provider-message-secret')
     const conversationTouches = fake.queries.filter((query) => query.text.includes('UPDATE public.chat_conversations SET updated_at = clock_timestamp() WHERE id = $1::uuid'))
-    if (_name === 'new insert' || _name === 'failed retry') {
+    if (_name === 'new insert') {
       expect(conversationTouches).toHaveLength(1)
       expect(conversationTouches[0]?.values).toEqual([conversationId])
     } else {
       expect(conversationTouches).toHaveLength(0)
     }
+    if (_name === 'failed replay') expect(fake.queries).toHaveLength(2)
   })
 
   it('completes a pending human message atomically and preserves provider ids internally only', async () => {
@@ -179,7 +194,7 @@ describe('chat repository', () => {
       expect.stringContaining('SET provider_conversation_id = $1'),
     ]))
     expect(response).toEqual({
-      humanMessage: {id: humanMessageId, role: 'human', body: 'Hello', deliveryState: 'sent', createdAt: now},
+      humanMessage: {id: humanMessageId, role: 'human', body: 'Hello', deliveryState: 'sent', createdAt: now,clientRequestId:requestId},
       assistantMessage: {id: assistantMessageId, role: 'assistant', body: 'Reply', deliveryState: 'sent', createdAt: now},
     })
     expect(JSON.stringify(response)).not.toContain('provider-')
@@ -223,6 +238,34 @@ async function createIntegrationIp(client: PoolClient): Promise<string> {
 
 describeIntegration('chat repository cursor integration', () => {
   afterAll(async () => integrationPool.end())
+
+  it('persists partial output and prevents failed replay from repeating a billable generation',async()=>{
+    await inIntegrationTransaction(async client=>{
+      const human=await createIntegrationHuman(client)
+      const ip=await createIntegrationIp(client)
+      const pool={connect:async()=>({query:client.query.bind(client),release(){}})}
+      const repository=createChatRepository(createActorSession(pool,{transactionMode:'nested'}).withActor)
+      const actor={subject:human.subject}
+      const conversation=await repository.getOrCreateConversation(actor,{humanProfileId:human.id,ipProfileId:ip,sendEnabled:true})
+      const input={conversationId:conversation!.id,requestId:randomUUID(),body:'Hello'}
+      const begun=await repository.beginHumanMessage(actor,input)
+      expect(begun?.type).toBe('ready')
+      if(begun?.type!=='ready') throw new Error('Expected new generation')
+      const target={conversationId:conversation!.id,humanMessageId:begun.humanMessage.id}
+      expect(await repository.checkpointProviderReply(actor,{...target,answer:'Partial'})).toBe(true)
+      expect(await repository.checkpointProviderReply(actor,{...target,answer:'Other'})).toBe(false)
+      expect(await repository.failHumanMessage(actor,target)).toBe(true)
+      expect((await repository.beginHumanMessage(actor,input))?.type).toBe('failed')
+      const page=await repository.listMessages(actor,{conversationId:conversation!.id,limit:20,sendEnabled:true})
+      expect(page?.items[0]?.generation).toEqual({state:'failed',answer:'Partial'})
+      expect(page?.items[0]?.clientRequestId).toBe(input.requestId)
+      await client.query('SET LOCAL ROLE aifans_authenticated')
+      await client.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:human.subject})])
+      const legacy=randomUUID()
+      await client.query("INSERT INTO public.chat_messages(id,conversation_id,role,body,delivery_state,client_request_id) VALUES($1,$2,'human','Legacy','pending',$3)",[legacy,conversation!.id,randomUUID()])
+      expect(await repository.failHumanMessage(actor,{conversationId:conversation!.id,humanMessageId:legacy})).toBe(true)
+    })
+  })
 
   it('does not skip or duplicate messages whose timestamps differ only below a millisecond', async () => {
     await inIntegrationTransaction(async (client) => {

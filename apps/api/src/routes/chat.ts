@@ -273,6 +273,7 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
     if (!begun) return apiError(c, 404, 'CHAT_CONVERSATION_NOT_FOUND', 'Conversation was not found')
     if (begun.type === 'conflict') return apiError(c, 409, 'CHAT_REQUEST_CONFLICT', 'Request ID conflicts with an existing message')
     if (begun.type === 'inflight') return apiError(c, 409, 'CHAT_IN_PROGRESS', 'Chat request is already in progress')
+    if (begun.type === 'failed') return apiError(c, 409, 'CHAT_GENERATION_FAILED', 'This generation failed; replay will not start another provider request')
     if (begun.type === 'complete') {
       const replay = ChatSendResponseSchema.parse(begun.response)
       if (!replay.assistantMessage) throw new Error('CHAT_COMPLETION_MISSING')
@@ -292,6 +293,15 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
         void (async () => {
           let iterator: AsyncGenerator<unknown, unknown> | undefined
           let completed = false
+          let answer = ''
+          let checkpointLength=0
+          let checkpointAt=Date.now()
+          const checkpoint=async()=>{
+            if(!answer || answer.length===checkpointLength || !repository.checkpointProviderReply) return
+            if(!await repository.checkpointProviderReply(human.actor,{conversationId:id.data,humanMessageId:begun.humanMessage.id,answer})) throw new Error('CHAT_CHECKPOINT_FAILED')
+            checkpointLength=answer.length
+            checkpointAt=Date.now()
+          }
           try {
             emit({type: 'human_message', message: begun.humanMessage})
             iterator = provider.streamMessage({
@@ -304,7 +314,6 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
               signal,
             })
             let providerResult: unknown
-            let answer = ''
             while (true) {
               const next = await nextWithAbort(iterator.next(), signal)
               throwIfAborted(signal)
@@ -312,6 +321,7 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
               const delta = ProviderChatDeltaSchema.parse(next.value)
               if (answer.length + delta.delta.length > MAX_PROVIDER_ANSWER_LENGTH) throw new Error('CHAT_PROVIDER_ANSWER_TOO_LONG')
               answer += delta.delta
+              if(answer.length-checkpointLength>=256 || Date.now()-checkpointAt>=1000) await checkpoint()
               throwIfAborted(signal)
               emit({type: 'assistant_delta', delta: delta.delta})
             }
@@ -329,6 +339,9 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
             completed = true
             emit({type: 'assistant_complete', message: persisted.assistantMessage})
           } catch (error) {
+            // Best effort bounded final checkpoint; failure persistence below is
+            // still mandatory and never restarts the provider automatically.
+            if(!completed) await checkpoint().catch(()=>undefined)
             if (!completed && !await persistFailure(repository, human.actor, id.data, begun.humanMessage.id)) {
               try {
                 dependencies.onUnhandledError?.({

@@ -12,6 +12,7 @@ export type BeginHumanMessageResult =
   | {type: 'ready'; humanProfileId: string; ipProfileId: string; providerConversationId?: string; humanMessage: ChatMessage}
   | {type: 'complete'; response: ChatSendResponse}
   | {type: 'inflight'}
+  | {type: 'failed'}
   | {type: 'conflict'}
 
 export type CompleteProviderReplyInput = {
@@ -30,4 +31,5 @@ export type ChatRepositoryPort = {
   beginHumanMessage(actor: ChatRepositoryActor, input: {conversationId: string; requestId: string; body: string}): Promise<BeginHumanMessageResult | null>
   completeProviderReply(actor: ChatRepositoryActor, input: CompleteProviderReplyInput): Promise<ChatSendResponse | null>
   failHumanMessage(actor: ChatRepositoryActor, input: {conversationId: string; humanMessageId: string}): Promise<boolean>
+  checkpointProviderReply?(actor:ChatRepositoryActor,input:{conversationId:string;humanMessageId:string;answer:string}):Promise<boolean>
 }

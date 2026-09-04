@@ -29,6 +29,20 @@ function events(text: string): unknown[] { return text.trim().split('\n\n').map(
 function dependencies(overrides: Parameters<typeof createApp>[0] = {}) { return {auth, profiles, conversations: repository(), ...overrides} }
 
 describe('persistent chat conversations', () => {
+  it('persists partial output before marking an interrupted generation failed',async()=>{
+    const order:string[]=[]
+    const chat:ChatPort={streamMessage:async function*(){yield {type:'delta',delta:'Partial'};throw new Error('upstream disconnected')}}
+    const conversations=repository({checkpointProviderReply:async(_actor,input)=>{expect(input.answer).toBe('Partial');order.push('partial');return true},failHumanMessage:async()=>{order.push('failed');return true}})
+    const response=await createApp(dependencies({chat,conversations})).request(`/v1/chat/conversations/${conversationId}/messages`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:'Hello',requestId})})
+    await response.text()
+    expect(order).toEqual(['partial','failed'])
+  })
+  it('does not contact the provider when replaying a failed generation', async () => {
+    const calls: unknown[] = []
+    const response = await createApp(dependencies({chat: provider([], calls), conversations: repository({beginHumanMessage: async () => ({type: 'failed'})})})).request(`/v1/chat/conversations/${conversationId}/messages`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({message: 'Hello', requestId})})
+    await expectError(response, 409, 'CHAT_GENERATION_FAILED')
+    expect(calls).toEqual([])
+  })
   it('lists persistent conversations without a provider and passes validated pagination/send state', async () => {
     const calls: unknown[] = []
     const conversations = repository({
