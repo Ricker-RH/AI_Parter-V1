@@ -1,8 +1,8 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useCurrentAccount } from "./account/CurrentAccountProvider";
+import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
+import {createContext, useEffect, useRef, useState, type ReactNode} from "react";
+import {useCurrentAccount} from "./account/CurrentAccountProvider";
 
 export const AppQueryContext = createContext(false);
 
@@ -18,18 +18,23 @@ export function createAppQueryClient() {
   });
 }
 
-export function AppQueryProvider({ children, client: providedClient }: { children: ReactNode; client?: QueryClient }) {
+function isPrivateAppQuery(query: {queryKey: readonly unknown[]}) {
+  const [domain, scope] = query.queryKey;
+  return domain === "my-profile" || domain === "human-chat" || (domain === "home-feed" && scope !== "public");
+}
+
+export function AppQueryProvider({children, client: providedClient}: {children: ReactNode; client?: QueryClient}) {
   const [ownedClient] = useState(createAppQueryClient);
   const client = providedClient ?? ownedClient;
-  const { account, status } = useCurrentAccount();
-  const previousHumanId = useRef<string | null>(null);
+  const {account, status} = useCurrentAccount();
+  const previousAccount = useRef<string | null>(null);
 
   useEffect(() => {
     if (status === "loading") return;
-    const nextHumanId = account?.kind === "human" ? account.id : null;
-    if (previousHumanId.current && previousHumanId.current !== nextHumanId)
-      client.removeQueries({ queryKey: ["human-chat", previousHumanId.current] });
-    previousHumanId.current = nextHumanId;
+    const nextAccount = account ? `${account.kind}:${account.id}` : null;
+    if (previousAccount.current && previousAccount.current !== nextAccount)
+      client.removeQueries({predicate: isPrivateAppQuery});
+    previousAccount.current = nextAccount;
   }, [account?.id, account?.kind, client, status]);
 
   return <QueryClientProvider client={client}><AppQueryContext.Provider value>{children}</AppQueryContext.Provider></QueryClientProvider>;

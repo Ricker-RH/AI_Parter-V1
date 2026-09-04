@@ -2,7 +2,7 @@ import {Suspense} from 'react'
 import {getMessages, isLocale} from '../../i18n/config'
 import {notFound} from 'next/navigation'
 import {locale as rootLocale} from 'next/root-params'
-import {FeedContent} from '../../components/social/FeedContent'
+import {CachedHomeFeed} from '../../components/social/CachedHomeFeed'
 import {FeedTabs} from '../../components/social/FeedTabs'
 import {fetchFeed} from '../../lib/social-api'
 import {getOptionalPageAccess, redirectToUserSignIn, requireAuthenticatedPage} from '../../lib/auth/access-policy'
@@ -29,12 +29,7 @@ function FeedFallback({label}: {label: string}) {
 }
 
 function FeedView({canMutate, cursor, following, labels, locale, result, returnTo, viewerScope}: {canMutate: boolean; cursor?: string; following: boolean; labels: Messages; locale: 'en' | 'zh-CN'; result: FeedResult; returnTo: string; viewerScope?: string}) {
-  const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
-  const pageQuery = new URLSearchParams()
-  if (following) pageQuery.set('feed', 'following')
-  if (nextCursor) pageQuery.set('cursor', nextCursor)
-  const moreHref = nextCursor ? `/${locale}?${pageQuery}` : undefined
-  return <FeedContent canMutate={canMutate} labels={labels} locale={locale} moreHref={moreHref} result={result} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})} />
+  return <CachedHomeFeed canMutate={canMutate} {...(cursor?{cursor}:{})} initialResult={result} kind={following?'following':'for_you'} labels={labels} locale={locale} returnTo={returnTo} {...(viewerScope?{viewerScope}:{})}/>
 }
 
 async function OptionalForYouFeed({cursor, labels, locale, personalization, publicResult, returnTo}: {cursor?: string; labels: Messages; locale: 'en' | 'zh-CN'; personalization: Promise<{canMutate: boolean; result: FeedResult; viewerScope: string} | null>; publicResult: FeedResult; returnTo: string}) {

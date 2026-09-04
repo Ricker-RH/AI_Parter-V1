@@ -1,6 +1,8 @@
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import type {SocialLabels} from '../social/types.js'
+import {AppQueryContext} from '../AppQueryProvider.js'
 import {MyProfileTabs} from './MyProfileTabs.js'
 
 vi.mock('next/navigation', () => ({useRouter: () => ({prefetch: vi.fn(), push: vi.fn(), refresh: vi.fn(), replace: vi.fn()})}))
@@ -132,4 +134,18 @@ describe('MyProfileTabs', () => {
     expect(await screen.findByText('Nova')).toBeVisible()
     expect(request).toHaveBeenLastCalledWith('/api/creator/ips?limit=25&cursor=next_page',expect.objectContaining({credentials:'same-origin'}))
   })
+
+  it('reuses a loaded private tab only for the same viewer scope',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const request=vi.fn().mockResolvedValue(Response.json({items:[ip],nextCursor:null}))
+    vi.stubGlobal('fetch',request)
+    const content=<QueryClientProvider client={client}><AppQueryContext.Provider value><MyProfileTabs labels={labels} locale="en" socialLabels={socialLabels} viewerScope="viewer-a"/></AppQueryContext.Provider></QueryClientProvider>
+    const first=render(content)
+    expect(await screen.findByRole('link',{name:'Luma'})).toBeVisible()
+    first.unmount()
+    render(<QueryClientProvider client={client}><AppQueryContext.Provider value><MyProfileTabs labels={labels} locale="en" socialLabels={socialLabels} viewerScope="viewer-a"/></AppQueryContext.Provider></QueryClientProvider>)
+    expect(screen.getByRole('link',{name:'Luma'})).toBeVisible()
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
 })
