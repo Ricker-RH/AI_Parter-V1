@@ -86,6 +86,7 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
   const [status, setStatus] = useState<CurrentAccountValue['status']>(initial === undefined ? 'loading' : 'authenticated')
   const mounted = useRef(false)
   const started = useRef(false)
+  const hasCachedAccount = useRef(initial !== undefined)
   const sequence = useRef(0)
   const activeController = useRef<AbortController | null>(null)
 
@@ -94,7 +95,8 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
     activeController.current?.abort()
     const controller = new AbortController()
     activeController.current = controller
-    if (mounted.current) {
+    const preserveVisibleAccount = hasCachedAccount.current
+    if (mounted.current && !preserveVisibleAccount) {
       setLoading(true)
       setStatus('loading')
     }
@@ -105,9 +107,10 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
     if (result.kind === 'available') {
       setAccount(result.account)
       setStatus(result.account ? 'authenticated' : 'anonymous')
+      hasCachedAccount.current = true
       return result.account
     }
-    setStatus('unavailable')
+    if (!preserveVisibleAccount) setStatus('unavailable')
     return null
   }, [])
 
@@ -123,6 +126,7 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
       setAccount(next)
       setLoading(false)
       setStatus('authenticated')
+      hasCachedAccount.current = true
     }
     const handleInvalidation = () => { void refetch() }
     window.addEventListener(ACCOUNT_UPDATED_EVENT, handleUpdate)

@@ -94,12 +94,15 @@ describe('CurrentAccountProvider', () => {
 
   it('re-fetches after another tab broadcasts an update', async () => {
     const updated = {...account, displayName: 'New tab name', profileVersion: 2}
-    const request = vi.fn().mockResolvedValue(Response.json(updated))
+    let resolveRequest!: (response: Response) => void
+    const request = vi.fn(() => new Promise<Response>((resolve) => { resolveRequest = resolve }))
     vi.stubGlobal('fetch', request)
     render(<CurrentAccountProvider initialAccount={account}><Consumer label="identity"/></CurrentAccountProvider>)
 
     act(() => FakeBroadcastChannel.instances[0]?.emit({type: 'updated'}))
 
+    expect(screen.getByLabelText('identity')).toHaveTextContent('Rui')
+    await act(async () => resolveRequest(Response.json(updated)))
     await waitFor(() => expect(screen.getByLabelText('identity')).toHaveTextContent('New tab name'))
     expect(request).toHaveBeenCalledOnce()
   })
