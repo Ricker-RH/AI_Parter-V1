@@ -26,7 +26,6 @@ it("does not render a resolved card for a different target", async () => {
     <HumanShareMessage
       target={{ kind: "human", id }}
       locale="en"
-      revision={0}
       onError={error}
     />,
   );
@@ -35,7 +34,7 @@ it("does not render a resolved card for a different target", async () => {
   expect(error).toHaveBeenCalled();
 });
 const id = "11111111-1111-4111-8111-111111111111";
-it("renders only resolved internal routes and removes a card after visibility changes", async () => {
+it("keeps a resolved card visible during an unrelated history reconciliation", async () => {
   vi.stubGlobal(
     "fetch",
     vi
@@ -56,7 +55,6 @@ it("renders only resolved internal routes and removes a card after visibility ch
     <HumanShareMessage
       target={{ kind: "human", id }}
       locale="en"
-      revision={0}
       onError={() => {}}
     />,
   );
@@ -68,10 +66,8 @@ it("renders only resolved internal routes and removes a card after visibility ch
     <HumanShareMessage
       target={{ kind: "human", id }}
       locale="en"
-      revision={1}
       onError={() => {}}
     />,
   );
-  expect(await screen.findByText("Shared content unavailable")).toBeTruthy();
-  expect(screen.queryByRole("link")).toBeNull();
+  expect(screen.getByRole("link", { name: /Alice/ })).toBeVisible();
 });

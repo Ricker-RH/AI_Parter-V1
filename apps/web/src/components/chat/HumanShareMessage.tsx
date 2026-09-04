@@ -12,12 +12,10 @@ import styles from "./MessagesWorkspace.module.css";
 export function HumanShareMessage({
   target,
   locale,
-  revision,
   onError,
 }: {
   target: HumanShareTarget;
   locale: Locale;
-  revision: number;
   onError: (cause: unknown) => void;
 }) {
   const [result, setResult] = useState<HumanShareResolution | null>(null),
@@ -54,7 +52,7 @@ export function HumanShareMessage({
       }
     })();
     return () => owner.abort();
-  }, [target.kind, target.id, revision, attempt]);
+  }, [target.kind, target.id, attempt]);
   const segment =
     target.kind === "post"
       ? "posts"

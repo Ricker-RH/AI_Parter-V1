@@ -441,7 +441,6 @@ function HumanDetail({
                 <HumanShareMessage
                   target={message.content.target}
                   locale={locale}
-                  revision={revision}
                   onError={handleError}
                 />
               ) : message.content.kind === "sticker" ? (
