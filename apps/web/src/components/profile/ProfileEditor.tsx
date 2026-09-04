@@ -37,10 +37,11 @@ export type ProfileEditorLabels = {
 }
 
 type TextDraft = {displayName: string; username: string; bio: string; preferredLocale: Locale; profileVersion: number; baseAccount: Account}
-type UploadState = {status: 'idle'} | {status: 'uploading'; file: File} | {status: 'failed'; file: File}
+type UploadState = {status: 'idle'} | {status: 'validating' | 'uploading' | 'failed'; file: File}
 type ImageDraft = {type: 'image'; assetId?: string; focalX: number; focalY: number}
 type BackgroundEdit = {type: 'color'; colorKey: ProfileBackgroundColorKey} | ImageDraft
 type AssetTarget = 'avatar' | 'background'
+type UploadOperation = {generation: number; controller: AbortController}
 
 function textDraftFor(account: Account): TextDraft {
   return {displayName: account.displayName, username: account.username, bio: account.bio ?? '', preferredLocale: account.preferredLocale, profileVersion: account.profileVersion, baseAccount: account}
@@ -75,6 +76,10 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null)
   const avatarPreviewRef = useRef<string | null>(null)
   const backgroundPreviewRef = useRef<string | null>(null)
+  const uploadOperations = useRef<Record<AssetTarget, {generation: number; controller: AbortController | null}>>({
+    avatar: {generation: 0, controller: null},
+    background: {generation: 0, controller: null},
+  })
   const [avatarUpload, setAvatarUpload] = useState<UploadState>({status: 'idle'})
   const [backgroundUpload, setBackgroundUpload] = useState<UploadState>({status: 'idle'})
   const [saving, setSaving] = useState(false)
@@ -90,16 +95,54 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
     else setBackgroundPreview(url)
   }, [])
 
+  function invalidateUpload(target: AssetTarget) {
+    const operation = uploadOperations.current[target]
+    operation.generation += 1
+    operation.controller?.abort()
+    operation.controller = null
+    replacePreview(target, null)
+  }
+
+  function startUpload(target: AssetTarget, file: File): UploadOperation {
+    invalidateUpload(target)
+    const operation = uploadOperations.current[target]
+    const controller = new AbortController()
+    operation.controller = controller
+    if (target === 'avatar') {
+      setAvatarEdit(undefined)
+      setAvatarUpload({status: 'validating', file})
+    } else {
+      setBackgroundEdit((current) => current?.type === 'image' ? undefined : current)
+      setBackgroundUpload({status: 'validating', file})
+    }
+    return {generation: operation.generation, controller}
+  }
+
+  function isCurrentUpload(target: AssetTarget, candidate: UploadOperation): boolean {
+    const operation = uploadOperations.current[target]
+    return mounted.current && operation.generation === candidate.generation && operation.controller === candidate.controller && !candidate.controller.signal.aborted
+  }
+
+  function finishUpload(target: AssetTarget, candidate: UploadOperation) {
+    if (isCurrentUpload(target, candidate)) uploadOperations.current[target].controller = null
+  }
+
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
+      for (const target of ['avatar', 'background'] as const) {
+        const operation = uploadOperations.current[target]
+        operation.generation += 1
+        operation.controller?.abort()
+        operation.controller = null
+      }
       if (avatarPreviewRef.current) URL.revokeObjectURL(avatarPreviewRef.current)
       if (backgroundPreviewRef.current) URL.revokeObjectURL(backgroundPreviewRef.current)
     }
   }, [])
 
-  const uploading = avatarUpload.status === 'uploading' || backgroundUpload.status === 'uploading'
+  const uploading = avatarUpload.status === 'validating' || avatarUpload.status === 'uploading' || backgroundUpload.status === 'validating' || backgroundUpload.status === 'uploading'
   const baseAccount = draft?.baseAccount ?? account
   const textDirty = Boolean(baseAccount && draft && (
     draft.displayName !== baseAccount.displayName || draft.username !== baseAccount.username || draft.bio !== (baseAccount.bio ?? '') || draft.preferredLocale !== baseAccount.preferredLocale
@@ -127,8 +170,8 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   }, [dirty])
 
   function resetTo(next: Account) {
-    replacePreview('avatar', null)
-    replacePreview('background', null)
+    invalidateUpload('avatar')
+    invalidateUpload('background')
     setDraft(textDraftFor(next)); setAvatarEdit(undefined); setBackgroundEdit(undefined)
     setAvatarUpload({status: 'idle'}); setBackgroundUpload({status: 'idle'}); setMessage(null); setFieldError(null)
   }
@@ -140,44 +183,55 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   }
 
   async function upload(target: AssetTarget, file: File) {
+    const operation = startUpload(target, file)
     setMessage(null)
-    if (!isImageType(file.type)) { setMessage({kind: 'error', text: labels.invalidType}); return }
-    if (file.size > MAX_IMAGE_BYTES) { setMessage({kind: 'error', text: labels.invalidSize}); return }
+    const setUpload = target === 'avatar' ? setAvatarUpload : setBackgroundUpload
+    if (!isImageType(file.type)) { setUpload({status: 'idle'}); finishUpload(target, operation); setMessage({kind: 'error', text: labels.invalidType}); return }
+    if (file.size > MAX_IMAGE_BYTES) { setUpload({status: 'idle'}); finishUpload(target, operation); setMessage({kind: 'error', text: labels.invalidSize}); return }
     let dimensions: {width: number; height: number}
     try { dimensions = await imageDimensions(file) }
-    catch { setMessage({kind: 'error', text: labels.invalidDimensions}); return }
-    if (dimensions.width < MIN_IMAGE_SIDE || dimensions.height < MIN_IMAGE_SIDE || dimensions.width > MAX_IMAGE_SIDE || dimensions.height > MAX_IMAGE_SIDE) {
-      setMessage({kind: 'error', text: labels.invalidDimensions}); return
+    catch {
+      if (!isCurrentUpload(target, operation)) return
+      setUpload({status: 'idle'}); finishUpload(target, operation); setMessage({kind: 'error', text: labels.invalidDimensions}); return
     }
-    if (!mounted.current) return
+    if (!isCurrentUpload(target, operation)) return
+    if (dimensions.width < MIN_IMAGE_SIDE || dimensions.height < MIN_IMAGE_SIDE || dimensions.width > MAX_IMAGE_SIDE || dimensions.height > MAX_IMAGE_SIDE) {
+      setUpload({status: 'idle'}); finishUpload(target, operation); setMessage({kind: 'error', text: labels.invalidDimensions}); return
+    }
     replacePreview(target, URL.createObjectURL(file))
-    const setUpload = target === 'avatar' ? setAvatarUpload : setBackgroundUpload
     setUpload({status: 'uploading', file})
     try {
       const role: ProfileAssetRole = target
       const intentResponse = await fetch('/api/me/assets/upload-intent', {
         method: 'POST', credentials: 'include', headers: {'content-type': 'application/json'},
         body: JSON.stringify({role, contentType: file.type, sizeBytes: file.size, ...dimensions}),
+        signal: operation.controller.signal,
       })
+      if (!isCurrentUpload(target, operation)) return
       if (!intentResponse.ok) throw new Error('intent')
       const parsedIntent = ProfileAssetIntentSchema.safeParse(await intentResponse.json())
+      if (!isCurrentUpload(target, operation)) return
       if (!parsedIntent.success || parsedIntent.data.maxBytes < file.size) throw new Error('intent')
       const intent = parsedIntent.data
-      const putResponse = await fetch(intent.url, {method: 'PUT', headers: intent.headers, body: file})
+      const putResponse = await fetch(intent.url, {method: 'PUT', headers: intent.headers, body: file, signal: operation.controller.signal})
+      if (!isCurrentUpload(target, operation)) return
       if (!putResponse.ok) throw new Error('upload')
       const confirmationResponse = await fetch(`/api/me/assets/${intent.assetId}/confirm`, {
-        method: 'POST', credentials: 'include', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId: intent.assetId}),
+        method: 'POST', credentials: 'include', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId: intent.assetId}), signal: operation.controller.signal,
       })
+      if (!isCurrentUpload(target, operation)) return
       if (!confirmationResponse.ok) throw new Error('confirm')
       const confirmation = ProfileAssetConfirmationResponseSchema.safeParse(await confirmationResponse.json())
+      if (!isCurrentUpload(target, operation)) return
       if (!confirmation.success || confirmation.data.assetId !== intent.assetId || confirmation.data.role !== role) throw new Error('confirm')
-      if (!mounted.current) return
       if (target === 'avatar') setAvatarEdit(intent.assetId)
       else setBackgroundEdit({type: 'image', assetId: intent.assetId, focalX: 0.5, focalY: 0.5})
       setUpload({status: 'idle'})
+      finishUpload(target, operation)
     } catch {
-      if (!mounted.current) return
+      if (!isCurrentUpload(target, operation)) return
       setUpload({status: 'failed', file})
+      finishUpload(target, operation)
       setMessage({kind: 'error', text: labels.uploadError})
     }
   }
@@ -189,7 +243,7 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   }
 
   function selectColor(colorKey: ProfileBackgroundColorKey) {
-    replacePreview('background', null)
+    invalidateUpload('background')
     setBackgroundUpload({status: 'idle'})
     setBackgroundEdit({type: 'color', colorKey})
     setMessage(null)
@@ -288,8 +342,8 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
             <div className={styles.avatarPreview}>{shownAvatar ? <img alt={labels.avatar} src={shownAvatar}/> : <span aria-hidden="true">{draft.displayName.slice(0, 1).toUpperCase()}</span>}</div>
             <div className={styles.assetActions}>
               <label className={styles.fileAction}>{labels.avatarUpload}<input accept={IMAGE_TYPES.join(',')} aria-label={labels.avatarUpload} disabled={blocked} onChange={(event) => onFile('avatar', event)} type="file"/></label>
-              {(shownAvatar || baseAccount.avatarUrl) ? <button disabled={blocked} onClick={() => { replacePreview('avatar', null); setAvatarUpload({status: 'idle'}); setAvatarEdit(null) }} type="button">{labels.avatarRemove}</button> : null}
-              {avatarUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
+              {(shownAvatar || baseAccount.avatarUrl) ? <button disabled={saving} onClick={() => { invalidateUpload('avatar'); setAvatarUpload({status: 'idle'}); setAvatarEdit(null) }} type="button">{labels.avatarRemove}</button> : null}
+              {avatarUpload.status === 'validating' || avatarUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
               {avatarUpload.status === 'failed' ? <button onClick={() => void upload('avatar', avatarUpload.file)} type="button">{labels.uploadRetry}</button> : null}
             </div>
           </div>
@@ -300,11 +354,11 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
           <div className={styles.backgroundPreview} data-testid="background-preview" style={previewStyle}/>
           <div className={styles.assetActions}>
             <label className={styles.fileAction}>{labels.backgroundUpload}<input accept={IMAGE_TYPES.join(',')} aria-label={labels.backgroundUpload} disabled={blocked} onChange={(event) => onFile('background', event)} type="file"/></label>
-            {backgroundImage ? <button disabled={blocked} onClick={removeBackgroundImage} type="button">{labels.backgroundRemove}</button> : null}
-            {backgroundUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
+            {backgroundImage ? <button disabled={saving} onClick={removeBackgroundImage} type="button">{labels.backgroundRemove}</button> : null}
+            {backgroundUpload.status === 'validating' || backgroundUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
             {backgroundUpload.status === 'failed' ? <button onClick={() => void upload('background', backgroundUpload.file)} type="button">{labels.uploadRetry}</button> : null}
           </div>
-          <fieldset className={styles.colors}><legend className="sr-only">{labels.background}</legend>{colorKeys.map((key) => <label key={key}><input checked={activeColor === key} disabled={blocked} name="profile-background-color" onChange={() => selectColor(key)} type="radio"/><span aria-hidden="true" style={{background: PROFILE_BACKGROUND_COLORS[key]}}/><em>{colorLabel(labels, key)}</em></label>)}</fieldset>
+          <fieldset className={styles.colors}><legend className="sr-only">{labels.background}</legend>{colorKeys.map((key) => <label key={key}><input checked={activeColor === key} disabled={saving} name="profile-background-color" onChange={() => selectColor(key)} type="radio"/><span aria-hidden="true" style={{background: PROFILE_BACKGROUND_COLORS[key]}}/><em>{colorLabel(labels, key)}</em></label>)}</fieldset>
           <div className={styles.focalControls}>
             <label>{labels.focalX}<input aria-label={labels.focalX} disabled={blocked || !focalEditable} max="1" min="0" onChange={(event) => updateFocal('focalX', Number(event.target.value))} step="0.01" type="range" value={focalX}/></label>
             <label>{labels.focalY}<input aria-label={labels.focalY} disabled={blocked || !focalEditable} max="1" min="0" onChange={(event) => updateFocal('focalY', Number(event.target.value))} step="0.01" type="range" value={focalY}/></label>

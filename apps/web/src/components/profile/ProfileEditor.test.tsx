@@ -33,6 +33,16 @@ function imageFile({name = 'photo.webp', size = 1200, type = 'image/webp'} = {})
   return new File([new Uint8Array(size)], name, {type})
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return {promise, resolve}
+}
+
+function bitmap(width = 800, height = 600) {
+  return {width, height, close: vi.fn()} as unknown as ImageBitmap
+}
+
 const assetId = '22222222-2222-4222-8222-222222222222'
 const intent = {assetId, method: 'PUT', url: 'https://uploads.example/signed', headers: {'content-type': 'image/webp', 'x-upload-token': 'exact'}, expiresAt: '2026-09-04T12:00:00.000Z', maxBytes: 10_485_760}
 
@@ -81,7 +91,7 @@ describe('ProfileEditor', () => {
     ])
     expect(request.mock.calls[0]?.[1]).toMatchObject({method: 'POST', credentials: 'include'})
     expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toEqual({role: 'avatar', contentType: 'image/webp', sizeBytes: 1200, width: 800, height: 600})
-    expect(request.mock.calls[1]?.[1]).toEqual({method: 'PUT', headers: intent.headers, body: expect.any(File)})
+    expect(request.mock.calls[1]?.[1]).toEqual({method: 'PUT', headers: intent.headers, body: expect.any(File), signal: expect.any(AbortSignal)})
     expect(request.mock.calls[2]?.[1]).toMatchObject({method: 'POST', credentials: 'include', body: JSON.stringify({assetId})})
     expect(replace).not.toHaveBeenCalled()
 
@@ -253,5 +263,74 @@ describe('ProfileEditor', () => {
     expect(screen.getByLabelText('Upload background')).toBeDisabled()
     await act(async () => resolveIntent(new Response(null, {status: 500})))
     expect(await screen.findByRole('button', {name: 'Retry upload'})).toBeVisible()
+  })
+
+  it('makes the latest file authoritative when dimensions resolve out of order', async () => {
+    const first = deferred<ImageBitmap>()
+    const second = deferred<ImageBitmap>()
+    vi.mocked(createImageBitmap).mockImplementation((source) => (source as File).name === 'a.webp' ? first.promise : second.promise)
+    vi.mocked(URL.createObjectURL).mockImplementation((file) => `blob:${(file as File).name}`)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(Response.json(intent, {status: 201}))
+      .mockResolvedValueOnce(new Response(null))
+      .mockResolvedValueOnce(Response.json({assetId, role: 'avatar'}))
+    renderEditor()
+    const input = screen.getByLabelText('Upload avatar')
+
+    fireEvent.change(input, {target: {files: [imageFile({name: 'a.webp', size: 1200})]}})
+    fireEvent.change(input, {target: {files: [imageFile({name: 'b.webp', size: 1300})]}})
+    await act(async () => second.resolve(bitmap()))
+    await waitFor(() => expect(screen.getByRole('img', {name: 'Avatar'})).toHaveAttribute('src', 'blob:b.webp'))
+    await act(async () => first.resolve(bitmap()))
+
+    expect(screen.getByRole('img', {name: 'Avatar'})).toHaveAttribute('src', 'blob:b.webp')
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toMatchObject({sizeBytes: 1300})
+  })
+
+  it('keeps a chosen color authoritative when an earlier image finishes validating', async () => {
+    const dimensions = deferred<ImageBitmap>()
+    vi.mocked(createImageBitmap).mockReturnValueOnce(dimensions.promise)
+    renderEditor()
+
+    fireEvent.change(screen.getByLabelText('Upload background'), {target: {files: [imageFile()]}})
+    fireEvent.click(screen.getByRole('radio', {name: 'Sage'}))
+    await act(async () => dimensions.resolve(bitmap()))
+
+    expect(screen.getByRole('radio', {name: 'Sage'})).toBeChecked()
+    expect(screen.getByTestId('background-preview').style.backgroundImage).toBe('')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('enters validation state synchronously and disables save and the target input before dimensions resolve', () => {
+    vi.mocked(createImageBitmap).mockReturnValueOnce(new Promise(() => undefined))
+    renderEditor()
+
+    fireEvent.change(screen.getByLabelText('Upload avatar'), {target: {files: [imageFile()]}})
+
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled()
+    expect(screen.getByLabelText('Upload avatar')).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Uploading…')
+  })
+
+  it('aborts and revokes a stale network upload on replacement, then ignores it after unmount', async () => {
+    const pendingIntent = deferred<Response>()
+    vi.mocked(URL.createObjectURL).mockImplementation((file) => `blob:${(file as File).name}`)
+    vi.mocked(fetch).mockImplementationOnce(() => pendingIntent.promise).mockResolvedValue(new Response(null, {status: 500}))
+    const view = renderEditor()
+    const input = screen.getByLabelText('Upload avatar')
+    fireEvent.change(input, {target: {files: [imageFile({name: 'a.webp'})]}})
+    await waitFor(() => expect(screen.getByRole('img', {name: 'Avatar'})).toHaveAttribute('src', 'blob:a.webp'))
+    const firstSignal = vi.mocked(fetch).mock.calls[0]?.[1]?.signal
+
+    fireEvent.change(input, {target: {files: [imageFile({name: 'b.webp'})]}})
+
+    expect(firstSignal).toBeInstanceOf(AbortSignal)
+    expect(firstSignal?.aborted).toBe(true)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:a.webp')
+    view.unmount()
+    await act(async () => pendingIntent.resolve(new Response(null, {status: 500})))
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
   })
 })
