@@ -9,6 +9,7 @@ import {MessagesSectionHeader} from './MessagesSectionHeader'
 import {InboxWorkspaceFrame} from './InboxWorkspaceFrame'
 import {useOptionalCurrentAccount} from '../account/CurrentAccountProvider'
 import {HumanMessagesWorkspace} from './HumanMessagesWorkspace'
+import {HumanChatQueryProvider} from './HumanChatQueryProvider'
 import {UnavailableRetry} from '../social/UnavailableRetry'
 import styles from './MessagesWorkspace.module.css'
 
@@ -28,7 +29,7 @@ export function MessagesWorkspace(props: MessagesWorkspaceProps) {
     if (refreshed.current!==key) {refreshed.current=key;router.refresh()}
   },[current?.account?.id,current?.status,matches,props.snapshotViewerId,router,viewerUnavailable])
   if (!matches) return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={props.labels} locale={props.locale}/><div className={styles.unavailableState}><p role={current?.status==='loading' ? 'status' : 'alert'}>{current?.status==='loading' ? props.labels.loadingMore : props.labels.unavailable}</p><UnavailableRetry beforeRetry={current?.refetch} disabled={current?.status==='loading'} label={props.labels.unavailableAction} pendingLabel={props.labels.unavailablePending}/></div></aside>}/>
-  if (current?.status==='authenticated' && current.account?.kind==='human') return <HumanMessagesWorkspace key={current.account.id} {...props} selfProfileId={current.account.id}/>
+  if (current?.status==='authenticated' && current.account?.kind==='human') return <HumanChatQueryProvider profileId={current.account.id}><HumanMessagesWorkspace key={current.account.id} {...props} selfProfileId={current.account.id}/></HumanChatQueryProvider>
   return <AiMessagesWorkspace {...props}/>
 }
 function AiMessagesWorkspace({items, labels, locale, selectedId, history, initialCursor, nextCursor, listUnavailable = false, detailUnavailable = false}: MessagesWorkspaceProps) {

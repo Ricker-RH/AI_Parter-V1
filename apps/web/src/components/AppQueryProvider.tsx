@@ -1,10 +1,12 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useCurrentAccount } from "./account/CurrentAccountProvider";
 
-function createClient() {
+export const AppQueryContext = createContext(false);
+
+export function createAppQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
@@ -17,7 +19,7 @@ function createClient() {
 }
 
 export function AppQueryProvider({ children, client: providedClient }: { children: ReactNode; client?: QueryClient }) {
-  const [ownedClient] = useState(createClient);
+  const [ownedClient] = useState(createAppQueryClient);
   const client = providedClient ?? ownedClient;
   const { account, status } = useCurrentAccount();
   const previousHumanId = useRef<string | null>(null);
@@ -30,5 +32,5 @@ export function AppQueryProvider({ children, client: providedClient }: { childre
     previousHumanId.current = nextHumanId;
   }, [account?.id, account?.kind, client, status]);
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return <QueryClientProvider client={client}><AppQueryContext.Provider value>{children}</AppQueryContext.Provider></QueryClientProvider>;
 }

@@ -5,7 +5,8 @@ import {
   type HumanInboxPage,
   type HumanMessage,
 } from "@aifans/contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { humanRequest, realtimeEndpoint } from "../../lib/human-chat-client";
 import {
   createRealtimeTransport,
@@ -34,9 +35,22 @@ export function HumanMessagesWorkspace({
   listUnavailable = false,
   detailUnavailable = false,
 }: MessagesWorkspaceProps & { selfProfileId: string }) {
-  const [inbox, setInbox] = useState<HumanInboxPage["items"]>([]);
-  const [humanCursor, setHumanCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const inboxKey = useMemo(
+    () => ["human-chat", selfProfileId, "inbox"] as const,
+    [selfProfileId],
+  );
+  const cachedInbox = queryClient.getQueryData<{
+    items: HumanInboxPage["items"];
+    cursor: string | null;
+  }>(inboxKey);
+  const [inbox, setInbox] = useState<HumanInboxPage["items"]>(
+    () => cachedInbox?.items ?? [],
+  );
+  const [humanCursor, setHumanCursor] = useState<string | null>(
+    () => cachedInbox?.cursor ?? null,
+  );
+  const [loading, setLoading] = useState(() => !cachedInbox?.items.length);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [aiRevision, setAiRevision] = useState(0);
@@ -69,6 +83,9 @@ export function HumanMessagesWorkspace({
     process.env.NEXT_PUBLIC_REALTIME_URL,
     selfProfileId,
   );
+  useEffect(() => {
+    queryClient.setQueryData(inboxKey, { items: inbox, cursor: humanCursor });
+  }, [humanCursor, inbox, inboxKey, queryClient]);
   const syncSubscriptions = useCallback(() => {
     const selectedAi = currentAiSelected.current;
     if (aiSubscription.current && aiSubscription.current !== selectedAi) {
