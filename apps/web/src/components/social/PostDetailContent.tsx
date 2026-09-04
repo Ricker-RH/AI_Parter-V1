@@ -7,7 +7,7 @@ import type {Locale} from '../../i18n/config'
 import {formatRelativeDuration} from '../../lib/relative-time'
 import type {SocialApiResult} from '../../lib/social-api'
 import {useOptionalCurrentAccount} from '../account/CurrentAccountProvider'
-import {HumanAvatar} from '../account/HumanAvatar'
+import {HumanAuthorPreview} from './HumanAuthorPreview'
 import {AuthorPreview} from './AuthorPreview'
 import {CommentActions} from './CommentActions'
 import {CommentComposer, type CommentViewer} from './CommentComposer'
@@ -65,12 +65,12 @@ function CommentThreadItem({authenticated, comment, labels, locale, onReply, pos
   const author = isTombstone ? null : comment.author
   const authorName = author?.displayName ?? labels.deletedComment
   const creatorLabel = author?.kind === 'ip' && author.creator ? `${labels.createdBy} @${author.creator.username}` : null
-  const profileHref = author?.kind === 'ip' ? `/${locale}/profiles/${author.id}` : null
+  const profileHref = author ? `/${locale}/${author.kind === 'ip' ? 'profiles' : 'humans'}/${author.id}` : null
   return <article className={`comment-thread-item${isReply ? ' comment-thread-item--reply' : ''}`} data-parent-comment-id={comment.parentCommentId ?? undefined} id={`comment-${comment.id}`} tabIndex={-1}>
     <div className={`comment-avatar-rail${isTombstone ? ' comment-avatar-rail--tombstone' : ''}`}>
       {author?.kind === 'ip'
         ? <AuthorPreview author={author} canMutate={authenticated && Boolean(viewerScope)} context="comment" labels={labels} locale={locale} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
-        : author ? <HumanAvatar className="comment-avatar" human={author} size="medium"/> : null}
+        : author ? <HumanAuthorPreview human={author} locale={locale} {...(viewerScope ? {viewerScope} : {})}/> : null}
     </div>
     <div className="comment-thread-content">
       <header className="comment-thread-heading">

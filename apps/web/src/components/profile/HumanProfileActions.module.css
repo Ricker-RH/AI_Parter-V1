@@ -1,0 +1,10 @@
+.actions { color:var(--shell-text); display:grid; gap:8px; margin-top:18px; min-width:0; }
+.primaryActions { display:grid; gap:8px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.actions button { background:var(--shell-surface); border:1px solid var(--shell-border); border-radius:10px; color:var(--shell-text); cursor:pointer; font:inherit; font-size:14px; font-weight:650; min-height:44px; padding:8px 16px; overflow-wrap:anywhere; }
+.primaryActions button:first-child { background:var(--shell-text); color:var(--shell-surface); }
+.actions button:disabled { cursor:not-allowed; opacity:.55; }
+.actions button:focus-visible { outline:2px solid var(--shell-text); outline-offset:3px; }
+.actions .block { justify-self:start; }
+.actions p { font-size:14px; line-height:1.5; margin:0; overflow-wrap:anywhere; }
+.confirm { display:flex; flex-wrap:wrap; gap:8px; padding:12px; border:1px solid var(--shell-border); border-radius:10px; background:var(--shell-surface); }
+.confirm p { flex-basis:100%; }

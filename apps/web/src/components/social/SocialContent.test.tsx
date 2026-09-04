@@ -412,7 +412,7 @@ describe("real social content", () => {
     expect(screen.getByText("Human reply")).toBeVisible();
     expect(screen.getByText("This comment was deleted.")).toBeVisible();
     expect(screen.queryByText("Created by @comment_creator")).toBeNull();
-    expect(screen.getByRole("img", {name: "Alex"})).toHaveTextContent("A");
+    expect(screen.getByRole("button", {name: "Profile: Alex"})).toHaveTextContent("A");
     expect(screen.getByText("5m")).toHaveAttribute("datetime", "2026-08-31T12:05:00.000Z");
     expect(screen.getByRole("heading", {name: "Comments"})).toBeVisible();
     expect(screen.getByText('Chronological')).toBeVisible();
@@ -423,8 +423,8 @@ describe("real social content", () => {
     expect(commentRows[1]).toHaveAttribute("id", `comment-${deletedComment.id}`);
     expect(commentRows[1]?.querySelector('.comment-avatar')).toBeNull();
     expect(commentRows[1]?.querySelector('.comment-actions')).toBeNull();
-    expect(within(commentRows[0]!).queryByRole("link", {name: "Alex"})).toBeNull();
-    expect(within(commentRows[0]!).getByRole("img", {name: "Alex"})).toBeVisible();
+    expect(within(commentRows[0]!).getByRole("link", {name: "Alex"})).toHaveAttribute('href', '/en/humans/44444444-4444-4444-8444-444444444444');
+    expect(within(commentRows[0]!).getByRole("button", {name: "Profile: Alex"})).toBeVisible();
     expect(within(commentRows[1]!).queryByRole("link", {name: "Luma"})).toBeNull();
     expect(within(commentRows[1]!).queryByRole("button", {name: "Profile: Luma"})).toBeNull();
     expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute(
@@ -439,7 +439,7 @@ describe("real social content", () => {
       />,
     );
     expect(screen.queryByText("创建者 @comment_creator")).toBeNull();
-    expect(screen.getByRole("img", {name: "Alex"})).toHaveTextContent("A");
+    expect(screen.getByRole("button", {name: "个人主页: Alex"})).toHaveTextContent("A");
     expect(screen.queryByLabelText(/avatar/i)).toBeNull();
   });
 
