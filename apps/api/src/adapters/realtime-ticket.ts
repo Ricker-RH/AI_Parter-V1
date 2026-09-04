@@ -2,6 +2,7 @@ import {SignJWT, jwtVerify} from 'jose'
 import {z} from 'zod'
 
 const TICKET_TTL_SECONDS = 60
+const SESSION_TTL_SECONDS = 300
 const IdentitySchema = z.strictObject({
   subject: z.string().trim().min(1).max(512),
   profileId: z.uuid(),
@@ -14,12 +15,12 @@ export type RealtimeTicketOptions = {
   audience: string
   allowedOrigins: string[]
   now?: () => number
-  /** Atomically claim jti until expiresAt. Must be durable/shared, never per-process memory. */
-  consume: (jti: string, expiresAt: number) => Promise<boolean>
+  /** Atomically create the session keyed by jti, retaining replay protection until expiry. */
+  consume: (jti: string, expiresAt: number, identity: {subject: string; profileId: string}, sessionExpiresAt: number) => Promise<boolean>
 }
 
 export function createRealtimeTickets(options: RealtimeTicketOptions) {
-  if (new TextEncoder().encode(options.secret).length < 32 || !options.issuer.trim() || !options.audience.trim()) {
+  if (new TextEncoder().encode(options.secret).length < 32 || options.secret.trim()!==options.secret || !options.issuer.trim() || !options.audience.trim()) {
     throw new Error('INVALID_REALTIME_CONFIGURATION')
   }
   const origins = new Set(options.allowedOrigins)
@@ -41,7 +42,7 @@ export function createRealtimeTickets(options: RealtimeTicketOptions) {
         .setJti(crypto.randomUUID()).setIssuedAt(issuedAt).setExpirationTime(issuedAt + TICKET_TTL_SECONDS)
         .sign(key)
     },
-    async consume(ticket: string, origin: string): Promise<{subject: string; profileId: string}> {
+    async consume(ticket: string, origin: string): Promise<{subject: string; profileId: string; sessionId: string; sessionExpiresAt: number}> {
       try {
         if (!origins.has(origin) || typeof ticket !== 'string' || ticket.length > 4096) throw new Error()
         const time = now()
@@ -54,8 +55,10 @@ export function createRealtimeTickets(options: RealtimeTicketOptions) {
         const id = z.uuid().parse(payload.jti)
         if (identity.origin !== origin || !Number.isSafeInteger(payload.exp) || !Number.isSafeInteger(payload.iat) ||
           payload.iat! > time || payload.exp! - payload.iat! > TICKET_TTL_SECONDS || payload.exp! <= time) throw new Error()
-        if (!await options.consume(id, payload.exp!)) throw new Error()
-        return {subject: identity.subject, profileId: identity.profileId}
+        const sessionExpiresAt = (time + SESSION_TTL_SECONDS) * 1000
+        const sessionIdentity = {subject: identity.subject, profileId: identity.profileId}
+        if (!await options.consume(id, payload.exp!, sessionIdentity, sessionExpiresAt)) throw new Error()
+        return {...sessionIdentity, sessionId: id, sessionExpiresAt}
       } catch {
         // Do not leak tokens, verifier internals, or replay-store errors to callers/logs.
         throw new Error('INVALID_REALTIME_TICKET')

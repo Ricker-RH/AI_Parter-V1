@@ -10,11 +10,15 @@ import {
   socketCounts,
 } from "./session.js";
 import { edgeAdmission } from "./admission.js";
+import {drainOutbox} from './drain.js'
 export interface Env extends Configuration {
   MAILBOXES: DurableObjectNamespace<RealtimeMailbox>;
   ADMISSION_LIMITER?: RateLimit;
 }
 export default {
+  async scheduled(_controller:ScheduledController,env:Env):Promise<void> {
+    await drainOutbox(env)
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const route = admit(request, env);
     if ("status" in route) return new Response(null, { status: route.status });

@@ -16,10 +16,13 @@ function setup() {
 }
 
 describe('short-lived realtime connection tickets', () => {
+  it('rejects whitespace signing secrets',()=>{
+    for(const secret of [' '.repeat(32),` ${'s'.repeat(32)}`,`${'s'.repeat(32)} `]) expect(()=>createRealtimeTickets({secret,issuer:'api',audience:'gateway',allowedOrigins:[origin],consume:async()=>true})).toThrow('INVALID_REALTIME_CONFIGURATION')
+  })
   it('binds authenticated identity and permits one successful consumption', async () => {
     const {tickets} = setup()
     const ticket = await tickets.issue({subject: 'auth-user', profileId, origin})
-    expect(await tickets.consume(ticket, origin)).toEqual({subject: 'auth-user', profileId})
+    expect(await tickets.consume(ticket, origin)).toMatchObject({subject: 'auth-user', profileId, sessionId: expect.any(String), sessionExpiresAt: 1_800_000_300_000})
     await expect(tickets.consume(ticket, origin)).rejects.toThrow('INVALID_REALTIME_TICKET')
   })
   it('rejects expired, tampered and wrong-origin tickets without consuming a valid ticket', async () => {

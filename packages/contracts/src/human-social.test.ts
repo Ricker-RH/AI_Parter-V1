@@ -5,6 +5,15 @@ const identity = {kind: 'HUMAN', id: '123e4567-e89b-42d3-a456-426614174000', dis
 const relationship = {following: false, followedBy: false, blockedByViewer: false, canMessage: true, messageDisabledReason: null}
 
 describe('human social v1 contracts', () => {
+  it('validates tab content without permitting locked data or counts',()=>{
+    expect(contracts.HumanProfileTabPageSchema.parse({state:'locked'})).toEqual({state:'locked'})
+    for(const tab of ['ips','liked','saved','following']) expect(contracts.HumanProfileTabPageSchema.parse({state:'ready',tab,items:[],nextCursor:null})).toMatchObject({tab})
+    for(const value of [{state:'locked',items:[]},{state:'locked',nextCursor:null},{state:'locked',count:0},{state:'ready',tab:'wrong',items:[],nextCursor:null}]) expect(contracts.HumanProfileTabPageSchema.safeParse(value).success).toBe(false)
+  })
+  it('retains basic bio and shared profile background without unlocking private tabs', () => {
+    const value = {v: 1, identity, bio: 'hello', background: {type: 'color', colorKey: 'sage'}, visibility: 'private', isOwner: false, relationship, tabs: {ips: {state: 'locked'}, liked: {state: 'locked'}, saved: {state: 'locked'}, following: {state: 'locked'}}}
+    expect(contracts.HumanProfileSchema.parse(value)).toMatchObject({bio: 'hello', background: {type: 'color', colorKey: 'sage'}})
+  })
   it('exports canonical human identity validation', () => {
     expect(contracts).toHaveProperty('HumanIdentitySchema')
     expect(contracts.HumanIdentitySchema.parse(identity)).toEqual(identity)

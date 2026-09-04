@@ -102,6 +102,7 @@ integration('human DM real PostgreSQL security', () => {
       expect((await fixture.query('SELECT count(*) FROM public.human_dm_messages WHERE sender_profile_id=ANY($1::uuid[])',[people.map(x=>x.id)])).rows[0].count).toBe('1')
     } finally {
       await left.query('ROLLBACK');await right.query('ROLLBACK');left.release();right.release()
+      await fixture.query('DELETE FROM public.notifications WHERE actor_profile_id=ANY($1::uuid[]) OR recipient_profile_id=ANY($1::uuid[])',[people.map(x=>x.id)])
       await fixture.query('DELETE FROM public.profiles WHERE id=ANY($1::uuid[])',[people.map(x=>x.id)]);fixture.release()
     }
   })

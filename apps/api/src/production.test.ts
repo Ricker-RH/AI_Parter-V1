@@ -18,6 +18,32 @@ const environment = {
 } as const;
 
 describe("production API composition", () => {
+  it('keeps human chat opt-in until its migration is deployed', () => {
+    expect(createProductionDependencies(environment).humanChat).toBeUndefined()
+    expect(createProductionDependencies({...environment, HUMAN_SOCIAL_ENABLED: 'true'}).humanChat?.send).toBeTypeOf('function')
+    expect(createProductionDependencies({...environment, HUMAN_SOCIAL_ENABLED: 'true'}).humanSocial?.getPublicProfile).toBeTypeOf('function')
+    expect(createProductionDependencies({...environment, HUMAN_SOCIAL_ENABLED: 'true'}).humanProfileTabs?.getTab).toBeTypeOf('function')
+  })
+  it('binds ticket redemption to the durable session repository with millisecond expiry', async () => {
+    const base=createProductionDependencies(environment)
+    const redeem=vi.fn().mockResolvedValue(true)
+    const authorize=vi.fn().mockResolvedValue({allowed:true,presenceAllowed:false})
+    const configured={...environment,HUMAN_SOCIAL_ENABLED:'true',REALTIME_TICKET_SECRET:'t'.repeat(32),REALTIME_INTERNAL_SECRET:'i'.repeat(32),REALTIME_ISSUER:'aifans-test',REALTIME_AUDIENCE:'gateway-test',REALTIME_ALLOWED_ORIGINS:'https://web.example'}
+    const createDatabaseRuntime=()=>({authority:base.authority,platformSocial:base.platformSocial,profiles:base.profiles,social:base.social,chatTargets:base.chatTargets,chat:base.conversations,creator:base.creator,platformCreator:base.platformCreator,channels:base.channels,platformChannels:base.platformChannels,realtimeSessions:{redeem,authorize}} as DatabaseRuntimeRepositories)
+    const deps=createProductionDependencies(configured,{createDatabaseRuntime})
+    expect(deps.realtime).toBeDefined()
+    const identity={subject:'auth-user',profileId:'00000000-0000-4000-8000-000000000001'}
+    const ticket=await deps.realtime!.issue(identity,'https://web.example')
+    const session=await deps.realtime!.redeem({ticket,origin:'https://web.example'})
+    expect(redeem).toHaveBeenCalledWith({...identity,sessionId:session.sessionId,ticketExpiresAt:expect.any(Number),sessionExpiresAt:session.sessionExpiresAt})
+    expect(redeem.mock.calls[0]![0].ticketExpiresAt).toBeGreaterThan(Date.now())
+    await deps.realtime!.authorize({...session,conversationId:'00000000-0000-4000-8000-000000000002'})
+    expect(authorize).toHaveBeenCalledOnce()
+    expect(deps.realtimeInternalSecret).toBe(configured.REALTIME_INTERNAL_SECRET)
+    expect(base.realtime).toBeUndefined()
+    expect(createProductionDependencies({...configured,REALTIME_GATEWAY_URL:'https://gateway.example'}).realtimeDelivery?.deliverBatch).toBeTypeOf('function')
+    expect(()=>createProductionDependencies(configured,{createDatabaseRuntime:()=>({...createDatabaseRuntime(),realtimeSessions:undefined})})).toThrow('Realtime session repository unavailable')
+  })
   it('enables profile cleanup only with its explicit secret and public R2 configuration', () => {
     expect(createProductionDependencies(environment).profileAssetCleanup).toBeUndefined()
     expect(() => createProductionDependencies({...environment, PROFILE_ASSET_CLEANUP_SECRET: 'x'})).toThrow('Invalid API environment')

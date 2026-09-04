@@ -6,10 +6,11 @@ import type {ApiVariables} from '../middleware/request-id.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {ProfilePort} from '../ports/profiles.js'
 import type {RealtimePort} from '../ports/realtime.js'
+import type {RealtimeDeliveryWorker} from '../ports/realtime-delivery.js'
 import {strictJsonBody, strictQuery} from './strict-input.js'
 
 type ApiContext = Context<{Variables: ApiVariables}>
-type Dependencies = {auth?: AuthVerifier; profiles?: ProfilePort; realtime?: RealtimePort; realtimeAllowedOrigins?: string[]; realtimeInternalSecret?: string}
+type Dependencies = {auth?: AuthVerifier; profiles?: ProfilePort; realtime?: RealtimePort; realtimeDelivery?:RealtimeDeliveryWorker; realtimeAllowedOrigins?: string[]; realtimeInternalSecret?: string}
 const empty = z.strictObject({})
 const subject = z.string().min(1).max(512).refine(value => value.trim().length > 0)
 const identity = z.strictObject({subject, profileId: z.uuid()})
@@ -37,6 +38,15 @@ function internalAuth(c: ApiContext, dependencies: Dependencies): Response | nul
 }
 
 export function registerRealtimeRoutes(app: Hono<{Variables: ApiVariables}>, dependencies: Dependencies) {
+  app.post('/v1/internal/realtime/deliver', async c=>{
+    try {
+      const denied=internalAuth(c,dependencies)
+      if(denied) return denied
+      if(!dependencies.realtimeDelivery) return unavailable(c)
+      if(!strictQuery(c,empty)||!await strictJsonBody(c,empty)) return invalid(c)
+      return c.json(await dependencies.realtimeDelivery.deliverBatch(10))
+    } catch {return failure(c)}
+  })
   app.post('/v1/realtime/ticket', async c => {
     try {
       if (!dependencies.auth) return unavailable(c)

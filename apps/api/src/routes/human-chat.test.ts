@@ -1,24 +1,30 @@
 import {randomUUID} from 'node:crypto'
 import {AccountSchema} from '@aifans/contracts'
 import {describe, expect, it, vi} from 'vitest'
-import {createApp} from '../application.js'
+import {createApp,type AppDependencies} from '../application.js'
 
 const profileId = randomUUID(), peerProfileId = randomUUID(), conversationId = randomUUID(), clientRequestId = randomUUID()
 const message = {v: 1, id: randomUUID(), conversationId, senderProfileId: profileId, clientRequestId, sequence: 1, createdAt: '2026-09-04T00:00:00.000Z', content: {kind: 'text', text: 'hello'}}
 const sendPath = `/v1/human-chat/peers/${peerProfileId}/messages`
 const historyPath = `/v1/human-chat/conversations/${conversationId}/messages`
 const readPath = `/v1/human-chat/conversations/${conversationId}/read`
-function setup(status: 'authenticated' | 'missing' | 'invalid' = 'authenticated', kind: 'human' | 'ip' = 'human') {
+function setup(status: 'authenticated' | 'missing' | 'invalid' = 'authenticated', kind: 'human' | 'ip' = 'human',overrides:Partial<AppDependencies>={}) {
   const humanChat = {send: vi.fn(async () => message), history: vi.fn(async () => [message]), markRead: vi.fn(async () => 1)}
   const profiles = {ensureHumanProfile: vi.fn(), getCurrentAccount: vi.fn(async () => AccountSchema.parse({id: profileId, kind, username: 'human_actor', displayName: 'Human', preferredLocale: 'en', creatorModeEnabled: false}))}
   const auth = {verify: vi.fn(async () => status === 'authenticated' ? {status, identity: {subject: 'verified-subject'}} as const : {status})}
-  return {humanChat, profiles, app: createApp({auth, profiles, humanChat})}
+  return {humanChat, profiles, app: createApp({auth, profiles, humanChat,...overrides})}
 }
 function post(body: unknown) {return {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}}
 const sendBody = {clientRequestId, content: {kind: 'text', text: ' hello '}}
 const conversation = {v: 1 as const, id: conversationId, participants: [{kind: 'HUMAN', id: profileId, username: 'actor_human', displayName: 'Actor', avatarUrl: null}, {kind: 'HUMAN', id: peerProfileId, username: 'peer_human', displayName: 'Peer', avatarUrl: null}], createdAt: message.createdAt, updatedAt: message.createdAt}
 
 describe('human text chat routes', () => {
+  it('schedules persisted events through the production middleware ordering',async()=>{
+    const deliverBatch=vi.fn(async()=>({claimed:1,delivered:1,retried:0}))
+    const {app}=setup('authenticated','human',{realtimeDelivery:{deliverBatch}})
+    expect((await app.request(sendPath,post(sendBody))).status).toBe(200)
+    expect(deliverBatch).toHaveBeenCalledWith(10)
+  })
   it('opens conversations and lists private inbox entries using authenticated identity', async () => {
     const {app, humanChat} = setup()
     humanChat.open = vi.fn(async () => conversation)

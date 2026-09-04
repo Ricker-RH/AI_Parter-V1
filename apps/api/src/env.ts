@@ -25,6 +25,13 @@ const environmentSchema = z.object({
   NEON_AUTH_AUDIENCE: z.string().trim().min(1).max(200),
   DIFY_API_URL: httpsUrl.optional(),
   DIFY_API_KEY: z.string().trim().min(1).optional(),
+  HUMAN_SOCIAL_ENABLED: z.enum(['true','false']).default('false'),
+  REALTIME_TICKET_SECRET: z.string().min(32).refine(value=>value.trim()===value).optional(),
+  REALTIME_INTERNAL_SECRET: z.string().min(32).refine(value=>value.trim()===value).optional(),
+  REALTIME_ISSUER: z.string().trim().min(1).max(200).optional(),
+  REALTIME_AUDIENCE: z.string().trim().min(1).max(200).optional(),
+  REALTIME_ALLOWED_ORIGINS: z.string().max(4096).optional(),
+  REALTIME_GATEWAY_URL: httpsUrl.refine(value=>new URL(value).origin===value).optional(),
   POSTHOG_API_KEY: z.string().trim().min(1).optional(),
   POSTHOG_HOST: httpsUrl.optional(),
   ANALYTICS_CRON_SECRET: z.string().min(32).optional(),
@@ -63,6 +70,8 @@ export type ApiEnvironment = {
   profileAssetCleanupSecret?: string;
   rateLimit?:{databaseUrl:string;hmacSecret:string};
   webApiRateLimitSigningSecret: string;
+  humanSocialEnabled: boolean;
+  realtime?: {ticketSecret:string;internalSecret:string;issuer:string;audience:string;allowedOrigins:string[];gatewayUrl?:string};
 };
 export type R2PostMediaConfig = {
   accountId: string;
@@ -79,6 +88,18 @@ export function readApiEnv(
   const result = environmentSchema.safeParse(environment);
   if (!result.success) throw new Error("Invalid API environment");
   const value = result.data;
+  const realtimeValues = [value.REALTIME_TICKET_SECRET,value.REALTIME_INTERNAL_SECRET,value.REALTIME_ISSUER,value.REALTIME_AUDIENCE,value.REALTIME_ALLOWED_ORIGINS];
+  let realtime: ApiEnvironment['realtime'];
+  if (realtimeValues.some(item=>item!==undefined)) {
+    if (realtimeValues.some(item=>item===undefined) || value.HUMAN_SOCIAL_ENABLED!=='true' || value.REALTIME_TICKET_SECRET===value.REALTIME_INTERNAL_SECRET) throw new Error('Invalid API environment');
+    const allowedOrigins=value.REALTIME_ALLOWED_ORIGINS!.split(',').map(origin=>origin.trim());
+    if (allowedOrigins.some(origin=>{try {const url=new URL(origin);return url.protocol!=='https:' || url.origin!==origin} catch {return true}})) throw new Error('Invalid API environment');
+    realtime={ticketSecret:value.REALTIME_TICKET_SECRET!,internalSecret:value.REALTIME_INTERNAL_SECRET!,issuer:value.REALTIME_ISSUER!,audience:value.REALTIME_AUDIENCE!,allowedOrigins:[...new Set(allowedOrigins)]};
+  }
+  if(value.REALTIME_GATEWAY_URL) {
+    if(!realtime) throw new Error('Invalid API environment');
+    realtime.gatewayUrl=value.REALTIME_GATEWAY_URL;
+  }
   if (
     (value.DIFY_API_URL === undefined) !==
     (value.DIFY_API_KEY === undefined)
@@ -134,6 +155,8 @@ export function readApiEnv(
       audience: value.NEON_AUTH_AUDIENCE,
     },
     webApiRateLimitSigningSecret: value.WEB_API_RATE_LIMIT_SIGNING_SECRET,
+    humanSocialEnabled: value.HUMAN_SOCIAL_ENABLED === 'true',
+    ...(realtime ? {realtime} : {}),
     ...(value.PROFILE_ASSET_CLEANUP_SECRET ? {profileAssetCleanupSecret: value.PROFILE_ASSET_CLEANUP_SECRET} : {}),
     ...(value.DATABASE_RATE_LIMIT_URL&&value.RATE_LIMIT_HMAC_SECRET?{rateLimit:{databaseUrl:value.DATABASE_RATE_LIMIT_URL,hmacSecret:value.RATE_LIMIT_HMAC_SECRET}}:{}),
     ...(value.DIFY_API_URL && value.DIFY_API_KEY

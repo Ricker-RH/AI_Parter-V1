@@ -1,4 +1,8 @@
 export {readDatabaseEnv} from './env.js'
+export {createHumanChatRepository} from './human-chat.js'
+export type {HumanChatRepository} from './human-chat.js'
+export {createHumanSocialRepository} from './human-social.js'
+export type {HumanSocialRepository} from './human-social.js'
 export {createProfileAssetCleanupRepository, createProfileAssetCleanupRepositoryFromUrl} from './profile-asset-cleanup.js'
 export type {ProfileAssetCleanupRepository, ProfileAssetCleanupResult} from './profile-asset-cleanup.js'
 export {migrate} from './migrate.js'
@@ -101,3 +105,6 @@ export type {
   PlatformRequestDecision,
   PlatformCreatorRepository,
 } from './creator.js'
+export {createPostgresRealtimeSessionRepository,type RealtimeSessionRepository} from './realtime-sessions.js'
+export {createPostgresHumanRealtimeOutboxRepository,type HumanRealtimeOutboxRepository} from './human-realtime-outbox.js'
+export {createHumanProfileTabsRepository,type HumanProfileTabsRepository} from './human-profile-tabs.js'

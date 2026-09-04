@@ -9,6 +9,11 @@ import {
 } from "@aifans/db";
 import { createApp, type AppDependencies } from "./application.js";
 import { createDifyChatPort } from "./adapters/dify-chat.js";
+import {createRealtimeTickets} from './adapters/realtime-ticket.js'
+import {createRealtimePublisher} from './adapters/realtime-publisher.js'
+import {createRealtimeDeliveryWorker} from './ports/realtime-delivery.js'
+import type {RealtimePort} from './ports/realtime.js'
+import {waitUntil} from '@vercel/functions'
 import { createNeonJwtAuthVerifier } from "./adapters/neon-auth-jwt.js";
 import { createPostHogAnalyticsCapture } from "./adapters/posthog-analytics.js";
 import { r2AssetPortFromEnv } from "./adapters/r2-assets.js";
@@ -64,7 +69,21 @@ export function createProductionDependencies(
   const cleanupRepository = env.postMedia && env.profileAssetCleanupSecret
     ? createProfileAssetCleanupRepositoryFromUrl(env.databasePlatformUrl) : undefined
   const cleanupRemove = cleanupRepository && env.postMedia ? createR2ProfileAssetCleanup(env.postMedia) : undefined
+  let realtime: RealtimePort | undefined
+  if (env.realtime) {
+    const sessions=database.realtimeSessions
+    if (!sessions) throw new Error('Realtime session repository unavailable')
+    const tickets=createRealtimeTickets({secret:env.realtime.ticketSecret,issuer:env.realtime.issuer,audience:env.realtime.audience,allowedOrigins:env.realtime.allowedOrigins,
+      consume:(sessionId,expiresAt,identity,sessionExpiresAt)=>sessions.redeem({...identity,sessionId,ticketExpiresAt:expiresAt*1000,sessionExpiresAt}),
+    })
+    realtime={issue:(identity,origin)=>tickets.issue({...identity,origin}),redeem:({ticket,origin})=>tickets.consume(ticket,origin),authorize:input=>sessions.authorize(input)}
+  }
+  if(env.realtime?.gatewayUrl && !database.humanRealtimeOutbox) throw new Error('Realtime outbox repository unavailable')
+  const realtimeDelivery=env.realtime?.gatewayUrl && database.humanRealtimeOutbox
+    ? createRealtimeDeliveryWorker({outbox:database.humanRealtimeOutbox,publisher:createRealtimePublisher({baseUrl:env.realtime.gatewayUrl,secret:env.realtime.internalSecret})}) : undefined
   return {
+    ...(realtimeDelivery?{realtimeDelivery,defer:waitUntil}:{}),
+    ...(realtime && env.realtime ? {realtime,realtimeAllowedOrigins:env.realtime.allowedOrigins,realtimeInternalSecret:env.realtime.internalSecret} : {}),
     ...(cleanupRepository && cleanupRemove && env.profileAssetCleanupSecret ? {
       profileAssetCleanup: {run: () => cleanupRepository.cleanupBatch(cleanupRemove)},
       profileAssetCleanupSecret: env.profileAssetCleanupSecret,
@@ -81,6 +100,9 @@ export function createProductionDependencies(
     social: database.social,
     chatTargets: database.chatTargets,
     conversations: database.chat,
+    ...(env.humanSocialEnabled && database.humanChat ? {humanChat: database.humanChat} : {}),
+    ...(env.humanSocialEnabled && database.humanSocial ? {humanSocial: database.humanSocial} : {}),
+    ...(env.humanSocialEnabled && database.humanProfileTabs ? {humanProfileTabs: database.humanProfileTabs} : {}),
     creator: database.creator,
     platformCreator: database.platformCreator,
     channels:database.channels,

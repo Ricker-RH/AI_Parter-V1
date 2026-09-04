@@ -1,4 +1,6 @@
 import {z} from 'zod'
+import {ProfileBackgroundSchema} from './account.js'
+import {PublicIpSchema,PublicHumanSchema,FeedPostSchema} from './social.js'
 
 export const HumanIdentitySchema = z.strictObject({
   kind: z.literal('HUMAN'),
@@ -28,6 +30,8 @@ export const HumanProfileTabSchema = z.discriminatedUnion('state', [
 export const HumanProfileSchema = z.strictObject({
   v: z.literal(1),
   identity: HumanIdentitySchema,
+  bio: z.string().max(500).nullable().default(null),
+  background: ProfileBackgroundSchema.default({type: 'color', colorKey: 'paper'}),
   visibility: HumanVisibilitySchema,
   isOwner: z.boolean(),
   relationship: HumanRelationshipSchema,
@@ -47,3 +51,15 @@ export type HumanVisibility = z.infer<typeof HumanVisibilitySchema>
 export type HumanRelationship = z.infer<typeof HumanRelationshipSchema>
 export type HumanProfile = z.infer<typeof HumanProfileSchema>
 export type HumanPreferencesUpdateInput = z.infer<typeof HumanPreferencesUpdateInputSchema>
+
+export const HumanProfileTabKeySchema=z.enum(['ips','liked','saved','following'])
+const tabPage={state:z.literal('ready'),nextCursor:z.string().min(1).max(1024).nullable()}
+export const HumanProfileTabPageSchema=z.union([
+  z.strictObject({state:z.literal('locked')}),
+  z.strictObject({...tabPage,tab:z.literal('ips'),items:z.array(PublicIpSchema).max(50)}),
+  z.strictObject({...tabPage,tab:z.literal('liked'),items:z.array(FeedPostSchema).max(50)}),
+  z.strictObject({...tabPage,tab:z.literal('saved'),items:z.array(FeedPostSchema).max(50)}),
+  z.strictObject({...tabPage,tab:z.literal('following'),items:z.array(z.union([PublicHumanSchema,PublicIpSchema])).max(50)}),
+])
+export type HumanProfileTabKey=z.infer<typeof HumanProfileTabKeySchema>
+export type HumanProfileTabPage=z.infer<typeof HumanProfileTabPageSchema>

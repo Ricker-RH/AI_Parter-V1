@@ -8,6 +8,11 @@ import {
   type ChatTargetRepository,
 } from "./chat-target.js";
 import { createChatRepository, type ChatRepository } from "./chat.js";
+import {createHumanChatRepository, type HumanChatRepository} from './human-chat.js'
+import {createHumanSocialRepository, type HumanSocialRepository} from './human-social.js'
+import {createPostgresRealtimeSessionRepository, type RealtimeSessionRepository} from './realtime-sessions.js'
+import {createPostgresHumanRealtimeOutboxRepository,type HumanRealtimeOutboxRepository} from './human-realtime-outbox.js'
+import {createHumanProfileTabsRepository,type HumanProfileTabsRepository} from './human-profile-tabs.js'
 import { createProfileRepository, type ProfileRepository } from "./profiles.js";
 import {
   createCreatorRepository,
@@ -42,6 +47,11 @@ export type DatabaseRuntimeRepositories = {
   social: SocialRepository;
   chatTargets: ChatTargetRepository;
   chat: ChatRepository;
+  humanChat?: HumanChatRepository;
+  humanSocial?: HumanSocialRepository;
+  realtimeSessions?: RealtimeSessionRepository;
+  humanRealtimeOutbox?: HumanRealtimeOutboxRepository;
+  humanProfileTabs?: HumanProfileTabsRepository;
   creator: CreatorRepository;
   platformCreator: PlatformCreatorRepository;
   channels: ChannelRepository;
@@ -108,6 +118,11 @@ export function createDatabaseRuntimeRepositories(
     }),
     chatTargets: createChatTargetRepository(withActor),
     chat: createChatRepository(withActor),
+    humanChat: createHumanChatRepository({withActor,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
+    realtimeSessions: createPostgresRealtimeSessionRepository({withPlatformActor}),
+    humanRealtimeOutbox: createPostgresHumanRealtimeOutboxRepository({withPlatformActor}),
+    humanProfileTabs: createHumanProfileTabsRepository({withActor,withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
+    humanSocial: createHumanSocialRepository({withActor,withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     creator: createCreatorRepository({ withActor }),
     platformCreator: createPlatformCreatorRepository({ withPlatformActor }),
     channels: createChannelRepository({withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),

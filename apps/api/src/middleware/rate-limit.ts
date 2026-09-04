@@ -5,6 +5,11 @@ import type {RateLimitPolicy,RateLimitPort} from '../ports/rate-limit.js'
 import type {ApiVariables} from './request-id.js'
 
 function policyFor(method:string,path:string):RateLimitPolicy|null {
+  if(method==='POST'&&path==='/v1/realtime/ticket') return 'auth_attempt'
+  if ((method==='PATCH'&&path==='/v1/human-preferences') || (['PUT','DELETE'].includes(method)&&/^\/v1\/humans\/[^/]+\/(?:follow|block)$/.test(path))) return 'social_mutation'
+  if(path==='/v1/human-chat/conversations'||path.startsWith('/v1/human-chat/')) {
+    return method==='POST'&&/\/messages$/.test(path)?'chat_send':'social_mutation'
+  }
   if(method==='GET'&&path==='/v1/following') return 'social_mutation'
   if(method==='POST'&&(path==='/v1/chat/conversations'||/^\/v1\/chat\/conversations\/[^/]+\/messages$/.test(path))) return 'chat_send'
   if(method==='POST'&&/^\/v1\/posts\/[^/]+\/share$/.test(path)) return 'social_mutation'

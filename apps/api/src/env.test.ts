@@ -13,6 +13,28 @@ const valid = {
 } as const;
 
 describe("API production environment", () => {
+  it('requires complete, separate realtime credentials and exact HTTPS origins', () => {
+    const realtime = {
+      HUMAN_SOCIAL_ENABLED: 'true', REALTIME_TICKET_SECRET: 't'.repeat(32),
+      REALTIME_INTERNAL_SECRET: 'i'.repeat(32), REALTIME_ISSUER: 'aifans-test',
+      REALTIME_AUDIENCE: 'aifans-gateway-test', REALTIME_ALLOWED_ORIGINS: 'https://web.example,https://preview.example',
+    }
+    expect(readApiEnv({...valid,...realtime}).realtime).toMatchObject({allowedOrigins:['https://web.example','https://preview.example']})
+    expect(readApiEnv(valid).realtime).toBeUndefined()
+    expect(readApiEnv({...valid,...realtime,REALTIME_GATEWAY_URL:'https://gateway.example'}).realtime?.gatewayUrl).toBe('https://gateway.example')
+    expect(()=>readApiEnv({...valid,REALTIME_GATEWAY_URL:'https://gateway.example'})).toThrow('Invalid API environment')
+    expect(()=>readApiEnv({...valid,...realtime,REALTIME_GATEWAY_URL:'https://gateway.example/path'})).toThrow('Invalid API environment')
+    for (const key of Object.keys(realtime).filter(key=>key!=='HUMAN_SOCIAL_ENABLED')) {
+      expect(()=>readApiEnv({...valid,...realtime,[key]:undefined})).toThrow('Invalid API environment')
+    }
+    for (const origins of ['*','http://web.example','https://web.example/path','https://user:secret@web.example','https://web.example,']) {
+      expect(()=>readApiEnv({...valid,...realtime,REALTIME_ALLOWED_ORIGINS:origins})).toThrow('Invalid API environment')
+    }
+    expect(()=>readApiEnv({...valid,...realtime,REALTIME_INTERNAL_SECRET:realtime.REALTIME_TICKET_SECRET})).toThrow('Invalid API environment')
+    expect(()=>readApiEnv({...valid,...realtime,HUMAN_SOCIAL_ENABLED:'false'})).toThrow('Invalid API environment')
+    for(const secret of [' '.repeat(32),` ${'s'.repeat(32)}`,`${'s'.repeat(32)} `]) expect(()=>readApiEnv({...valid,...realtime,REALTIME_INTERNAL_SECRET:secret})).toThrow('Invalid API environment')
+    for(const secret of [' '.repeat(32),` ${'s'.repeat(32)}`,`${'s'.repeat(32)} `]) expect(()=>readApiEnv({...valid,...realtime,REALTIME_TICKET_SECRET:secret})).toThrow('Invalid API environment')
+  })
   it("accepts the three least-privilege database roles and strict auth metadata", () => {
     expect(readApiEnv(valid)).toMatchObject({
       databaseUserUrl: valid.DATABASE_USER_URL,

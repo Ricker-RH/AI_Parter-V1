@@ -20,6 +20,18 @@ function setup(overrides: Partial<AppDependencies> = {}) {
 }
 
 describe('realtime authorization routes', () => {
+  it('only lets the trusted service drain a bounded durable delivery batch', async () => {
+    const deliverBatch=vi.fn(async()=>({claimed:2,delivered:2,retried:0}))
+    const {app}=setup({realtimeDelivery:{deliverBatch}})
+    const path='/v1/internal/realtime/deliver'
+    expect((await app.request(path,post())).status).toBe(401)
+    expect(deliverBatch).not.toHaveBeenCalled()
+    expect((await app.request(path,post({limit:1000},{authorization:`Bearer ${secret}`}))).status).toBe(422)
+    const response=await app.request(path,post({},{authorization:`Bearer ${secret}`}))
+    expect(response.status).toBe(200)
+    expect(deliverBatch).toHaveBeenCalledWith(10)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
   it('supports the ticket identity contract subject limit of 512 characters', async () => {
     const longSubject = 's'.repeat(512)
     const {app, realtime} = setup({auth: {verify: async () => ({status: 'authenticated', identity: {subject: longSubject}})}})
