@@ -78,6 +78,7 @@
 .moreLink { align-items: center; border-top: 1px solid var(--shell-border); color: var(--shell-muted); display: flex; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; }
 .notificationDetail { align-content: start; display: grid; gap: 18px; min-height: 0; overflow-y: auto; padding: 28px 24px calc(28px + env(safe-area-inset-bottom)); }
 .notificationActor { align-items: center; display: flex; gap: 12px; }
+.detailAvatarLink { border-radius: 50%; display: inline-flex; }
 .notificationActor > div { display: grid; min-width: 0; }
 .detailAvatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: inline-flex; flex: 0 0 auto; font-size: 20px; font-weight: 700; height: 56px; justify-content: center; width: 56px; }
 .notificationAction { font-size: 18px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }

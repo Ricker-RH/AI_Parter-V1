@@ -57,6 +57,12 @@ describe('NotificationsWorkspace', () => {
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/messages/notifications?cursor=next')
   })
 
+  it('opens the actor profile directly from the notification-detail avatar', () => {
+    render(<NotificationsWorkspace labels={en} locale="en" result={{status: 'ok', data: {items: [notification], nextCursor: null}}} selectedId={notification.id} selectedResult={{status: 'ok', data: notification}} viewerScope="viewer-a" />)
+
+    expect(screen.getByRole('link', {name: 'View profile: Alex'})).toHaveAttribute('href', `/en/profiles/${notification.actor?.id}`)
+  })
+
   it('marks a valid selected detail read and provides contextual target content', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({readAt: '2026-09-03T00:00:00.000Z'})))
     render(<NotificationsWorkspace labels={en} listCursor="origin" locale="en" result={{status: 'ok', data: {items: [notification], nextCursor: null}}} selectedId={notification.id} selectedResult={{status: 'ok', data: notification}} viewerScope="viewer-a" />)

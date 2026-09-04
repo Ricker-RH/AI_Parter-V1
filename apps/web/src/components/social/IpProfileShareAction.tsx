@@ -1,7 +1,7 @@
 'use client'
 
 import type {PublicIp} from '@aifans/contracts'
-import {HumanInboxPageSchema, HumanMessageSchema, HumanConversationSchema, type HumanInboxPage} from '@aifans/contracts'
+import {HumanInboxPageSchema, HumanMessageSchema, HumanConversationSchema, HumanRelationshipBatchSchema} from '@aifans/contracts'
 import {useEffect, useMemo, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import {HumanAvatar} from '../account/HumanAvatar'
@@ -81,7 +81,11 @@ function IpProfileShareSheet({locale, onClose, profile}: Props & {onClose: () =>
         if (!response.ok) throw Error()
         const page = HumanInboxPageSchema.parse(await response.json())
         const peers = page.items.map(item => item.conversation.participants.find(person => person.id !== account.id)!).filter((person, index, list) => list.findIndex(candidate => candidate.id === person.id) === index)
-        if (!controller.signal.aborted) setRecipients(peers)
+        if (peers.length === 0) { if (!controller.signal.aborted) setRecipients([]); return }
+        const relationships = await fetch('/api/human-relationships', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({profileIds: peers.map(person => person.id)}), cache: 'no-store', credentials: 'same-origin', signal: controller.signal})
+        if (!relationships.ok) throw Error()
+        const eligible = new Set(HumanRelationshipBatchSchema.parse(await relationships.json()).items.filter(item => item.following && item.followedBy && !item.blocked).map(item => item.profileId))
+        if (!controller.signal.aborted) setRecipients(peers.filter(person => eligible.has(person.id)))
       })
       .catch(() => { if (!controller.signal.aborted) setRecipients(null) })
     return () => controller.abort()
