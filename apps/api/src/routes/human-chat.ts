@@ -1,4 +1,4 @@
-import {HumanMessageSchema, HumanReadCursorSchema, HumanReadInputSchema, HumanSendInputSchema} from '@aifans/contracts'
+import {HumanMessageSchema, HumanReadCursorSchema, HumanReadInputSchema, HumanSendInputSchema, HumanConversationCreateInputSchema, HumanConversationSchema, HumanInboxCursorSchema, HumanInboxPageSchema} from '@aifans/contracts'
 import type {Actor} from '@aifans/db'
 import type {Context, Hono} from 'hono'
 import {z} from 'zod'
@@ -15,6 +15,8 @@ const uuid = z.uuid()
 const emptyQuery = z.strictObject({})
 const integerQuery = z.string().regex(/^(0|[1-9]\d*)$/).transform(Number).pipe(z.number().int().min(0).max(Number.MAX_SAFE_INTEGER))
 const historyQuery = z.strictObject({afterSequence: integerQuery.default(0), limit: integerQuery.pipe(z.number().min(1).max(100)).default(50)})
+const inboxQuery = z.strictObject({limit: integerQuery.pipe(z.number().min(1).max(100)).default(50), cursor: HumanInboxCursorSchema.optional()})
+const openedSchema = z.strictObject({conversation: HumanConversationSchema})
 const sentSchema = z.strictObject({message: HumanMessageSchema})
 const historySchema = z.strictObject({items: z.array(HumanMessageSchema).max(100)})
 const invalid = (c: ApiContext) => apiError(c, 400, 'INVALID_REQUEST', 'Request is invalid')
@@ -44,6 +46,27 @@ async function resolveHuman(c: ApiContext, dependencies: Dependencies): Promise<
 
 export function registerHumanChatRoutes(app: Hono<{Variables: ApiVariables}>, dependencies: Dependencies) {
   app.use('/v1/human-chat/*', async (c, next) => {c.header('Cache-Control', 'private, no-store'); await next()})
+  app.post('/v1/human-chat/conversations', async c => {
+    try {
+      const current = await resolveHuman(c, dependencies)
+      if (current instanceof Response) return current
+      if (!strictQuery(c, emptyQuery)) return invalid(c)
+      const input = await strictJsonBody(c, HumanConversationCreateInputSchema)
+      if (!input) return invalid(c)
+      if (!dependencies.humanChat?.open) return apiError(c, 503, 'HUMAN_CHAT_NOT_CONFIGURED', 'Human chat is not configured')
+      return c.json(openedSchema.parse({conversation: await dependencies.humanChat.open(current.actor, input)}))
+    } catch (error) {return failure(c, error)}
+  })
+  app.get('/v1/human-chat/conversations', async c => {
+    try {
+      const current = await resolveHuman(c, dependencies)
+      if (current instanceof Response) return current
+      const query = strictQuery(c, inboxQuery)
+      if (!query) return invalid(c)
+      if (!dependencies.humanChat?.list) return apiError(c, 503, 'HUMAN_CHAT_NOT_CONFIGURED', 'Human chat is not configured')
+      return c.json(HumanInboxPageSchema.parse(await dependencies.humanChat.list(current.actor, query)))
+    } catch (error) {return failure(c, error)}
+  })
   app.post('/v1/human-chat/peers/:peerProfileId/messages', async c => {
     try {
       const current = await resolveHuman(c, dependencies)

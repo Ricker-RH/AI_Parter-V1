@@ -8,6 +8,19 @@ const identity = {kind: 'HUMAN', id, displayName: 'Alice', username: 'alice', av
 const message = {v: 1, id, conversationId: id, senderProfileId: peerId, clientRequestId: id, sequence: 1, createdAt: now, content: {kind: 'text', text: 'hello'}}
 
 describe('human chat v1 contracts', () => {
+  it('keeps inbox cursors portable, strict and microsecond-precise', () => {
+    const value = {v: 1 as const, id, updatedAt: '2026-09-04T00:00:00.123456Z'}
+    const cursor = contracts.encodeHumanInboxCursor(value)
+    expect(contracts.decodeHumanInboxCursor(cursor)).toEqual(value)
+    for (const bad of ['', 'bad', cursor + '=', 'x'.repeat(513)]) expect(() => contracts.decodeHumanInboxCursor(bad)).toThrow()
+  })
+  it('rejects inbox messages from outside their conversation participants', () => {
+    const conversation = {v: 1, id, participants: [identity, {...identity, id: peerId}], createdAt: now, updatedAt: now}
+    const item = {conversation, latestMessage: message, unreadCount: 0, lastReadSequence: 0}
+    expect(contracts.HumanInboxItemSchema.safeParse(item).success).toBe(true)
+    expect(contracts.HumanInboxItemSchema.safeParse({...item, latestMessage: {...message, senderProfileId: '123e4567-e89b-42d3-a456-426614174009'}}).success).toBe(false)
+    expect(contracts.HumanInboxItemSchema.safeParse({...item, latestMessage: {...message, conversationId: peerId}}).success).toBe(false)
+  })
   it('exports and accepts a strict versioned message', () => {
     expect(contracts).toHaveProperty('HumanMessageSchema')
     expect(contracts.HumanMessageSchema.parse(message)).toEqual(message)

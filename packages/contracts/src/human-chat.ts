@@ -55,3 +55,43 @@ export type HumanReadInput = z.infer<typeof HumanReadInputSchema>
 export type HumanReadCursor = z.infer<typeof HumanReadCursorSchema>
 export type HumanReadAdvance = z.infer<typeof HumanReadAdvanceSchema>
 export type HumanRealtimeEvent = z.infer<typeof HumanRealtimeEventSchema>
+
+const HumanInboxCursorValueSchema = z.strictObject({v: z.literal(1), updatedAt: dateTime, id: uuid})
+const inboxAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+function encodeInboxText(text: string): string {
+  let bits = 0, value = 0, result = ''
+  for (const character of text) {
+    value = (value << 8) | character.charCodeAt(0); bits += 8
+    while (bits >= 6) {bits -= 6; result += inboxAlphabet[(value >>> bits) & 63]}
+  }
+  if (bits) result += inboxAlphabet[(value << (6 - bits)) & 63]
+  return result
+}
+function decodeInboxText(text: string): string {
+  let bits = 0, value = 0, result = ''
+  for (const character of text) {
+    value = (value << 6) | inboxAlphabet.indexOf(character); bits += 6
+    if (bits >= 8) {bits -= 8; result += String.fromCharCode((value >>> bits) & 255)}
+  }
+  if (encodeInboxText(result) !== text) throw new Error('INVALID_HUMAN_INBOX_CURSOR')
+  return result
+}
+export function decodeHumanInboxCursor(cursor: string): z.infer<typeof HumanInboxCursorValueSchema> {
+  if (cursor.length > 512 || !/^[A-Za-z0-9_-]+$/.test(cursor)) throw new Error('INVALID_HUMAN_INBOX_CURSOR')
+  try {return HumanInboxCursorValueSchema.parse(JSON.parse(decodeInboxText(cursor)))}
+  catch {throw new Error('INVALID_HUMAN_INBOX_CURSOR')}
+}
+export function encodeHumanInboxCursor(value: z.infer<typeof HumanInboxCursorValueSchema>): string {
+  return encodeInboxText(JSON.stringify(HumanInboxCursorValueSchema.parse(value)))
+}
+export const HumanInboxCursorSchema = z.string().min(1).max(512).refine(value => {
+  try {decodeHumanInboxCursor(value); return true} catch {return false}
+})
+export const HumanInboxItemSchema = z.strictObject({
+  conversation: HumanConversationSchema,
+  latestMessage: HumanMessageSchema.nullable(),
+  unreadCount: readSequence,
+  lastReadSequence: readSequence,
+}).refine(value => value.latestMessage === null || (value.latestMessage.conversationId === value.conversation.id && value.conversation.participants.some(person => person.id === value.latestMessage!.senderProfileId)), {message: 'Inbox message must belong to conversation participants'})
+export const HumanInboxPageSchema = z.strictObject({items: z.array(HumanInboxItemSchema).max(100), nextCursor: HumanInboxCursorSchema.nullable()})
+export type HumanInboxPage = z.infer<typeof HumanInboxPageSchema>

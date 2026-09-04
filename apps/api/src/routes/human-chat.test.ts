@@ -16,8 +16,31 @@ function setup(status: 'authenticated' | 'missing' | 'invalid' = 'authenticated'
 }
 function post(body: unknown) {return {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)}}
 const sendBody = {clientRequestId, content: {kind: 'text', text: ' hello '}}
+const conversation = {v: 1 as const, id: conversationId, participants: [{kind: 'HUMAN', id: profileId, username: 'actor_human', displayName: 'Actor', avatarUrl: null}, {kind: 'HUMAN', id: peerProfileId, username: 'peer_human', displayName: 'Peer', avatarUrl: null}], createdAt: message.createdAt, updatedAt: message.createdAt}
 
 describe('human text chat routes', () => {
+  it('opens conversations and lists private inbox entries using authenticated identity', async () => {
+    const {app, humanChat} = setup()
+    humanChat.open = vi.fn(async () => conversation)
+    humanChat.list = vi.fn(async () => ({items: [{conversation, latestMessage: message, unreadCount: 1, lastReadSequence: 0}], nextCursor: null}))
+    const opened = await app.request('/v1/human-chat/conversations', post({peerProfileId}))
+    expect(opened.status).toBe(200); expect(await opened.json()).toEqual({conversation})
+    expect(humanChat.open).toHaveBeenCalledWith({subject: 'verified-subject'}, {peerProfileId})
+    const inbox = await app.request('/v1/human-chat/conversations?limit=10')
+    expect(inbox.status).toBe(200); expect((await inbox.json()).items).toHaveLength(1)
+    expect(inbox.headers.get('cache-control')).toBe('private, no-store')
+    expect(humanChat.list).toHaveBeenCalledWith({subject: 'verified-subject'}, {limit: 10})
+  })
+  it('authenticates inbox operations and rejects forged opens and malformed cursors before storage', async () => {
+    const missing = setup('missing')
+    expect((await missing.app.request('/v1/human-chat/conversations?limit=bad')).status).toBe(401)
+    expect((await missing.app.request('/v1/human-chat/conversations', post({actor: profileId}))).status).toBe(401)
+    const {app, humanChat} = setup()
+    humanChat.open = vi.fn(); humanChat.list = vi.fn()
+    for (const query of ['limit=0', 'limit=101', 'limit=1&limit=2', 'cursor=bad', 'extra=1']) expect((await app.request('/v1/human-chat/conversations?' + query)).status).toBe(400)
+    expect((await app.request('/v1/human-chat/conversations', post({peerProfileId, senderProfileId: profileId}))).status).toBe(400)
+    expect(humanChat.open).not.toHaveBeenCalled(); expect(humanChat.list).not.toHaveBeenCalled()
+  })
   it('keeps early middleware errors and unknown private paths non-cacheable', async () => {
     const limited = createApp({requireRateLimit: true})
     const response = await limited.request(sendPath, post(sendBody))
