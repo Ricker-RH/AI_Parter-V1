@@ -1,0 +1,30 @@
+.menu { position: relative; }
+.menuTrigger { align-items: center; background: transparent; border: 0; border-radius: 50%; color: var(--shell-text); cursor: pointer; display: inline-flex; font: inherit; font-size: 18px; font-weight: 800; height: 44px; justify-content: center; letter-spacing: 2px; padding: 0; width: 44px; }
+.menuTrigger:focus-visible, .menuPopover button:focus-visible, .sheet button:focus-visible, .recipient:focus-visible { outline: 2px solid var(--shell-focus); outline-offset: 3px; }
+.menuPopover { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 12px; box-shadow: 0 12px 32px color-mix(in srgb, #000 22%, transparent); padding: 4px; position: absolute; right: 0; top: 48px; z-index: 45; }
+.menuPopover button { background: transparent; border: 0; border-radius: 8px; color: var(--shell-text); cursor: pointer; font: inherit; min-height: 40px; padding: 8px 14px; white-space: nowrap; }
+.menuPopover button:hover { background: var(--shell-hover); }
+.backdrop { align-items: end; background: color-mix(in srgb, #000 48%, transparent); backdrop-filter: blur(5px); display: flex; inset: 0; justify-content: center; padding: 12px; position: fixed; z-index: 100; }
+.sheet { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 24px 24px 16px 16px; box-shadow: 0 -10px 42px color-mix(in srgb, #000 26%, transparent); color: var(--shell-text); max-height: min(78dvh, 680px); overflow: auto; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); width: min(640px, 100%); }
+.handle { background: var(--shell-border); border-radius: 999px; height: 4px; margin: 2px auto 8px; width: 40px; }
+.sheet header { align-items: center; display: flex; justify-content: space-between; }
+.sheet h2 { font-size: 19px; margin: 8px 0 16px; }
+.sheet header button { background: var(--shell-hover); border: 0; border-radius: 50%; color: var(--shell-text); cursor: pointer; font-size: 28px; height: 36px; line-height: 1; width: 36px; }
+.recipients { display: flex; gap: 12px; min-height: 88px; overflow-x: auto; padding-bottom: 8px; }
+.recipients > p { color: var(--shell-muted); font-size: 14px; margin: 16px 0; }
+.recipient { align-items: center; background: transparent; border: 0; color: var(--shell-text); cursor: pointer; display: grid; font: inherit; gap: 6px; justify-items: center; max-width: 72px; min-width: 64px; padding: 2px; }
+.recipient span { font-size: 12px; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recipient[aria-pressed='true'] :global([data-avatar-kind]) { outline: 3px solid var(--shell-text); outline-offset: 2px; }
+.sendPanel { border-top: 1px solid var(--shell-border); display: grid; gap: 10px; margin-top: 6px; padding-top: 14px; }
+.sendPanel label { display: grid; gap: 6px; }
+.sendPanel label > span { color: var(--shell-muted); font-size: 13px; }
+.sendPanel textarea { background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 12px; color: var(--shell-text); font: inherit; min-height: 68px; padding: 10px; resize: vertical; }
+.card { background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 12px; display: grid; gap: 2px; padding: 10px 12px; }
+.card span, .card small { color: var(--shell-muted); font-size: 12px; }
+.send { background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 12px; color: var(--shell-surface); cursor: pointer; font: inherit; font-weight: 700; min-height: 44px; }
+.send:disabled { cursor: progress; opacity: .6; }
+.actions { border-top: 1px solid var(--shell-border); display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; padding-top: 14px; }
+.actions button { background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 12px; color: var(--shell-text); cursor: pointer; font: inherit; font-weight: 650; min-height: 48px; padding: 8px; }
+.status, .error { font-size: 13px; margin: 12px 0 0; text-align: center; }
+.error { color: #d92d3a; }
+@media (min-width: 700px) { .backdrop { align-items: center; } .sheet { border-radius: 20px; max-width: 430px; } }

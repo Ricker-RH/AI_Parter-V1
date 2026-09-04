@@ -1,0 +1,12 @@
+.menu { position: relative; }
+.trigger { align-items: center; background: transparent; border: 0; border-radius: 50%; color: var(--shell-text); cursor: pointer; display: inline-flex; font: inherit; font-size: 18px; font-weight: 800; height: 44px; justify-content: center; letter-spacing: 2px; padding: 0; width: 44px; }
+.trigger:focus-visible, .popover button:focus-visible { outline: 2px solid var(--shell-focus); outline-offset: 3px; }
+.popover { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 12px; box-shadow: var(--aifans-elevation-2); color: var(--shell-text); min-width: 176px; padding: 6px; position: absolute; right: 0; top: 48px; z-index: 45; }
+.popover > button { background: transparent; border: 0; border-radius: 8px; color: #d92d3a; cursor: pointer; font: inherit; font-weight: 650; min-height: 40px; padding: 8px 12px; text-align: left; width: 100%; }
+.popover > button:hover { background: var(--shell-hover); }
+.confirm { display: grid; gap: 10px; padding: 8px; }
+.confirm p, .popover [role='alert'] { font-size: 13px; line-height: 1.45; margin: 0; }
+.confirm > div { display: flex; gap: 8px; }
+.confirm button { background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 8px; color: var(--shell-text); cursor: pointer; font: inherit; font-size: 13px; min-height: 36px; padding: 6px 10px; }
+.confirm button:first-child { background: #d92d3a; border-color: #d92d3a; color: #fff; }
+.popover [role='alert'] { color: #d92d3a; padding: 8px; }

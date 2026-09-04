@@ -9,6 +9,7 @@ import {StartChatButton} from '../chat/StartChatButton'
 import styles from './PublicProfileContent.module.css'
 import {PublicProfileTabs} from './PublicProfileTabs'
 import {ProfilePageHeader} from '../profile/ProfilePageHeader'
+import {IpProfileShareAction} from './IpProfileShareAction'
 
 export function PublicProfileContent({result,locale,labels,moreHref,viewerScope}: {result:SocialApiResult<PublicIpProfile>;locale:Locale;labels:SocialLabels;moreHref?:string;viewerScope?:string}) {
   if(result.status!=='ok') return <div className={styles.resultState}><ResultState labels={labels} profile result={result}/></div>
@@ -16,7 +17,7 @@ export function PublicProfileContent({result,locale,labels,moreHref,viewerScope}
   const referenceTime=Date.now()
   const returnTo=`/${locale}/profiles/${profile.id}`
   return <div className={styles.profile}>
-    <ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={profile.username}/>
+    <ProfilePageHeader actions={<IpProfileShareAction locale={locale} profile={profile}/>} backHref={`/${locale}`} labels={labels} locale={locale} username={profile.username}/>
     <div className={styles.profileSurface} data-profile-content-frame>
     <section className={styles.header} aria-labelledby="profile-display-name">
       <div className={styles.identityRow}>
