@@ -982,4 +982,12 @@ describe("real social content", () => {
     expect(screen.queryByText("Anime")).toBeNull();
     expect(container.textContent).not.toContain("operationEnabled");
   });
+
+  it("uses the same interaction-row spacing for posts and comments", () => {
+    const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src';
+    const css = readFileSync(`${root}/app/globals.css`, 'utf8');
+
+    expect(css).toMatch(/\.post-actions \{[^}]*margin-top: 0/);
+    expect(css).toMatch(/\.comment-actions \{ margin-top: 0; \}/);
+  });
 });

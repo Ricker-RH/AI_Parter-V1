@@ -637,7 +637,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   font-style: italic;
 }
 .comment-thread-item--reply { padding-left: 24px; }
-.comment-actions { margin-top: 4px; }
+.comment-actions { margin-top: 0; }
 .comment-composer {
   border-bottom: 1px solid var(--shell-border);
   background: color-mix(in srgb, var(--shell-surface) 96%, transparent);

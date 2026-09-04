@@ -25,6 +25,13 @@ describe('ConversationList', () => {
     expect(screen.queryByText('Sep 1')).toBeNull()
   })
 
+  it('opens a conversation from its copy while its avatar opens the IP profile', () => {
+    render(<ConversationList items={[item]} labels={labels} locale="en"/>)
+
+    expect(screen.getByRole('link', {name: 'View profile'})).toHaveAttribute('href', '/en/profiles/22222222-2222-4222-8222-222222222222')
+    expect(screen.getByRole('link', {name: /Open conversation: Luma/})).toHaveAttribute('href', `/en/messages/${item.id}`)
+  })
+
   it('uses honest empty and pagination states', () => {
     const {rerender} = render(<ConversationList items={[]} labels={labels} locale="en"/>)
     expect(screen.getByRole('heading', {name: 'No conversations yet'})).toBeVisible()

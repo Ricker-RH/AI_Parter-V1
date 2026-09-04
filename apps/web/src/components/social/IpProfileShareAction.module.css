@@ -6,7 +6,7 @@
 .menuPopover button:hover { background: var(--shell-hover); }
 .backdrop { align-items: end; background: color-mix(in srgb, #000 48%, transparent); backdrop-filter: blur(5px); display: flex; inset: 0; justify-content: center; padding: 12px; position: fixed; z-index: 100; }
 .sheet { background: var(--shell-surface); border: 1px solid var(--shell-border); border-radius: 24px 24px 16px 16px; box-shadow: 0 -10px 42px color-mix(in srgb, #000 26%, transparent); color: var(--shell-text); max-height: min(78dvh, 680px); overflow: auto; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); width: min(640px, 100%); }
-.handle { background: var(--shell-border); border-radius: 999px; height: 4px; margin: 2px auto 8px; width: 40px; }
+.handle { background: var(--shell-border); border-radius: 999px; cursor: grab; height: 4px; margin: 2px auto 8px; touch-action: none; width: 40px; }
 .sheet header { align-items: center; display: flex; justify-content: space-between; }
 .sheet h2 { font-size: 19px; margin: 8px 0 16px; }
 .sheet header button { background: var(--shell-hover); border: 0; border-radius: 50%; color: var(--shell-text); cursor: pointer; font-size: 28px; height: 36px; line-height: 1; width: 36px; }
@@ -23,7 +23,7 @@
 .card span, .card small { color: var(--shell-muted); font-size: 12px; }
 .send { background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 12px; color: var(--shell-surface); cursor: pointer; font: inherit; font-weight: 700; min-height: 44px; }
 .send:disabled { cursor: progress; opacity: .6; }
-.actions { border-top: 1px solid var(--shell-border); display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; padding-top: 14px; }
+.actions { border-top: 1px solid var(--shell-border); display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; padding-top: 14px; }
 .actions button { background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 12px; color: var(--shell-text); cursor: pointer; font: inherit; font-weight: 650; min-height: 48px; padding: 8px; }
 .status, .error { font-size: 13px; margin: 12px 0 0; text-align: center; }
 .error { color: #d92d3a; }

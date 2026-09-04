@@ -52,6 +52,7 @@ describe('NotificationsWorkspace', () => {
     expect(screen.getByRole('searchbox', {name: 'Search conversations'})).toBeVisible()
     expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', {name: /Alex liked your post/})).toHaveAttribute('href', `/en/messages/notifications/${notification.id}?listCursor=origin`)
+    expect(screen.getByRole('link', {name: 'View profile'})).toHaveAttribute('href', `/en/profiles/${notification.actor?.id}`)
     expect(screen.getByRole('heading', {name: 'Select a notification'})).toBeVisible()
     expect(screen.getByRole('link', {name: 'Load more'})).toHaveAttribute('href', '/en/messages/notifications?cursor=next')
   })
@@ -175,7 +176,7 @@ describe('NotificationsWorkspace', () => {
   it('uses profile context for a follow notification and isolates unavailable detail', () => {
     const follow = {...notification, kind: 'follow' as const, postId: null}
     const {rerender} = render(<NotificationsWorkspace labels={en} locale="en" result={{status: 'ok', data: {items: [follow], nextCursor: null}}} selectedId={follow.id} selectedResult={{status: 'ok', data: {...follow, readAt: '2026-09-03T00:00:00.000Z'}}} viewerScope="viewer-a" />)
-    expect(screen.getByRole('link', {name: 'View profile'})).toHaveAttribute('href', `/en/profiles/${follow.actor?.id}`)
+    expect(screen.getAllByRole('link', {name: 'View profile'}).at(-1)).toHaveAttribute('href', `/en/profiles/${follow.actor?.id}`)
     rerender(<NotificationsWorkspace labels={en} locale="en" result={{status: 'ok', data: {items: [follow], nextCursor: null}}} selectedId={follow.id} selectedResult={{status: 'unavailable'}} viewerScope="viewer-a" />)
     expect(screen.getByRole('alert')).toHaveTextContent('This notification is unavailable right now.')
     expect(screen.getByRole('link', {name: /Alex followed you/})).toBeVisible()

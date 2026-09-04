@@ -51,10 +51,12 @@ export function NotificationList({listCursor, labels, locale, readIds, result, s
         <Link aria-current={notification.id===selectedId?'page':undefined} className={styles.notificationCopy} href={`/${locale}/messages/notifications/${notification.id}${query}`}><strong>{notificationText(notification,labels)}</strong><time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short'}).format(new Date(notification.createdAt))}</time>{read?null:<span className={styles.unreadLabel}>{labels.chat.notificationUnread}</span>}</Link>
         <HumanNotificationFollow profileId={notification.actor.id} locale={locale}/>
       </div>
-      return <Link aria-current={notification.id === selectedId ? 'page' : undefined} className={styles.notificationRow} href={`/${locale}/messages/notifications/${notification.id}${query}`} key={notification.id}>
-        {notification.actor?.kind === 'human' ? <HumanAvatar className={styles.avatar ?? ''} decorative human={notification.actor} size="medium"/> : <span aria-hidden="true" className={styles.avatar}>{(notification.actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span>}
-        <span className={styles.notificationCopy}><strong>{notificationText(notification, labels)}</strong><time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(notification.createdAt))}</time>{read ? null : <span className={styles.unreadLabel}>{labels.chat.notificationUnread}</span>}</span>
-      </Link>
+      const avatar = notification.actor?.kind === 'human' ? <HumanAvatar className={styles.avatar ?? ''} decorative human={notification.actor} size="medium"/> : <span aria-hidden="true" className={styles.avatar}>{(notification.actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span>
+      const profileHref = notification.actor ? `/${locale}/${notification.actor.kind === 'human' ? 'humans' : 'profiles'}/${notification.actor.id}` : null
+      return <div className={styles.notificationRow} data-selected={notification.id === selectedId || undefined} key={notification.id}>
+        {profileHref ? <Link aria-label={locale === 'zh-CN' ? '查看主页' : 'View profile'} className={styles.notificationAvatar} href={profileHref}>{avatar}</Link> : avatar}
+        <Link aria-current={notification.id === selectedId ? 'page' : undefined} className={styles.notificationCopy} href={`/${locale}/messages/notifications/${notification.id}${query}`}><strong>{notificationText(notification, labels)}</strong><time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(notification.createdAt))}</time>{read ? null : <span className={styles.unreadLabel}>{labels.chat.notificationUnread}</span>}</Link>
+      </div>
     })}{result.data.nextCursor ? <Link className={styles.moreLink} href={`/${locale}/messages/notifications?${new URLSearchParams({cursor: result.data.nextCursor})}`}>{labels.loadMore}</Link> : null}</nav> : null}
   </aside>
 }

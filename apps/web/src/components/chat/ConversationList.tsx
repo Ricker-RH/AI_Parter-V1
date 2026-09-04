@@ -83,10 +83,15 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
     {rows.length === 0 && !nextCursor && !humanLoading ? <div className={styles.inboxEmpty}><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M10 27.5 38 10 27 38l-5.5-10.5L10 27.5Z"/><path d="m21.5 27.5 8-8"/></svg><h2>{labels.noConversations}</h2><p>{selfProfileId ? locale==='zh-CN' ? '与真人和 AI/IP 的对话都会显示在这里。' : 'Conversations with people and AI/IP profiles appear here.' : labels.emptyDescription}</p><Link href={`/${locale}`}>{labels.emptyAction}</Link></div> : null}
     {rows.length > 0 && visibleRows.length === 0 ? <p className={styles.searchEmpty} role="status">{nextCursor ? labels.partialSearchResults : labels.noSearchResults}</p> : null}
     <nav className={styles.conversationList}>{visibleRows.map(row => {
-      return <Link aria-current={row.selected ? 'page' : undefined} className={styles.conversationRow} href={row.href} key={`${row.kind}:${row.id}`}>
-        {row.kind === 'HUMAN' ? <HumanAvatar decorative human={row.person} size="small"/> : <Avatar avatarUrl={null} decorative displayName={row.person.displayName} identityId={row.person.id} kind="ip" size="small"/>}
-        <span className={styles.conversationCopy}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong>{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadBadge}>{row.unread > 99 ? '99+' : row.unread}</span> : null}</span><span className={styles.preview}>{row.body}</span></span>
-      </Link>
+      const profileHref = `/${locale}/${row.kind === 'HUMAN' ? 'humans' : 'profiles'}/${row.person.id}`
+      const profileLabel = locale === 'zh-CN' ? '查看主页' : 'View profile'
+      const conversationLabel = locale === 'zh-CN' ? `打开与 ${row.person.displayName} 的对话` : `Open conversation: ${row.person.displayName}`
+      return <div className={styles.conversationRow} data-selected={row.selected || undefined} key={`${row.kind}:${row.id}`}>
+        <Link aria-label={profileLabel} className={styles.conversationAvatar} href={profileHref}>
+          {row.kind === 'HUMAN' ? <HumanAvatar decorative human={row.person} size="small"/> : <Avatar avatarUrl={null} decorative displayName={row.person.displayName} identityId={row.person.id} kind="ip" size="small"/>}
+        </Link>
+        <Link aria-current={row.selected ? 'page' : undefined} aria-label={conversationLabel} className={styles.conversationCopy} href={row.href}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong>{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadBadge}>{row.unread > 99 ? '99+' : row.unread}</span> : null}</span><span className={styles.preview}>{row.body}</span></Link>
+      </div>
     })}</nav>
     {loadMoreError ? <p className={styles.paginationError} role="alert">{labels.loadMoreError}</p> : null}
     {nextCursor ? <button className={styles.more} disabled={loadingMore} onClick={() => void loadMore()} type="button">{loadingMore ? labels.loadingMore : labels.loadMore}</button> : null}</>}

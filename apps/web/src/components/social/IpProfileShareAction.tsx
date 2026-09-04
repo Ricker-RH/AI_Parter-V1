@@ -21,7 +21,30 @@ function shareUrl(locale: Locale, profileId: string) {
 }
 
 function uuid() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(16)}-0000-4000-8000-${Math.random().toString(16).slice(2).padEnd(12, '0').slice(0, 12)}`
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  const bytes = Array.from({length: 16}, () => Math.floor(Math.random() * 256))
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = bytes.map(value => value.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+function downloadShareGraphic(profile: PublicIp, url: string) {
+  const canvas = document.createElement('canvas')
+  canvas.height = 1200; canvas.width = 900
+  const context = canvas.getContext('2d')
+  if (!context) throw Error('canvas unavailable')
+  context.fillStyle = '#101114'; context.fillRect(0, 0, canvas.width, canvas.height)
+  context.fillStyle = '#f5f5f6'; context.font = '700 78px system-ui'; context.fillText('AIFANS', 72, 126)
+  context.fillStyle = '#1d65ff'; context.beginPath(); context.arc(450, 390, 160, 0, Math.PI * 2); context.fill()
+  context.fillStyle = '#ffffff'; context.font = '700 74px system-ui'; context.textAlign = 'center'; context.fillText(profile.displayName.slice(0, 1), 450, 418)
+  context.textAlign = 'left'; context.fillStyle = '#f5f5f6'; context.font = '700 58px system-ui'; context.fillText(profile.displayName, 72, 670)
+  context.fillStyle = '#a9abb2'; context.font = '36px system-ui'; context.fillText(`@${profile.username}`, 72, 730)
+  const description = profile.bio ?? profile.displayName
+  context.fillStyle = '#f5f5f6'; context.font = '40px system-ui'; context.fillText(description.slice(0, 34), 72, 824)
+  context.fillStyle = '#a9abb2'; context.font = '28px system-ui'; context.fillText(url, 72, 1102)
+  const link = document.createElement('a')
+  link.download = `${profile.username || profile.id}-aifans.png`; link.href = canvas.toDataURL('image/png'); link.click()
 }
 
 export function IpProfileShareAction({locale, profile}: Props) {
@@ -41,12 +64,13 @@ function IpProfileShareSheet({locale, onClose, profile}: Props & {onClose: () =>
   const [selected, setSelected] = useState<Recipient | null>(null)
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'copied' | 'error' | 'sent'>('idle')
+  const [status, setStatus] = useState<'idle' | 'copied' | 'error' | 'graphic' | 'sent'>('idle')
+  const [dragStart, setDragStart] = useState<number | null>(null)
   const url = useMemo(() => shareUrl(locale, profile.id), [locale, profile.id])
   const text = locale === 'zh-CN' ? {
-    title: '分享给', close: '关闭', copy: '复制链接', system: '系统分享', friend: '发送给好友', empty: '暂无可分享的互关好友。', note: '捎一句话', send: '发送', sent: '已发送', copied: '链接已复制', error: '操作未完成，请重试。', unavailable: '暂时无法加载好友。', card: 'IP 名片', share: '分享',
+    title: '分享给', close: '关闭', copy: '复制链接', system: '系统分享', graphic: '生成分享图', friend: '发送给好友', empty: '暂无可分享的互关好友。', note: '捎一句话', send: '发送', sent: '已发送', copied: '链接已复制', graphicReady: '分享图已生成', error: '操作未完成，请重试。', unavailable: '暂时无法加载好友。', card: 'IP 名片', share: '分享',
   } : {
-    title: 'Share to', close: 'Close', copy: 'Copy link', system: 'System share', friend: 'Send to a friend', empty: 'No mutual friends to share with yet.', note: 'Add a message', send: 'Send', sent: 'Sent', copied: 'Link copied.', error: 'Could not complete that action. Try again.', unavailable: 'Friends are unavailable right now.', card: 'IP card', share: 'Share',
+    title: 'Share to', close: 'Close', copy: 'Copy link', system: 'System share', graphic: 'Create share image', friend: 'Send to a friend', empty: 'No mutual friends to share with yet.', note: 'Add a message', send: 'Send', sent: 'Sent', copied: 'Link copied.', graphicReady: 'Share image created.', error: 'Could not complete that action. Try again.', unavailable: 'Friends are unavailable right now.', card: 'IP card', share: 'Share',
   }
 
   useEffect(() => {
@@ -73,6 +97,9 @@ function IpProfileShareSheet({locale, onClose, profile}: Props & {onClose: () =>
       setStatus('copied')
     } catch (error) { if ((error as Error).name !== 'AbortError') setStatus('error') }
   }
+  function createGraphic() {
+    try { downloadShareGraphic(profile, url); setStatus('graphic') } catch { setStatus('error') }
+  }
   async function send() {
     if (!selected || sending) return
     setSending(true); setStatus('idle')
@@ -92,11 +119,11 @@ function IpProfileShareSheet({locale, onClose, profile}: Props & {onClose: () =>
 
   return <div className={styles.backdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section aria-label={`${text.share} ${profile.displayName}`} aria-modal="true" className={styles.sheet} role="dialog">
-      <div className={styles.handle}/><header><h2>{text.title}</h2><button aria-label={text.close} onClick={onClose} type="button">×</button></header>
+      <div className={styles.handle} onPointerDown={event => setDragStart(event.clientY)} onPointerUp={event => { if (dragStart !== null && event.clientY - dragStart > 80) onClose(); setDragStart(null) }}/><header><h2>{text.title}</h2><button aria-label={text.close} onClick={onClose} type="button">×</button></header>
       <div className={styles.recipients} aria-label={text.friend}>{recipients === null ? <p role="status">…</p> : recipients.length === 0 ? <p>{text.empty}</p> : recipients.map(person => <button aria-pressed={selected?.id === person.id} className={styles.recipient} key={person.id} onClick={() => setSelected(person)} type="button"><HumanAvatar decorative human={person} size="medium"/><span>{person.displayName}</span></button>)}</div>
       {selected ? <div className={styles.sendPanel}><label><span>{text.note}</span><textarea maxLength={4000} onChange={event => setNote(event.target.value)} placeholder={text.note} value={note}/></label><div className={styles.card}><span>{text.card}</span><strong>{profile.displayName}</strong><small>@{profile.username}</small></div><button className={styles.send} disabled={sending} onClick={() => void send()} type="button">{sending ? '…' : text.send}</button></div> : null}
-      <div className={styles.actions}><button onClick={() => void copyLink()} type="button">{text.copy}</button><button onClick={() => void systemShare()} type="button">{text.system}</button></div>
-      {status === 'copied' ? <p aria-live="polite" className={styles.status}>{text.copied}</p> : status === 'sent' ? <p aria-live="polite" className={styles.status}>{text.sent}</p> : status === 'error' ? <p className={styles.error} role="alert">{text.error}</p> : null}
+      <div className={styles.actions}><button onClick={() => void copyLink()} type="button">{text.copy}</button><button onClick={() => void systemShare()} type="button">{text.system}</button><button onClick={createGraphic} type="button">{text.graphic}</button></div>
+      {status === 'copied' ? <p aria-live="polite" className={styles.status}>{text.copied}</p> : status === 'graphic' ? <p aria-live="polite" className={styles.status}>{text.graphicReady}</p> : status === 'sent' ? <p aria-live="polite" className={styles.status}>{text.sent}</p> : status === 'error' ? <p className={styles.error} role="alert">{text.error}</p> : null}
     </section>
   </div>
 }

@@ -15,6 +15,7 @@ describe('IpProfileShareAction', () => {
     expect(screen.getByText('Share to')).toBeVisible()
     expect(screen.getByRole('button', {name: 'Copy link'})).toBeVisible()
     expect(screen.getByRole('button', {name: 'System share'})).toBeVisible()
+    expect(screen.getByRole('button', {name: 'Create share image'})).toBeVisible()
     expect(screen.getByText('No mutual friends to share with yet.')).toBeVisible()
   })
 })

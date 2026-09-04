@@ -9,14 +9,15 @@
 .sectionTabs a::before { background: transparent; border: 1px solid var(--shell-border); border-radius: 999px; content: ""; inset: 7px 0; position: absolute; transition: background-color .18s ease, border-color .18s ease; z-index: -1; }
 .sectionTabs a:hover { background: transparent; }
 .sectionTabs a:hover::before { background: var(--shell-hover); }
-.sectionTabs a:focus-visible, .conversationRow:focus-visible, .notificationRow:focus-visible, .moreLink:focus-visible, .notificationContext a:focus-visible, .back:focus-visible { outline: 2px solid var(--shell-text); outline-offset: -2px; }
+.sectionTabs a:focus-visible, .conversationAvatar:focus-visible, .conversationCopy:focus-visible, .notificationAvatar:focus-visible, .notificationCopy:focus-visible, .moreLink:focus-visible, .notificationContext a:focus-visible, .back:focus-visible { outline: 2px solid var(--shell-text); outline-offset: -2px; }
 .sectionTabs a[aria-current="page"] { background: transparent; border: 0; color: var(--shell-text); font-weight: 650; }
 .sectionTabs a[aria-current="page"]::before { background: var(--shell-hover); border-color: var(--shell-muted); }
 .detailHeader { align-items: center; border-bottom: 1px solid var(--shell-border); display: flex; min-height: 60px; padding: 0 16px; }
 .detailHeader h2 { font-size: 19px; letter-spacing: -0.015em; margin: 0; }
 .conversationList { display: grid; }
 .conversationRow { display: grid; gap: 12px; grid-template-columns: 48px minmax(0, 1fr); min-height: 76px; padding: 14px 16px; }
-.conversationRow:hover, .conversationRow[aria-current="page"] { background: var(--shell-hover); }
+.conversationRow:hover, .conversationRow[data-selected="true"] { background: var(--shell-hover); }
+.conversationAvatar { align-self: center; border-radius: 50%; height: 48px; width: 48px; }
 .avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: inline-flex; flex: 0 0 auto; font-size: 16px; font-weight: 700; height: 48px; justify-content: center; width: 48px; }
 .conversationCopy { display: grid; min-width: 0; }
 .conversationTitle { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; min-width: 0; }
@@ -67,7 +68,8 @@
 .notificationsPage { min-height: 0; min-width: 0; overflow-y: auto; }
 .notificationList { display: grid; }
 .notificationRow { align-items: center; display: grid; gap: 12px; grid-template-columns: 48px minmax(0, 1fr); min-height: 76px; padding: 14px 16px; }
-.notificationRow:hover, .notificationRow[aria-current="page"] { background: var(--shell-hover); }
+.notificationRow:hover, .notificationRow[data-selected="true"] { background: var(--shell-hover); }
+.notificationAvatar { align-self: center; border-radius: 50%; height: 48px; width: 48px; }
 .notificationCopy { display: grid; gap: 3px; min-width: 0; }
 .notificationCopy strong { font-size: 14px; overflow-wrap: anywhere; }
 .notificationCopy time, .notificationDetail time, .notificationActor span { color: var(--shell-muted); font-size: 13px; }
