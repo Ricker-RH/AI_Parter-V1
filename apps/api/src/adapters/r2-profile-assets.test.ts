@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto'
+import {GetObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 import {describe, expect, it, vi} from 'vitest'
 import {createR2ProfileAssetPort} from './r2-profile-assets.js'
@@ -88,7 +89,7 @@ describe('R2 public profile asset adapter', () => {
     expect(calls).toEqual(['read', 'write', 'delete'])
     expect(dependencies.write).toHaveBeenCalledWith({bucket: 'public-media', key: inputKeys.finalObjectKey,
       body: expect.any(Uint8Array), contentType: 'image/webp',
-      cacheControl: 'public, max-age=31536000, immutable'})
+      cacheControl: 'public, max-age=31536000, immutable', ifNoneMatch: '*'})
     expect(dependencies.delete).toHaveBeenCalledWith({bucket: 'public-media', key: inputKeys.stagingObjectKey})
     const metadata = await sharp(finalBytes!).metadata()
     expect(metadata).toMatchObject({format: 'webp', width: 512, height: 512})
@@ -127,18 +128,68 @@ describe('R2 public profile asset adapter', () => {
   })
 
   it('publishes a copied final object that later staging mutations cannot change', async () => {
-    const source = await sharp({create: {width: 512, height: 512, channels: 3, background: '#ef4444'}}).png().toBuffer()
-    const inputKeys = keys(), store = new Map<string, Buffer>([[inputKeys.stagingObjectKey, source]])
+    const sourceA = await sharp({create: {width: 512, height: 512, channels: 3, background: '#ef4444'}}).png().toBuffer()
+    const sourceB = await sharp({create: {width: 512, height: 512, channels: 3, background: '#3b82f6'}}).png().toBuffer()
+    expect(sourceB.length).toBe(sourceA.length)
+    const inputKeys = keys(), store = new Map<string, Buffer>([[inputKeys.stagingObjectKey, sourceA]])
     const port = createR2ProfileAssetPort(configuration, driver({
       read: vi.fn(async ({key}: {key: string}) => store.get(key)),
-      write: vi.fn(async ({key, body}: {key: string; body: Uint8Array}) => { store.set(key, Buffer.from(body)) }),
+      write: vi.fn(async ({key, body, ifNoneMatch}: {key: string; body: Uint8Array; ifNoneMatch: string}) => {
+        expect(ifNoneMatch).toBe('*')
+        if (store.has(key)) throw Object.assign(new Error('already exists'), {
+          name: 'PreconditionFailed', $metadata: {httpStatusCode: 412},
+        })
+        store.set(key, Buffer.from(body))
+      }),
       delete: vi.fn(async ({key}: {key: string}) => { store.delete(key) }),
     }))
     await port.finalizeUpload({...inputKeys, role: 'avatar', contentType: 'image/png',
-      sizeBytes: source.length, width: 512, height: 512})
+      sizeBytes: sourceA.length, width: 512, height: 512})
     const published = Buffer.from(store.get(inputKeys.finalObjectKey)!)
-    store.set(inputKeys.stagingObjectKey, Buffer.from('mutated later'))
+    store.set(inputKeys.stagingObjectKey, sourceB)
+    await expect(port.finalizeUpload({...inputKeys, role: 'avatar', contentType: 'image/png',
+      sizeBytes: sourceB.length, width: 512, height: 512})).resolves.toMatchObject({
+      finalObjectKey: inputKeys.finalObjectKey, contentType: 'image/webp',
+    })
     expect(store.get(inputKeys.finalObjectKey)).toEqual(published)
+    expect(store.has(inputKeys.stagingObjectKey)).toBe(false)
     await expect(sharp(store.get(inputKeys.finalObjectKey)!).metadata()).resolves.toMatchObject({format: 'webp'})
+  })
+
+  it('lets concurrent finalizations recover from a conditional-create race', async () => {
+    const source = await sharp({create: {width: 512, height: 512, channels: 3, background: '#10b981'}}).png().toBuffer()
+    let created = false
+    const dependencies = driver({
+      read: vi.fn(async () => source),
+      write: vi.fn(async () => {
+        if (created) throw Object.assign(new Error('already exists'), {$metadata: {httpStatusCode: 412}})
+        created = true
+      }),
+      delete: vi.fn(async () => undefined),
+    })
+    const port = createR2ProfileAssetPort(configuration, dependencies)
+    const input = {...keys(), role: 'avatar' as const, contentType: 'image/png' as const,
+      sizeBytes: source.length, width: 512, height: 512}
+    await expect(Promise.all([port.finalizeUpload(input), port.finalizeUpload(input)])).resolves.toHaveLength(2)
+    expect(dependencies.write).toHaveBeenCalledTimes(2)
+    expect(dependencies.delete).toHaveBeenCalledTimes(2)
+  })
+
+  it('sets If-None-Match on the real AWS final PutObject command', async () => {
+    const source = await sharp({create: {width: 512, height: 512, channels: 3, background: '#f59e0b'}}).png().toBuffer()
+    const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async (command: unknown) => {
+      if (command instanceof GetObjectCommand) return {Body: source} as never
+      return {} as never
+    })
+    try {
+      const inputKeys = keys()
+      await createR2ProfileAssetPort(configuration).finalizeUpload({...inputKeys, role: 'avatar',
+        contentType: 'image/png', sizeBytes: source.length, width: 512, height: 512})
+      const put = send.mock.calls.map(([command]) => command)
+        .find((command) => command instanceof PutObjectCommand) as PutObjectCommand | undefined
+      expect(put?.input).toMatchObject({Key: inputKeys.finalObjectKey, IfNoneMatch: '*'})
+    } finally {
+      send.mockRestore()
+    }
   })
 })

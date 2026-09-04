@@ -17,7 +17,8 @@ import {
 type Driver = {
   sign(input: {bucket: string; key: string; contentType: string; contentLength: number; expiresIn: number}): Promise<string>
   read(input: {bucket: string; key: string}): Promise<unknown | null>
-  write(input: {bucket: string; key: string; body: Uint8Array; contentType: 'image/webp'; cacheControl: string}): Promise<void>
+  write(input: {bucket: string; key: string; body: Uint8Array; contentType: 'image/webp'; cacheControl: string;
+    ifNoneMatch: '*'}): Promise<void>
   delete(input: {bucket: string; key: string}): Promise<void>
   now?: () => Date
 }
@@ -77,6 +78,13 @@ function statusCode(error: unknown): unknown {
     : undefined
 }
 
+function isPreconditionFailed(error: unknown): boolean {
+  if (statusCode(error) === 412) return true
+  if (!error || typeof error !== 'object') return false
+  const value = error as {name?: unknown; code?: unknown}
+  return value.name === 'PreconditionFailed' || value.code === 'PreconditionFailed'
+}
+
 function awsDriver(configuration: R2PostMediaEnvironment): Driver {
   const client = new S3Client({
     region: 'auto', endpoint: configuration.endpoint,
@@ -96,7 +104,7 @@ function awsDriver(configuration: R2PostMediaEnvironment): Driver {
     },
     async write(input) {
       await client.send(new PutObjectCommand({Bucket: input.bucket, Key: input.key, Body: input.body,
-        ContentType: input.contentType, CacheControl: input.cacheControl}))
+        ContentType: input.contentType, CacheControl: input.cacheControl, IfNoneMatch: input.ifNoneMatch}))
     },
     async delete(input) {
       await client.send(new DeleteObjectCommand({Bucket: input.bucket, Key: input.key}))
@@ -166,7 +174,14 @@ export function createR2ProfileAssetPort(configuration: R2PostMediaEnvironment, 
 
       try {
         await driver.write({bucket: configuration.bucket, key: input.finalObjectKey, body: normalized,
-          contentType: 'image/webp', cacheControl: PROFILE_ASSET_CACHE_CONTROL})
+          contentType: 'image/webp', cacheControl: PROFILE_ASSET_CACHE_CONTROL, ifNoneMatch: '*'})
+      } catch (error) {
+        if (!isPreconditionFailed(error)) {
+          if (isProfileError(error)) throw error
+          unavailable()
+        }
+      }
+      try {
         await driver.delete({bucket: configuration.bucket, key: input.stagingObjectKey})
       } catch (error) {
         if (isProfileError(error)) throw error
