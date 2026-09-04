@@ -5,6 +5,8 @@ export interface Configuration {
   ALLOWED_ORIGINS?: string;
   UPSTREAM_API_URL?: string;
   REALTIME_INTERNAL_SECRET?: string;
+  /** Optional server-only secret for a protected upstream Vercel deployment. */
+  VERCEL_AUTOMATION_BYPASS_SECRET?: string;
 }
 export function configured(env: Configuration): boolean {
   try {
@@ -19,6 +21,8 @@ export function configured(env: Configuration): boolean {
       !api.hash &&
       !!env.REALTIME_INTERNAL_SECRET &&
       env.REALTIME_INTERNAL_SECRET.length >= 32 &&
+      (env.VERCEL_AUTOMATION_BYPASS_SECRET === undefined ||
+        /^[\x21-\x7e]{1,4096}$/.test(env.VERCEL_AUTOMATION_BYPASS_SECRET)) &&
       origins.length > 0 &&
       origins.every((origin) => {
         const u = new URL(origin);
@@ -28,6 +32,15 @@ export function configured(env: Configuration): boolean {
   } catch {
     return false;
   }
+}
+/** Only for server-built requests to the validated UPSTREAM_API_URL origin. */
+export function upstreamHeaders(env: Configuration): Record<string,string> {
+  return {
+    'content-type':'application/json',
+    authorization:`Bearer ${env.REALTIME_INTERNAL_SECRET}`,
+    ...(env.VERCEL_AUTOMATION_BYPASS_SECRET === undefined ? {} :
+      {'x-vercel-protection-bypass':env.VERCEL_AUTOMATION_BYPASS_SECRET}),
+  };
 }
 export function admit(
   request: Request,
@@ -98,10 +111,7 @@ export function upstream(env: Configuration,dispatch?:(recipient:string,event:Hu
       `${new URL(env.UPSTREAM_API_URL!).origin}/v1/internal/realtime/${path}`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.REALTIME_INTERNAL_SECRET}`,
-        },
+        headers: upstreamHeaders(env),
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(5000),
         // Workers supports manual/follow, not the browser's "error" mode.

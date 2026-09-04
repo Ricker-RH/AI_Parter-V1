@@ -27,10 +27,12 @@ test('actual workerd: reciprocal presence snapshots and typing fanout do not dea
   const bundle=await build({entryPoints:[fileURLToPath(new URL('../src/index.ts',import.meta.url))],bundle:true,write:false,format:'esm',platform:'browser',target:'es2024',external:['cloudflare:workers']});
   let mf;
   mf=new Miniflare(convertV4MiniflareOptions({name:'ephemeral-cross-mailbox-test',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-09-04',cf:false,
-    bindings:{ALLOWED_ORIGINS:origin,UPSTREAM_API_URL:'https://api.example',REALTIME_INTERNAL_SECRET:secret},durableObjects:{MAILBOXES:{className:'RealtimeMailbox',useSQLite:true}},
+    bindings:{ALLOWED_ORIGINS:origin,UPSTREAM_API_URL:'https://api.example',REALTIME_INTERNAL_SECRET:secret,VERCEL_AUTOMATION_BYPASS_SECRET:'runtime-only-bypass'},durableObjects:{MAILBOXES:{className:'RealtimeMailbox',useSQLite:true}},
     ratelimits:{ADMISSION_LIMITER:{namespace_id:'2026090402',simple:{limit:10,period:10}}},
     outboundService:async request=>{
       const body=await request.json();assert.equal(request.headers.get('Authorization'),`Bearer ${secret}`);
+      assert.equal(new URL(request.url).origin,'https://api.example');
+      assert.equal(request.headers.get('x-vercel-protection-bypass'),'runtime-only-bypass');
       if(request.url.endsWith('/redeem'))return Response.json({subject:body.ticket,profileId:body.ticket,sessionId:body.ticket,sessionExpiresAt:Date.now()+60000});
       if(request.url.endsWith('/authorize'))return Response.json({allowed:true,presenceAllowed:true});
       assert.ok(request.url.endsWith('/ephemeral'));

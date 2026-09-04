@@ -1,4 +1,4 @@
-import {configured,type Configuration} from './gateway.js'
+import {configured,upstreamHeaders,type Configuration} from './gateway.js'
 
 /** Test-environment scheduled safety net; commands also wake the API outbox. */
 export async function drainOutbox(env:Configuration,fetcher:typeof fetch=fetch):Promise<void> {
@@ -6,7 +6,7 @@ export async function drainOutbox(env:Configuration,fetcher:typeof fetch=fetch):
   try {
     const response=await fetcher(`${new URL(env.UPSTREAM_API_URL!).origin}/v1/internal/realtime/deliver`,{
       method:'POST',redirect:'manual',body:'{}',signal:AbortSignal.timeout(25000),
-      headers:{authorization:`Bearer ${env.REALTIME_INTERNAL_SECRET}`,'content-type':'application/json'},
+      headers:upstreamHeaders(env),
     })
     await response.body?.cancel()
     if(!response.ok) throw new Error()
