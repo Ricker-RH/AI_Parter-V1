@@ -14,6 +14,8 @@ import {registerHumanChatRoutes} from './routes/human-chat.js'
 import type {HumanChatPort} from './ports/human-chat.js'
 import {registerRealtimeRoutes} from './routes/realtime.js'
 import type {RealtimePort} from './ports/realtime.js'
+import {registerHumanSocialRoutes} from './routes/human-social.js'
+import type {HumanSocialPort} from './ports/human-social.js'
 import { registerInternalAnalyticsRoutes } from "./routes/internal-analytics.js";
 import { registerCreatorRoutes } from "./routes/creator.js";
 import { registerAdminCreatorRoutes } from "./routes/admin-creator.js";
@@ -50,6 +52,7 @@ export type AppDependencies = {
   social?: SocialPort;
   chat?: ChatPort;
   humanChat?: HumanChatPort;
+  humanSocial?: HumanSocialPort;
   realtime?: RealtimePort;
   realtimeAllowedOrigins?: string[];
   realtimeInternalSecret?: string;
@@ -90,7 +93,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
 
   app.use("*", requestIdMiddleware);
   app.use('*', async (c, next) => {
-    if (/^\/v1\/(?:human-chat|realtime\/ticket|internal\/realtime)(?:\/|$)/.test(new URL(c.req.url).pathname)) c.header('Cache-Control', 'private, no-store')
+    if (/^\/v1\/(?:human-chat|humans|human-preferences|realtime\/ticket|internal\/realtime)(?:\/|$)/.test(new URL(c.req.url).pathname)) c.header('Cache-Control', 'private, no-store')
     await next()
   })
   if(dependencies.logger) app.use('*',structuredLoggerMiddleware(dependencies.logger))
@@ -103,6 +106,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerSocialRoutes(app, dependencies);
   registerChatRoutes(app, dependencies);
   registerHumanChatRoutes(app, dependencies);
+  registerHumanSocialRoutes(app, dependencies);
   registerRealtimeRoutes(app, dependencies);
   registerInternalAnalyticsRoutes(app, dependencies);
   registerInternalProfileAssetRoutes(app, dependencies);
