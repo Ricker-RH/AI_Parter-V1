@@ -24,6 +24,17 @@ const actions = (): AuthActions => ({
 })
 
 describe('AIFANS auth panel', () => {
+  it('requires successful owner-session revocation before calling provider logout',async()=>{
+    provider.signOut.mockReset();provider.signOut.mockResolvedValue({error:{message:'test provider failure'}})
+    const fetcher=vi.fn().mockResolvedValueOnce(new Response(null,{status:503})).mockResolvedValueOnce(Response.json({revoked:'2'})).mockResolvedValueOnce(Response.json({revoked:2}));vi.stubGlobal('fetch',fetcher)
+    try{
+      const actions=await createBrowserAuthActions('en')
+      expect(await actions.signOut()).toBeTruthy();expect(provider.signOut).not.toHaveBeenCalled()
+      expect(await actions.signOut()).toBeTruthy();expect(provider.signOut).not.toHaveBeenCalled()
+      expect(await actions.signOut()).toBe('test provider failure');expect(provider.signOut).toHaveBeenCalledTimes(1)
+      expect(fetcher).toHaveBeenCalledWith('/api/realtime/revoke',expect.objectContaining({method:'POST',body:'{}',credentials:'same-origin'}))
+    }finally{vi.unstubAllGlobals()}
+  });
   it('uses a full-page accessible layout with separate AIFANS brand and form regions', () => {
     render(<AuthPanel configured locale="en" mode="sign-in" />)
 

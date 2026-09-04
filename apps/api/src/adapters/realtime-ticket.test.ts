@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {createRealtimeTickets} from './realtime-ticket.js'
 
 const profileId = '0d3a2b65-1394-43bb-8c33-d32171757901'
@@ -16,6 +16,12 @@ function setup() {
 }
 
 describe('short-lived realtime connection tickets', () => {
+  it('passes verified issuance milliseconds to the durable revocation cutoff',async()=>{
+    const consume=vi.fn(async()=>true)
+    const tickets=createRealtimeTickets({secret:'s'.repeat(32),issuer:'test',audience:'test',allowedOrigins:[origin],now:()=>1_800_000_000,consume})
+    await tickets.consume(await tickets.issue({subject:'auth-user',profileId,origin}),origin)
+    expect(consume).toHaveBeenCalledWith(expect.any(String),1_800_000_060,{subject:'auth-user',profileId},1_800_000_300_000,1_800_000_000_000)
+  })
   it('rejects whitespace signing secrets',()=>{
     for(const secret of [' '.repeat(32),` ${'s'.repeat(32)}`,`${'s'.repeat(32)} `]) expect(()=>createRealtimeTickets({secret,issuer:'api',audience:'gateway',allowedOrigins:[origin],consume:async()=>true})).toThrow('INVALID_REALTIME_CONFIGURATION')
   })

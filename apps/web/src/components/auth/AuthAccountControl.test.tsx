@@ -13,6 +13,12 @@ function actions(session: {user: {email: string}} | null): AuthActions {
 }
 
 describe('auth account control', () => {
+  it('shows logout failure without hiding the signed-in account',async()=>{
+    const client=actions({user:{email:'luna@example.com'}});vi.mocked(client.signOut).mockResolvedValue('Session revocation failed')
+    render(<AuthAccountControl actions={client} configured locale="en"/>);fireEvent.click(await screen.findByRole('button',{name:'Sign out'}))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign out could not be completed')
+    expect(screen.getByText('luna@example.com')).toBeVisible();expect(screen.queryByRole('link',{name:'Sign in'})).toBeNull()
+  });
   it('refreshes the session and signs the active account out', async () => {
     const client = actions({user: {email: 'luna@example.com'}})
     render(<AuthAccountControl actions={client} configured locale="en" />)

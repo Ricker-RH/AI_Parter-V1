@@ -134,7 +134,15 @@ export async function createBrowserAuthActions(locale: Locale): Promise<AuthActi
     async signInEmail(email, password, returnTo) { const callbackURL=returnTo??`/${locale}`;const {error} = await client.signIn.email({email, password, callbackURL}); return finish(error, callbackURL) },
     async signUpEmail(name, email, password, returnTo) { const callbackURL=returnTo??`/${locale}`;const {error} = await client.signUp.email({name, email, password, callbackURL}); return finish(error, callbackURL) },
     async signInGoogle(returnTo) { const {error} = await client.signIn.social({provider: 'google', callbackURL: returnTo ?? `/${locale}`}); return error ? finish(error, returnTo) : null },
-    async signOut() { const {error} = await client.signOut(); return finish(error) },
+    async signOut() {
+      try {
+        const response=await fetch('/api/realtime/revoke',{method:'POST',headers:{'content-type':'application/json'},body:'{}',credentials:'same-origin',signal:AbortSignal.timeout(10000)})
+        if(!response.ok)throw Error()
+        const result:unknown=await response.json()
+        if(!result||typeof result!=='object'||Object.keys(result).length!==1||!('revoked'in result)||typeof result.revoked!=='number'||!Number.isSafeInteger(result.revoked)||result.revoked<0||result.revoked>2147483647)throw Error()
+      }catch{return locale==='zh-CN'?'无法撤销聊天会话，尚未退出登录，请重试。':'Chat sessions could not be revoked. You are still signed in; please try again.'}
+      const {error} = await client.signOut(); return finish(error)
+    },
     async requestPasswordReset(email, redirectTo) {
       const {error} = await client.requestPasswordReset({email, redirectTo})
       return providerError(error)

@@ -16,7 +16,7 @@ export type RealtimeTicketOptions = {
   allowedOrigins: string[]
   now?: () => number
   /** Atomically create the session keyed by jti, retaining replay protection until expiry. */
-  consume: (jti: string, expiresAt: number, identity: {subject: string; profileId: string}, sessionExpiresAt: number) => Promise<boolean>
+  consume: (jti: string, expiresAt: number, identity: {subject: string; profileId: string}, sessionExpiresAt: number, ticketIssuedAt: number) => Promise<boolean>
 }
 
 export function createRealtimeTickets(options: RealtimeTicketOptions) {
@@ -57,7 +57,7 @@ export function createRealtimeTickets(options: RealtimeTicketOptions) {
           payload.iat! > time || payload.exp! - payload.iat! > TICKET_TTL_SECONDS || payload.exp! <= time) throw new Error()
         const sessionExpiresAt = (time + SESSION_TTL_SECONDS) * 1000
         const sessionIdentity = {subject: identity.subject, profileId: identity.profileId}
-        if (!await options.consume(id, payload.exp!, sessionIdentity, sessionExpiresAt)) throw new Error()
+        if (!await options.consume(id, payload.exp!, sessionIdentity, sessionExpiresAt, payload.iat! * 1000)) throw new Error()
         return {...sessionIdentity, sessionId: id, sessionExpiresAt}
       } catch {
         // Do not leak tokens, verifier internals, or replay-store errors to callers/logs.
