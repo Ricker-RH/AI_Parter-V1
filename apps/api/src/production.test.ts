@@ -152,10 +152,18 @@ describe("production API composition", () => {
     const createDatabaseRuntime = vi.fn<ProductionFactories['createDatabaseRuntime']>(() => database);
     const dependencies = createProductionDependencies(publicR2, {createDatabaseRuntime});
     expect(dependencies.postMediaAssets).toBeDefined();
+    expect(dependencies.profileAssets).toBeDefined();
     expect(createDatabaseRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         publicMediaBaseUrl: "https://media.example/assets",
       }),
     );
   });
+
+  it('leaves profile asset storage unconfigured without public R2 while keeping profile routes available', async () => {
+    const dependencies = createProductionDependencies(environment)
+    expect(dependencies.profileAssets).toBeUndefined()
+    const app = createProductionApp(environment)
+    expect((await app.request('/v1/me', {headers: {authorization: 'Bearer malformed'}})).status).toBe(401)
+  })
 });

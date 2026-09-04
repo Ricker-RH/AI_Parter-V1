@@ -27,6 +27,7 @@ import type { AnalyticsDeliveryWorker } from "./ports/analytics.js";
 import type { AssetPort, ImageGenerationPort } from "./ports/assets.js";
 import type { CreatorPort, PlatformCreatorPort } from "./ports/creator.js";
 import type { PostMediaAssetPort } from "./ports/post-media-assets.js";
+import type {ProfileAssetPort} from './ports/profile-assets.js'
 import type {RateLimitPort} from './ports/rate-limit.js'
 import type {ReadinessPort} from './ports/readiness.js'
 import type {StructuredLogger} from './ports/logger.js'
@@ -52,6 +53,7 @@ export type AppDependencies = {
   assets?: AssetPort;
   imageGeneration?: ImageGenerationPort;
   postMediaAssets?: PostMediaAssetPort;
+  profileAssets?: ProfileAssetPort;
   rateLimit?:RateLimitPort;
   rateLimitHmacSecret?:string;
   rateLimitIdentitySecret?:string;

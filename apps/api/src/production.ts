@@ -14,6 +14,7 @@ import { r2AssetPortFromEnv } from "./adapters/r2-assets.js";
 import { readApiEnv } from "./env.js";
 import { createAnalyticsDeliveryWorker } from "./ports/analytics.js";
 import { createR2PostMediaPort } from "./adapters/r2-post-media.js";
+import {createR2ProfileAssetPort} from './adapters/r2-profile-assets.js'
 import {jsonConsoleLogger} from './ports/logger.js'
 import type {RateLimitPort} from './ports/rate-limit.js'
 import type {ReadinessPort} from './ports/readiness.js'
@@ -86,7 +87,10 @@ export function createProductionDependencies(
     },
     ...(assets ? { assets } : {}),
     ...(env.postMedia
-      ? { postMediaAssets: createR2PostMediaPort(env.postMedia) }
+      ? {
+          postMediaAssets: createR2PostMediaPort(env.postMedia),
+          profileAssets: createR2ProfileAssetPort(env.postMedia),
+        }
       : {}),
     ...(env.dify ? { chat: createDifyChatPort(env.dify) } : {}),
     ...(analyticsWorker && env.analytics
