@@ -103,7 +103,7 @@ it("validates finalized/download metadata and rejects caller-supplied attachment
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toBe("private, no-store");
 });
-it("accepts attachment messages but continues rejecting unsupported shares", async () => {
+it("accepts attachment messages but rejects unknown stickers", async () => {
   const message = {
     v: 1,
     id,
@@ -131,11 +131,81 @@ it("accepts attachment messages but continues rejecting unsupported shares", asy
   expect(
     (
       await POST(
-        request({ kind: "share", target: { kind: "human", id } }),
+        request({ kind: "sticker", stickerId: "unknown" }),
         context(["peers", id, "messages"]),
       )
     ).status,
   ).toBe(422);
+});
+it("forwards bounded share search and rejects extraneous or duplicate selectors", async () => {
+  const items = [
+    { target: { kind: "post", id }, title: "Published", subtitle: "Author" },
+  ];
+  upstream.mockResolvedValueOnce(Response.json({ items }));
+  expect(
+    await (
+      await GET(
+        new Request(
+          "https://app.test/api/human-chat/share-targets?kind=post&q=pub&limit=20",
+        ),
+        context(["share-targets"]),
+      )
+    ).json(),
+  ).toEqual({ items });
+  expect(
+    (
+      await GET(
+        new Request(
+          "https://app.test/api/human-chat/share-targets?kind=post&kind=human",
+        ),
+        context(["share-targets"]),
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await GET(
+        new Request(
+          "https://app.test/api/human-chat/share-targets/post/" + id + "?q=x",
+        ),
+        context(["share-targets", "post", id]),
+      )
+    ).status,
+  ).toBe(400);
+});
+it("forwards current share resolution without accepting arbitrary URL fields", async () => {
+  upstream.mockResolvedValueOnce(Response.json({ state: "unavailable" }));
+  expect(
+    await (
+      await GET(
+        new Request(
+          `https://app.test/api/human-chat/share-targets/human/${id}`,
+        ),
+        context(["share-targets", "human", id]),
+      )
+    ).json(),
+  ).toEqual({ state: "unavailable" });
+  upstream.mockResolvedValueOnce(
+    Response.json({
+      state: "available",
+      card: {
+        target: { kind: "human", id },
+        title: "Alice",
+        subtitle: "@alice",
+        href: "https://evil.test",
+      },
+    }),
+  );
+  expect(
+    (
+      await GET(
+        new Request(
+          `https://app.test/api/human-chat/share-targets/human/${id}`,
+        ),
+        context(["share-targets", "human", id]),
+      )
+    ).status,
+  ).toBe(502);
 });
 it("rejects cross-origin and unrecognized paths without contacting API", async () => {
   expect(

@@ -28,6 +28,9 @@ import { HumanMediaControls } from "./HumanMediaControls";
 import { HumanMediaMessage } from "./HumanMediaMessage";
 import { HumanEmojiPicker } from "./HumanEmojiPicker";
 import { createTypingSignal } from "../../lib/human-typing";
+import { HumanRichComposer } from "./HumanRichComposer";
+import { HumanShareMessage } from "./HumanShareMessage";
+import { HumanSticker } from "./HumanSticker";
 
 type Props = {
   conversation: HumanConversation;
@@ -74,6 +77,7 @@ function HumanDetail({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
+  const [richBusy, setRichBusy] = useState(false);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const typingCallback = useRef(onTyping);
   typingCallback.current = onTyping;
@@ -407,6 +411,18 @@ function HumanDetail({
                   zh={locale === "zh-CN"}
                   onError={handleError}
                 />
+              ) : message.content.kind === "share" ? (
+                <HumanShareMessage
+                  target={message.content.target}
+                  locale={locale}
+                  revision={revision}
+                  onError={handleError}
+                />
+              ) : message.content.kind === "sticker" ? (
+                <HumanSticker
+                  stickerId={message.content.stickerId}
+                  locale={locale}
+                />
               ) : (
                 <p>{labels.invalidResponse}</p>
               )}
@@ -444,11 +460,11 @@ function HumanDetail({
           setFailure(null);
         }}
         sending={sending}
-        attachmentActive={mediaBusy}
+        attachmentActive={mediaBusy || richBusy}
         textareaRef={textarea}
         onBlur={() => typing.current?.change(false)}
         tools={
-          <>
+          <div className={styles.composerTools}>
             <HumanEmojiPicker
               draft={draft}
               setDraft={(value) => {
@@ -456,7 +472,7 @@ function HumanDetail({
                 setFailure(null);
               }}
               textarea={textarea}
-              disabled={sending || mediaBusy || denied || revoked}
+              disabled={sending || mediaBusy || richBusy || denied || revoked}
               zh={locale === "zh-CN"}
             />
             <HumanMediaControls
@@ -464,15 +480,30 @@ function HumanDetail({
               conversationId={conversation.id}
               selfProfileId={selfProfileId}
               locale={locale}
-              disabled={sending || denied || revoked}
+              disabled={sending || richBusy || denied || revoked}
               onBusy={setMediaBusy}
               onError={handleError}
               onSent={() => {
+                setError(null);
                 void refresh();
                 changed.current();
               }}
             />
-          </>
+            <HumanRichComposer
+              peerId={peer.id}
+              conversationId={conversation.id}
+              selfProfileId={selfProfileId}
+              locale={locale}
+              disabled={sending || mediaBusy || denied || revoked}
+              onBusy={setRichBusy}
+              onError={handleError}
+              onSent={() => {
+                setError(null);
+                void refresh();
+                changed.current();
+              }}
+            />
+          </div>
         }
         labels={labels}
         sendEnabled={!denied && !revoked}
@@ -480,7 +511,7 @@ function HumanDetail({
         notice={denied ? text.blocked : undefined}
         onSend={() => {
           typing.current?.change(false);
-          if (!mediaBusy) void send(failure ?? undefined);
+          if (!mediaBusy && !richBusy) void send(failure ?? undefined);
         }}
         onRetry={failure ? () => void send(failure) : undefined}
       />

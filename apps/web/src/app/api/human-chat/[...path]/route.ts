@@ -11,6 +11,10 @@ import {
   HumanMediaUploadSchema,
   HumanMediaAttachmentSchema,
   HumanMediaDownloadSchema,
+  HumanStickerIdSchema,
+  HumanShareTargetPageSchema,
+  HumanShareResolutionSchema,
+  HumanShareTargetQuerySchema,
 } from "@aifans/contracts";
 import { fetchAifansApi } from "../../../../lib/server-api";
 import {
@@ -41,6 +45,12 @@ async function proxy(
   }
   const { path } = await context.params;
   const inbox = path.length === 1 && path[0] === "conversations";
+  const shareSearch = path.length === 1 && path[0] === "share-targets";
+  const shareResolve =
+    path.length === 3 &&
+    path[0] === "share-targets" &&
+    ["post", "human", "ip"].includes(path[1]!) &&
+    uuid.test(path[2]!);
   const history =
     path.length === 3 &&
     path[0] === "conversations" &&
@@ -73,7 +83,7 @@ async function proxy(
     path[2] === "download";
   if (
     !(method === "GET"
-      ? inbox || history || download
+      ? inbox || history || download || shareSearch || shareResolve
       : inbox || read || send || reserve || finalize)
   ) {
     await cancelBody(request);
@@ -83,6 +93,7 @@ async function proxy(
   for (const [key, value] of url.searchParams) {
     if (method !== "GET" || url.searchParams.getAll(key).length !== 1)
       return error("INVALID_REQUEST", 400);
+    if (shareSearch && ["kind", "q", "limit"].includes(key)) continue;
     if (
       (inbox || history) &&
       key === "limit" &&
@@ -104,6 +115,17 @@ async function proxy(
       continue;
     return error("INVALID_REQUEST", 400);
   }
+  if (
+    shareSearch &&
+    !HumanShareTargetQuerySchema.safeParse({
+      kind: url.searchParams.get("kind"),
+      q: url.searchParams.get("q") ?? "",
+      limit: url.searchParams.has("limit")
+        ? Number(url.searchParams.get("limit"))
+        : 10,
+    }).success
+  )
+    return error("INVALID_REQUEST", 400);
   let body: unknown;
   if (method === "POST") {
     if (!mime(request, "application/json")) {
@@ -139,7 +161,8 @@ async function proxy(
     if (
       send &&
       "content" in parsed.data &&
-      !["text", "image", "voice"].includes(parsed.data.content.kind)
+      parsed.data.content.kind === "sticker" &&
+      !HumanStickerIdSchema.safeParse(parsed.data.content.stickerId).success
     )
       return error("HUMAN_MESSAGE_KIND_UNSUPPORTED", 422);
   }
@@ -168,7 +191,9 @@ async function proxy(
     }
     const value: unknown = await upstream.json();
     let output: unknown;
-    if (reserve) output = HumanMediaUploadSchema.parse(value);
+    if (shareSearch) output = HumanShareTargetPageSchema.parse(value);
+    else if (shareResolve) output = HumanShareResolutionSchema.parse(value);
+    else if (reserve) output = HumanMediaUploadSchema.parse(value);
     else if (finalize) output = HumanMediaAttachmentSchema.parse(value);
     else if (download) output = HumanMediaDownloadSchema.parse(value);
     else if (method === "GET" && inbox)

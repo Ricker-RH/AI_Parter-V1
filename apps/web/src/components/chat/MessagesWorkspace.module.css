@@ -103,3 +103,16 @@
 .mediaPreview audio, .mediaBubble audio { width: min(100%, 300px); }
 .mediaBubble { max-width: 100%; overflow: hidden; }
 .emojiTools { grid-column: 1 / -1; }
+.composerTools { grid-column: 1 / -1; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.sticker { display: inline-block; font-size: 3.5rem; line-height: 1.4; padding: 8px; }
+.richPreview { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.richPreview strong, .richPreview > span:not(.sticker) { width: 100%; }
+.shareCard { border: 1px solid var(--border, #dedede); border-radius: 16px; padding: 14px; overflow-wrap: anywhere; }
+.shareCard a { display: grid; gap: 6px; color: inherit; text-decoration: none; }
+.shareCard span { font-size: 0.875rem; }
+.shareSearch { display: grid; gap: 8px; padding: 8px; }
+.shareSearch label { display: grid; gap: 4px; }
+.shareSearch input { width: 100%; min-height: 44px; border: 1px solid var(--border, #dedede); border-radius: 8px; padding: 8px; color: inherit; background: transparent; font: inherit; }
+.shareSearch > button { display: grid; gap: 4px; text-align: left; overflow-wrap: anywhere; }
+.shareSearch [role="group"] { display: flex; gap: 4px; }
+.shareSearch [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }

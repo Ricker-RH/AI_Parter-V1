@@ -49,22 +49,22 @@ it("loads private images only through the authenticated download endpoint and ab
 });
 it("refreshes expired voice authorization on playback before resuming", async () => {
   const expiredAt = Date.now() + 60000;
-  const fetcher = vi
-    .fn()
-    .mockImplementation(() =>
-      Promise.resolve(
-        Response.json({
-          url: `https://assets.test/private-${fetcher.mock.calls.length}`,
-          expiresAt: new Date(Date.now() + 60000).toISOString(),
-          attachment: {
-            attachmentId: id,
-            kind: "voice",
-            contentType: "audio/webm",
-            sizeBytes: 10,
-          },
-        }),
-      ),
-    );
+  const fetcher = vi.fn().mockImplementation(() =>
+    Promise.resolve(
+      Response.json({
+        url: `https://assets.test/private-${fetcher.mock.calls.length}`,
+        expiresAt: new Date(
+          fetcher.mock.calls.length === 1 ? expiredAt : Date.now() + 60000,
+        ).toISOString(),
+        attachment: {
+          attachmentId: id,
+          kind: "voice",
+          contentType: "audio/webm",
+          sizeBytes: 10,
+        },
+      }),
+    ),
+  );
   vi.stubGlobal("fetch", fetcher);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
