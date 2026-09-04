@@ -96,9 +96,9 @@
   .mobileDetailSectionHeader { display: block; }
   .workspace[data-selected="true"] .mobileDetailSectionHeader { display: none; }
   .workspace[data-selected="true"] .composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
-  :global(.messages-shell):has(.workspace[data-selected="true"]) { padding-bottom: 0; }
-  :global(.messages-shell):has(.workspace[data-selected="true"]) :global(.mobile-nav),
-  :global(.messages-shell):has(.workspace[data-selected="true"]) :global(.floating-creator-action) { display: none; }
+  :global(.messages-shell[data-active-chat="true"]) { padding-bottom: 0; }
+  :global(.messages-shell[data-active-chat="true"] .mobile-nav),
+  :global(.messages-shell[data-active-chat="true"] .floating-creator-action) { display: none; }
 }
 @media (min-width: 700px) { .workspace { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) { grid-template-columns: minmax(0, 720px); justify-content: center; }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) .listPane { border-right: 0; }.listPane { border-right: 1px solid var(--shell-border); min-height: 0; overflow-y: auto; }.detailPane, .emptyPane { min-height: 100vh; }.back { display: none; }.notificationsPage { margin: 0 auto; max-width: 720px; width: 100%; } }
 .mediaTools { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

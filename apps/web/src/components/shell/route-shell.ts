@@ -1,5 +1,12 @@
 export type ShellKind = 'public' | 'auth' | 'messages' | 'creator' | 'admin'
 
+export function isActiveChatRoute(pathname: string, humanConversation: string | null): boolean {
+  const match = /^\/(?:en|zh-CN)\/messages(?:\/([^/]+))?\/?$/.exec(pathname)
+  if (!match) return false
+  const id = match[1] ?? humanConversation
+  return !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
 export function resolveShellKind(pathname: string): ShellKind {
   const path = pathname.split(/[?#]/, 1)[0] ?? pathname
   const match = /^\/(en|zh-CN)(?=\/|$)(.*)$/.exec(path)

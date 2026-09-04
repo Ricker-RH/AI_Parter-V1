@@ -1,5 +1,16 @@
 import {describe, expect, it} from 'vitest'
-import {resolveShellKind, shouldShowFloatingCreatorAction} from './route-shell.js'
+import {isActiveChatRoute, resolveShellKind, shouldShowFloatingCreatorAction} from './route-shell.js'
+
+it('limits active chat state to the current AI or HUMAN conversation URL', () => {
+  const id = '33333333-3333-4333-8333-333333333333'
+  expect(isActiveChatRoute(`/en/messages/${id}`, null)).toBe(true)
+  expect(isActiveChatRoute('/zh-CN/messages', id)).toBe(true)
+  expect(isActiveChatRoute('/en/messages', null)).toBe(false)
+  expect(isActiveChatRoute('/en/messages/notifications', id)).toBe(false)
+  expect(isActiveChatRoute(`/en/messages/notifications/${id}`, null)).toBe(false)
+  expect(isActiveChatRoute('/en/profile', id)).toBe(false)
+  expect(isActiveChatRoute('/en/messages', 'invalid')).toBe(false)
+})
 
 describe('route shell resolver', () => {
   it.each([
