@@ -108,3 +108,5 @@ export type {
 export {createPostgresRealtimeSessionRepository,type RealtimeSessionRepository} from './realtime-sessions.js'
 export {createPostgresHumanRealtimeOutboxRepository,type HumanRealtimeOutboxRepository} from './human-realtime-outbox.js'
 export {createHumanProfileTabsRepository,type HumanProfileTabsRepository} from './human-profile-tabs.js'
+export {createHumanChatMediaRepository,type HumanChatMediaRepository,type HumanMediaReservation} from './human-chat-media.js'
+export {createPostgresRealtimeEphemeralRepository} from './realtime-ephemeral.js'

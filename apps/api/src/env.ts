@@ -71,6 +71,7 @@ export type ApiEnvironment = {
   rateLimit?:{databaseUrl:string;hmacSecret:string};
   webApiRateLimitSigningSecret: string;
   humanSocialEnabled: boolean;
+  privateChatMedia?:{endpoint:string;bucket:string;accessKeyId:string;secretAccessKey:string};
   realtime?: {ticketSecret:string;internalSecret:string;issuer:string;audience:string;allowedOrigins:string[];gatewayUrl?:string};
 };
 export type R2PostMediaConfig = {
@@ -156,6 +157,7 @@ export function readApiEnv(
     },
     webApiRateLimitSigningSecret: value.WEB_API_RATE_LIMIT_SIGNING_SECRET,
     humanSocialEnabled: value.HUMAN_SOCIAL_ENABLED === 'true',
+    ...(value.R2_PRIVATE_BUCKET&&value.R2_ACCOUNT_ID&&value.R2_ACCESS_KEY_ID&&value.R2_SECRET_ACCESS_KEY?{privateChatMedia:{endpoint:`https://${value.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,bucket:value.R2_PRIVATE_BUCKET,accessKeyId:value.R2_ACCESS_KEY_ID,secretAccessKey:value.R2_SECRET_ACCESS_KEY}}:{}),
     ...(realtime ? {realtime} : {}),
     ...(value.PROFILE_ASSET_CLEANUP_SECRET ? {profileAssetCleanupSecret: value.PROFILE_ASSET_CLEANUP_SECRET} : {}),
     ...(value.DATABASE_RATE_LIMIT_URL&&value.RATE_LIMIT_HMAC_SECRET?{rateLimit:{databaseUrl:value.DATABASE_RATE_LIMIT_URL,hmacSecret:value.RATE_LIMIT_HMAC_SECRET}}:{}),

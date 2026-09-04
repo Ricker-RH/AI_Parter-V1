@@ -11,6 +11,10 @@ import { createApp, type AppDependencies } from "./application.js";
 import { createDifyChatPort } from "./adapters/dify-chat.js";
 import {createRealtimeTickets} from './adapters/realtime-ticket.js'
 import {createRealtimePublisher} from './adapters/realtime-publisher.js'
+import {createRealtimeStatusReader} from './adapters/realtime-status.js'
+import {createRealtimeEphemeral} from './ports/realtime-ephemeral.js'
+import {createR2HumanChatMediaStorage} from './adapters/r2-human-chat-media.js'
+import {createHumanChatMediaPort} from './ports/human-chat-media.js'
 import {createRealtimeDeliveryWorker} from './ports/realtime-delivery.js'
 import type {RealtimePort} from './ports/realtime.js'
 import {waitUntil} from '@vercel/functions'
@@ -83,6 +87,7 @@ export function createProductionDependencies(
     ? createRealtimeDeliveryWorker({outbox:database.humanRealtimeOutbox,publisher:createRealtimePublisher({baseUrl:env.realtime.gatewayUrl,secret:env.realtime.internalSecret})}) : undefined
   return {
     ...(realtimeDelivery?{realtimeDelivery,defer:waitUntil}:{}),
+    ...(env.realtime?.gatewayUrl&&database.realtimeEphemeral?{realtimeEphemeral:createRealtimeEphemeral({resolve:input=>database.realtimeEphemeral!.resolve(input),status:createRealtimeStatusReader({baseUrl:env.realtime.gatewayUrl,secret:env.realtime.internalSecret})})}:{}),
     ...(realtime && env.realtime ? {realtime,realtimeAllowedOrigins:env.realtime.allowedOrigins,realtimeInternalSecret:env.realtime.internalSecret} : {}),
     ...(cleanupRepository && cleanupRemove && env.profileAssetCleanupSecret ? {
       profileAssetCleanup: {run: () => cleanupRepository.cleanupBatch(cleanupRemove)},
@@ -101,6 +106,7 @@ export function createProductionDependencies(
     chatTargets: database.chatTargets,
     conversations: database.chat,
     ...(env.humanSocialEnabled && database.humanChat ? {humanChat: database.humanChat} : {}),
+    ...(env.humanSocialEnabled && env.privateChatMedia && database.humanChatMedia ? {humanChatMedia:createHumanChatMediaPort({repository:database.humanChatMedia,storage:createR2HumanChatMediaStorage(env.privateChatMedia)})}:{}),
     ...(env.humanSocialEnabled && database.humanSocial ? {humanSocial: database.humanSocial} : {}),
     ...(env.humanSocialEnabled && database.humanProfileTabs ? {humanProfileTabs: database.humanProfileTabs} : {}),
     creator: database.creator,

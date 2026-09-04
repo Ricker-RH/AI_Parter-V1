@@ -6,11 +6,12 @@ import {apiError} from '../errors.js'
 import type {ApiVariables} from '../middleware/request-id.js'
 import type {AuthVerifier} from '../ports/auth.js'
 import type {HumanChatPort} from '../ports/human-chat.js'
+import type {HumanChatMediaPort} from '../ports/human-chat-media.js'
 import type {ProfilePort} from '../ports/profiles.js'
 import {strictJsonBody, strictQuery} from './strict-input.js'
 
 type ApiContext = Context<{Variables: ApiVariables}>
-type Dependencies = {auth?: AuthVerifier; profiles?: ProfilePort; humanChat?: HumanChatPort}
+type Dependencies = {auth?: AuthVerifier; profiles?: ProfilePort; humanChat?: HumanChatPort;humanChatMedia?:HumanChatMediaPort}
 const uuid = z.uuid()
 const emptyQuery = z.strictObject({})
 const integerQuery = z.string().regex(/^(0|[1-9]\d*)$/).transform(Number).pipe(z.number().int().min(0).max(Number.MAX_SAFE_INTEGER))
@@ -75,7 +76,7 @@ export function registerHumanChatRoutes(app: Hono<{Variables: ApiVariables}>, de
       if (!peer.success || !strictQuery(c, emptyQuery)) return invalid(c)
       const input = await strictJsonBody(c, HumanSendInputSchema)
       if (!input) return invalid(c)
-      if (input.content.kind !== 'text') return apiError(c, 422, 'HUMAN_MESSAGE_KIND_UNSUPPORTED', 'Only text messages are currently supported')
+      if (input.content.kind !== 'text' && !(dependencies.humanChatMedia && ['image','voice'].includes(input.content.kind))) return apiError(c, 422, 'HUMAN_MESSAGE_KIND_UNSUPPORTED', 'This message format is not available')
       return c.json(sentSchema.parse({message: await dependencies.humanChat!.send(current.actor, {...input, peerProfileId: peer.data})}))
     } catch (error) {return failure(c, error)}
   })

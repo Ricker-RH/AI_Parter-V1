@@ -18,6 +18,11 @@ const environment = {
 } as const;
 
 describe("production API composition", () => {
+  it('enables private media only with human social and private storage configuration',()=>{
+    const storage={R2_ACCOUNT_ID:'0'.repeat(32),R2_ACCESS_KEY_ID:'access',R2_SECRET_ACCESS_KEY:'secret',R2_PRIVATE_BUCKET:'aifans-private'}
+    expect(createProductionDependencies({...environment,...storage}).humanChatMedia).toBeUndefined()
+    expect(createProductionDependencies({...environment,...storage,HUMAN_SOCIAL_ENABLED:'true'}).humanChatMedia?.reserve).toBeTypeOf('function')
+  })
   it('keeps human chat opt-in until its migration is deployed', () => {
     expect(createProductionDependencies(environment).humanChat).toBeUndefined()
     expect(createProductionDependencies({...environment, HUMAN_SOCIAL_ENABLED: 'true'}).humanChat?.send).toBeTypeOf('function')
@@ -42,6 +47,7 @@ describe("production API composition", () => {
     expect(deps.realtimeInternalSecret).toBe(configured.REALTIME_INTERNAL_SECRET)
     expect(base.realtime).toBeUndefined()
     expect(createProductionDependencies({...configured,REALTIME_GATEWAY_URL:'https://gateway.example'}).realtimeDelivery?.deliverBatch).toBeTypeOf('function')
+    expect(createProductionDependencies({...configured,REALTIME_GATEWAY_URL:'https://gateway.example'}).realtimeEphemeral?.emit).toBeTypeOf('function')
     expect(()=>createProductionDependencies(configured,{createDatabaseRuntime:()=>({...createDatabaseRuntime(),realtimeSessions:undefined})})).toThrow('Realtime session repository unavailable')
   })
   it('enables profile cleanup only with its explicit secret and public R2 configuration', () => {

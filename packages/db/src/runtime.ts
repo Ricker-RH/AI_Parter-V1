@@ -13,6 +13,8 @@ import {createHumanSocialRepository, type HumanSocialRepository} from './human-s
 import {createPostgresRealtimeSessionRepository, type RealtimeSessionRepository} from './realtime-sessions.js'
 import {createPostgresHumanRealtimeOutboxRepository,type HumanRealtimeOutboxRepository} from './human-realtime-outbox.js'
 import {createHumanProfileTabsRepository,type HumanProfileTabsRepository} from './human-profile-tabs.js'
+import {createHumanChatMediaRepository,type HumanChatMediaRepository} from './human-chat-media.js'
+import {createPostgresRealtimeEphemeralRepository} from './realtime-ephemeral.js'
 import { createProfileRepository, type ProfileRepository } from "./profiles.js";
 import {
   createCreatorRepository,
@@ -52,6 +54,8 @@ export type DatabaseRuntimeRepositories = {
   realtimeSessions?: RealtimeSessionRepository;
   humanRealtimeOutbox?: HumanRealtimeOutboxRepository;
   humanProfileTabs?: HumanProfileTabsRepository;
+  humanChatMedia?:HumanChatMediaRepository;
+  realtimeEphemeral?:ReturnType<typeof createPostgresRealtimeEphemeralRepository>;
   creator: CreatorRepository;
   platformCreator: PlatformCreatorRepository;
   channels: ChannelRepository;
@@ -121,6 +125,8 @@ export function createDatabaseRuntimeRepositories(
     humanChat: createHumanChatRepository({withActor,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     realtimeSessions: createPostgresRealtimeSessionRepository({withPlatformActor}),
     humanRealtimeOutbox: createPostgresHumanRealtimeOutboxRepository({withPlatformActor}),
+    humanChatMedia:createHumanChatMediaRepository({withActor,withPlatformActor}),
+    realtimeEphemeral:createPostgresRealtimeEphemeralRepository({withPlatformActor}),
     humanProfileTabs: createHumanProfileTabsRepository({withActor,withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     humanSocial: createHumanSocialRepository({withActor,withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     creator: createCreatorRepository({ withActor }),

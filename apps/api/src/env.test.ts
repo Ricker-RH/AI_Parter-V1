@@ -13,6 +13,11 @@ const valid = {
 } as const;
 
 describe("API production environment", () => {
+  it('keeps private chat media storage separate from public assets',()=>{
+    const privateMedia={R2_ACCOUNT_ID:'0'.repeat(32),R2_ACCESS_KEY_ID:'access',R2_SECRET_ACCESS_KEY:'secret',R2_PRIVATE_BUCKET:'aifans-private'}
+    expect(readApiEnv({...valid,...privateMedia}).privateChatMedia).toEqual({endpoint:`https://${'0'.repeat(32)}.r2.cloudflarestorage.com`,bucket:'aifans-private',accessKeyId:'access',secretAccessKey:'secret'})
+    expect(readApiEnv(valid).privateChatMedia).toBeUndefined()
+  })
   it('requires complete, separate realtime credentials and exact HTTPS origins', () => {
     const realtime = {
       HUMAN_SOCIAL_ENABLED: 'true', REALTIME_TICKET_SECRET: 't'.repeat(32),

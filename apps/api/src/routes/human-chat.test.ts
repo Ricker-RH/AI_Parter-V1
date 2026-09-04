@@ -19,6 +19,15 @@ const sendBody = {clientRequestId, content: {kind: 'text', text: ' hello '}}
 const conversation = {v: 1 as const, id: conversationId, participants: [{kind: 'HUMAN', id: profileId, username: 'actor_human', displayName: 'Actor', avatarUrl: null}, {kind: 'HUMAN', id: peerProfileId, username: 'peer_human', displayName: 'Peer', avatarUrl: null}], createdAt: message.createdAt, updatedAt: message.createdAt}
 
 describe('human text chat routes', () => {
+  it('allows image and voice references only when private media validation is configured',async()=>{
+    const humanChatMedia={reserve:vi.fn(),finalize:vi.fn(),download:vi.fn()}
+    const {app,humanChat}=setup('authenticated','human',{humanChatMedia})
+    for(const kind of ['image','voice']) {
+      const content={kind,attachmentId:randomUUID()}
+      humanChat.send.mockResolvedValue({...message,content})
+      expect((await app.request(sendPath,post({clientRequestId,content}))).status).toBe(200)
+    }
+  })
   it('schedules persisted events through the production middleware ordering',async()=>{
     const deliverBatch=vi.fn(async()=>({claimed:1,delivered:1,retried:0}))
     const {app}=setup('authenticated','human',{realtimeDelivery:{deliverBatch}})

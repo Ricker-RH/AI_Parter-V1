@@ -13,8 +13,12 @@ import { registerChatRoutes } from "./routes/chat.js";
 import {registerHumanChatRoutes} from './routes/human-chat.js'
 import type {HumanChatPort} from './ports/human-chat.js'
 import {registerRealtimeRoutes} from './routes/realtime.js'
+import {registerRealtimeEphemeralRoutes} from './routes/realtime-ephemeral.js'
+import type {RealtimeEphemeralPort} from './ports/realtime-ephemeral.js'
 import {registerHumanProfileTabsRoutes} from './routes/human-profile-tabs.js'
 import type {HumanProfileTabsPort} from './ports/human-profile-tabs.js'
+import type {HumanChatMediaPort} from './ports/human-chat-media.js'
+import {registerHumanChatMediaRoutes} from './routes/human-chat-media.js'
 import type {RealtimePort} from './ports/realtime.js'
 import type {RealtimeDeliveryWorker} from './ports/realtime-delivery.js'
 import {realtimeDeliveryMiddleware} from './middleware/realtime-delivery.js'
@@ -58,7 +62,9 @@ export type AppDependencies = {
   humanChat?: HumanChatPort;
   humanSocial?: HumanSocialPort;
   realtime?: RealtimePort;
+  realtimeEphemeral?:RealtimeEphemeralPort;
   humanProfileTabs?:HumanProfileTabsPort;
+  humanChatMedia?:HumanChatMediaPort;
   realtimeDelivery?: RealtimeDeliveryWorker;
   defer?: (promise:Promise<unknown>)=>void;
   realtimeAllowedOrigins?: string[];
@@ -114,9 +120,11 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerChatRoutes(app, dependencies);
   app.use('*', realtimeDeliveryMiddleware(dependencies));
   registerHumanChatRoutes(app, dependencies);
+  registerHumanChatMediaRoutes(app,dependencies);
   registerHumanSocialRoutes(app, dependencies);
   registerHumanProfileTabsRoutes(app,dependencies);
   registerRealtimeRoutes(app, dependencies);
+  registerRealtimeEphemeralRoutes(app,dependencies);
   registerInternalAnalyticsRoutes(app, dependencies);
   registerInternalProfileAssetRoutes(app, dependencies);
   registerCreatorRoutes(app, dependencies);
