@@ -519,13 +519,6 @@ export function HumanMessagesWorkspace({
                 </p>
               ) : null}
               {humanFooter}
-              {connection !== "ready" ? (
-                <p className={styles.detailNotice} role="status">
-                  {locale === "zh-CN"
-                    ? "实时连接暂不可用，消息将定时刷新。"
-                    : "Live connection unavailable. Messages refresh periodically."}
-                </p>
-              ) : null}
             </>
           }
         />

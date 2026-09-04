@@ -175,6 +175,14 @@ it("does not poll the human inbox while realtime is ready", async () => {
 
   expect(fetcher).toHaveBeenCalledTimes(calls);
 });
+it("keeps realtime connection setup and fallback states out of the inbox UI", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({items: [], nextCursor: null})));
+  render(<MessagesWorkspace items={[]} labels={labels} locale="zh-CN" />);
+  expect(screen.queryByText("实时连接暂不可用，消息将定时刷新。")).toBeNull();
+  act(() => mocks.options?.onStateChange?.("reconnecting"));
+  expect(screen.queryByText("实时连接暂不可用，消息将定时刷新。")).toBeNull();
+});
 it("keeps a loaded inbox visible during disconnected fallback reconciliation", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   let resolveReconcile!: (response: Response) => void;
