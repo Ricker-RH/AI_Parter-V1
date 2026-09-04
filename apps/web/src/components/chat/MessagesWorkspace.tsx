@@ -9,23 +9,25 @@ import {MessagesSectionHeader} from './MessagesSectionHeader'
 import {InboxWorkspaceFrame} from './InboxWorkspaceFrame'
 import {useOptionalCurrentAccount} from '../account/CurrentAccountProvider'
 import {HumanMessagesWorkspace} from './HumanMessagesWorkspace'
+import {UnavailableRetry} from '../social/UnavailableRetry'
 import styles from './MessagesWorkspace.module.css'
 
 export type MessagesLabels = ConversationListLabels & ConversationDetailLabels & {selectConversation: string}
 
-export type MessagesWorkspaceProps = {items: ChatConversationSummary[]; labels: MessagesLabels; locale: Locale; snapshotViewerId?: string | undefined; selectedId?: string | undefined; selectedHumanId?: string | undefined; history?: ChatHistoryPage | undefined; initialCursor?: string | undefined; nextCursor?: string | null | undefined; listUnavailable?: boolean | undefined; detailUnavailable?: boolean | undefined}
+export type MessagesWorkspaceProps = {items: ChatConversationSummary[]; labels: MessagesLabels; locale: Locale; snapshotViewerStatus?: 'authenticated' | 'unavailable' | undefined; snapshotViewerId?: string | undefined; selectedId?: string | undefined; selectedHumanId?: string | undefined; history?: ChatHistoryPage | undefined; initialCursor?: string | undefined; nextCursor?: string | null | undefined; listUnavailable?: boolean | undefined; detailUnavailable?: boolean | undefined}
 export function MessagesWorkspace(props: MessagesWorkspaceProps) {
   const current=useOptionalCurrentAccount()
   const router=useRouter()
   const refreshed=useRef<string | null>(null)
   const hasPrivateSnapshot=props.items.length>0 || Boolean(props.history)
-  const matches=!current || (current.status==='authenticated' && current.account && (!hasPrivateSnapshot || current.account.id===props.snapshotViewerId))
+  const viewerUnavailable=props.snapshotViewerStatus==='unavailable'
+  const matches=!viewerUnavailable && (!current || (current.status==='authenticated' && current.account && (!hasPrivateSnapshot || current.account.id===props.snapshotViewerId)))
   useEffect(()=>{
-    if (!current || matches || current.status==='loading' || current.status==='unavailable') return
+    if (viewerUnavailable || !current || matches || current.status==='loading' || current.status==='unavailable') return
     const key=`${props.snapshotViewerId ?? 'unknown'}:${current.account?.id ?? 'anonymous'}:${current.status}`
     if (refreshed.current!==key) {refreshed.current=key;router.refresh()}
-  },[current?.account?.id,current?.status,matches,props.snapshotViewerId,router])
-  if (!matches) return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={props.labels} locale={props.locale}/><p className={styles.detailNotice} role="status">{current?.status==='loading' ? props.labels.loadingMore : props.labels.unavailable}</p></aside>}/>
+  },[current?.account?.id,current?.status,matches,props.snapshotViewerId,router,viewerUnavailable])
+  if (!matches) return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={props.labels} locale={props.locale}/><div className={styles.unavailableState}><p role={current?.status==='loading' ? 'status' : 'alert'}>{current?.status==='loading' ? props.labels.loadingMore : props.labels.unavailable}</p><UnavailableRetry beforeRetry={current?.refetch} disabled={current?.status==='loading'} label={props.labels.unavailableAction} pendingLabel={props.labels.unavailablePending}/></div></aside>}/>
   if (current?.status==='authenticated' && current.account?.kind==='human') return <HumanMessagesWorkspace key={current.account.id} {...props} selfProfileId={current.account.id}/>
   return <AiMessagesWorkspace {...props}/>
 }

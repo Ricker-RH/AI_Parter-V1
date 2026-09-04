@@ -6,6 +6,7 @@ import {fetchCurrentAccount,fetchCurrentAccountResult} from './current-account.j
 const account = {id: '11111111-1111-4111-8111-111111111111', kind: 'human', username: 'aifans_user', displayName: 'AIFANS User', preferredLocale: 'en', creatorModeEnabled: false, profileVersion: 1, background: {type: 'color' as const, colorKey: 'paper' as const}}
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   getApiBearerToken.mockClear()
   delete process.env.AIFANS_API_URL
@@ -13,6 +14,18 @@ afterEach(() => {
 })
 
 describe('current account client', () => {
+  it.each([
+    ['http', () => Promise.resolve(new Response(null, {status:503}))],
+    ['schema', () => Promise.resolve(Response.json({...account, unexpectedSecret:'never log this'}))],
+    ['json', () => Promise.resolve(new Response('private malformed response'))],
+    ['transport', () => Promise.reject(new Error('private transport details'))],
+  ] as const)('logs only a safe failure reason for %s', async (reason, response) => {
+    process.env.AIFANS_API_URL='https://server.example'
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
+    vi.stubGlobal('fetch',vi.fn(response))
+    await expect(fetchCurrentAccountResult({token:'private token'})).resolves.toEqual({status:'unavailable'})
+    expect(warn).toHaveBeenCalledExactlyOnceWith('current_account_unavailable', {reason})
+  })
   it('fetches and strictly parses the current account with bearer auth', async () => {
     process.env.AIFANS_API_URL = 'https://server.example/'
     const request = vi.fn().mockResolvedValue(Response.json(account))
@@ -49,6 +62,7 @@ describe('current account client', () => {
   })
 
   it('aborts a hanging upstream account request and treats it as signed out', async () => {
+    const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
     process.env.AIFANS_API_URL = 'https://server.example'
     const request = vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
       options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {once: true})
@@ -56,5 +70,6 @@ describe('current account client', () => {
     vi.stubGlobal('fetch', request)
     await expect(fetchCurrentAccount({timeoutMs: 5} as never)).resolves.toBeNull()
     expect((request.mock.calls[0]?.[1].signal as AbortSignal | undefined)?.aborted).toBe(true)
+    expect(warn).toHaveBeenCalledExactlyOnceWith('current_account_unavailable', {reason:'timeout'})
   })
 })
