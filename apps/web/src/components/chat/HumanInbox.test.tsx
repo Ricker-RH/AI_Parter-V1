@@ -152,12 +152,28 @@ it("shows only fresh peer presence and clears transient state on disconnect", as
   expect(screen.queryByText("Online")).toBeNull();
 });
 afterEach(() => {
+  vi.useRealTimers();
   mocks.status = "authenticated";
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   mocks.dispose.mockReset();
   mocks.send.mockReset();
   mocks.account = { id: self, kind: "human" };
+});
+it("does not poll the human inbox while realtime is ready", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  const fetcher = vi.fn().mockResolvedValue(Response.json({items: [], nextCursor: null}));
+  vi.stubGlobal("fetch", fetcher);
+  render(<MessagesWorkspace items={[]} labels={labels} locale="en" />);
+  await act(async () => { await Promise.resolve(); });
+  expect(fetcher).toHaveBeenCalled();
+  act(() => mocks.options?.onStateChange?.("ready"));
+  const calls = fetcher.mock.calls.length;
+
+  await act(async () => vi.advanceTimersByTimeAsync(60_000));
+
+  expect(fetcher).toHaveBeenCalledTimes(calls);
 });
 it("subscribes selected AI separately and refreshes authoritative history on its generation event", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");

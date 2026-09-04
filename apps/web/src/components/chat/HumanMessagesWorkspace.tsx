@@ -38,6 +38,7 @@ export function HumanMessagesWorkspace({
   const [connection, setConnection] = useState<RealtimeState | "unconfigured">(
     "unconfigured",
   );
+  const connectionRef = useRef<RealtimeState | "unconfigured">("unconfigured");
   const [readCursors, setReadCursors] = useState<Record<string, number>>({});
   const [transient, setTransient] = useState<
     Record<string, { typing: number; online: number }>
@@ -242,6 +243,7 @@ export function HumanMessagesWorkspace({
           changed();
         },
         onStateChange: (state) => {
+          connectionRef.current = state;
           if (!lifecycle.signal.aborted) setConnection(state);
           if (state !== "ready") setTransient({});
         },
@@ -331,7 +333,9 @@ export function HumanMessagesWorkspace({
     document.addEventListener("visibilitychange", visible);
     window.addEventListener("focus", visible);
     // Authoritative polling also discovers newly created conversations not yet subscribed.
-    const timer = setInterval(visible, 15_000);
+    const timer = setInterval(() => {
+      if (connectionRef.current !== "ready") visible();
+    }, 15_000);
     return () => {
       lifecycle.abort();
       activeRequest.current?.abort();
