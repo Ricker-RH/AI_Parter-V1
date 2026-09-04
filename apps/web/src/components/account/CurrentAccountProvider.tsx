@@ -60,6 +60,7 @@ export function publishAccountUpdate(nextAccount: Account): void {
 type CurrentAccountValue = {
   account: Account | null
   loading: boolean
+  status: 'loading' | 'authenticated' | 'anonymous' | 'unavailable'
   refetch: () => Promise<Account | null>
   update: (account: Account) => void
 }
@@ -82,6 +83,7 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
   const initial = useMemo(() => initialAccount === undefined ? undefined : parseAccount(initialAccount) ?? undefined, [initialAccount])
   const [account, setAccount] = useState<Account | null>(initial ?? null)
   const [loading, setLoading] = useState(initial === undefined)
+  const [status, setStatus] = useState<CurrentAccountValue['status']>(initial === undefined ? 'loading' : 'authenticated')
   const mounted = useRef(false)
   const started = useRef(false)
   const sequence = useRef(0)
@@ -92,15 +94,20 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
     activeController.current?.abort()
     const controller = new AbortController()
     activeController.current = controller
-    if (mounted.current) setLoading(true)
+    if (mounted.current) {
+      setLoading(true)
+      setStatus('loading')
+    }
     const result = await fetchBrowserAccount(controller.signal)
     if (!mounted.current || controller.signal.aborted || sequence.current !== requestSequence) return null
     activeController.current = null
     setLoading(false)
     if (result.kind === 'available') {
       setAccount(result.account)
+      setStatus(result.account ? 'authenticated' : 'anonymous')
       return result.account
     }
+    setStatus('unavailable')
     return null
   }, [])
 
@@ -115,6 +122,7 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
       activeController.current = null
       setAccount(next)
       setLoading(false)
+      setStatus('authenticated')
     }
     const handleInvalidation = () => { void refetch() }
     window.addEventListener(ACCOUNT_UPDATED_EVENT, handleUpdate)
@@ -138,9 +146,10 @@ export function CurrentAccountProvider({children, initialAccount}: {children: Re
   const value = useMemo<CurrentAccountValue>(() => ({
     account,
     loading,
+    status,
     refetch,
     update: publishAccountUpdate,
-  }), [account, loading, refetch])
+  }), [account, loading, refetch, status])
 
   return <CurrentAccountContext.Provider value={value}>{children}</CurrentAccountContext.Provider>
 }
@@ -149,4 +158,8 @@ export function useCurrentAccount(): CurrentAccountValue {
   const value = useContext(CurrentAccountContext)
   if (!value) throw new Error('useCurrentAccount must be used within CurrentAccountProvider')
   return value
+}
+
+export function useOptionalCurrentAccount(): CurrentAccountValue | null {
+  return useContext(CurrentAccountContext)
 }

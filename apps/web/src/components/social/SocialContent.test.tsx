@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {flushSync} from "react-dom";
 import {createRoot} from "react-dom/client";
 import {readFileSync} from "node:fs";
 import type { AnchorHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { FeedPage, Notification, PostDetail, PublicComment } from "@aifans/contracts";
+import type { Account, FeedPage, Notification, PostDetail, PublicComment } from "@aifans/contracts";
+import {CurrentAccountProvider, publishAccountUpdate} from "../account/CurrentAccountProvider.js";
 import { FeedContent } from "./FeedContent.js";
 import { NotificationsContent } from "./NotificationsContent.js";
 import { PostDetailContent } from "./PostDetailContent.js";
@@ -124,7 +125,7 @@ const post: FeedPagePost = {
   viewerHasBookmarked: false,
   viewerFollowsAuthor: false,
 };
-const viewerAccount = {
+const viewerAccount: Account = {
   id: "44444444-4444-4444-8444-444444444444",
   kind: "human" as const,
   username: "rui",
@@ -132,6 +133,8 @@ const viewerAccount = {
   avatarUrl: "https://media.example/rui.webp",
   preferredLocale: "en" as const,
   creatorModeEnabled: false,
+  profileVersion: 1,
+  background: {type: "color", colorKey: "paper"},
 };
 
 function testComment(overrides: Partial<PublicComment> & Pick<PublicComment, "id" | "parentCommentId" | "author">): PublicComment {
@@ -544,6 +547,20 @@ describe("real social content", () => {
     expect(within(container.querySelector('.post-detail-composer-dock')!).getByRole('img', {name: 'Rui'})).toHaveAttribute('src', viewerAccount.avatarUrl);
   });
 
+  it("switches an open composer to provider account updates without fetching again", () => {
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
+    render(<CurrentAccountProvider initialAccount={viewerAccount}><PostDetailContent authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewer={{displayName: viewerAccount.displayName, avatarUrl: viewerAccount.avatarUrl}} viewerScope="viewer-a" /></CurrentAccountProvider>);
+
+    expect(screen.getByRole("img", {name: "Rui"})).toHaveAttribute("src", viewerAccount.avatarUrl);
+    act(() => publishAccountUpdate({...viewerAccount, displayName: "Sam", avatarUrl: "https://media.example/sam.webp", profileVersion: 2}));
+
+    expect(screen.getByRole("img", {name: "Sam"})).toHaveAttribute("src", "https://media.example/sam.webp");
+    expect(screen.queryByRole("img", {name: "Rui"})).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("never commits a new authenticated scope with the previous viewer identity", () => {
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
     const container = document.createElement("div");
@@ -833,11 +850,23 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", request);
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    render(<CurrentAccountProvider><PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} /></CurrentAccountProvider>);
 
     expect(screen.getByRole("status", {name: "Comments"})).toHaveAttribute("aria-busy", "true");
     expect(await screen.findByRole("textbox", {name: "Write a comment"})).toBeVisible();
     expect(screen.getByRole('img', {name: 'Rui'})).toHaveAttribute('src', viewerAccount.avatarUrl);
+    expect(request).toHaveBeenCalledWith("/api/me", expect.objectContaining({cache: "no-store", credentials: "include"}));
+  });
+
+  it("uses the provider's single account request for unresolved detail access", async () => {
+    const request = vi.fn().mockImplementation(() => Promise.resolve(Response.json(viewerAccount)));
+    vi.stubGlobal("fetch", request);
+    const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
+
+    render(<CurrentAccountProvider><PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} /></CurrentAccountProvider>);
+
+    expect(await screen.findByRole("textbox", {name: "Write a comment"})).toBeVisible();
+    expect(request).toHaveBeenCalledOnce();
     expect(request).toHaveBeenCalledWith("/api/me", expect.objectContaining({cache: "no-store", credentials: "include"}));
   });
 
@@ -846,7 +875,7 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", request);
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent accountResolutionNeeded authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="token-scope" />);
+    render(<CurrentAccountProvider><PostDetailContent accountResolutionNeeded authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="token-scope" /></CurrentAccountProvider>);
 
     expect(screen.getByRole("status", {name: "Comments"})).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
@@ -859,7 +888,7 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {status: 401})));
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent accountResolutionNeeded authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="token-scope" />);
+    render(<CurrentAccountProvider><PostDetailContent accountResolutionNeeded authenticated labels={labels} locale="en" result={{status: "ok", data: detail}} viewerScope="token-scope" /></CurrentAccountProvider>);
 
     expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
     expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
@@ -870,7 +899,7 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {status})));
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    render(<CurrentAccountProvider><PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} /></CurrentAccountProvider>);
 
     expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
     expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
@@ -880,7 +909,7 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({profileId: "not-a-uuid"}), {status: 200})));
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    render(<CurrentAccountProvider><PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} /></CurrentAccountProvider>);
 
     expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
     expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
@@ -890,7 +919,7 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network unavailable")));
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    render(<CurrentAccountProvider><PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} /></CurrentAccountProvider>);
 
     expect(await screen.findByRole("link", {name: "Sign in to comment"})).toBeVisible();
     expect(screen.queryByRole("textbox", {name: "Write a comment"})).toBeNull();
@@ -903,7 +932,7 @@ describe("real social content", () => {
     vi.stubGlobal("fetch", request);
     const detail: PostDetail = {...post, comments: {groups: [], nextCursor: null}};
 
-    render(<PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} />);
+    render(<CurrentAccountProvider><PostDetailContent authResolutionNeeded labels={labels} locale="en" result={{status: "ok", data: detail}} /></CurrentAccountProvider>);
 
     fireEvent.change(await screen.findByRole("textbox", {name: "Write a comment"}), {target: {value: "Resolved session"}});
     fireEvent.click(screen.getByRole("button", {name: "Comment"}));

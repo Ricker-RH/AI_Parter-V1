@@ -38,6 +38,11 @@ function Consumer({label}: {label: string}) {
   return <output aria-label={label}>{loading ? 'loading' : current?.displayName ?? 'anonymous'}</output>
 }
 
+function StatusConsumer() {
+  const {status} = useCurrentAccount()
+  return <output aria-label="account status">{status}</output>
+}
+
 beforeEach(() => {
   FakeBroadcastChannel.instances = []
   vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel)
@@ -49,6 +54,17 @@ afterEach(() => {
 })
 
 describe('CurrentAccountProvider', () => {
+  it('distinguishes anonymous authentication from an unavailable account request', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
+    render(<CurrentAccountProvider><StatusConsumer/></CurrentAccountProvider>)
+    await waitFor(() => expect(screen.getByLabelText('account status')).toHaveTextContent('anonymous'))
+
+    cleanup()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 503})))
+    render(<CurrentAccountProvider><StatusConsumer/></CurrentAccountProvider>)
+    await waitFor(() => expect(screen.getByLabelText('account status')).toHaveTextContent('unavailable'))
+  })
+
   it('lazily fetches and strictly parses the current account once in StrictMode', async () => {
     const request = vi.fn().mockResolvedValue(Response.json(account))
     vi.stubGlobal('fetch', request)

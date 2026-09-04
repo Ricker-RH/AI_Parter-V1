@@ -1,11 +1,12 @@
 'use client'
 
-import {AccountSchema, CommentThreadContextSchema, type PostDetail, type PublicComment} from '@aifans/contracts'
+import {CommentThreadContextSchema, type PostDetail, type PublicComment} from '@aifans/contracts'
 import Link from 'next/link'
 import {useEffect, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import {formatRelativeDuration} from '../../lib/relative-time'
 import type {SocialApiResult} from '../../lib/social-api'
+import {useOptionalCurrentAccount} from '../account/CurrentAccountProvider'
 import {AuthorPreview} from './AuthorPreview'
 import {CommentActions} from './CommentActions'
 import {CommentComposer, type CommentViewer} from './CommentComposer'
@@ -23,14 +24,6 @@ type StoredComments = {
   scope: string | null
   serverCommentCount: number
   serverGroups: CommentGroup[] | null
-}
-
-type CommentAccess = {
-  inputKey: string
-  canMutate: boolean
-  checkingAccess: boolean
-  viewer?: CommentViewer
-  viewerScope?: string
 }
 
 type ReplyTarget = {id: string; name: string}
@@ -98,13 +91,15 @@ function CommentThreadGroup({authenticated, group, labels, locale, onReply, post
 }
 
 export function PostDetailContent({result, locale, labels, moreHref, authenticated=false, accountResolutionNeeded=false, authResolutionNeeded=false, returnTo, referenceTime=Date.now(), viewer: serverViewer, viewerScope: serverViewerScope}: {result: SocialApiResult<PostDetail>; locale: Locale; labels: SocialLabels; moreHref?: string | undefined; authenticated?: boolean; accountResolutionNeeded?: boolean; authResolutionNeeded?: boolean; returnTo?: string; referenceTime?: number; viewer?: CommentViewer; viewerScope?: string}) {
+  const currentAccount = useOptionalCurrentAccount()
   const resolutionNeeded = accountResolutionNeeded || authResolutionNeeded
-  const accessInputKey = JSON.stringify([authenticated, resolutionNeeded, serverViewerScope ?? null, serverViewer?.displayName ?? null, serverViewer?.avatarUrl ?? null])
-  const initialAccess = (): CommentAccess => ({inputKey: accessInputKey, canMutate: authenticated && !resolutionNeeded, checkingAccess: resolutionNeeded, ...(!resolutionNeeded && serverViewer ? {viewer: serverViewer} : {}), ...(!resolutionNeeded && serverViewerScope ? {viewerScope: serverViewerScope} : {})})
-  const [storedAccess, setStoredAccess] = useState<CommentAccess>(initialAccess)
-  const access = storedAccess.inputKey === accessInputKey ? storedAccess : initialAccess()
-  if (storedAccess.inputKey !== accessInputKey) setStoredAccess(access)
-  const {canMutate, checkingAccess, viewer: resolvedViewer, viewerScope: resolvedViewerScope} = access
+  const providerAccount = currentAccount?.status === 'authenticated' ? currentAccount.account : null
+  const checkingAccess = resolutionNeeded && (currentAccount === null || currentAccount.status === 'loading')
+  const canMutate = resolutionNeeded ? Boolean(providerAccount) : authenticated
+  const resolvedViewer = canMutate
+    ? providerAccount ? {displayName: providerAccount.displayName, avatarUrl: providerAccount.avatarUrl ?? null} : serverViewer
+    : undefined
+  const resolvedViewerScope = resolutionNeeded ? providerAccount?.id : serverViewerScope
   const currentResult = result.status === 'ok' ? result.data : null
   const postReturnTo = currentResult ? returnTo ?? `/${locale}/posts/${currentResult.id}` : null
   const viewerScope = canMutate ? resolvedViewerScope : undefined
@@ -122,22 +117,6 @@ export function PostDetailContent({result, locale, labels, moreHref, authenticat
     setStoredComments(reconcileComments(storedComments, serverGroups, currentResult?.commentCount ?? 0))
   }
   const groups = storedComments.scope === pageScope ? storedComments.groups : serverGroups
-
-  useEffect(() => {
-    if (!resolutionNeeded) return
-    const controller = new AbortController()
-    void fetch('/api/me', {cache: 'no-store', credentials: 'include', signal: controller.signal}).then(async (response) => {
-      let resolved: CommentAccess = {inputKey: accessInputKey, canMutate: false, checkingAccess: false}
-      if (response.status === 200) {
-        try {
-          const parsed = AccountSchema.strict().safeParse(await response.json())
-          if (parsed.success) resolved = {inputKey: accessInputKey, canMutate: true, checkingAccess: false, viewerScope: parsed.data.id, viewer: {displayName: parsed.data.displayName, avatarUrl: parsed.data.avatarUrl ?? null}}
-        } catch {}
-      }
-      if (!controller.signal.aborted) setStoredAccess((current) => current.inputKey === accessInputKey ? resolved : current)
-    }).catch(() => undefined).finally(() => { if (!controller.signal.aborted) setStoredAccess((current) => current.inputKey === accessInputKey ? {...current, checkingAccess: false} : current) })
-    return () => controller.abort()
-  }, [accessInputKey, resolutionNeeded])
 
   useEffect(() => {
     const readAnchor = () => {
