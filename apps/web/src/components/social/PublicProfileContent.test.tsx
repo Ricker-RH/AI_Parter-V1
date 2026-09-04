@@ -84,6 +84,7 @@ describe('PublicProfileContent', () => {
     expect(screen.queryByRole('link', {name: 'Search'})).toBeNull()
     expect(screen.getByRole('button', {name: 'More'})).toBeVisible()
     expect(screen.getByRole('heading', {level: 2, name: 'Luma'})).toBeVisible()
+    expect(container.querySelector('[data-avatar-kind="ip"]')).toHaveAttribute('data-avatar-halo')
     expect(screen.getAllByRole('heading', {level: 1})).toHaveLength(1)
     expect(screen.getAllByText('@luma')).toHaveLength(2)
     expect(screen.getByText('Created by @luma_creator')).toBeVisible()

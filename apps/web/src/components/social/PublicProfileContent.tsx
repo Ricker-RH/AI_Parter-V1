@@ -9,6 +9,7 @@ import {StartChatButton} from '../chat/StartChatButton'
 import styles from './PublicProfileContent.module.css'
 import {PublicProfileTabs} from './PublicProfileTabs'
 import {ProfilePageHeader} from '../profile/ProfilePageHeader'
+import {Avatar} from '../account/Avatar'
 import {IpProfileShareAction} from './IpProfileShareAction'
 
 export function PublicProfileContent({result,locale,labels,moreHref,viewerScope}: {result:SocialApiResult<PublicIpProfile>;locale:Locale;labels:SocialLabels;moreHref?:string;viewerScope?:string}) {
@@ -26,7 +27,7 @@ export function PublicProfileContent({result,locale,labels,moreHref,viewerScope}
           <p className={styles.username}>@{profile.username}</p>
           {profile.creator?<p className={styles.creator}>{labels.createdBy} @{profile.creator.username}</p>:null}
         </div>
-        <div className={styles.avatar} aria-hidden="true">{profile.displayName.slice(0,1)}</div>
+        <Avatar avatarUrl={null} {...(styles.avatar ? {className: styles.avatar} : {})} decorative displayName={profile.displayName} identityId={profile.id} kind="ip" size="large"/>
       </div>
       {profile.bio?<p className={styles.bio}>{profile.bio}</p>:null}
       <p className={styles.followers}>{followerCount} {labels.followers}</p>

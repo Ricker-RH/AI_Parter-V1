@@ -135,6 +135,7 @@ describe('MyProfilePanel', () => {
     expect(stylesheet).toMatch(/\.pageContent\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/s)
     expect(stylesheet).toMatch(/\.surface\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s)
     expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]::after\s*\{[^}]*height:\s*var\(--content-scroll-end-space\)/s)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\)[\s\S]*?\.page > div:first-child > header:first-child \{[\s\S]*?display:\s*flex[\s\S]*?background:\s*color-mix/)
   })
 })
 
