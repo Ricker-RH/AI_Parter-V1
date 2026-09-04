@@ -1,5 +1,6 @@
 import {
   render,
+  act,
   screen,
   waitFor,
   cleanup,
@@ -49,9 +50,9 @@ it("loads private images only through the authenticated download endpoint and ab
 });
 it("refreshes expired voice authorization on playback before resuming", async () => {
   const expiredAt = Date.now() + 60000;
-  const fetcher = vi.fn().mockImplementation(() =>
-    Promise.resolve(
-      Response.json({
+  let resolveRenewal!: (response: Response) => void;
+  const fetcher = vi.fn().mockImplementation(() => {
+    const response = Response.json({
         url: `https://assets.test/private-${fetcher.mock.calls.length}`,
         expiresAt: new Date(
           fetcher.mock.calls.length === 1 ? expiredAt : Date.now() + 60000,
@@ -62,9 +63,9 @@ it("refreshes expired voice authorization on playback before resuming", async ()
           contentType: "audio/webm",
           sizeBytes: 10,
         },
-      }),
-    ),
-  );
+      });
+    return fetcher.mock.calls.length === 1 ? Promise.resolve(response) : new Promise<Response>((resolve) => { resolveRenewal = resolve; });
+  });
   vi.stubGlobal("fetch", fetcher);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
@@ -82,6 +83,13 @@ it("refreshes expired voice authorization on playback before resuming", async ()
   vi.spyOn(Date, "now").mockReturnValue(expiredAt + 1);
   fireEvent.play(view.container.querySelector("audio")!);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(view.container.querySelector("audio")).toBeTruthy();
+  expect(screen.queryByText("Loading attachment…")).toBeNull();
+  await act(async () => resolveRenewal(Response.json({
+    url: "https://assets.test/private-renewed",
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+    attachment: {attachmentId: id, kind: "voice", contentType: "audio/webm", sizeBytes: 10},
+  })));
   await waitFor(() =>
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled(),
   );

@@ -19,12 +19,14 @@ export function HumanMediaMessage({
     [attempt, setAttempt] = useState(0);
   const callback = useRef(onError);
   const expiresAt = useRef(0),
+    activeAttachmentId = useRef<string | null>(null),
     resume = useRef(false),
     audio = useRef<HTMLAudioElement | null>(null);
   callback.current = onError;
   useEffect(() => {
     const owner = new AbortController();
-    setUrl(null);
+    if (activeAttachmentId.current !== attachmentId) setUrl(null);
+    activeAttachmentId.current = attachmentId;
     setFailed(false);
     void (async () => {
       try {
