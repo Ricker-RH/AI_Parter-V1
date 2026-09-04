@@ -9,7 +9,7 @@
   --shell-border: #e5e5e5;
   --shell-hover: #f6f6f6;
   --shell-focus: #27272a;
-  --entity-action-gap: 8px;
+  --entity-action-width: 420px;
   --content-scroll-end-space: 16px;
   --app-viewport-height: 100vh;
   --mobile-safe-area-bottom: env(safe-area-inset-bottom);
@@ -477,10 +477,10 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 .post-actions__controls {
   align-items: center;
-  display: inline-flex;
-  gap: var(--entity-action-gap);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   min-width: 0;
-  width: fit-content;
+  width: min(100%, var(--entity-action-width));
 }
 .post-actions__feedback {
   display: grid;
@@ -504,7 +504,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   min-width: 36px;
   padding: 0 4px;
 }
-.post-actions__controls .post-action { flex: 0 0 auto; min-width: 44px; padding-inline: 6px; }
+.post-actions__controls .post-action { justify-content: flex-start; min-width: 0; padding-inline: 6px; width: 100%; }
 .post-action svg { flex: 0 0 20px; height: 20px; width: 20px; }
 .post-action span { color: var(--shell-muted); font-size: 13px; }
 .post-action:hover { background: transparent; color: var(--shell-muted); }
@@ -644,6 +644,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 .comment-thread-item--reply { padding-left: 24px; }
 .comment-actions { grid-column: 1 / -1; margin-top: 0; }
+.comment-actions .post-actions__controls { width: min(100%, var(--entity-action-width)); }
 .comment-composer {
   border-bottom: 1px solid var(--shell-border);
   background: color-mix(in srgb, var(--shell-surface) 96%, transparent);
@@ -2097,7 +2098,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 
 @media (max-width: 359px) {
-  .comment-actions .post-actions__controls { flex-wrap: wrap; max-width: 100%; }
+  .post-actions__controls .post-action { padding-inline: 2px; }
 }
 
 @media (min-width: 700px) and (max-width: 1183px) {
