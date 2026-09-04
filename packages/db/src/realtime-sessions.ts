@@ -2,7 +2,7 @@ import {z} from 'zod'
 import type {WithPlatformActor} from './session.js'
 
 export type RealtimeSessionIdentity = {sessionId:string; subject:string; profileId:string}
-export type RealtimeSessionRedemption = RealtimeSessionIdentity & {ticketExpiresAt:number; sessionExpiresAt:number}
+export type RealtimeSessionRedemption = RealtimeSessionIdentity & {ticketIssuedAt:number; ticketExpiresAt:number; sessionExpiresAt:number}
 export type RealtimeSessionAuthorization = RealtimeSessionIdentity & {conversationId:string; eventType?:string}
 export type RealtimeSessionDecision = {allowed:boolean; presenceAllowed:boolean}
 export type RealtimeSessionRepository = {
@@ -12,8 +12,8 @@ export type RealtimeSessionRepository = {
 
 const identity = z.object({sessionId:z.uuid(),subject:z.string().min(1).max(512).refine(value=>value.trim().length>0),profileId:z.uuid()})
 const epoch = z.number().int().nonnegative().max(8640000000000000)
-const redemption = identity.extend({ticketExpiresAt:epoch,sessionExpiresAt:epoch})
-const authorization = identity.extend({conversationId:z.uuid()})
+const redemption = identity.extend({ticketIssuedAt:epoch,ticketExpiresAt:epoch,sessionExpiresAt:epoch})
+const authorization = identity.extend({conversationId:z.uuid(),eventType:z.enum(['message','read','typing','presence','access_revoked','ai_generation']).optional()})
 
 /** Only a server-owned platform session factory belongs here, never browser actor credentials. */
 export function createPostgresRealtimeSessionRepository({withPlatformActor}:{withPlatformActor:WithPlatformActor}):RealtimeSessionRepository {
@@ -23,8 +23,8 @@ export function createPostgresRealtimeSessionRepository({withPlatformActor}:{wit
       if(!parsed.success) return false
       const value=parsed.data
       return withPlatformActor({subject:'__realtime_service__'},async client=>{
-        const result=await client.query('SELECT public.redeem_realtime_session($1,$2,$3,$4,$5) AS allowed',[
-          value.sessionId,value.subject,value.profileId,new Date(value.ticketExpiresAt),new Date(value.sessionExpiresAt),
+        const result=await client.query('SELECT public.redeem_realtime_session($1,$2,$3,$4,$5,$6) AS allowed',[
+          value.sessionId,value.subject,value.profileId,new Date(value.ticketExpiresAt),new Date(value.sessionExpiresAt),new Date(value.ticketIssuedAt),
         ])
         return result.rows[0]?.allowed===true
       })
@@ -36,11 +36,12 @@ export function createPostgresRealtimeSessionRepository({withPlatformActor}:{wit
       return withPlatformActor({subject:'__realtime_service__'},async client=>{
         // Message/read subscriptions do not require mutual follows. The gateway
         // must additionally require presenceAllowed for typing/presence events.
-        const result=await client.query('SELECT allowed,presence_allowed FROM public.authorize_realtime_session($1,$2,$3,$4)',[
+        const isAi=value.eventType==='ai_generation'
+        const result=await client.query(isAi?'SELECT allowed,false AS presence_allowed FROM public.authorize_ai_realtime_session($1,$2,$3,$4)':'SELECT allowed,presence_allowed FROM public.authorize_realtime_session($1,$2,$3,$4)',[
           value.sessionId,value.subject,value.profileId,value.conversationId,
         ])
         const allowed=result.rows[0]?.allowed===true
-        return {allowed,presenceAllowed:allowed && result.rows[0]?.presence_allowed===true}
+        return {allowed,presenceAllowed:!isAi && allowed && result.rows[0]?.presence_allowed===true}
       })
     },
   }

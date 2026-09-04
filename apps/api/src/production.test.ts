@@ -18,6 +18,18 @@ const environment = {
 } as const;
 
 describe("production API composition", () => {
+  it('keeps logout compatible before rollout and revokes sessions when enabled',()=>{
+    const disabled=createProductionDependencies(environment)
+    expect(disabled.realtimeRevocationEnabled).toBe(false)
+    expect(disabled.realtimeRevocation).toBeUndefined()
+    const enabled=createProductionDependencies({...environment,HUMAN_SOCIAL_ENABLED:'true'})
+    expect(enabled.realtimeRevocationEnabled).toBe(true)
+    expect(enabled.realtimeRevocation?.revokeOwn).toBeTypeOf('function')
+  })
+  it('enables rich chat targets only with the human social rollout',()=>{
+    expect(createProductionDependencies(environment).humanChatRichContent).toBeUndefined()
+    expect(createProductionDependencies({...environment,HUMAN_SOCIAL_ENABLED:'true'}).humanChatRichContent?.listTargets).toBeTypeOf('function')
+  })
   it('enables private media only with human social and private storage configuration',()=>{
     const storage={R2_ACCOUNT_ID:'0'.repeat(32),R2_ACCESS_KEY_ID:'access',R2_SECRET_ACCESS_KEY:'secret',R2_PRIVATE_BUCKET:'aifans-private'}
     expect(createProductionDependencies({...environment,...storage}).humanChatMedia).toBeUndefined()
@@ -40,7 +52,7 @@ describe("production API composition", () => {
     const identity={subject:'auth-user',profileId:'00000000-0000-4000-8000-000000000001'}
     const ticket=await deps.realtime!.issue(identity,'https://web.example')
     const session=await deps.realtime!.redeem({ticket,origin:'https://web.example'})
-    expect(redeem).toHaveBeenCalledWith({...identity,sessionId:session.sessionId,ticketExpiresAt:expect.any(Number),sessionExpiresAt:session.sessionExpiresAt})
+    expect(redeem).toHaveBeenCalledWith({...identity,sessionId:session.sessionId,ticketExpiresAt:expect.any(Number),sessionExpiresAt:session.sessionExpiresAt,ticketIssuedAt:expect.any(Number)})
     expect(redeem.mock.calls[0]![0].ticketExpiresAt).toBeGreaterThan(Date.now())
     await deps.realtime!.authorize({...session,conversationId:'00000000-0000-4000-8000-000000000002'})
     expect(authorize).toHaveBeenCalledOnce()
@@ -48,6 +60,7 @@ describe("production API composition", () => {
     expect(base.realtime).toBeUndefined()
     expect(createProductionDependencies({...configured,REALTIME_GATEWAY_URL:'https://gateway.example'}).realtimeDelivery?.deliverBatch).toBeTypeOf('function')
     expect(createProductionDependencies({...configured,REALTIME_GATEWAY_URL:'https://gateway.example'}).realtimeEphemeral?.emit).toBeTypeOf('function')
+    expect(createProductionDependencies({...configured,REALTIME_GATEWAY_URL:'https://gateway.example'}).onGenerationPersisted).toBeTypeOf('function')
     expect(()=>createProductionDependencies(configured,{createDatabaseRuntime:()=>({...createDatabaseRuntime(),realtimeSessions:undefined})})).toThrow('Realtime session repository unavailable')
   })
   it('enables profile cleanup only with its explicit secret and public R2 configuration', () => {

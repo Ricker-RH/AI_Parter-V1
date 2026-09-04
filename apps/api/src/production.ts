@@ -16,6 +16,7 @@ import {createRealtimeEphemeral} from './ports/realtime-ephemeral.js'
 import {createR2HumanChatMediaStorage} from './adapters/r2-human-chat-media.js'
 import {createHumanChatMediaPort} from './ports/human-chat-media.js'
 import {createRealtimeDeliveryWorker} from './ports/realtime-delivery.js'
+import {groupRealtimeDeliveryWorkers} from './ports/realtime-delivery-group.js'
 import type {RealtimePort} from './ports/realtime.js'
 import {waitUntil} from '@vercel/functions'
 import { createNeonJwtAuthVerifier } from "./adapters/neon-auth-jwt.js";
@@ -78,15 +79,16 @@ export function createProductionDependencies(
     const sessions=database.realtimeSessions
     if (!sessions) throw new Error('Realtime session repository unavailable')
     const tickets=createRealtimeTickets({secret:env.realtime.ticketSecret,issuer:env.realtime.issuer,audience:env.realtime.audience,allowedOrigins:env.realtime.allowedOrigins,
-      consume:(sessionId,expiresAt,identity,sessionExpiresAt)=>sessions.redeem({...identity,sessionId,ticketExpiresAt:expiresAt*1000,sessionExpiresAt}),
+      consume:(sessionId,expiresAt,identity,sessionExpiresAt,ticketIssuedAt)=>sessions.redeem({...identity,sessionId,ticketExpiresAt:expiresAt*1000,sessionExpiresAt,ticketIssuedAt}),
     })
     realtime={issue:(identity,origin)=>tickets.issue({...identity,origin}),redeem:({ticket,origin})=>tickets.consume(ticket,origin),authorize:input=>sessions.authorize(input)}
   }
-  if(env.realtime?.gatewayUrl && !database.humanRealtimeOutbox) throw new Error('Realtime outbox repository unavailable')
+  if(env.realtime?.gatewayUrl && (!database.humanRealtimeOutbox || !database.aiRealtimeOutbox)) throw new Error('Realtime outbox repository unavailable')
   const realtimeDelivery=env.realtime?.gatewayUrl && database.humanRealtimeOutbox
-    ? createRealtimeDeliveryWorker({outbox:database.humanRealtimeOutbox,publisher:createRealtimePublisher({baseUrl:env.realtime.gatewayUrl,secret:env.realtime.internalSecret})}) : undefined
+    ? groupRealtimeDeliveryWorkers([database.humanRealtimeOutbox,database.aiRealtimeOutbox!].map(outbox=>createRealtimeDeliveryWorker({outbox,publisher:createRealtimePublisher({baseUrl:env.realtime!.gatewayUrl!,secret:env.realtime!.internalSecret})}))) : undefined
   return {
     ...(realtimeDelivery?{realtimeDelivery,defer:waitUntil}:{}),
+    ...(realtimeDelivery?{onGenerationPersisted:()=>{waitUntil(realtimeDelivery.deliverBatch(10).catch(()=>{console.error(JSON.stringify({event:'realtime_wakeup_failed'}))}))}}:{}),
     ...(env.realtime?.gatewayUrl&&database.realtimeEphemeral?{realtimeEphemeral:createRealtimeEphemeral({resolve:input=>database.realtimeEphemeral!.resolve(input),status:createRealtimeStatusReader({baseUrl:env.realtime.gatewayUrl,secret:env.realtime.internalSecret})})}:{}),
     ...(realtime && env.realtime ? {realtime,realtimeAllowedOrigins:env.realtime.allowedOrigins,realtimeInternalSecret:env.realtime.internalSecret} : {}),
     ...(cleanupRepository && cleanupRemove && env.profileAssetCleanupSecret ? {
@@ -109,6 +111,9 @@ export function createProductionDependencies(
     ...(env.humanSocialEnabled && env.privateChatMedia && database.humanChatMedia ? {humanChatMedia:createHumanChatMediaPort({repository:database.humanChatMedia,storage:createR2HumanChatMediaStorage(env.privateChatMedia)})}:{}),
     ...(env.humanSocialEnabled && database.humanSocial ? {humanSocial: database.humanSocial} : {}),
     ...(env.humanSocialEnabled && database.humanProfileTabs ? {humanProfileTabs: database.humanProfileTabs} : {}),
+    ...(env.humanSocialEnabled && database.humanChatRichContent ? {humanChatRichContent:database.humanChatRichContent}:{}),
+    realtimeRevocationEnabled:env.humanSocialEnabled,
+    ...(env.humanSocialEnabled && database.realtimeRevocation ? {realtimeRevocation:database.realtimeRevocation}:{}),
     creator: database.creator,
     platformCreator: database.platformCreator,
     channels:database.channels,

@@ -19,6 +19,10 @@ import {registerHumanProfileTabsRoutes} from './routes/human-profile-tabs.js'
 import type {HumanProfileTabsPort} from './ports/human-profile-tabs.js'
 import type {HumanChatMediaPort} from './ports/human-chat-media.js'
 import {registerHumanChatMediaRoutes} from './routes/human-chat-media.js'
+import {registerHumanChatRichContentRoutes} from './routes/human-chat-rich-content.js'
+import type {HumanChatRichContentPort} from './ports/human-chat-rich-content.js'
+import type {RealtimeRevocationPort} from './ports/realtime-revocation.js'
+import {registerRealtimeRevocationRoutes} from './routes/realtime-revocation.js'
 import type {RealtimePort} from './ports/realtime.js'
 import type {RealtimeDeliveryWorker} from './ports/realtime-delivery.js'
 import {realtimeDeliveryMiddleware} from './middleware/realtime-delivery.js'
@@ -65,6 +69,10 @@ export type AppDependencies = {
   realtimeEphemeral?:RealtimeEphemeralPort;
   humanProfileTabs?:HumanProfileTabsPort;
   humanChatMedia?:HumanChatMediaPort;
+  humanChatRichContent?:HumanChatRichContentPort;
+  realtimeRevocation?:RealtimeRevocationPort;
+  realtimeRevocationEnabled?:boolean;
+  onGenerationPersisted?:()=>void;
   realtimeDelivery?: RealtimeDeliveryWorker;
   defer?: (promise:Promise<unknown>)=>void;
   realtimeAllowedOrigins?: string[];
@@ -121,6 +129,8 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   app.use('*', realtimeDeliveryMiddleware(dependencies));
   registerHumanChatRoutes(app, dependencies);
   registerHumanChatMediaRoutes(app,dependencies);
+  registerHumanChatRichContentRoutes(app,dependencies);
+  registerRealtimeRevocationRoutes(app,dependencies);
   registerHumanSocialRoutes(app, dependencies);
   registerHumanProfileTabsRoutes(app,dependencies);
   registerRealtimeRoutes(app, dependencies);

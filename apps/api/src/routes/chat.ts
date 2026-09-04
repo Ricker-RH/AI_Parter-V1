@@ -27,6 +27,7 @@ import type {ChatTargetPort} from '../ports/chat-target.js'
 import type {ProfilePort} from '../ports/profiles.js'
 
 export type ChatDependencies = {
+  onGenerationPersisted?:()=>void
   auth?: AuthVerifier
   profiles?: ProfilePort
   chat?: ChatPort
@@ -279,6 +280,8 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
       if (!replay.assistantMessage) throw new Error('CHAT_COMPLETION_MISSING')
       return streamResponse(c, [{type: 'human_message', message: replay.humanMessage}, {type: 'assistant_complete', message: replay.assistantMessage}])
     }
+    const notifyGeneration=()=>{try{dependencies.onGenerationPersisted?.()}catch{/* The durable outbox remains available for scheduled delivery. */}}
+    notifyGeneration()
 
     const abortController = new AbortController()
     const requestSignal = c.req.raw.signal
@@ -299,6 +302,7 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
           const checkpoint=async()=>{
             if(!answer || answer.length===checkpointLength || !repository.checkpointProviderReply) return
             if(!await repository.checkpointProviderReply(human.actor,{conversationId:id.data,humanMessageId:begun.humanMessage.id,answer})) throw new Error('CHAT_CHECKPOINT_FAILED')
+            if(checkpointLength===0) notifyGeneration()
             checkpointLength=answer.length
             checkpointAt=Date.now()
           }
@@ -337,6 +341,7 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
             })
             if (!persisted?.assistantMessage) throw new Error('CHAT_COMPLETION_FAILED')
             completed = true
+            notifyGeneration()
             emit({type: 'assistant_complete', message: persisted.assistantMessage})
           } catch (error) {
             // Best effort bounded final checkpoint; failure persistence below is
@@ -361,6 +366,7 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
               return
             }
             emit({type: 'failed', code: interrupted(error, signal) ? 'CHAT_INTERRUPTED' : 'CHAT_PROVIDER_ERROR'})
+            notifyGeneration()
           } finally {
             requestSignal.removeEventListener('abort', abortFromRequest)
             if (!completed && iterator) {

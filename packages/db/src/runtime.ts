@@ -14,6 +14,9 @@ import {createPostgresRealtimeSessionRepository, type RealtimeSessionRepository}
 import {createPostgresHumanRealtimeOutboxRepository,type HumanRealtimeOutboxRepository} from './human-realtime-outbox.js'
 import {createHumanProfileTabsRepository,type HumanProfileTabsRepository} from './human-profile-tabs.js'
 import {createHumanChatMediaRepository,type HumanChatMediaRepository} from './human-chat-media.js'
+import {createHumanChatRichContentRepository,type HumanChatRichContentRepository} from './human-chat-rich-content.js'
+import {createRealtimeRevocationRepository} from './realtime-revocation.js'
+import {createPostgresAiRealtimeOutboxRepository,type AiRealtimeOutboxRepository} from './ai-realtime-outbox.js'
 import {createPostgresRealtimeEphemeralRepository} from './realtime-ephemeral.js'
 import { createProfileRepository, type ProfileRepository } from "./profiles.js";
 import {
@@ -55,6 +58,9 @@ export type DatabaseRuntimeRepositories = {
   humanRealtimeOutbox?: HumanRealtimeOutboxRepository;
   humanProfileTabs?: HumanProfileTabsRepository;
   humanChatMedia?:HumanChatMediaRepository;
+  humanChatRichContent?:HumanChatRichContentRepository;
+  realtimeRevocation?:ReturnType<typeof createRealtimeRevocationRepository>;
+  aiRealtimeOutbox?:AiRealtimeOutboxRepository;
   realtimeEphemeral?:ReturnType<typeof createPostgresRealtimeEphemeralRepository>;
   creator: CreatorRepository;
   platformCreator: PlatformCreatorRepository;
@@ -126,6 +132,9 @@ export function createDatabaseRuntimeRepositories(
     realtimeSessions: createPostgresRealtimeSessionRepository({withPlatformActor}),
     humanRealtimeOutbox: createPostgresHumanRealtimeOutboxRepository({withPlatformActor}),
     humanChatMedia:createHumanChatMediaRepository({withActor,withPlatformActor}),
+    humanChatRichContent:createHumanChatRichContentRepository({withActor}),
+    realtimeRevocation:createRealtimeRevocationRepository({withActor}),
+    aiRealtimeOutbox:createPostgresAiRealtimeOutboxRepository({withPlatformActor}),
     realtimeEphemeral:createPostgresRealtimeEphemeralRepository({withPlatformActor}),
     humanProfileTabs: createHumanProfileTabsRepository({withActor,withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     humanSocial: createHumanSocialRepository({withActor,withPublic,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),

@@ -2,7 +2,7 @@ import {existsSync} from 'node:fs'
 import {describe, expect, it, vi} from 'vitest'
 import type {QueryClient, WithPlatformActor} from '../src/session.js'
 
-const input={sessionId:'11111111-1111-4111-8111-111111111111',subject:'human|one',profileId:'22222222-2222-4222-8222-222222222222',ticketExpiresAt:Date.now()+45000,sessionExpiresAt:Date.now()+240000}
+const input={sessionId:'11111111-1111-4111-8111-111111111111',subject:'human|one',profileId:'22222222-2222-4222-8222-222222222222',ticketIssuedAt:Date.now(),ticketExpiresAt:Date.now()+45000,sessionExpiresAt:Date.now()+240000}
 async function fixture(rows:Record<string,unknown>[]) {
   expect(existsSync(new URL('../src/realtime-sessions.ts',import.meta.url))).toBe(true)
   const {createPostgresRealtimeSessionRepository}=await import('../src/realtime-sessions.js')
@@ -11,11 +11,16 @@ async function fixture(rows:Record<string,unknown>[]) {
   return {repository:createPostgresRealtimeSessionRepository({withPlatformActor}),query,withPlatformActor}
 }
 describe('trusted durable realtime repository',()=>{
+  it('uses owner-only AI authorization and never grants human presence for AI events',async()=>{
+    const f=await fixture([{allowed:true,presence_allowed:true}])
+    expect(await f.repository.authorize({...input,conversationId:input.sessionId,eventType:'ai_generation'})).toEqual({allowed:true,presenceAllowed:false})
+    expect(f.query).toHaveBeenCalledWith(expect.stringContaining('public.authorize_ai_realtime_session'),[input.sessionId,input.subject,input.profileId,input.sessionId])
+  })
   it('redeems via the bounded platform function with epoch milliseconds converted to dates',async()=>{
     const f=await fixture([{allowed:true}])
     expect(await f.repository.redeem(input)).toBe(true)
     expect(f.withPlatformActor).toHaveBeenCalledWith({subject:'__realtime_service__'},expect.any(Function))
-    expect(f.query).toHaveBeenCalledWith(expect.stringContaining('public.redeem_realtime_session'),[input.sessionId,input.subject,input.profileId,new Date(input.ticketExpiresAt),new Date(input.sessionExpiresAt)])
+    expect(f.query).toHaveBeenCalledWith(expect.stringContaining('public.redeem_realtime_session'),[input.sessionId,input.subject,input.profileId,new Date(input.ticketExpiresAt),new Date(input.sessionExpiresAt),new Date(input.ticketIssuedAt)])
   })
   it('maps authorization and preserves separate presence decisions for message/read events',async()=>{
     const f=await fixture([{allowed:true,presence_allowed:false}])
