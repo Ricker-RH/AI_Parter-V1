@@ -1,4 +1,5 @@
 import type {Notification, NotificationPage} from '@aifans/contracts'
+import {useState} from 'react'
 import Link from 'next/link'
 import type {Locale} from '../../i18n/config'
 import type {SocialApiResult} from '../../lib/social-api'
@@ -6,12 +7,13 @@ import {HumanAvatar} from '../account/HumanAvatar'
 import type {SocialLabels} from '../social/types'
 import {UnavailableRetry} from '../social/UnavailableRetry'
 import {MessagesSectionHeader, type MessagesSectionLabels} from './MessagesSectionHeader'
+import {SectionSearchField} from '../SectionSearchField'
 import styles from './MessagesWorkspace.module.css'
 import {HumanNotificationFollow} from './HumanNotificationFollow'
 import followStyles from './HumanNotificationFollow.module.css'
 import {humanProfileLabels} from '../profile/human-profile-labels'
 
-export type NotificationWorkspaceLabels = SocialLabels & {chat: MessagesSectionLabels & {
+export type NotificationWorkspaceLabels = SocialLabels & {chat: MessagesSectionLabels & {searchLabel: string; searchPlaceholder: string;
   back: string
   loadingMore: string
   notificationActorContext: string
@@ -35,11 +37,13 @@ export function notificationText(notification: Notification, labels: SocialLabel
 }
 
 export function NotificationList({listCursor, labels, locale, readIds, result, selectedId}: {listCursor?: string; labels: NotificationWorkspaceLabels; locale: Locale; readIds: ReadonlySet<string>; result: SocialApiResult<NotificationPage>; selectedId?: string}) {
+  const [query, setQuery] = useState('')
+  const items = result.status === 'ok' && query.trim() ? result.data.items.filter((notification) => notificationText(notification, labels).toLocaleLowerCase(locale).includes(query.trim().toLocaleLowerCase(locale))) : result.status === 'ok' ? result.data.items : []
   return <aside aria-label={labels.chat.notificationListLabel} className={styles.listPane}>
-    <MessagesSectionHeader active="notifications" labels={labels.chat} locale={locale}/>
+    <MessagesSectionHeader active="notifications" labels={labels.chat} locale={locale}><SectionSearchField label={labels.chat.searchLabel} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={labels.chat.searchPlaceholder} value={query}/></MessagesSectionHeader>
     {result.status === 'unavailable' ? <div className={styles.unavailableState} role="alert"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M24 7v20"/><path d="M24 36.5v.5"/><circle cx="24" cy="24" r="18"/></svg><h2>{labels.unavailableTitle}</h2><p>{labels.unavailableDescription}</p><UnavailableRetry label={labels.unavailableRetry} pendingLabel={labels.unavailableRetrying}/></div> : null}
-    {result.status === 'ok' && result.data.items.length === 0 ? <div className={styles.inboxEmpty}><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M15 19a9 9 0 0 1 18 0c0 10 4 11 4 11H11s4-1 4-11Z"/><path d="M20 35h8"/></svg><h2>{labels.notificationsEmptyTitle}</h2><p>{labels.notificationsEmptyDescription}</p></div> : null}
-    {result.status === 'ok' && result.data.items.length > 0 ? <nav aria-label={labels.chat.notificationListLabel} className={styles.notificationList}>{result.data.items.map((notification) => {
+    {result.status === 'ok' && items.length === 0 ? <div className={styles.inboxEmpty}><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M15 19a9 9 0 0 1 18 0c0 10 4 11 4 11H11s4-1 4-11Z"/><path d="M20 35h8"/></svg><h2>{labels.notificationsEmptyTitle}</h2><p>{labels.notificationsEmptyDescription}</p></div> : null}
+    {result.status === 'ok' && items.length > 0 ? <nav aria-label={labels.chat.notificationListLabel} className={styles.notificationList}>{items.map((notification) => {
       const read = notification.readAt !== null || readIds.has(notification.id)
       const query = listCursor ? `?${new URLSearchParams({listCursor})}` : ''
       if(notification.kind==='follow'&&notification.actor?.kind==='human')return <div className={`${styles.notificationRow} ${followStyles.humanRow}`} data-follow-row data-selected={notification.id===selectedId||undefined} key={notification.id}>

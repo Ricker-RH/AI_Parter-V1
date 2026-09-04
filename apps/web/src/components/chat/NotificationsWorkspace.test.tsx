@@ -49,6 +49,7 @@ describe('NotificationsWorkspace', () => {
     render(<NotificationsWorkspace labels={en} listCursor="origin" locale="en" result={{status: 'ok', data: {items: [notification], nextCursor: 'next'}}} viewerScope="viewer-a" />)
 
     expect(screen.getByRole('heading', {name: 'Messages'})).toBeVisible()
+    expect(screen.getByRole('searchbox', {name: 'Search conversations'})).toBeVisible()
     expect(screen.getByRole('link', {name: 'Notifications'})).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', {name: /Alex liked your post/})).toHaveAttribute('href', `/en/messages/notifications/${notification.id}?listCursor=origin`)
     expect(screen.getByRole('heading', {name: 'Select a notification'})).toBeVisible()
