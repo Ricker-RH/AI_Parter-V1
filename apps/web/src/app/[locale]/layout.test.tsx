@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react'
 import {describe, expect, it, vi} from 'vitest'
+import {readFileSync} from 'node:fs'
 
 const {rootLocale} = vi.hoisted(() => ({rootLocale: vi.fn(async () => 'en')}))
 vi.mock('next/navigation', () => ({notFound: vi.fn()}))
@@ -14,6 +15,12 @@ import {fetchCurrentAccount} from '../../lib/current-account.js'
 import {requestCookie} from '../../lib/request-cookie.js'
 
 describe('locale layout analytics identity', () => {
+  it('mounts the account provider inside the server locale layout', () => {
+    const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/[locale]/layout.tsx' : 'apps/web/src/app/[locale]/layout.tsx', 'utf8')
+    expect(source).toContain('CurrentAccountProvider')
+    expect(source).not.toMatch(/^['"]use client['"]/)
+  })
+
   it('returns the root shell without waiting for locale or analytics-only account data', async () => {
     rootLocale.mockReturnValue(new Promise(() => undefined))
     vi.mocked(requestCookie).mockResolvedValue('session=real')

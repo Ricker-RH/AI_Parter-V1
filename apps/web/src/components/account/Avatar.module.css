@@ -1,0 +1,38 @@
+.avatar {
+  align-items: center;
+  background: var(--shell-hover);
+  border: 1px solid var(--shell-border);
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 700;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.small {
+  height: 32px;
+  width: 32px;
+}
+
+.medium {
+  height: 44px;
+  width: 44px;
+}
+
+.large {
+  height: 88px;
+  width: 88px;
+}
+
+.image {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.icon {
+  height: 55%;
+  width: 55%;
+}

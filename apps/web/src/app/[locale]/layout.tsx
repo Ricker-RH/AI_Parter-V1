@@ -13,6 +13,7 @@ import {readWebAuthEnv} from '../../lib/auth/env'
 import {isCreatorModeEnabled} from '../../lib/creator-mode'
 import {analyticsRelease} from '../../lib/analytics/release'
 import {RootLocaleSync} from '../../components/RootLocaleSync'
+import {CurrentAccountProvider} from '../../components/account/CurrentAccountProvider'
 
 export const ROOT_LOCALE_SCRIPT = "(function(){var path=location.pathname,match=/^\\/(en|zh-CN)(?=\\/|$)(.*)$/.exec(path),locale=match?match[1]:'en',rest=match&&match[2]||'',shell=rest==='/admin'||rest.indexOf('/admin/')===0?'admin':rest==='/creator'||rest.indexOf('/creator/')===0?'creator':rest==='/messages'||rest.indexOf('/messages/')===0||rest==='/notifications'?'messages':rest==='/auth'||rest.indexOf('/auth/')===0?'auth':'public';document.documentElement.lang=locale;document.documentElement.setAttribute('data-route-shell',shell)})()"
 
@@ -40,5 +41,5 @@ async function LocalizedAppShellBody({authConfigured, children, creatorModeEnabl
   const candidate = await rootLocale()
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
-  return <AnalyticsProvider locale={candidate}><Suspense fallback={null}><PerformanceReporter locale={candidate} release={release} /></Suspense><ThemeProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={creatorModeEnabled} labels={messages} locale={candidate} release={release}>{children}</AppShell></ThemeProvider></AnalyticsProvider>
+  return <AnalyticsProvider locale={candidate}><Suspense fallback={null}><PerformanceReporter locale={candidate} release={release} /></Suspense><ThemeProvider><CurrentAccountProvider><AppShell authConfigured={authConfigured} creatorModeEnabled={creatorModeEnabled} labels={messages} locale={candidate} release={release}>{children}</AppShell></CurrentAccountProvider></ThemeProvider></AnalyticsProvider>
 }

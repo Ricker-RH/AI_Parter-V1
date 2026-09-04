@@ -45,7 +45,19 @@ describe('CommentComposer', () => {
   it('keeps identity cancellation out of render', () => {
     const source = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/components/social/CommentComposer.tsx' : 'apps/web/src/components/social/CommentComposer.tsx', 'utf8')
     expect(source).toContain('<ScopedCommentComposer key={scope}')
+    expect(source).toContain("import {Avatar}")
+    expect(source).not.toContain('function ViewerAvatar')
     expect(source).not.toContain('controller.current?.abort(); controller.current=null; setBody')
+  })
+
+  it('resets its draft when the authenticated viewer scope changes', () => {
+    const view = render(<CommentComposer authenticated labels={labels} locale="en" postId={postId} viewer={{displayName: 'Rui'}} viewerScope="viewer-a"/>)
+    fireEvent.change(screen.getByRole('textbox', {name: 'Write a comment'}), {target: {value: 'Private draft'}})
+
+    view.rerender(<CommentComposer authenticated labels={labels} locale="en" postId={postId} viewer={{displayName: 'Sam'}} viewerScope="viewer-b"/>)
+
+    expect(screen.getByRole('textbox', {name: 'Write a comment'})).toHaveValue('')
+    expect(screen.getByRole('img', {name: 'Sam'})).toHaveTextContent('S')
   })
 
   it('accepts a real strict created comment, inserts it locally, clears and focuses the input without refreshing', async () => {
