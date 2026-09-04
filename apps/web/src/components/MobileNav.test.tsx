@@ -7,7 +7,7 @@ import zhCN from '../../messages/zh-CN.json'
 
 const {pathname, suspendPathname} = vi.hoisted(() => ({pathname: {value: '/en'}, suspendPathname: {value: false}}))
 vi.mock('next/navigation', () => ({usePathname: () => { if (suspendPathname.value) throw new Promise(() => undefined); return pathname.value }}))
-vi.mock('next/link', () => ({default: ({children, prefetch, ...props}: {children: React.ReactNode; prefetch?: boolean | null; [key: string]: unknown}) => <a {...props} data-prefetch={prefetch === false ? 'false' : 'shell'}>{children}</a>}))
+vi.mock('next/link', () => ({default: ({children, prefetch, ...props}: {children: React.ReactNode; prefetch?: boolean | null; [key: string]: unknown}) => <a {...props} data-prefetch={prefetch === true ? 'full' : prefetch === false ? 'false' : 'shell'}>{children}</a>}))
 
 const labels = en
 
@@ -25,7 +25,7 @@ describe('MobileNav', () => {
     render(<MobileNav labels={labels} locale="en" />)
 
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('data-prefetch')))
-      .toEqual(['shell', 'shell', 'shell', 'shell'])
+      .toEqual(['full', 'full', 'full', 'full'])
   })
 
   it('stays at four destinations without a creator-mode navigation prop', () => {
