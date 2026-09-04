@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aifans-realtime-unconfigured",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-04",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "env": {
+    "test": {
+      "name": "aifans-realtime-isolated-test",
+      "workers_dev": false,
+      "preview_urls": false,
+      "ratelimits": [
+        {
+          "name": "ADMISSION_LIMITER",
+          "namespace_id": "2026090401",
+          "simple": { "limit": 10, "period": 10 },
+        },
+      ],
+      "vars": { "ALLOWED_ORIGINS": "", "UPSTREAM_API_URL": "" },
+      "durable_objects": {
+        "bindings": [{ "name": "MAILBOXES", "class_name": "RealtimeMailbox" }],
+      },
+      "migrations": [
+        { "tag": "v1-test-sqlite", "new_sqlite_classes": ["RealtimeMailbox"] },
+      ],
+    },
+  },
+}
