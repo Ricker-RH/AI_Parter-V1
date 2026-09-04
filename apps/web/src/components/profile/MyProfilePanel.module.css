@@ -52,7 +52,7 @@
 }
 
 .profile[data-background-type='image']::before {
-  background: linear-gradient(0deg, color-mix(in srgb, var(--shell-surface) 94%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 90%, transparent) 40%, transparent 85%), linear-gradient(90deg, color-mix(in srgb, var(--shell-surface) 92%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 90%, transparent) 55%, transparent 100%);
+  background: linear-gradient(0deg, color-mix(in srgb, var(--shell-surface) 76%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 72%, transparent) 40%, transparent 85%), linear-gradient(90deg, color-mix(in srgb, var(--shell-surface) 74%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 72%, transparent) 55%, transparent 100%);
   content: '';
   inset: 0;
   position: absolute;
@@ -143,7 +143,7 @@
 }
 
 .editAction {
-  background: var(--shell-surface);
+  background: color-mix(in srgb, var(--shell-surface) 76%, transparent);
   font-weight: 650;
   margin-top: 24px;
   text-decoration: none;

@@ -137,3 +137,9 @@ describe('MyProfilePanel', () => {
     expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]::after\s*\{[^}]*height:\s*var\(--content-scroll-end-space\)/s)
   })
 })
+
+it('keeps image profiles legible with a translucent rather than opaque backdrop', () => {
+  const root = process.cwd().endsWith('/apps/web') ? 'src/components/profile' : 'apps/web/src/components/profile'
+  const stylesheet = readFileSync(`${root}/MyProfilePanel.module.css`, 'utf8')
+  expect(stylesheet).toContain('var(--shell-surface) 72%')
+})
