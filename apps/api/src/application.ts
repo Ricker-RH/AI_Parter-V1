@@ -10,6 +10,8 @@ import { registerAdminRoutes } from "./routes/admin.js";
 import { registerMeRoutes } from "./routes/me.js";
 import { registerSocialRoutes } from "./routes/social.js";
 import { registerChatRoutes } from "./routes/chat.js";
+import {registerHumanChatRoutes} from './routes/human-chat.js'
+import type {HumanChatPort} from './ports/human-chat.js'
 import { registerInternalAnalyticsRoutes } from "./routes/internal-analytics.js";
 import { registerCreatorRoutes } from "./routes/creator.js";
 import { registerAdminCreatorRoutes } from "./routes/admin-creator.js";
@@ -45,6 +47,7 @@ export type AppDependencies = {
   profiles?: ProfilePort;
   social?: SocialPort;
   chat?: ChatPort;
+  humanChat?: HumanChatPort;
   chatTargets?: ChatTargetPort;
   conversations?: ChatRepositoryPort;
   analyticsWorker?: AnalyticsDeliveryWorker;
@@ -81,6 +84,10 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   const app = new Hono<{ Variables: ApiVariables }>();
 
   app.use("*", requestIdMiddleware);
+  app.use('*', async (c, next) => {
+    if (/^\/v1\/(?:human-chat|realtime\/ticket)(?:\/|$)/.test(new URL(c.req.url).pathname)) c.header('Cache-Control', 'private, no-store')
+    await next()
+  })
   if(dependencies.logger) app.use('*',structuredLoggerMiddleware(dependencies.logger))
   const globalBodyLimit=bodyLimit({maxSize:65_536,onError:(c)=>apiError(c,413,'PAYLOAD_TOO_LARGE','Request body is too large')})
   app.use('*',(c,next)=>/^\/v1\/admin\/(?:ips|posts|post-media)(?:\/|$)/.test(new URL(c.req.url).pathname)?next():globalBodyLimit(c,next))
@@ -90,6 +97,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerMeRoutes(app, dependencies);
   registerSocialRoutes(app, dependencies);
   registerChatRoutes(app, dependencies);
+  registerHumanChatRoutes(app, dependencies);
   registerInternalAnalyticsRoutes(app, dependencies);
   registerInternalProfileAssetRoutes(app, dependencies);
   registerCreatorRoutes(app, dependencies);
