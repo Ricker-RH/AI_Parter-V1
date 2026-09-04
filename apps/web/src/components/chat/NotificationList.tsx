@@ -7,6 +7,9 @@ import type {SocialLabels} from '../social/types'
 import {UnavailableRetry} from '../social/UnavailableRetry'
 import {MessagesSectionHeader, type MessagesSectionLabels} from './MessagesSectionHeader'
 import styles from './MessagesWorkspace.module.css'
+import {HumanNotificationFollow} from './HumanNotificationFollow'
+import followStyles from './HumanNotificationFollow.module.css'
+import {humanProfileLabels} from '../profile/human-profile-labels'
 
 export type NotificationWorkspaceLabels = SocialLabels & {chat: MessagesSectionLabels & {
   back: string
@@ -38,6 +41,11 @@ export function NotificationList({listCursor, labels, locale, readIds, result, s
     {result.status === 'ok' && result.data.items.length > 0 ? <nav aria-label={labels.chat.notificationListLabel} className={styles.notificationList}>{result.data.items.map((notification) => {
       const read = notification.readAt !== null || readIds.has(notification.id)
       const query = listCursor ? `?${new URLSearchParams({listCursor})}` : ''
+      if(notification.kind==='follow'&&notification.actor?.kind==='human')return <div className={`${styles.notificationRow} ${followStyles.humanRow}`} data-follow-row data-selected={notification.id===selectedId||undefined} key={notification.id}>
+        <Link aria-label={`${humanProfileLabels(locale).profile}: ${notification.actor.displayName}`} href={`/${locale}/humans/${notification.actor.id}`}><HumanAvatar className={styles.avatar??''} decorative human={notification.actor} size="medium"/></Link>
+        <Link aria-current={notification.id===selectedId?'page':undefined} className={styles.notificationCopy} href={`/${locale}/messages/notifications/${notification.id}${query}`}><strong>{notificationText(notification,labels)}</strong><time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short'}).format(new Date(notification.createdAt))}</time>{read?null:<span className={styles.unreadLabel}>{labels.chat.notificationUnread}</span>}</Link>
+        <HumanNotificationFollow profileId={notification.actor.id} locale={locale}/>
+      </div>
       return <Link aria-current={notification.id === selectedId ? 'page' : undefined} className={styles.notificationRow} href={`/${locale}/messages/notifications/${notification.id}${query}`} key={notification.id}>
         {notification.actor?.kind === 'human' ? <HumanAvatar className={styles.avatar ?? ''} decorative human={notification.actor} size="medium"/> : <span aria-hidden="true" className={styles.avatar}>{(notification.actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span>}
         <span className={styles.notificationCopy}><strong>{notificationText(notification, labels)}</strong><time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(notification.createdAt))}</time>{read ? null : <span className={styles.unreadLabel}>{labels.chat.notificationUnread}</span>}</span>

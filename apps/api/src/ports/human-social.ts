@@ -1,7 +1,8 @@
-import type {HumanProfile, HumanPreferencesUpdateInput, HumanVisibility} from '@aifans/contracts'
+import type {HumanProfile, HumanPreferencesUpdateInput, HumanVisibility,HumanRelationshipBatch} from '@aifans/contracts'
 import type {Actor} from '@aifans/db'
 
 export type HumanSocialPort = {
+  getRelationships?(actor:Actor,profileIds:string[]):Promise<HumanRelationshipBatch>
   getPreferences(actor:Actor):Promise<{visibility:HumanVisibility;showPresence:boolean}>
   getPublicProfile(input: {viewer: Actor | null; profileId: string}): Promise<HumanProfile | null>
   setPreferences(actor: Actor, input: HumanPreferencesUpdateInput): Promise<{visibility: HumanVisibility; showPresence: boolean}>

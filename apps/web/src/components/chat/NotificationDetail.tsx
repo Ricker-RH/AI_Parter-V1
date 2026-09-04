@@ -10,11 +10,12 @@ import {NotificationReadButton} from '../social/NotificationReadButton'
 import type {NotificationWorkspaceLabels} from './NotificationList'
 import {notificationText} from './NotificationList'
 import styles from './MessagesWorkspace.module.css'
+import {HumanNotificationFollow} from './HumanNotificationFollow'
 
 const commentKinds = new Set<Notification['kind']>(['comment', 'reply', 'comment_like'])
 
 export function notificationTargetHref(notification: Notification, locale: Locale) {
-  if (notification.kind === 'follow') return notification.actor?.kind === 'ip' ? `/${locale}/profiles/${notification.actor.id}` : undefined
+  if (notification.kind === 'follow') return notification.actor ? `/${locale}/${notification.actor.kind==='ip'?'profiles':'humans'}/${notification.actor.id}` : undefined
   if (!notification.postId) return undefined
   const postHref = `/${locale}/posts/${notification.postId}`
   return commentKinds.has(notification.kind) && notification.commentId ? `${postHref}#comment-${notification.commentId}` : postHref
@@ -43,7 +44,7 @@ export function NotificationDetail({labels, listCursor, locale, notificationIden
   const notification = result.data
   const actor = notification.actor
   const isFollow = notification.kind === 'follow'
-  const profileAvailable = isFollow && actor?.kind === 'ip'
+  const profileAvailable = isFollow && actor?.kind==='ip'
   const targetHref = notificationTargetHref(notification, locale)
   const targetLabel = isFollow ? labels.chat.notificationOpenProfile : labels.chat.notificationOpenPost
   return <section aria-label={labels.chat.notificationDetailTitle} className={`${styles.detailPane} ${styles.notificationDetailPane}`}>
@@ -53,6 +54,7 @@ export function NotificationDetail({labels, listCursor, locale, notificationIden
       <p className={styles.notificationAction}>{notificationText(notification, labels)}</p>
       <time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'long', timeStyle: 'short'}).format(new Date(notification.createdAt))}</time>
       <div className={styles.notificationContext}><p>{profileAvailable ? labels.chat.notificationProfileContext : isFollow ? labels.chat.notificationActorContext : labels.chat.notificationPostContext}</p>{notification.commentId ? <span>{labels.comments}</span> : null}{targetHref ? <Link href={targetHref}>{targetLabel}</Link> : null}</div>
+      {isFollow&&actor?.kind==='human'?<HumanNotificationFollow profileId={actor.id} locale={locale}/>:null}
       {notification.readAt === null ? <NotificationReadButton auto errorLabel={labels.interactionError} label={labels.markRead} locale={locale} notificationId={notification.id} onOptimisticRead={onOptimisticRead} onRead={onRead} onReadError={onReadError} pendingLabel={labels.markingRead} readClassName={styles.readStatus} readLabel={labels.chat.notificationRead} retryLabel={labels.chat.notificationReadRetry} viewerScope={viewerScope}/> : <span className={styles.readStatus}>{labels.chat.notificationRead}</span>}
     </article>
   </section>

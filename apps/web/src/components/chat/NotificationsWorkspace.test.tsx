@@ -18,6 +18,17 @@ const notification: Notification = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('NotificationsWorkspace', () => {
+  it('places HUMAN follow-back actions beside row links and links the human profile in detail',async()=>{
+    const id='44444444-4444-4444-8444-444444444444';
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({items:[{profileId:id,isOwner:false,following:false,followedBy:true,blocked:false}]})))
+    const follow:Notification={...notification,kind:'follow',postId:null,actor:{kind:'human',id,username:'alex',displayName:'Alex'},readAt:'2026-09-03T00:00:00.000Z'}
+    render(<NotificationsWorkspace labels={en} locale="en" result={{status:'ok',data:{items:[follow],nextCursor:null}}} selectedId={follow.id} selectedResult={{status:'ok',data:follow}} viewerScope="viewer"/>);
+    expect(screen.getByRole('link',{name:'View profile'})).toHaveAttribute('href',`/en/humans/${id}`)
+    expect(screen.getByRole('link',{name:'Profile: Alex'})).toHaveAttribute('href',`/en/humans/${id}`)
+    const actions=await screen.findAllByRole('button',{name:'Follow back'});expect(actions).toHaveLength(2)
+    actions.forEach(button=>expect(button.closest('a')).toBeNull())
+    expect(within(screen.getByRole('navigation',{name:en.chat.notificationListLabel})).getByRole('button',{name:'Follow back'})).toBeVisible()
+  });
   it('renders a projected HUMAN avatar in notification list and detail', () => {
     const humanNotification: Notification = {...notification, actor: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex', avatarUrl: 'https://media.example/alex.webp'}, readAt: '2026-09-03T00:00:00.000Z'}
     const {container} = render(<NotificationsWorkspace labels={en} locale="en" result={{status: 'ok', data: {items: [humanNotification], nextCursor: null}}} selectedId={humanNotification.id} selectedResult={{status: 'ok', data: humanNotification}} viewerScope="viewer-a"/>)

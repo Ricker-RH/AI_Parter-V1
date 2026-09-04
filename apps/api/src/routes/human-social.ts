@@ -1,4 +1,5 @@
 import {HumanProfileSchema, HumanPreferencesUpdateInputSchema, HumanVisibilitySchema} from '@aifans/contracts'
+import {HumanRelationshipBatchInputSchema,HumanRelationshipBatchSchema} from '@aifans/contracts'
 import type {Actor} from '@aifans/db'
 import type {Context, Hono} from 'hono'
 import {z} from 'zod'
@@ -39,6 +40,19 @@ async function resolveActor(c: ApiContext, dependencies: Dependencies, required:
   return actor
 }
 export function registerHumanSocialRoutes(app: Hono<{Variables: ApiVariables}>, dependencies: Dependencies) {
+  app.post('/v1/human-relationships',async c=>{
+    c.header('Cache-Control','private, no-store')
+    try {
+      const actor=await resolveActor(c,dependencies,true)
+      if(actor instanceof Response)return actor
+      const input=await strictJsonBody(c,HumanRelationshipBatchInputSchema)
+      if(!input||!strictQuery(c,empty))return invalid(c)
+      if(!dependencies.humanSocial?.getRelationships)return unavailable(c)
+      const result=HumanRelationshipBatchSchema.parse(await dependencies.humanSocial.getRelationships(actor!,input.profileIds))
+      if(result.items.some(item=>!input.profileIds.includes(item.profileId)))throw Error('unexpected relationship')
+      return c.json(result)
+    }catch(error){return failure(c,error)}
+  })
   app.get('/v1/human-preferences',async c=>{
     try{
       const actor=await resolveActor(c,dependencies,true)

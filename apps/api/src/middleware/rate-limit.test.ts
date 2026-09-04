@@ -14,6 +14,7 @@ describe('human chat baseline rate limiting', () => {
     ['PUT', '/v1/humans/peer/follow'],
     ['DELETE', '/v1/humans/peer/block'],
     ['PATCH', '/v1/human-preferences'],
+    ['POST', '/v1/human-relationships'],
   ])('fails closed when required limiter is absent: %s %s', async (method, path) => {
     const app = new Hono<{Variables: ApiVariables}>()
     app.use('*', requestIdMiddleware)

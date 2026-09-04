@@ -1,0 +1,9 @@
+.humanRow[data-follow-row] { grid-template-columns:48px minmax(0,1fr) auto; column-gap:8px; }
+.humanRow[data-selected] { background:var(--shell-hover); }
+.humanRow > a { min-width:0; }
+.humanRow > a:focus-visible { outline:2px solid var(--shell-text); outline-offset:3px; }
+.action { display:grid; gap:5px; justify-items:start; max-width:116px; }
+.action button,.signIn { background:var(--shell-surface); border:1px solid var(--shell-border); border-radius:10px; color:var(--shell-text); cursor:pointer; font:inherit; font-size:13px; font-weight:650; min-height:44px; padding:8px 12px; overflow-wrap:anywhere; }
+.action button:disabled { cursor:not-allowed; opacity:.55; }
+.action button:focus-visible,.signIn:focus-visible { outline:2px solid var(--shell-text); outline-offset:3px; }
+.action span { color:var(--shell-muted); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }

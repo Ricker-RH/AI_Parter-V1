@@ -1,6 +1,7 @@
 import {HumanProfileSchema,HumanPreferencesUpdateInputSchema,HumanVisibilitySchema,HumanMessageDisabledReasonSchema,type HumanProfile,type HumanPreferencesUpdateInput} from '@aifans/contracts'
 import {z} from 'zod'
 import type {Actor,QueryClient,WithActor} from './session.js'
+import {HumanRelationshipBatchInputSchema,HumanRelationshipBatchSchema} from '@aifans/contracts'
 
 type WithPublic=<T>(callback:(client:QueryClient)=>Promise<T>)=>Promise<T>
 const uuid=z.uuid()
@@ -29,6 +30,16 @@ export function createHumanSocialRepository({withActor,withPublic,publicMediaBas
   return withActor(actor,async client=>ChangedRow.parse((await client.query(`SELECT public.human_${name}_profile($1) AS changed`,[target])).rows[0]))
  }
  return{
+  async getRelationships(actor:Actor,profileIds:string[]){
+   const input=HumanRelationshipBatchInputSchema.parse({profileIds})
+   return withActor(actor,async client=>{
+    const result=await client.query(`SELECT p.id AS profile_id,p.is_owner,p.following,p.followed_by,
+      (p.blocked_by_viewer OR coalesce(p.message_disabled_reason='blocked',false)) AS blocked
+      FROM unnest($1::uuid[]) AS requested(id)
+      CROSS JOIN LATERAL public.human_public_profile(requested.id) p`,[input.profileIds])
+    return HumanRelationshipBatchSchema.parse({items:result.rows.map(r=>({profileId:r.profile_id,isOwner:r.is_owner,following:r.following,followedBy:r.followed_by,blocked:r.blocked}))})
+   })
+  },
   async getPreferences(actor:Actor){
    return withActor(actor,async client=>{
     const result=await client.query("SELECT me.id AS profile_id,coalesce(p.profile_visibility,'private') AS profile_visibility,coalesce(p.show_presence,false) AS show_presence FROM (SELECT public.social_current_human_profile_id() AS id) me LEFT JOIN public.human_social_preferences p ON p.profile_id=me.id WHERE me.id IS NOT NULL")

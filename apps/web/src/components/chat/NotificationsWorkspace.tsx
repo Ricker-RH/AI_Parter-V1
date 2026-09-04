@@ -8,6 +8,7 @@ import {InboxWorkspaceFrame} from './InboxWorkspaceFrame'
 import {NotificationDetail} from './NotificationDetail'
 import {NotificationList, type NotificationWorkspaceLabels} from './NotificationList'
 import styles from './MessagesWorkspace.module.css'
+import {HumanNotificationRelationships} from './HumanNotificationFollow'
 
 type ReadMutationState = {confirmed: boolean; pending: ReadonlySet<string>}
 type ReadMutationStore = {scope: string | undefined; mutations: ReadonlyMap<string, ReadMutationState>}
@@ -42,5 +43,7 @@ export function NotificationsWorkspace({labels, listCursor, locale, result, sele
       : listUnavailable
         ? null
         : <section className={styles.emptyPane}><div><h2>{labels.chat.selectNotification}</h2></div></section>
-  return <InboxWorkspaceFrame detail={detail} list={<NotificationList labels={labels} locale={locale} readIds={readIds} result={result} {...(listCursor ? {listCursor} : {})} {...(selectedId ? {selectedId} : {})}/>} listUnavailable={listUnavailable} selected={Boolean(selectedId)}/>
+  const visible=[...(selectedResult?.status==='ok'?[selectedResult.data]:[]),...(result.status==='ok'?result.data.items:[])];
+  const profileIds=visible.flatMap(item=>item.kind==='follow'&&item.actor?.kind==='human'?[item.actor.id]:[]);
+  return <HumanNotificationRelationships profileIds={profileIds} {...(viewerScope?{viewerScope}:{})}><InboxWorkspaceFrame detail={detail} list={<NotificationList labels={labels} locale={locale} readIds={readIds} result={result} {...(listCursor ? {listCursor} : {})} {...(selectedId ? {selectedId} : {})}/>} listUnavailable={listUnavailable} selected={Boolean(selectedId)}/></HumanNotificationRelationships>
 }
