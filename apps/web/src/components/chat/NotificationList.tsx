@@ -2,6 +2,7 @@ import type {Notification, NotificationPage} from '@aifans/contracts'
 import Link from 'next/link'
 import type {Locale} from '../../i18n/config'
 import type {SocialApiResult} from '../../lib/social-api'
+import {HumanAvatar} from '../account/HumanAvatar'
 import type {SocialLabels} from '../social/types'
 import {UnavailableRetry} from '../social/UnavailableRetry'
 import {MessagesSectionHeader, type MessagesSectionLabels} from './MessagesSectionHeader'
@@ -38,7 +39,7 @@ export function NotificationList({listCursor, labels, locale, readIds, result, s
       const read = notification.readAt !== null || readIds.has(notification.id)
       const query = listCursor ? `?${new URLSearchParams({listCursor})}` : ''
       return <Link aria-current={notification.id === selectedId ? 'page' : undefined} className={styles.notificationRow} href={`/${locale}/messages/notifications/${notification.id}${query}`} key={notification.id}>
-        <span aria-hidden="true" className={styles.avatar}>{(notification.actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span>
+        {notification.actor?.kind === 'human' ? <HumanAvatar className={styles.avatar ?? ''} decorative human={notification.actor} size="medium"/> : <span aria-hidden="true" className={styles.avatar}>{(notification.actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span>}
         <span className={styles.notificationCopy}><strong>{notificationText(notification, labels)}</strong><time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(notification.createdAt))}</time>{read ? null : <span className={styles.unreadLabel}>{labels.chat.notificationUnread}</span>}</span>
       </Link>
     })}{result.data.nextCursor ? <Link className={styles.moreLink} href={`/${locale}/messages/notifications?${new URLSearchParams({cursor: result.data.nextCursor})}`}>{labels.loadMore}</Link> : null}</nav> : null}

@@ -14,8 +14,11 @@ import {
 import {useRouter} from 'next/navigation'
 import {useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties} from 'react'
 import type {Locale} from '../../i18n/config'
+import {Avatar} from '../account/Avatar'
+import headerStyles from '../social/PublicProfileContent.module.css'
 import {useCurrentAccount} from '../account/CurrentAccountProvider'
 import styles from './ProfileEditor.module.css'
+import {ProfileEditorMenu} from './ProfileEditorMenu'
 
 export const PROFILE_EDITOR_FORM_ID = 'profile-editor-form'
 export const PROFILE_BACKGROUND_COLORS = {
@@ -30,7 +33,7 @@ const MAX_IMAGE_SIDE = 12_000
 export type ProfileEditorLabels = {
   title: string; back: string; save: string; saving: string; cancel: string; loading: string; authUnavailable: string; retry: string
   displayName: string; username: string; bio: string; language: string; languageEnglish: string; languageChinese: string
-  avatar: string; avatarUpload: string; avatarRemove: string; background: string; backgroundUpload: string; backgroundRemove: string
+  avatar: string; avatarUpload: string; avatarRemove: string; background: string; backgroundUpload: string; backgroundRemove: string; backgroundCustom?: string
   focalX: string; focalY: string; uploading: string; uploadRetry: string; invalidType: string; invalidSize: string; invalidDimensions: string
   uploadError: string; saveError: string; conflict: string; refetch: string; invalidName: string; invalidUsername: string; unsavedConfirm: string
   colorPaper: string; colorSand: string; colorMist: string; colorSage: string; colorSky: string; colorLilac: string; colorGraphite: string
@@ -82,6 +85,12 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   })
   const [avatarUpload, setAvatarUpload] = useState<UploadState>({status: 'idle'})
   const [backgroundUpload, setBackgroundUpload] = useState<UploadState>({status: 'idle'})
+  const [expanded, setExpanded] = useState<Partial<Record<'displayName' | 'username' | 'bio', boolean>>>({})
+  const [assetMenu, setAssetMenu] = useState<'avatar' | 'background' | 'background-image' | null>(null)
+  const avatarTrigger = useRef<HTMLButtonElement>(null)
+  const backgroundTrigger = useRef<HTMLButtonElement>(null)
+  const avatarInput = useRef<HTMLInputElement>(null)
+  const backgroundInput = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{kind: 'error' | 'conflict'; text: string} | null>(null)
   const [fieldError, setFieldError] = useState<'name' | 'username' | null>(null)
@@ -254,16 +263,6 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
     selectColor(colorKey)
   }
 
-  function updateFocal(axis: 'focalX' | 'focalY', value: number) {
-    setBackgroundEdit((current) => {
-      if (current?.type === 'image') return {...current, [axis]: clampFocalPoint(value)}
-      if (current === undefined && baseAccount?.background.type === 'image') {
-        return {type: 'image', focalX: axis === 'focalX' ? clampFocalPoint(value) : baseAccount.background.focalX, focalY: axis === 'focalY' ? clampFocalPoint(value) : baseAccount.background.focalY}
-      }
-      return current
-    })
-  }
-
   function buildPayload(): UpdateCurrentAccount | null {
     if (!baseAccount || !draft) return null
     const payload: Record<string, unknown> = {profileVersion: draft.profileVersion}
@@ -326,56 +325,68 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   const previewStyle = {backgroundColor, ...(backgroundImage ? {backgroundImage: `url("${backgroundImage}")`, backgroundPosition: `${focalX * 100}% ${focalY * 100}%`} : {})} satisfies CSSProperties
   const shownAvatar = avatarPreview ?? (avatarEdit === null ? null : baseAccount.avatarUrl)
   const colorKeys = Object.keys(PROFILE_BACKGROUND_COLORS) as ProfileBackgroundColorKey[]
-  const focalEditable = backgroundEdit?.type === 'image' || (backgroundEdit === undefined && baseAccount.background.type === 'image')
+  const toggle = (field: 'displayName' | 'username' | 'bio') => setExpanded((current) => ({...current, [field]: !current[field]}))
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <button aria-label={labels.back} disabled={blocked} onClick={leave} type="button"><span aria-hidden="true">←</span></button>
+    <header className={`${headerStyles.contextualTitle} ${styles.header}`}>
+      <button aria-label={labels.back} className={headerStyles.back} disabled={blocked} onClick={leave} type="button"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg></button>
       <h1>{labels.title}</h1>
-      <button disabled={!dirty || blocked || avatarUpload.status === 'failed' || backgroundUpload.status === 'failed'} form={PROFILE_EDITOR_FORM_ID} type="submit">{saving ? labels.saving : labels.save}</button>
+      <button className={styles.save} disabled={!dirty || blocked || avatarUpload.status === 'failed' || backgroundUpload.status === 'failed'} form={PROFILE_EDITOR_FORM_ID} type="submit">{saving ? labels.saving : labels.save}</button>
     </header>
     <div className={styles.scroller}>
       <form aria-label={labels.title} className={styles.form} id={PROFILE_EDITOR_FORM_ID} onSubmit={(event) => { event.preventDefault(); void save() }}>
-        <section className={styles.section} aria-labelledby="profile-editor-avatar">
-          <h2 id="profile-editor-avatar">{labels.avatar}</h2>
-          <div className={styles.avatarRow}>
-            <div className={styles.avatarPreview}>{shownAvatar ? <img alt={labels.avatar} src={shownAvatar}/> : <span aria-hidden="true">{draft.displayName.slice(0, 1).toUpperCase()}</span>}</div>
-            <div className={styles.assetActions}>
-              <label className={styles.fileAction}>{labels.avatarUpload}<input accept={IMAGE_TYPES.join(',')} aria-label={labels.avatarUpload} disabled={blocked} onChange={(event) => onFile('avatar', event)} type="file"/></label>
-              {(shownAvatar || baseAccount.avatarUrl) ? <button disabled={saving} onClick={() => { invalidateUpload('avatar'); setAvatarUpload({status: 'idle'}); setAvatarEdit(null) }} type="button">{labels.avatarRemove}</button> : null}
-              {avatarUpload.status === 'validating' || avatarUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
-              {avatarUpload.status === 'failed' ? <button onClick={() => void upload('avatar', avatarUpload.file)} type="button">{labels.uploadRetry}</button> : null}
-            </div>
-          </div>
+        <section className={styles.row} data-profile-edit-row>
+          <button aria-label={labels.avatar} aria-expanded={assetMenu === 'avatar'} aria-haspopup="menu" aria-controls="profile-avatar-menu" ref={avatarTrigger} className={styles.rowTrigger} disabled={saving} onClick={() => setAssetMenu(assetMenu === 'avatar' ? null : 'avatar')} type="button">
+            <span className={styles.rowLabel}>{labels.avatar}</span>
+            <span className={styles.rowValue}>{avatarPreview ? <span className={styles.avatarPreview}><img alt={labels.avatar} src={avatarPreview}/></span> : <span aria-label={labels.avatar} role="img"><Avatar avatarUrl={shownAvatar} decorative displayName={draft.displayName} size="medium"/></span>}</span>
+            <Chevron/>
+          </button>
+          <input accept={IMAGE_TYPES.join(',')} aria-label={labels.avatarUpload} className="sr-only" disabled={blocked} onChange={(event) => onFile('avatar', event)} ref={avatarInput} tabIndex={-1} type="file"/>
+          {avatarUpload.status === 'validating' || avatarUpload.status === 'uploading' ? <p className={styles.uploadStatus} role="status">{labels.uploading}</p> : null}
+          {avatarUpload.status === 'failed' ? <div className={styles.controls}><button onClick={() => void upload('avatar', avatarUpload.file)} type="button">{labels.uploadRetry}</button></div> : null}
         </section>
 
-        <section className={styles.section} aria-labelledby="profile-editor-background">
-          <h2 id="profile-editor-background">{labels.background}</h2>
-          <div className={styles.backgroundPreview} data-testid="background-preview" style={previewStyle}/>
-          <div className={styles.assetActions}>
-            <label className={styles.fileAction}>{labels.backgroundUpload}<input accept={IMAGE_TYPES.join(',')} aria-label={labels.backgroundUpload} disabled={blocked} onChange={(event) => onFile('background', event)} type="file"/></label>
-            {backgroundImage ? <button disabled={saving} onClick={removeBackgroundImage} type="button">{labels.backgroundRemove}</button> : null}
-            {backgroundUpload.status === 'validating' || backgroundUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
-            {backgroundUpload.status === 'failed' ? <button onClick={() => void upload('background', backgroundUpload.file)} type="button">{labels.uploadRetry}</button> : null}
-          </div>
-          <fieldset className={styles.colors}><legend className="sr-only">{labels.background}</legend>{colorKeys.map((key) => <label key={key}><input checked={activeColor === key} disabled={saving} name="profile-background-color" onChange={() => selectColor(key)} type="radio"/><span aria-hidden="true" style={{background: PROFILE_BACKGROUND_COLORS[key]}}/><em>{colorLabel(labels, key)}</em></label>)}</fieldset>
-          <div className={styles.focalControls}>
-            <label>{labels.focalX}<input aria-label={labels.focalX} disabled={blocked || !focalEditable} max="1" min="0" onChange={(event) => updateFocal('focalX', Number(event.target.value))} step="0.01" type="range" value={focalX}/></label>
-            <label>{labels.focalY}<input aria-label={labels.focalY} disabled={blocked || !focalEditable} max="1" min="0" onChange={(event) => updateFocal('focalY', Number(event.target.value))} step="0.01" type="range" value={focalY}/></label>
-          </div>
+        <section className={styles.row} data-profile-edit-row>
+          <button aria-label={labels.background} aria-expanded={assetMenu === 'background' || assetMenu === 'background-image'} aria-haspopup="dialog" aria-controls="profile-background-menu" ref={backgroundTrigger} className={styles.rowTrigger} disabled={saving} onClick={() => setAssetMenu(assetMenu?.startsWith('background') ? null : 'background')} type="button">
+            <span className={styles.rowLabel}>{labels.background}</span>
+            <span className={styles.rowValue}><span className={styles.backgroundPreview} data-testid="background-preview" style={previewStyle}/></span>
+            <Chevron/>
+          </button>
+          <input accept={IMAGE_TYPES.join(',')} aria-label={labels.backgroundUpload} className="sr-only" disabled={blocked} onChange={(event) => onFile('background', event)} ref={backgroundInput} tabIndex={-1} type="file"/>
+          {backgroundUpload.status === 'validating' || backgroundUpload.status === 'uploading' ? <p className={styles.uploadStatus} role="status">{labels.uploading}</p> : null}
+          {backgroundUpload.status === 'failed' ? <div className={styles.controls}><button onClick={() => void upload('background', backgroundUpload.file)} type="button">{labels.uploadRetry}</button></div> : null}
         </section>
 
-        <section className={styles.section}>
-          <label>{labels.displayName}<input aria-label={labels.displayName} disabled={blocked} maxLength={80} onChange={(event) => setDraft({...draft, displayName: event.target.value})} value={draft.displayName}/></label>
-          {fieldError === 'name' ? <p role="alert">{labels.invalidName}</p> : null}
-          <label>{labels.username}<input aria-label={labels.username} disabled={blocked} maxLength={30} onChange={(event) => setDraft({...draft, username: event.target.value})} value={draft.username}/></label>
-          {fieldError === 'username' ? <p role="alert">{labels.invalidUsername}</p> : null}
-          <label>{labels.bio}<textarea aria-label={labels.bio} disabled={blocked} maxLength={500} onChange={(event) => setDraft({...draft, bio: event.target.value})} value={draft.bio}/></label>
-          <label>{labels.language}<select aria-label={labels.language} disabled={blocked} onChange={(event) => setDraft({...draft, preferredLocale: event.target.value as Locale})} value={draft.preferredLocale}><option value="en">{labels.languageEnglish}</option><option value="zh-CN">{labels.languageChinese}</option></select></label>
-        </section>
+        {(['displayName', 'username', 'bio'] as const).map((field) => <section className={styles.row} data-profile-edit-row key={field}>
+          <button aria-label={labels[field]} aria-controls={`profile-edit-${field}`} aria-expanded={Boolean(expanded[field])} className={styles.rowTrigger} disabled={blocked} onClick={() => toggle(field)} type="button">
+            <span className={styles.rowLabel}>{labels[field]}</span><span className={styles.rowValue}>{field === 'username' ? '@' : ''}{draft[field] || '—'}</span><Chevron/>
+          </button>
+          {expanded[field] ? <div className={styles.controls} id={`profile-edit-${field}`}>
+            {field === 'bio' ? <textarea aria-label={labels.bio} autoFocus disabled={blocked} maxLength={500} onChange={(event) => setDraft({...draft, bio: event.target.value})} value={draft.bio}/> : <input aria-label={labels[field]} autoFocus disabled={blocked} maxLength={field === 'displayName' ? 80 : 30} onChange={(event) => setDraft({...draft, [field]: event.target.value})} value={draft[field]}/>}
+          </div> : null}
+          {field === 'displayName' && fieldError === 'name' ? <p className={styles.fieldError} role="alert">{labels.invalidName}</p> : null}
+          {field === 'username' && fieldError === 'username' ? <p className={styles.fieldError} role="alert">{labels.invalidUsername}</p> : null}
+        </section>)}
         {message ? <div className={styles.message} role="alert"><p>{message.text}</p>{message.kind === 'conflict' ? <button disabled={blocked} onClick={() => void reloadLatest()} type="button">{labels.refetch}</button> : null}</div> : null}
-        <div className={styles.bottomActions}><button disabled={blocked} onClick={leave} type="button">{labels.cancel}</button></div>
       </form>
     </div>
+    {assetMenu ? <ProfileEditorMenu anchor={assetMenu === 'avatar' ? avatarTrigger : backgroundTrigger} id={assetMenu === 'avatar' ? 'profile-avatar-menu' : 'profile-background-menu'} key={assetMenu} label={assetMenu === 'avatar' ? labels.avatar : labels.background} onClose={() => setAssetMenu(null)} selector={assetMenu === 'background'}>
+      {assetMenu === 'background' ? <>
+        <fieldset className={styles.colors}><legend className="sr-only">{labels.background}</legend>{colorKeys.map((key) => <label key={key}><input checked={activeColor === key} disabled={saving} name="profile-background-color" onChange={() => selectColor(key)} type="radio"/><span aria-hidden="true" style={{background: PROFILE_BACKGROUND_COLORS[key]}}/><em>{colorLabel(labels, key)}</em></label>)}</fieldset>
+        <button disabled={saving} onClick={() => setAssetMenu('background-image')} type="button"><span>{labels.backgroundCustom ?? (locale === 'zh-CN' ? '自定义图片' : 'Custom image')}</span><span aria-hidden="true" className={styles.backgroundPreview} style={previewStyle}/><Chevron/></button>
+      </> : <>
+        <button disabled={blocked} onClick={() => { (assetMenu === 'avatar' ? avatarInput : backgroundInput).current?.click(); setAssetMenu(null) }} role="menuitem" type="button">{assetMenu === 'avatar' ? labels.avatarUpload : labels.backgroundUpload}</button>
+        <button className={styles.destructive} disabled={saving || (assetMenu === 'avatar' ? !shownAvatar && !baseAccount.avatarUrl : !backgroundImage)} onClick={() => {
+          if (assetMenu === 'avatar') { invalidateUpload('avatar'); setAvatarUpload({status: 'idle'}); setAvatarEdit(null) }
+          else removeBackgroundImage()
+          setAssetMenu(null)
+          ;(assetMenu === 'avatar' ? avatarTrigger : backgroundTrigger).current?.focus()
+        }} role="menuitem" type="button">{assetMenu === 'avatar' ? labels.avatarRemove : labels.backgroundRemove}</button>
+      </>}
+    </ProfileEditorMenu> : null}
   </div>
+}
+
+function Chevron() {
+  return <svg aria-hidden="true" className={styles.chevron} fill="none" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"/></svg>
 }

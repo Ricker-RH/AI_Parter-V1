@@ -1,4 +1,6 @@
 export {readDatabaseEnv} from './env.js'
+export {createProfileAssetCleanupRepository, createProfileAssetCleanupRepositoryFromUrl} from './profile-asset-cleanup.js'
+export type {ProfileAssetCleanupRepository, ProfileAssetCleanupResult} from './profile-asset-cleanup.js'
 export {migrate} from './migrate.js'
 export {getCurrentAccount, ensureHumanProfile, updateCurrentAccount, createProfileRepository, ProfileRepositoryError} from './profiles.js'
 export type {

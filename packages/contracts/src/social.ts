@@ -333,6 +333,7 @@ export const PublicHumanSchema = z.strictObject({
   id: uuid,
   username: z.string().min(3).max(30),
   displayName: z.string().min(1).max(80),
+  avatarUrl: z.url({protocol: /^https?$/}).nullable().optional(),
 });
 export const PublicCommentAuthorSchema = z.discriminatedUnion("kind", [
   PublicIpSchema,

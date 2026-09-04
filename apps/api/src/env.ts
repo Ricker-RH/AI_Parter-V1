@@ -28,6 +28,7 @@ const environmentSchema = z.object({
   POSTHOG_API_KEY: z.string().trim().min(1).optional(),
   POSTHOG_HOST: httpsUrl.optional(),
   ANALYTICS_CRON_SECRET: z.string().min(32).optional(),
+  PROFILE_ASSET_CLEANUP_SECRET: z.string().min(32).optional(),
   DATABASE_ANALYTICS_URL: postgresUrl.optional(),
   R2_ACCOUNT_ID: z
     .string()
@@ -59,6 +60,7 @@ export type ApiEnvironment = {
     cronSecret: string;
   };
   postMedia?: R2PostMediaConfig;
+  profileAssetCleanupSecret?: string;
   rateLimit?:{databaseUrl:string;hmacSecret:string};
   webApiRateLimitSigningSecret: string;
 };
@@ -132,6 +134,7 @@ export function readApiEnv(
       audience: value.NEON_AUTH_AUDIENCE,
     },
     webApiRateLimitSigningSecret: value.WEB_API_RATE_LIMIT_SIGNING_SECRET,
+    ...(value.PROFILE_ASSET_CLEANUP_SECRET ? {profileAssetCleanupSecret: value.PROFILE_ASSET_CLEANUP_SECRET} : {}),
     ...(value.DATABASE_RATE_LIMIT_URL&&value.RATE_LIMIT_HMAC_SECRET?{rateLimit:{databaseUrl:value.DATABASE_RATE_LIMIT_URL,hmacSecret:value.RATE_LIMIT_HMAC_SECRET}}:{}),
     ...(value.DIFY_API_URL && value.DIFY_API_KEY
       ? { dify: { baseUrl: value.DIFY_API_URL, apiKey: value.DIFY_API_KEY } }

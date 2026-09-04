@@ -18,6 +18,13 @@ const notification: Notification = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('NotificationsWorkspace', () => {
+  it('renders a projected HUMAN avatar in notification list and detail', () => {
+    const humanNotification: Notification = {...notification, actor: {kind: 'human', id: '44444444-4444-4444-8444-444444444444', username: 'alex', displayName: 'Alex', avatarUrl: 'https://media.example/alex.webp'}, readAt: '2026-09-03T00:00:00.000Z'}
+    const {container} = render(<NotificationsWorkspace labels={en} locale="en" result={{status: 'ok', data: {items: [humanNotification], nextCursor: null}}} selectedId={humanNotification.id} selectedResult={{status: 'ok', data: humanNotification}} viewerScope="viewer-a"/>)
+    const images = container.querySelectorAll('img[src="https://media.example/alex.webp"]')
+    expect(images).toHaveLength(2)
+    images.forEach(image => expect(image).toHaveAttribute('alt', ''))
+  })
   it('does not let an older operation rollback a read confirmed by another operation', () => {
     let state = updateReadMutation(new Map(), notification.id, 'older', 'optimistic')
     state = updateReadMutation(state, notification.id, 'newer', 'optimistic')

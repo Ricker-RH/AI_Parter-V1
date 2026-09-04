@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {useEffect, useRef} from 'react'
 import type {Locale} from '../../i18n/config'
 import type {SocialApiResult} from '../../lib/social-api'
+import {HumanAvatar} from '../account/HumanAvatar'
 import {NotificationReadButton} from '../social/NotificationReadButton'
 import type {NotificationWorkspaceLabels} from './NotificationList'
 import {notificationText} from './NotificationList'
@@ -48,7 +49,7 @@ export function NotificationDetail({labels, listCursor, locale, notificationIden
   return <section aria-label={labels.chat.notificationDetailTitle} className={`${styles.detailPane} ${styles.notificationDetailPane}`}>
     <header className={styles.detailHeader}><Link className={styles.back} href={`/${locale}/messages/notifications${backQuery}`}>← {labels.chat.back}</Link><h2 ref={heading} tabIndex={-1}>{labels.chat.notificationDetailTitle}</h2></header>
     <article className={styles.notificationDetail}>
-      <div className={styles.notificationActor}><span aria-hidden="true" className={styles.detailAvatar}>{(actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span><div><strong>{actor?.displayName ?? labels.aifansActor}</strong>{actor ? <span>@{actor.username}</span> : null}</div></div>
+      <div className={styles.notificationActor}>{actor?.kind === 'human' ? <HumanAvatar className={styles.detailAvatar ?? ''} decorative human={actor} size="medium"/> : <span aria-hidden="true" className={styles.detailAvatar}>{(actor?.displayName ?? labels.aifansActor).slice(0, 1).toUpperCase()}</span>}<div><strong>{actor?.displayName ?? labels.aifansActor}</strong>{actor ? <span>@{actor.username}</span> : null}</div></div>
       <p className={styles.notificationAction}>{notificationText(notification, labels)}</p>
       <time dateTime={notification.createdAt}>{new Intl.DateTimeFormat(locale, {dateStyle: 'long', timeStyle: 'short'}).format(new Date(notification.createdAt))}</time>
       <div className={styles.notificationContext}><p>{profileAvailable ? labels.chat.notificationProfileContext : isFollow ? labels.chat.notificationActorContext : labels.chat.notificationPostContext}</p>{notification.commentId ? <span>{labels.comments}</span> : null}{targetHref ? <Link href={targetHref}>{targetLabel}</Link> : null}</div>

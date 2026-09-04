@@ -1,5 +1,6 @@
 import {
   createAnalyticsOutboxRepositoryFromUrl,
+  createProfileAssetCleanupRepositoryFromUrl,
   createRateLimitRepositoryFromUrl,
   createReadinessProbeFromUrl,
   createDatabaseRuntimeRepositories,
@@ -14,7 +15,7 @@ import { r2AssetPortFromEnv } from "./adapters/r2-assets.js";
 import { readApiEnv } from "./env.js";
 import { createAnalyticsDeliveryWorker } from "./ports/analytics.js";
 import { createR2PostMediaPort } from "./adapters/r2-post-media.js";
-import {createR2ProfileAssetPort} from './adapters/r2-profile-assets.js'
+import {createR2ProfileAssetPort, createR2ProfileAssetCleanup} from './adapters/r2-profile-assets.js'
 import {jsonConsoleLogger} from './ports/logger.js'
 import type {RateLimitPort} from './ports/rate-limit.js'
 import type {ReadinessPort} from './ports/readiness.js'
@@ -60,7 +61,14 @@ export function createProductionDependencies(
     ? r2AssetPortFromEnv(environment)
     : undefined;
   const readiness=factories.createReadiness(env.databaseUserUrl)
+  const cleanupRepository = env.postMedia && env.profileAssetCleanupSecret
+    ? createProfileAssetCleanupRepositoryFromUrl(env.databasePlatformUrl) : undefined
+  const cleanupRemove = cleanupRepository && env.postMedia ? createR2ProfileAssetCleanup(env.postMedia) : undefined
   return {
+    ...(cleanupRepository && cleanupRemove && env.profileAssetCleanupSecret ? {
+      profileAssetCleanup: {run: () => cleanupRepository.cleanupBatch(cleanupRemove)},
+      profileAssetCleanupSecret: env.profileAssetCleanupSecret,
+    } : {}),
     auth: createNeonJwtAuthVerifier({
       ...env.auth,
       onVerification(event) {

@@ -7,6 +7,7 @@ import type {Locale} from '../../i18n/config'
 import {formatRelativeDuration} from '../../lib/relative-time'
 import type {SocialApiResult} from '../../lib/social-api'
 import {useOptionalCurrentAccount} from '../account/CurrentAccountProvider'
+import {HumanAvatar} from '../account/HumanAvatar'
 import {AuthorPreview} from './AuthorPreview'
 import {CommentActions} from './CommentActions'
 import {CommentComposer, type CommentViewer} from './CommentComposer'
@@ -69,7 +70,7 @@ function CommentThreadItem({authenticated, comment, labels, locale, onReply, pos
     <div className={`comment-avatar-rail${isTombstone ? ' comment-avatar-rail--tombstone' : ''}`}>
       {author?.kind === 'ip'
         ? <AuthorPreview author={author} canMutate={authenticated && Boolean(viewerScope)} context="comment" labels={labels} locale={locale} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
-        : author ? <span aria-label={authorName} className="comment-avatar" role="img">{Array.from(author.displayName)[0]?.toLocaleUpperCase()}</span> : null}
+        : author ? <HumanAvatar className="comment-avatar" human={author} size="medium"/> : null}
     </div>
     <div className="comment-thread-content">
       <header className="comment-thread-heading">

@@ -42,7 +42,11 @@ describe('MyProfilePanel', () => {
 
     expect(background).toHaveAttribute('data-background-type', 'color')
     expect(background).toHaveStyle({'--profile-background-color': PROFILE_BACKGROUND_COLORS.sage})
-    expect(background!.compareDocumentPosition(identity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(background!.parentElement).toHaveAttribute('data-background-type', 'color')
+    expect(background!.parentElement).toHaveStyle({'--profile-foreground': PROFILE_BACKGROUND_COLORS.graphite})
+    expect(background!.parentElement).toContainElement(identity)
+    expect(background!.parentElement).toContainElement(screen.getByRole('link', {name: 'Edit profile'}))
+    expect(background!.parentElement).not.toContainElement(screen.getByRole('tablist'))
   })
 
   it('renders a saved image background with cover and focal-point custom properties', () => {
@@ -120,14 +124,14 @@ describe('MyProfilePanel', () => {
   it('uses one non-collapsing layout gap owner for exact mobile and desktop tab rhythm', () => {
     expect(stylesheet).toMatch(/\.profileBody\s*\{[^}]*display:\s*grid[^}]*gap:\s*16px/s)
     expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.profileBody\s*\{[^}]*gap:\s*24px/s)
-    expect(stylesheet).toMatch(/\.profile\s*\{[^}]*padding-bottom:\s*0/s)
+    expect(stylesheet).toMatch(/\.profile\s*\{[^}]*isolation:\s*isolate/s)
     expect(stylesheet).not.toMatch(/\.tabsSection\s*\{[^}]*(?:margin-top|padding-top):/s)
     expect(stylesheet).not.toMatch(/\.editAction\s*\{[^}]*margin-bottom:/s)
   })
 
   it('reserves a responsive hero height and keeps the bounded scroll and fixed-nav buffer', () => {
-    expect(stylesheet).toMatch(/\.profileBackground\s*\{[^}]*height:\s*144px/s)
-    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.profileBackground\s*\{[^}]*height:\s*192px/s)
+    expect(stylesheet).toMatch(/\.profileBackground\s*\{[^}]*position:\s*absolute/s)
+    expect(stylesheet).toMatch(/\.profileBackground\s*\{[^}]*inset:\s*0/s)
     expect(stylesheet).toMatch(/\.pageContent\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/s)
     expect(stylesheet).toMatch(/\.surface\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s)
     expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]::after\s*\{[^}]*height:\s*var\(--content-scroll-end-space\)/s)

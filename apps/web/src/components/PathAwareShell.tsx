@@ -9,7 +9,7 @@ import {AuthShell} from './shell/AuthShell'
 import {CreatorShell} from './shell/CreatorShell'
 import {MessagesShell} from './shell/MessagesShell'
 import {PublicShell} from './shell/PublicShell'
-import {resolveShellKind, shouldShowFloatingCreatorAction, shouldSuppressPublicMobileTopBar} from './shell/route-shell'
+import {resolveShellKind, shouldShowFloatingCreatorAction, shouldSuppressPublicMobileNav, shouldSuppressPublicMobileTopBar} from './shell/route-shell'
 import {NavigationFeedback} from './NavigationFeedback'
 import {RouteReadySignal} from './RouteReadySignal'
 import {FloatingCreatorAction} from './FloatingCreatorAction'
@@ -27,7 +27,7 @@ export function PathAwareShell({authConfigured, children, creatorModeEnabled, la
     case 'auth': shell = <AuthShell>{children}</AuthShell>; break
     case 'messages': shell = <MessagesShell floatingCreatorAction={floatingCreatorAction} labels={labels} locale={locale}>{children}</MessagesShell>; break
     case 'creator': shell = <CreatorShell>{children}</CreatorShell>; break
-    default: shell = <PublicShell floatingCreatorAction={floatingCreatorAction} labels={labels} locale={locale} suppressMobileTopBar={shouldSuppressPublicMobileTopBar(pathname)}>{children}</PublicShell>
+    default: shell = <PublicShell floatingCreatorAction={floatingCreatorAction} labels={labels} locale={locale} suppressMobileNav={shouldSuppressPublicMobileNav(pathname)} suppressMobileTopBar={shouldSuppressPublicMobileTopBar(pathname)}>{children}</PublicShell>
   }
   return <>{shell}<Suspense fallback={null}><RouteReadySignal content={children}/></Suspense><Suspense fallback={null}><NavigationFeedback locale={locale} release={release}/></Suspense></>
 }

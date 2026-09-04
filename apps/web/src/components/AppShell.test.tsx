@@ -18,6 +18,15 @@ const labels = {
 }
 
 describe('AppShell', () => {
+  it.each(['/en/profile/edit', '/zh-CN/profile/edit'])('keeps desktop navigation but hides both mobile bars for %s', (route) => {
+    pathname = route
+    render(<AppShell locale="en" labels={labels}><main>Edit profile</main></AppShell>)
+    expect(document.querySelector('.mobile-top-bar')).toBeNull()
+    expect(document.querySelector('.mobile-nav')).toBeNull()
+    expect(document.querySelector('[data-shell="public"]')).toHaveAttribute('data-mobile-nav', 'hidden')
+    expect(screen.getByRole('link', {name: 'Home'})).toBeInTheDocument()
+  })
+
   it('enables Cache Components, Partial Prefetching, and manual instant validation', () => {
     expect(nextConfig.cacheComponents).toBe(true)
     expect(nextConfig.experimental?.instantInsights?.validationLevel).toBe('manual-warning')

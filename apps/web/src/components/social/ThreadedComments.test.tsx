@@ -27,6 +27,14 @@ const detail: PostDetail = {id: postId, body: 'Post', languageCode: 'en', publis
 afterEach(() => { vi.unstubAllGlobals(); replace.mockReset() })
 
 describe('threaded comments', () => {
+  it('renders projected HUMAN avatars for roots and replies without linking public HUMAN profiles', () => {
+    const avatarRoot = {...root, author: {...root.author!, kind: 'human' as const, avatarUrl: 'https://media.example/root.webp'}}
+    const avatarReply = {...reply, author: {...reply.author!, kind: 'human' as const, avatarUrl: 'https://media.example/reply.webp'}}
+    const {container} = render(<PostDetailContent authenticated={false} labels={labels} locale="en" result={{status: 'ok', data: {...detail, comments: {groups: [{root: avatarRoot, replies: [avatarReply]}], nextCursor: null}}}}/>)
+    expect(screen.getByRole('img', {name: 'Alex'})).toHaveAttribute('src', avatarRoot.author.avatarUrl)
+    expect(screen.getByRole('img', {name: 'Sam'})).toHaveAttribute('src', avatarReply.author.avatarUrl)
+    expect(container.querySelector('.comment-thread-item .comment-avatar-rail a')).toBeNull()
+  })
   it('renders flat always-expanded root groups with dividers only between groups and four actions per item', () => {
     const {container} = render(<PostDetailContent authenticated labels={labels} locale="en" result={{status: 'ok', data: detail}} viewerScope="viewer-a" />)
     const groups = container.querySelectorAll('.comment-thread-group')

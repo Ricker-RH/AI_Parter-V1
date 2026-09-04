@@ -38,9 +38,9 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
   return <div className={styles.page}><div className={styles.pageContent}>
     <ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/>
     <div className={styles.surface} data-profile-content-frame>
-      <div aria-hidden="true" className={styles.profileBackground} data-background-type={account.background.type} data-profile-background style={backgroundStyle}/>
       <div className={styles.profileBody}>
-        <section className={styles.profile} aria-labelledby="my-profile-title">
+        <section className={styles.profile} aria-labelledby="my-profile-title" data-background-type={account.background.type} style={account.background.type === 'color' ? {'--profile-foreground': account.background.colorKey === 'graphite' ? PROFILE_BACKGROUND_COLORS.paper : PROFILE_BACKGROUND_COLORS.graphite} as CSSProperties : undefined}>
+  <div aria-hidden="true" className={styles.profileBackground} data-background-type={account.background.type} data-profile-background style={backgroundStyle}/>
           <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div><Avatar avatarUrl={account.avatarUrl ?? null} className={styles.avatar!} displayName={account.displayName} size="large"/></header>
           <div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p></div>
           <Link className={styles.editAction} href={`/${locale}/profile/edit?returnTo=${encodeURIComponent(profilePath)}`}>{labels.edit}</Link>

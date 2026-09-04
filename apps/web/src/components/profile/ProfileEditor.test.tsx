@@ -25,8 +25,15 @@ const labels: ProfileEditorLabels = {
   colorPaper: 'Paper', colorSand: 'Sand', colorMist: 'Mist', colorSage: 'Sage', colorSky: 'Sky', colorLilac: 'Lilac', colorGraphite: 'Graphite',
 }
 
-function renderEditor(initial: Account = account, returnTo = '/en/profile?tab=saved#row') {
-  return render(<CurrentAccountProvider initialAccount={initial}><ProfileEditor labels={labels} locale="en" returnTo={returnTo}/></CurrentAccountProvider>)
+function renderEditor(initial: Account = account, returnTo = '/en/profile?tab=saved#row', expand = true) {
+  const view = render(<CurrentAccountProvider initialAccount={initial}><ProfileEditor labels={labels} locale="en" returnTo={returnTo}/></CurrentAccountProvider>)
+  if (expand) for (const name of ['Name', 'Username', 'Bio']) fireEvent.click(screen.getByRole('button', {name}))
+  return view
+}
+
+function backgroundRadio(name: string) {
+  if (!screen.queryByRole('radio', {name})) fireEvent.click(screen.getByRole('button', {name: 'Background'}))
+  return screen.getByRole('radio', {name})
 }
 
 function imageFile({name = 'photo.webp', size = 1200, type = 'image/webp'} = {}) {
@@ -61,14 +68,53 @@ afterEach(() => {
 })
 
 describe('ProfileEditor', () => {
+  it('uses the current display name for the shared avatar fallback', () => {
+    renderEditor({...account, avatarUrl: null, displayName: 'Rui'}, undefined, false)
+    expect(screen.getByRole('img', {name: 'Avatar'})).toHaveTextContent('R')
+  })
+
+  it('opens avatar actions in a portal with keyboard navigation and outside dismissal', () => {
+    const {container} = renderEditor(account, undefined, false)
+    const trigger = screen.getByRole('button', {name: 'Avatar'})
+    fireEvent.click(trigger)
+    const menu = screen.getByRole('menu', {name: 'Avatar'})
+    expect(container).not.toContainElement(menu)
+    expect(screen.getByRole('menuitem', {name: 'Upload avatar'})).toHaveFocus()
+    fireEvent.keyDown(menu, {key: 'ArrowDown'})
+    expect(screen.getByRole('menuitem', {name: 'Remove avatar'})).toHaveFocus()
+    fireEvent.keyDown(menu, {key: 'Escape'})
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(trigger).toHaveFocus()
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('separates the background preset selector from custom image actions', () => {
+    renderEditor(account, undefined, false)
+    fireEvent.click(screen.getByRole('button', {name: 'Background'}))
+    expect(screen.getAllByRole('radio')).toHaveLength(7)
+    expect(screen.queryByRole('menuitem', {name: 'Upload background'})).toBeNull()
+    fireEvent.click(screen.getByRole('button', {name: 'Custom image'}))
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.getByRole('menuitem', {name: 'Upload background'})).toBeVisible()
+    expect(screen.getByRole('menuitem', {name: 'Use color instead'})).toBeDisabled()
+  })
+
   it('renders one standalone accessible form, seven shared colors, and no dialog', () => {
-    const {container} = renderEditor()
+    const {container} = renderEditor(account, undefined, false)
 
     expect(screen.getByRole('heading', {level: 1, name: 'Edit profile'})).toBeVisible()
     expect(screen.getByRole('form', {name: 'Edit profile'})).toHaveAttribute('id', 'profile-editor-form')
-    expect(screen.getByLabelText('Name')).toHaveValue('Rui')
-    expect(screen.getByLabelText('Upload avatar')).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp')
-    expect(screen.getByLabelText('Horizontal focus')).toBeDisabled()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.queryByRole('slider')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByRole('button', {name: 'Cancel'})).toBeNull()
+    expect(container.querySelectorAll('[data-profile-edit-row]')).toHaveLength(5)
+    fireEvent.click(screen.getByRole('button', {name: 'Name'}))
+    expect(screen.getByRole('textbox', {name: 'Name'})).toHaveValue('Rui')
+    fireEvent.click(screen.getByRole('button', {name: 'Background'}))
     expect(Object.keys(PROFILE_BACKGROUND_COLORS)).toEqual(['paper', 'sand', 'mist', 'sage', 'sky', 'lilac', 'graphite'])
     expect(screen.getAllByRole('radio')).toHaveLength(7)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
@@ -145,42 +191,34 @@ describe('ProfileEditor', () => {
     renderEditor()
 
     fireEvent.change(screen.getByLabelText('Upload background'), {target: {files: [imageFile()]}})
-    await waitFor(() => expect(screen.getByLabelText('Horizontal focus')).toBeEnabled())
-    fireEvent.change(screen.getByLabelText('Horizontal focus'), {target: {value: '0.75'}})
-    expect(screen.getByTestId('background-preview')).toHaveStyle({backgroundPosition: '75% 50%'})
-    fireEvent.click(screen.getByRole('radio', {name: 'Sage'}))
+    await waitFor(() => expect(screen.getByTestId('background-preview')).toHaveStyle({backgroundImage: 'url("blob:preview")'}))
+    expect(screen.getByTestId('background-preview')).toHaveStyle({backgroundPosition: '50% 50%'})
+    fireEvent.click(backgroundRadio('Sage'))
     expect(screen.getByRole('radio', {name: 'Sage'})).toBeChecked()
-    expect(screen.getByLabelText('Horizontal focus')).toBeDisabled()
+    expect(screen.queryByRole('slider')).toBeNull()
     expect(screen.getByTestId('background-preview').style.backgroundImage).toBe('')
     expect(clampFocalPoint(-1)).toBe(0)
     expect(clampFocalPoint(2)).toBe(1)
   })
 
-  it('edits focal coordinates for an existing saved background without uploading again', async () => {
-    const imageAccount = AccountSchema.parse({...account, background: {type: 'image', url: 'https://media.example/background.webp', focalX: 0.25, focalY: 0.75}})
-    vi.mocked(fetch).mockResolvedValueOnce(Response.json({...imageAccount, profileVersion: 5, background: {...imageAccount.background, focalX: 0.4, focalY: 0.6}}))
+  it('preserves saved focal coordinates and account locale when editing text', async () => {
+    const imageAccount = AccountSchema.parse({...account, preferredLocale: 'zh-CN', background: {type: 'image', url: 'https://media.example/background.webp', focalX: 0.25, focalY: 0.75}})
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({...imageAccount, displayName: 'Updated', profileVersion: 5}))
     renderEditor(imageAccount)
-
-    expect(screen.getByLabelText('Horizontal focus')).toBeEnabled()
-    fireEvent.change(screen.getByLabelText('Horizontal focus'), {target: {value: '0.4'}})
-    fireEvent.change(screen.getByLabelText('Vertical focus'), {target: {value: '0.6'}})
-    expect(screen.getByTestId('background-preview')).toHaveStyle({backgroundImage: 'url("https://media.example/background.webp")', backgroundPosition: '40% 60%'})
+    expect(screen.getByTestId('background-preview')).toHaveStyle({backgroundPosition: '25% 75%'})
+    fireEvent.change(screen.getByRole('textbox', {name: 'Name'}), {target: {value: 'Updated'}})
     fireEvent.click(screen.getByRole('button', {name: 'Save'}))
-
     await waitFor(() => expect(replace).toHaveBeenCalled())
-    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toEqual({
-      profileVersion: 4,
-      background: {type: 'image', focalX: 0.4, focalY: 0.6},
-    })
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toEqual({profileVersion: 4, displayName: 'Updated'})
   })
 
   it('disables saved-image focal controls after switching the draft to a color', () => {
     const imageAccount = AccountSchema.parse({...account, background: {type: 'image', url: 'https://media.example/background.webp', focalX: 0.25, focalY: 0.75}})
     renderEditor(imageAccount)
 
-    fireEvent.click(screen.getByRole('radio', {name: 'Paper'}))
+    fireEvent.click(backgroundRadio('Paper'))
 
-    expect(screen.getByLabelText('Horizontal focus')).toBeDisabled()
+    expect(screen.queryByRole('slider')).toBeNull()
     expect(screen.getByTestId('background-preview').style.backgroundImage).toBe('')
   })
 
@@ -189,16 +227,16 @@ describe('ProfileEditor', () => {
 
     act(() => publishAccountUpdate({...account, displayName: 'Remote Name', profileVersion: 5}))
 
-    expect(screen.getByLabelText('Name')).toHaveValue('Remote Name')
+    expect(screen.getByRole('textbox', {name: 'Name'})).toHaveValue('Remote Name')
   })
 
   it('keeps a dirty draft and its base version when the shared account advances', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, {status: 409}))
     renderEditor()
-    fireEvent.change(screen.getByLabelText('Name'), {target: {value: 'Local Draft'}})
+    fireEvent.change(screen.getByRole('textbox', {name: 'Name'}), {target: {value: 'Local Draft'}})
 
     act(() => publishAccountUpdate({...account, displayName: 'Remote Name', profileVersion: 5}))
-    expect(screen.getByLabelText('Name')).toHaveValue('Local Draft')
+    expect(screen.getByRole('textbox', {name: 'Name'})).toHaveValue('Local Draft')
     fireEvent.click(screen.getByRole('button', {name: 'Save'}))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('changed elsewhere')
@@ -208,7 +246,8 @@ describe('ProfileEditor', () => {
   it('removes an avatar with null and sends only changed fields', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({...account, avatarUrl: null, profileVersion: 5}))
     renderEditor()
-    fireEvent.click(screen.getByRole('button', {name: 'Remove avatar'}))
+    fireEvent.click(screen.getByRole('button', {name: 'Avatar'}))
+    fireEvent.click(screen.getByRole('menuitem', {name: 'Remove avatar'}))
     fireEvent.click(screen.getByRole('button', {name: 'Save'}))
     await waitFor(() => expect(replace).toHaveBeenCalled())
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toEqual({profileVersion: 4, avatarAssetId: null})
@@ -217,29 +256,29 @@ describe('ProfileEditor', () => {
   it('preserves a dirty draft after PATCH failure and does not publish it', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, {status: 503}))
     renderEditor()
-    fireEvent.change(screen.getByLabelText('Name'), {target: {value: 'Draft Name'}})
+    fireEvent.change(screen.getByRole('textbox', {name: 'Name'}), {target: {value: 'Draft Name'}})
     fireEvent.click(screen.getByRole('button', {name: 'Save'}))
     expect(await screen.findByRole('alert')).toHaveTextContent('Profile could not be saved.')
-    expect(screen.getByLabelText('Name')).toHaveValue('Draft Name')
+    expect(screen.getByRole('textbox', {name: 'Name'})).toHaveValue('Draft Name')
     expect(replace).not.toHaveBeenCalled()
   })
 
   it('offers a conflict refetch without discarding the draft automatically', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, {status: 409})).mockResolvedValueOnce(Response.json({...account, displayName: 'Latest', profileVersion: 5}))
     renderEditor()
-    fireEvent.change(screen.getByLabelText('Name'), {target: {value: 'Draft Name'}})
+    fireEvent.change(screen.getByRole('textbox', {name: 'Name'}), {target: {value: 'Draft Name'}})
     fireEvent.click(screen.getByRole('button', {name: 'Save'}))
     expect(await screen.findByRole('alert')).toHaveTextContent('changed elsewhere')
-    expect(screen.getByLabelText('Name')).toHaveValue('Draft Name')
+    expect(screen.getByRole('textbox', {name: 'Name'})).toHaveValue('Draft Name')
     fireEvent.click(screen.getByRole('button', {name: 'Reload latest profile'}))
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Latest'))
+    await waitFor(() => expect(screen.getByRole('textbox', {name: 'Name'})).toHaveValue('Latest'))
   })
 
-  it('confirms dirty cancel/back, never saves, and preserves the return URL', () => {
+  it('confirms dirty back, never saves, and preserves the return URL', () => {
     renderEditor()
-    fireEvent.change(screen.getByLabelText('Bio'), {target: {value: 'Unsaved'}})
+    fireEvent.change(screen.getByRole('textbox', {name: 'Bio'}), {target: {value: 'Unsaved'}})
     vi.mocked(confirm).mockReturnValueOnce(false).mockReturnValueOnce(true)
-    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}))
+    fireEvent.click(screen.getByRole('button', {name: 'Back'}))
     expect(replace).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', {name: 'Back'}))
     expect(confirm).toHaveBeenCalledWith('Discard unsaved changes?')
@@ -254,7 +293,7 @@ describe('ProfileEditor', () => {
     const cleanEvent = new Event('beforeunload', {cancelable: true}) as BeforeUnloadEvent
     window.dispatchEvent(cleanEvent)
     expect(cleanEvent.defaultPrevented).toBe(false)
-    fireEvent.change(screen.getByLabelText('Name'), {target: {value: 'Dirty'}})
+    fireEvent.change(screen.getByRole('textbox', {name: 'Name'}), {target: {value: 'Dirty'}})
     const dirtyEvent = new Event('beforeunload', {cancelable: true}) as BeforeUnloadEvent
     window.dispatchEvent(dirtyEvent)
     expect(dirtyEvent.defaultPrevented).toBe(true)
@@ -294,7 +333,7 @@ describe('ProfileEditor', () => {
     renderEditor()
 
     fireEvent.change(screen.getByLabelText('Upload background'), {target: {files: [imageFile()]}})
-    fireEvent.click(screen.getByRole('radio', {name: 'Sage'}))
+    fireEvent.click(backgroundRadio('Sage'))
     await act(async () => dimensions.resolve(bitmap()))
 
     expect(screen.getByRole('radio', {name: 'Sage'})).toBeChecked()

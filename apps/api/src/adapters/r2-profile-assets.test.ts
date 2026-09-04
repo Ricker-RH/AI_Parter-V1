@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto'
 import {GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 import {describe, expect, it, vi} from 'vitest'
-import {createR2ProfileAssetPort} from './r2-profile-assets.js'
+import {createR2ProfileAssetPort, createR2ProfileAssetCleanup} from './r2-profile-assets.js'
 
 const configuration = {
   accountId: '0'.repeat(32), accessKeyId: 'access', secretAccessKey: 'secret',
@@ -31,6 +31,18 @@ function driver(overrides: Record<string, unknown> = {}) {
 }
 
 describe('R2 public profile asset adapter', () => {
+  it('cleanup accepts only exact canonical profile keys and never broad prefixes or other assets', async () => {
+    const dependencies = driver()
+    const remove = createR2ProfileAssetCleanup(configuration, dependencies)
+    const value = keys()
+    await remove(value.stagingObjectKey)
+    await remove(value.finalObjectKey)
+    expect(dependencies.delete).toHaveBeenCalledTimes(2)
+    for (const key of ['public/profiles/', 'public/posts/x.webp', '../public/profiles/x', '']) {
+      await expect(remove(key)).rejects.toThrow('PROFILE_ASSET_INVALID')
+    }
+    expect(dependencies.delete).toHaveBeenCalledTimes(2)
+  })
   it('uses the real AWS presigner without binding an empty-body checksum', async () => {
     const expiresAt = new Date(Date.now() + 300_000).toISOString()
     const intent = await createR2ProfileAssetPort(configuration).createUploadIntent(intentInput({expiresAt}))

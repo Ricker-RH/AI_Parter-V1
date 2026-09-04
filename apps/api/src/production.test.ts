@@ -18,6 +18,17 @@ const environment = {
 } as const;
 
 describe("production API composition", () => {
+  it('enables profile cleanup only with its explicit secret and public R2 configuration', () => {
+    expect(createProductionDependencies(environment).profileAssetCleanup).toBeUndefined()
+    expect(() => createProductionDependencies({...environment, PROFILE_ASSET_CLEANUP_SECRET: 'x'})).toThrow('Invalid API environment')
+    const configured = createProductionDependencies({...environment,
+      PROFILE_ASSET_CLEANUP_SECRET: 'x'.repeat(32),
+      R2_ACCOUNT_ID: '0'.repeat(32), R2_ACCESS_KEY_ID: 'access', R2_SECRET_ACCESS_KEY: 'secret',
+      R2_PUBLIC_BUCKET: 'public-media', R2_PUBLIC_BASE_URL: 'https://media.example',
+    })
+    expect(configured.profileAssetCleanup?.run).toBeTypeOf('function')
+    expect(configured.profileAssetCleanupSecret).toBe('x'.repeat(32))
+  })
   it("injects every P0 runtime port without configuring optional chat", () => {
     const database = {
       authority: {} as DatabaseRuntimeRepositories['authority'],

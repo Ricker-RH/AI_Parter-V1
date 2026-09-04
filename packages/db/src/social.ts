@@ -273,6 +273,7 @@ function publicIp(row: PublicIpRow): PublicIp {
 }
 
 type NotificationRow = {
+  avatar_object_key?: string | null;
   id: string;
   kind: "follow" | "post_like" | "comment" | "reply" | "comment_like";
   post_id: string | null;
@@ -291,7 +292,19 @@ type NotificationRow = {
   creator_display_name: string | null;
 };
 
-function notification(row: NotificationRow): Notification {
+function humanAvatarUrl(base: string | undefined, key: string | null | undefined, profileId: string): string | null {
+  if (key == null) return null;
+  const escapedId = profileId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!new RegExp(`^public/profiles/${escapedId}/avatar/[0-9a-f-]+\\.webp$`).test(key))
+    throw new Error("INVALID_PUBLIC_MEDIA_KEY");
+  if (!base) throw new Error("PUBLIC_MEDIA_BASE_URL_REQUIRED");
+  const url = new URL(base);
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash)
+    throw new Error("INVALID_PUBLIC_MEDIA_BASE_URL");
+  return new URL(key, base.endsWith("/") ? base : `${base}/`).toString();
+}
+
+function notification(row: NotificationRow, mediaBase?: string): Notification {
   const actor =
     !row.actor_id || !row.actor_kind || !row.username || !row.display_name
       ? null
@@ -301,6 +314,7 @@ function notification(row: NotificationRow): Notification {
             id: row.actor_id,
             username: row.username,
             displayName: row.display_name,
+            avatarUrl: humanAvatarUrl(mediaBase, row.avatar_object_key, row.actor_id),
           }
         : publicIp({
             id: row.actor_id,
@@ -570,6 +584,7 @@ export function createSocialRepository({
           comment_id: string | null; comment_post_id: string | null; root_comment_id: string | null;
           parent_comment_id: string | null; comment_author_id: string | null; comment_author_kind: "human" | "ip" | null;
           comment_username: string | null; comment_display_name: string | null; comment_body: string | null;
+          comment_avatar_object_key: string | null;
           comment_state: "published" | "deleted" | null; comment_created_at: Date | string | null;
           comment_like_count: number | null; reply_count: number | null; comment_bookmark_count: number | null;
           comment_share_count: number | null; comment_viewer_has_liked: boolean | null; comment_viewer_has_bookmarked: boolean | null;
@@ -580,6 +595,7 @@ export function createSocialRepository({
         ) SELECT base.*,thread.id AS comment_id,thread.post_id AS comment_post_id,thread.root_comment_id,thread.parent_comment_id,
           thread.author_id AS comment_author_id,thread.author_kind AS comment_author_kind,thread.username AS comment_username,
           thread.display_name AS comment_display_name,thread.body AS comment_body,thread.state AS comment_state,
+          thread.avatar_object_key AS comment_avatar_object_key,
           thread.created_at AS comment_created_at,thread.like_count AS comment_like_count,thread.reply_count,
           thread.bookmark_count AS comment_bookmark_count,thread.share_count AS comment_share_count,
           thread.viewer_has_liked AS comment_viewer_has_liked,thread.viewer_has_bookmarked AS comment_viewer_has_bookmarked,
@@ -609,6 +625,7 @@ export function createSocialRepository({
                   id: r.comment_author_id,
                   username: r.comment_username,
                   displayName: r.comment_display_name,
+                  avatarUrl: humanAvatarUrl(publicMediaBaseUrl, r.comment_avatar_object_key, r.comment_author_id),
                 }
               : publicIp({
                   id: r.comment_author_id!,
@@ -659,13 +676,14 @@ export function createSocialRepository({
         const result=await client.query<{
           id:string;post_id:string;root_comment_id:string;parent_comment_id:string|null;author_id:string|null;author_kind:"human"|"ip"|null;
           username:string|null;display_name:string|null;body:string|null;state:"published"|"deleted";created_at:Date|string;
+          avatar_object_key:string|null;
           like_count:number;reply_count:number;bookmark_count:number;share_count:number;viewer_has_liked:boolean;viewer_has_bookmarked:boolean;
         }>('SELECT * FROM public.social_public_comment_context($1,$2)',[input.postId,input.commentId]);
         if(!result.rows.length)return null;
         const members=result.rows.map(row=>PublicCommentSchema.parse({
           id:row.id,postId:row.post_id,rootCommentId:row.root_comment_id,parentCommentId:row.parent_comment_id,
           author:!row.author_id||!row.author_kind||!row.username||!row.display_name?null:row.author_kind==='human'
-            ?{kind:'human' as const,id:row.author_id,username:row.username,displayName:row.display_name}
+            ?{kind:'human' as const,id:row.author_id,username:row.username,displayName:row.display_name,avatarUrl:humanAvatarUrl(publicMediaBaseUrl,row.avatar_object_key,row.author_id)}
             :publicIp({id:row.author_id,username:row.username,display_name:row.display_name,bio:null,languages:[],visual_type:'hybrid',creator_id:null,creator_username:null,creator_display_name:null}),
           state:row.state,...(row.state==='published'&&row.body?{body:row.body}:{}),createdAt:iso(row.created_at),
           likeCount:Number(row.like_count),replyCount:Number(row.reply_count),bookmarkCount:Number(row.bookmark_count),shareCount:Number(row.share_count),
@@ -916,7 +934,8 @@ export function createSocialRepository({
           id: string;
           username: string;
           display_name: string;
-        }>("SELECT id,username,display_name FROM public.profiles WHERE id=$1", [
+          avatar_object_key: string | null;
+        }>("SELECT id,username,display_name,avatar_object_key FROM public.profiles WHERE id=$1", [
           authorId,
         ]);
         const author = me.rows[0];
@@ -931,6 +950,7 @@ export function createSocialRepository({
             id: author.id,
             username: author.username,
             displayName: author.display_name,
+            avatarUrl: humanAvatarUrl(publicMediaBaseUrl, author.avatar_object_key, author.id),
           },
           state: "published",
           body: value.body,
@@ -956,7 +976,7 @@ export function createSocialRepository({
         const rows = result.rows.slice(0, page.limit);
         const last = rows.at(-1);
         return NotificationPageSchema.parse({
-          items: rows.map(notification),
+          items: rows.map(row => notification(row, publicMediaBaseUrl)),
           nextCursor:
             result.rows.length > page.limit && last
               ? encodeNotificationCursor({
@@ -991,7 +1011,7 @@ export function createSocialRepository({
           [notificationId],
         );
         const row = result.rows[0];
-        return row ? notification(row) : null;
+        return row ? notification(row, publicMediaBaseUrl) : null;
       });
     },
     async markNotificationRead(actor, notificationId) {

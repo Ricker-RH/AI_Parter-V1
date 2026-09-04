@@ -15,6 +15,7 @@ import { registerCreatorRoutes } from "./routes/creator.js";
 import { registerAdminCreatorRoutes } from "./routes/admin-creator.js";
 import {registerChannelRoutes} from './routes/channels.js'
 import {registerAdminChannelRoutes} from './routes/admin-channels.js'
+import {registerInternalProfileAssetRoutes, type ProfileAssetCleanupWorker} from './routes/internal-profile-assets.js'
 import type { AuthVerifier } from "./ports/auth.js";
 import type { AuthorityPort } from "./ports/authority.js";
 import type { PlatformSocialPort } from "./ports/platform-social.js";
@@ -54,6 +55,8 @@ export type AppDependencies = {
   imageGeneration?: ImageGenerationPort;
   postMediaAssets?: PostMediaAssetPort;
   profileAssets?: ProfileAssetPort;
+  profileAssetCleanup?: ProfileAssetCleanupWorker;
+  profileAssetCleanupSecret?: string;
   rateLimit?:RateLimitPort;
   rateLimitHmacSecret?:string;
   rateLimitIdentitySecret?:string;
@@ -88,6 +91,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerSocialRoutes(app, dependencies);
   registerChatRoutes(app, dependencies);
   registerInternalAnalyticsRoutes(app, dependencies);
+  registerInternalProfileAssetRoutes(app, dependencies);
   registerCreatorRoutes(app, dependencies);
   registerAdminCreatorRoutes(app, dependencies);
   registerChannelRoutes(app,dependencies)

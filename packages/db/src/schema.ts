@@ -244,6 +244,10 @@ export const profileAssetUploadReservations = pgTable(
     expiresAt: timestamp("expires_at", {withTimezone: true}).notNull(),
     verifiedAt: timestamp("verified_at", {withTimezone: true}),
     consumedAt: timestamp("consumed_at", {withTimezone: true}),
+    retiredAt: timestamp("retired_at", {withTimezone: true}),
+    stagingDeletedAt: timestamp("staging_deleted_at", {withTimezone: true}),
+    finalDeletedAt: timestamp("final_deleted_at", {withTimezone: true}),
+    cleanupAttemptedAt: timestamp("cleanup_attempted_at", {withTimezone: true}),
     createdAt: timestamp("created_at", {withTimezone: true})
       .notNull()
       .defaultNow(),

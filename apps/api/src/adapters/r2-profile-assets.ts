@@ -121,8 +121,18 @@ function awsDriver(configuration: R2PostMediaEnvironment): Driver {
         ContentType: input.contentType, CacheControl: input.cacheControl, IfNoneMatch: input.ifNoneMatch}))
     },
     async delete(input) {
-      await client.send(new DeleteObjectCommand({Bucket: input.bucket, Key: input.key}))
+      await client.send(new DeleteObjectCommand({Bucket: input.bucket, Key: input.key}),
+        {abortSignal: AbortSignal.timeout(3_000)})
     },
+  }
+}
+
+// Only the cleanup repository's locked, exact-key candidates may reach this adapter.
+export function createR2ProfileAssetCleanup(configuration: R2PostMediaEnvironment, dependencies?: Pick<Driver, 'delete'>) {
+  const driver = dependencies ?? awsDriver(configuration)
+  return async (objectKey: string): Promise<void> => {
+    if (!stagingKey.test(objectKey) && !finalKey.test(objectKey)) invalid()
+    await driver.delete({bucket: configuration.bucket, key: objectKey})
   }
 }
 

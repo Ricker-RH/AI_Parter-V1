@@ -28,10 +28,9 @@
   background-position: var(--profile-background-focal-x, 50%) var(--profile-background-focal-y, 50%);
   background-repeat: no-repeat;
   background-size: cover;
-  height: 144px;
-  margin-inline: auto;
-  max-width: 640px;
-  width: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: -2;
 }
 
 .profileBody {
@@ -44,10 +43,20 @@
 }
 
 .profile {
+  color: var(--profile-foreground, var(--shell-text));
+  isolation: isolate;
+  position: relative;
   min-width: 0;
   padding: 24px 20px;
-  padding-bottom: 0;
   width: 100%;
+}
+
+.profile[data-background-type='image']::before {
+  background: linear-gradient(0deg, color-mix(in srgb, var(--shell-surface) 94%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 90%, transparent) 40%, transparent 85%), linear-gradient(90deg, color-mix(in srgb, var(--shell-surface) 92%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 90%, transparent) 55%, transparent 100%);
+  content: '';
+  inset: 0;
+  position: absolute;
+  z-index: -1;
 }
 
 .tabsSection { min-width: 0; }
@@ -94,7 +103,7 @@
 }
 
 .identityCopy p {
-  color: var(--shell-muted);
+  color: var(--profile-foreground, var(--shell-muted));
   margin-top: 3px;
   overflow-wrap: anywhere;
 }
@@ -118,7 +127,7 @@
   white-space: pre-wrap;
 }
 
-.empty { color: var(--shell-muted); }
+.empty { color: var(--profile-foreground, var(--shell-muted)); }
 
 .editAction,
 .state button {
@@ -134,7 +143,7 @@
 }
 
 .editAction {
-  background: transparent;
+  background: var(--shell-surface);
   font-weight: 650;
   margin-top: 24px;
   text-decoration: none;
@@ -177,9 +186,8 @@
     border-radius: 16px;
   }
 
-  .profileBackground { height: 192px; }
   .profileBody { gap: 24px; }
-  .profile { padding: 28px 24px; padding-bottom: 0; }
+  .profile { padding: 28px 24px; }
 
   .state {
     border: 1px solid var(--shell-border);

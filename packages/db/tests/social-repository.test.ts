@@ -14,9 +14,10 @@ async function ip(c:PoolClient, state:'published'|'draft'='published') { const i
 async function post(c:PoolClient, author:string, state:'published'|'draft'|'withdrawn'='published', publishedAt?:string, languageCode?:'en'|'zh-CN') { const id=randomUUID(); const timestamp=publishedAt??new Date().toISOString(); if(state==='draft') await c.query(`INSERT INTO public.posts(id,author_profile_id,source,state,body,language_code) VALUES($1,$2,'worker',$3,'fixture',$4)`,[id,author,state,languageCode??null]); else if(state==='published') await c.query(`INSERT INTO public.posts(id,author_profile_id,source,state,body,published_at,language_code) VALUES($1,$2,'worker',$3,'fixture',$4::timestamptz,$5)`,[id,author,state,timestamp,languageCode??null]); else await c.query(`INSERT INTO public.posts(id,author_profile_id,source,state,body,published_at,withdrawn_at,language_code) VALUES($1,$2,'worker',$3,'fixture',$4::timestamptz,$4::timestamptz,$5)`,[id,author,state,timestamp,languageCode??null]); return id }
 function notificationCursor(createdAt:string,id:string) { return encodeNotificationCursor({v:1,kind:'notifications',createdAt,id}) }
 function context() { return {requestId: randomUUID()} }
-function repo(c:PoolClient) {
+function repo(c:PoolClient, publicMediaBaseUrl?:string) {
  const session=createActorSession({connect:async()=>({query:c.query.bind(c),release(){}})}, {transactionMode:'nested'})
  return createSocialRepository({
+  publicMediaBaseUrl,
   withActor:session.withActor,
   withPublic:async(fn)=>{
    await c.query('SAVEPOINT anon')
@@ -305,6 +306,22 @@ async function expectShareCommentLockOrder(
 }
 
 integration('social repository local postgres',()=>{
+ it('refreshes historical HUMAN comment and notification avatars from live profiles',async()=>tx(async c=>{
+  const writer=await human(c),recipient=await human(c),postId=await post(c,await ip(c))
+  const social=repo(c,'https://media.example/')
+  const root=await social.createHumanComment(recipient,postId,{body:'root'},context())
+  const reply=await social.createHumanComment(writer,postId,{body:'reply',parentCommentId:root.id},context())
+  const notification=(await social.listNotifications(recipient,{limit:10})).items.find(item=>item.commentId===reply.id)!
+  expect(notification.actor).toMatchObject({avatarUrl:null})
+  for(const key of [`public/profiles/${writer.id}/avatar/${randomUUID()}.webp`,`public/profiles/${writer.id}/avatar/${randomUUID()}.webp`,null]) {
+   await c.query('UPDATE public.profiles SET avatar_object_key=$2 WHERE id=$1',[writer.id,key])
+   const expected={avatarUrl:key ? `https://media.example/${key}` : null}
+   expect((await social.getPost({viewer:null,postId,commentLimit:10,commentAfter:null}))?.comments.groups[0]?.replies[0]?.author).toMatchObject(expected)
+   expect((await social.getCommentThread({viewer:null,postId,commentId:reply.id}))?.group.replies[0]?.author).toMatchObject(expected)
+   expect((await social.listNotifications(recipient,{limit:10})).items.find(item=>item.id===notification.id)?.actor).toMatchObject(expected)
+   expect((await social.getNotification(recipient,notification.id))?.actor).toMatchObject(expected)
+  }
+ }))
  afterAll(async()=>pool.end())
  it('returns only published public posts and keeps viewer flags actor-scoped',async()=>tx(async c=>{
   const author=await ip(c); const hidden=await ip(c,'draft'); const visible=await post(c,author); await post(c,hidden); await post(c,author,'withdrawn');
