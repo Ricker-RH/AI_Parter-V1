@@ -42,6 +42,31 @@ async function collect(port: ReturnType<typeof createDifyChatPort>, request = in
 afterEach(() => vi.restoreAllMocks())
 
 describe('Dify chat adapter', () => {
+  it('accepts agent-chat SSE including empty agent chunks and ignores thought events without altering answer text',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01',task_id:'task_01',created_at:1705639511}
+    const port=createDifyChatPort({baseUrl:'https://dify.example.test/v1',apiKey:'test-only',fetcher:async()=>sseResponse([
+      event({event:'agent_message',answer:'',...ids}),
+      event({event:'agent_thought',thought:'ignored internal progress',tool:'',observation:'',position:1,...ids}),
+      event({event:'agent_message',answer:'<think>text</think>',...ids}),
+      event({event:'agent_message',answer:'你好',...ids}),
+      event({event:'message_end',metadata:{},...ids}),
+    ])})
+    await expect(collect(port)).resolves.toEqual({deltas:['<think>text</think>','你好'],result:{answer:'<think>text</think>你好',providerConversationId:ids.conversation_id,providerMessageId:ids.message_id}})
+  })
+  it('applies the existing identity, answer length and terminal rules equally to agent_message',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}
+    const chunk=(answer:unknown,extra:Record<string,unknown>={})=>event({event:'agent_message',answer,...ids,...extra})
+    const end=event({event:'message_end',...ids})
+    for(const chunks of [
+      [chunk(42),end], [chunk('',{message_id:''}),end], [chunk('a',{conversation_id:'other'}),end],
+      [chunk('a'),chunk('b',{message_id:'other'}),end], [chunk('a',{message_id:'x'.repeat(513)}),end],
+      [chunk('x'.repeat(4001)),end], [chunk('x'.repeat(4000)),chunk('x'),end],
+      [chunk('a')], [chunk(''),end], [chunk('a')+end+chunk('b')],
+    ]){
+      const port=createDifyChatPort({baseUrl:'https://dify.example.test',apiKey:'test-only',fetcher:async()=>sseResponse(chunks)})
+      await expect(collect(port)).rejects.toBeInstanceOf(ChatProviderError)
+    }
+  })
   it('sends the exact streaming request and returns only internal deltas and terminal ids', async () => {
     const fetcher = vi.fn(async () => sseResponse([
       event({event: 'message', answer: 'Hi ', conversation_id: 'conv_external_01', message_id: 'msg_external_01'}),

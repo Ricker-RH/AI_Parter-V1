@@ -143,8 +143,8 @@ export function createDifyChatPort({baseUrl, apiKey, fetcher = fetch}: DifyChatO
           const event = value.event
           if (event === 'error') throw providerError()
           if (typeof event === 'string' && IGNORED_EVENTS.has(event)) return undefined
-          if (event !== 'message' && event !== 'message_end') throw providerError()
-          if (event === 'message') {
+          if (event !== 'message' && event !== 'agent_message' && event !== 'message_end') throw providerError()
+          if (event === 'message' || event === 'agent_message') {
             if (typeof value.answer !== 'string') throw providerError()
             registerIds(value)
             if (value.answer.length === 0) return undefined
