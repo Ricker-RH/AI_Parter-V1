@@ -8,7 +8,7 @@ vi.mock('next/link', () => ({default: ({children, ...props}: React.AnchorHTMLAtt
 vi.mock('next/navigation', () => ({useRouter: () => ({replace: vi.fn()})}))
 
 const author = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111', username: 'luma', displayName: 'Luma', languages: ['en' as const], visualType: 'anime' as const}
-const labels = {close: 'Close', follow: 'Follow', followers: 'followers', followingAction: 'Following', interactionError: 'Action failed', profile: 'Profile', unavailableDescription: 'Unavailable'} as SocialLabels
+const labels = {close: 'Close', follow: 'Follow', followers: 'followers', followingAction: 'Following', interactionError: 'Action failed', profile: 'Profile', unavailableDescription: 'Unavailable', startChat: 'Chat', startingChat: 'Opening…', chatStartError: 'Unable to start'} as SocialLabels
 
 function renderOpenPreview(props: Partial<React.ComponentProps<typeof AuthorPreview>> = {}) {
   vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>(() => undefined)))
@@ -40,6 +40,8 @@ describe('AuthorPreview modal', () => {
     expect(backdrop).toHaveAttribute('data-author-preview-backdrop')
     expect(container).not.toContainElement(dialog)
     expect(screen.queryByRole('button', {name: 'Close'})).toBeNull()
+    expect(screen.getByRole('link', {name: 'Chat'})).toBeVisible()
+    expect(dialog.querySelector('[data-avatar-kind="ip"][data-avatar-halo]')).not.toBeNull()
   })
 
   it('does not close when the dialog receives a mouse down', () => {
@@ -73,7 +75,7 @@ describe('AuthorPreview modal', () => {
   it('moves focus into the portal and traps forward and reverse tabbing', async () => {
     const {dialog} = renderOpenPreview()
     const first = screen.getByRole('link', {name: 'Luma'})
-    const last = screen.getByRole('link', {name: 'Follow'})
+    const last = screen.getByRole('link', {name: 'Chat'})
 
     await waitFor(() => expect(first).toHaveFocus())
     last.focus()

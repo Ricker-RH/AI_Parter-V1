@@ -5,7 +5,7 @@ import messages from '../../../messages/en.json'
 import {HumanProfileTabs} from './HumanProfileTabs'
 vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),prefetch:vi.fn()})}))
 const id='11111111-1111-4111-8111-111111111111'
-const profile:HumanProfile={v:1,identity:{kind:'HUMAN',id,username:'rui',displayName:'Rui',avatarUrl:null},bio:null,background:{type:'color',colorKey:'paper'},isOwner:false,visibility:'public',relationship:{following:false,followedBy:false,blockedByViewer:false,canMessage:true,messageDisabledReason:null},tabs:{ips:{state:'available'},liked:{state:'available'},saved:{state:'available'},following:{state:'available'}}}
+const profile:HumanProfile={v:1,identity:{kind:'HUMAN',id,username:'rui',displayName:'Rui',avatarUrl:null},bio:null,background:{type:'color',colorKey:'paper'},followerCount:0,isOwner:false,visibility:'public',relationship:{following:false,followedBy:false,blockedByViewer:false,canMessage:true,messageDisabledReason:null},tabs:{ips:{state:'available'},liked:{state:'available'},saved:{state:'available'},following:{state:'available'}}}
 const ip={kind:'ip',id:'22222222-2222-4222-8222-222222222222',username:'luma',displayName:'Luma',languages:['en'],visualType:'anime'}
 afterEach(()=>vi.unstubAllGlobals())
 it('loads visitor-scoped IPs and paginates without calling owner routes',async()=>{

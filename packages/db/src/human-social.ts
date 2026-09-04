@@ -12,6 +12,7 @@ const ProfileRow=z.strictObject({
  background_focal_y:z.union([z.string().regex(/^(?:0(?:\.\d+)?|1(?:\.0+)?)$/),z.number().min(0).max(1)]),
  profile_visibility:HumanVisibilitySchema,is_owner:z.boolean(),following:z.boolean(),followed_by:z.boolean(),blocked_by_viewer:z.boolean(),
  message_disabled_reason:HumanMessageDisabledReasonSchema.nullable(),tabs_available:z.boolean(),
+ follower_count:z.union([z.string(),z.number()]).default(0),
 })
 const PreferencesRow=z.strictObject({profile_id:uuid,profile_visibility:HumanVisibilitySchema,show_presence:z.boolean()})
 const ChangedRow=z.strictObject({changed:z.boolean()})
@@ -50,11 +51,11 @@ export function createHumanSocialRepository({withActor,withPublic,publicMediaBas
   async getPublicProfile({viewer,profileId}:{viewer:Actor|null;profileId:string}):Promise<HumanProfile|null>{
    const target=uuid.parse(profileId)
    const read=async(client:QueryClient)=>{
-    const result=await client.query('SELECT * FROM public.human_public_profile($1)',[target]);if(!result.rows[0])return null
+    const result=await client.query('SELECT profile.*, public.human_follower_count(profile.id) AS follower_count FROM public.human_public_profile($1) profile',[target]);if(!result.rows[0])return null
     const r=ProfileRow.parse(result.rows[0]);const tab={state:r.tabs_available?'available':'locked'}
     return HumanProfileSchema.parse({v:1,identity:{kind:'HUMAN',id:r.id,username:r.username,displayName:r.display_name,avatarUrl:media(r.avatar_object_key,r.id,'avatar')},bio:r.bio,
      background:r.background_type==='color'?{type:'color',colorKey:r.background_color_key}:{type:'image',url:media(r.background_object_key,r.id,'background'),focalX:Number(r.background_focal_x),focalY:Number(r.background_focal_y)},
-     visibility:r.profile_visibility,isOwner:r.is_owner,relationship:{following:r.following,followedBy:r.followed_by,blockedByViewer:r.blocked_by_viewer,canMessage:r.message_disabled_reason===null,messageDisabledReason:r.message_disabled_reason},tabs:{ips:tab,liked:tab,saved:tab,following:tab}})
+     followerCount:Number(r.follower_count),visibility:r.profile_visibility,isOwner:r.is_owner,relationship:{following:r.following,followedBy:r.followed_by,blockedByViewer:r.blocked_by_viewer,canMessage:r.message_disabled_reason===null,messageDisabledReason:r.message_disabled_reason},tabs:{ips:tab,liked:tab,saved:tab,following:tab}})
    }
    return viewer?withActor(viewer,read):withPublic(read)
   },

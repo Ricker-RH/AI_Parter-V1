@@ -7,7 +7,7 @@ import {authHref} from '../../lib/auth/return-to'
 import {humanProfileLabels} from './human-profile-labels'
 import styles from './HumanProfileActions.module.css'
 
-export function HumanProfileActions({profile,locale,onProfileChange,showBlock=true}:{profile:HumanProfile;locale:Locale;onProfileChange:(profile:HumanProfile)=>void;showBlock?:boolean}){
+export function HumanProfileActions({profile,locale,onProfileChange,showBlock=true,variant='default'}:{profile:HumanProfile;locale:Locale;onProfileChange:(profile:HumanProfile)=>void;showBlock?:boolean;variant?:'default'|'preview'}){
  const router=useRouter(),labels=humanProfileLabels(locale)
  const [pending,setPending]=useState(false),[error,setError]=useState(false),[confirm,setConfirm]=useState(false)
  const controller=useRef<AbortController|null>(null),busy=useRef(false)
@@ -40,7 +40,7 @@ export function HumanProfileActions({profile,locale,onProfileChange,showBlock=tr
  }
  const reason=r.messageDisabledReason
  const disabledText=reason==='blocked'?labels.blocked:reason==='mutual_follow_required'?labels.mutual:reason==='authentication_required'?labels.auth:reason==='self'?labels.self:reason==='account_unavailable'?labels.accountUnavailable:null
- return <div className={styles.actions} aria-busy={pending}>
+ return <div className={`${styles.actions} ${variant==='preview'?styles.preview:''}`} aria-busy={pending}>
   <div className={styles.primaryActions}><button aria-pressed={r.following} disabled={pending||r.blockedByViewer} onClick={()=>void perform('follow')} type="button">{r.following?labels.following:r.followedBy?labels.followBack:labels.follow}</button><button aria-describedby={disabledText?'human-message-reason':undefined} disabled={pending||!r.canMessage} onClick={()=>void perform('chat')} type="button">{labels.chat}</button></div>
   {disabledText?<p id="human-message-reason">{disabledText}</p>:null}
   {showBlock?<><button className={styles.block} disabled={pending} onClick={()=>r.blockedByViewer?void perform('block'):setConfirm(true)} type="button">{r.blockedByViewer?labels.unblock:labels.block}</button>

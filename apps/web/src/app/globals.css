@@ -533,14 +533,20 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .author-preview-heading > div { display: grid; }
 .author-preview-heading strong { font-size: 20px; }
 .author-preview-heading span { color: var(--shell-muted); font-size: 15px; }
-.author-preview-avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: flex; flex: 0 0 auto; font-weight: 700; height: 64px; justify-content: center; width: 64px; }
+.author-preview-avatar { display: flex; flex: 0 0 auto; }
 .author-preview-bio { line-height: 1.4; }
 .author-preview-followers { color: var(--shell-muted); font-size: 13px; margin: 0; }
-.author-preview-actions { display: flex; width: 100%; }
+.author-preview-actions { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
 .author-preview-follow-action { width: 100%; }
+.author-preview-chat-action { min-width: 0; width: 100%; }
 .author-preview-follow-action .author-preview-primary,
-.author-preview-follow-action .profile-follow button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; width: 100%; }
+.author-preview-follow-action .profile-follow button,
+.author-preview-chat-action > a,
+.author-preview-chat-action .profile-start-chat button { align-items: center; background: transparent; border: 1px solid var(--shell-border); border-radius: 10px; color: inherit; display: flex; font: inherit; font-weight: 650; justify-content: center; min-height: 44px; padding: 0 16px; width: 100%; }
+.author-preview-follow-action .author-preview-primary,
+.author-preview-follow-action .profile-follow button { background: var(--shell-text); border-color: var(--shell-text); color: var(--shell-surface); }
 .author-preview-follow-action .profile-follow { display: block; width: 100%; }
+.author-preview-chat-action .profile-start-chat { display: block; width: 100%; }
 .comments-section { border-top: 0; }
 .post-detail-scroll-region { -ms-overflow-style: none; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .post-detail-scroll-region::-webkit-scrollbar { display: none; }

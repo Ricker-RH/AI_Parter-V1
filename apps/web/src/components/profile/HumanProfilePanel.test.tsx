@@ -11,7 +11,7 @@ const push = vi.fn()
 vi.mock('next/navigation', () => ({useRouter: () => ({push, replace:vi.fn(), refresh:vi.fn()}), usePathname:()=>'/en/humans/peer'}))
 vi.mock('../GlobalMoreMenu',()=>({GlobalMoreMenu:()=>null}))
 const id='11111111-1111-4111-8111-111111111111'
-export const profile: HumanProfile={v:1,identity:{kind:'HUMAN',id,displayName:'Rui',username:'rui',avatarUrl:null},bio:'Hello there',background:{type:'color',colorKey:'paper'},visibility:'private',isOwner:false,relationship:{following:false,followedBy:true,blockedByViewer:false,canMessage:true,messageDisabledReason:null},tabs:{ips:{state:'locked'},liked:{state:'locked'},saved:{state:'locked'},following:{state:'locked'}}}
+export const profile: HumanProfile={v:1,identity:{kind:'HUMAN',id,displayName:'Rui',username:'rui',avatarUrl:null},bio:'Hello there',background:{type:'color',colorKey:'paper'},followerCount:0,visibility:'private',isOwner:false,relationship:{following:false,followedBy:true,blockedByViewer:false,canMessage:true,messageDisabledReason:null},tabs:{ips:{state:'locked'},liked:{state:'locked'},saved:{state:'locked'},following:{state:'locked'}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks()})
 it('uses the author-card cache for the initial human relationship state',()=>{
  const client=new QueryClient({defaultOptions:{queries:{retry:false}}})

@@ -9,6 +9,8 @@ import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import {AppQueryContext, createAppQueryClient} from '../AppQueryProvider'
 import {ProfileFollowButton} from './ProfileFollowButton'
+import {StartChatButton} from '../chat/StartChatButton'
+import {Avatar} from '../account/Avatar'
 import type {SocialLabels} from './types'
 import {ipProfileCacheKey, loadIpProfile} from '../profile/profile-cache'
 
@@ -85,26 +87,27 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
 
   const resolvedFollowing = followingOverride ?? followsAuthor ?? profile?.viewerFollows
   const followAction = canMutate
-    ? resolvedFollowing === undefined || !viewerScope ? null : <ProfileFollowButton following={resolvedFollowing} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id} rollbackOnUnmount viewerScope={viewerScope}/>
+    ? !viewerScope ? null : <ProfileFollowButton following={resolvedFollowing ?? false} labels={labels} locale={locale} onFollowingChange={setFollowingOverride} profileId={author.id} rollbackOnUnmount viewerScope={viewerScope}/>
     : <Link className="author-preview-primary" href={authHref(locale, returnTo)}>{labels.follow}</Link>
+  const chatAction = <StartChatButton authenticated={canMutate} ipProfileId={author.id} labels={{startChat: labels.startChat, startingChat: labels.startingChat, chatStartError: labels.chatStartError}} locale={locale}/>
   const triggerClass = context === 'comment' ? 'comment-avatar-trigger' : 'post-avatar-trigger'
   const avatarClass = context === 'comment' ? 'comment-avatar' : 'avatar'
   const modal = <div className="author-preview-backdrop" data-author-preview-backdrop onClick={(event) => event.stopPropagation()} onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
     <div aria-label={author.displayName} aria-modal="true" className="author-preview-dialog" onMouseDown={(event) => event.stopPropagation()} ref={dialog} role="dialog">
       <div className="author-preview-heading">
         <div><Link href={profileHref}><strong>{author.displayName}</strong></Link><span>@{author.username}</span></div>
-        <Link aria-label={`${profileLabel}: ${author.displayName}`} className="author-preview-avatar" href={profileHref}>{author.displayName.slice(0, 1)}</Link>
+        <Link aria-label={`${profileLabel}: ${author.displayName}`} className="author-preview-avatar" href={profileHref}><Avatar avatarUrl={null} decorative displayName={author.displayName} identityId={author.id} kind="ip" size="large"/></Link>
       </div>
       {author.bio ? <p className="author-preview-bio">{author.bio}</p> : null}
       {author.creator ? <p className="creator-attribution">{labels.createdBy} @{author.creator.username}</p> : null}
       {preview.isPending ? <p aria-live="polite" className="author-preview-followers">…</p> : profile ? <p className="author-preview-followers">{profile.followerCount} {labels.followers}</p> : preview.isError ? <p className="author-preview-followers">{labels.unavailableDescription}</p> : null}
-      {followAction ? <div className="author-preview-actions"><div className="author-preview-follow-action">{followAction}</div></div> : null}
+      {followAction ? <div className="author-preview-actions"><div className="author-preview-follow-action">{followAction}</div><div className="author-preview-chat-action">{chatAction}</div></div> : null}
     </div>
   </div>
 
   return <div className="author-preview">
     <button aria-expanded={open} aria-haspopup="dialog" aria-label={`${profileLabel}: ${author.displayName}`} className={triggerClass} onClick={() => setOpen(true)} onFocus={prefetchProfile} onPointerDown={prefetchProfile} onPointerEnter={prefetchProfile} ref={trigger} type="button">
-      <span aria-hidden="true" className={avatarClass}>{author.displayName.slice(0, 1)}</span>
+      <Avatar avatarUrl={null} className={avatarClass} decorative displayName={author.displayName} identityId={author.id} kind="ip" size="medium"/>
     </button>
     {open && typeof document !== 'undefined' ? createPortal(modal, document.body) : null}
   </div>

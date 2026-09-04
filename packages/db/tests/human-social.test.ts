@@ -17,8 +17,8 @@ describe('human social repository',()=>{
  })
  it('projects strict private basic profile under public session without activity metadata',async()=>{
   const {repo,publicSession,query}=setup();const result=await repo.getPublicProfile({viewer:null,profileId:id})
-  expect(publicSession).toHaveBeenCalledOnce();expect(query).toHaveBeenCalledWith('SELECT * FROM public.human_public_profile($1)',[id])
-  expect(result).toMatchObject({bio:'Bio',background:{type:'color',colorKey:'paper'},tabs:{ips:{state:'locked'},liked:{state:'locked'},saved:{state:'locked'},following:{state:'locked'}}})
+  expect(publicSession).toHaveBeenCalledOnce();expect(query).toHaveBeenCalledWith('SELECT profile.*, public.human_follower_count(profile.id) AS follower_count FROM public.human_public_profile($1) profile',[id])
+  expect(result).toMatchObject({bio:'Bio',background:{type:'color',colorKey:'paper'},followerCount:0,tabs:{ips:{state:'locked'},liked:{state:'locked'},saved:{state:'locked'},following:{state:'locked'}}})
  })
  it('uses actor session and rejects malformed database booleans rather than coercing',async()=>{
   const {repo,session}=setup([{...row,tabs_available:'false'}]);await expect(repo.getPublicProfile({viewer:actor,profileId:id})).rejects.toThrow();expect(session).toHaveBeenCalledWith(actor,expect.any(Function))

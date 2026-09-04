@@ -32,6 +32,7 @@ export const HumanProfileSchema = z.strictObject({
   identity: HumanIdentitySchema,
   bio: z.string().max(500).nullable().default(null),
   background: ProfileBackgroundSchema.default({type: 'color', colorKey: 'paper'}),
+  followerCount: z.number().int().nonnegative().default(0),
   visibility: HumanVisibilitySchema,
   isOwner: z.boolean(),
   relationship: HumanRelationshipSchema,
