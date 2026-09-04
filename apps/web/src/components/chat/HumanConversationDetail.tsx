@@ -182,7 +182,9 @@ function HumanDetail({
     historyRequest.current = request;
     const stop = () => request.abort();
     owner.signal.addEventListener("abort", stop, { once: true });
-    setLoading(true);
+    // A reconciliation must retain a usable history; only the first empty read
+    // owns the visible loading state.
+    setLoading(messages.current.length === 0);
     try {
       let after = messages.current.at(-1)?.sequence ?? 0;
       // Bounded catch-up; the continuation remains available for exceptionally large histories.
