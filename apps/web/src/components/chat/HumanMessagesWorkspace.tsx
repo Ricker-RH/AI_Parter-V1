@@ -118,7 +118,9 @@ export function HumanMessagesWorkspace({
       activeRequest.current = request;
       const stop = () => request.abort();
       lifecycle.signal.addEventListener("abort", stop, { once: true });
-      setLoading(true);
+      // A background reconciliation must never replace an already usable
+      // inbox with a visible loading state.
+      setLoading(currentInbox.current.length === 0);
       try {
         const page = HumanInboxPageSchema.parse(
           await humanRequest(

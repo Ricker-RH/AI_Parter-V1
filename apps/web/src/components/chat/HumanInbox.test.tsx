@@ -175,6 +175,39 @@ it("does not poll the human inbox while realtime is ready", async () => {
 
   expect(fetcher).toHaveBeenCalledTimes(calls);
 });
+it("keeps a loaded inbox visible during disconnected fallback reconciliation", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  let resolveReconcile!: (response: Response) => void;
+  let calls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => {
+      calls++;
+      if (calls > 1)
+        return new Promise<Response>((resolve) => {
+          resolveReconcile = resolve;
+        });
+      return Promise.resolve(
+        Response.json({
+          items: [{ conversation, latestMessage: null, unreadCount: 0, lastReadSequence: 0 }],
+          nextCursor: null,
+        }),
+      );
+    }),
+  );
+  render(<MessagesWorkspace items={[]} labels={labels} locale="en" />);
+  await screen.findByRole("link", { name: /Alice/ });
+  fireEvent.focus(window);
+  expect(screen.queryByText("Loading")).toBeNull();
+  await act(async () =>
+    resolveReconcile(
+      Response.json({
+        items: [{ conversation, latestMessage: null, unreadCount: 0, lastReadSequence: 0 }],
+        nextCursor: null,
+      }),
+    ),
+  );
+});
 it("does not reload open history when a visible page reconciles its inbox", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   const fetcher = vi.fn().mockImplementation((url: string) =>
