@@ -1,5 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
-import {render, screen} from '@testing-library/react'
+import {render, screen, waitFor} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 import type {ReactNode} from 'react'
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}))
@@ -38,6 +38,18 @@ describe('CachedHomeFeed',()=>{
     second.unmount()
     render(shared(client,<CachedHomeFeed canMutate={false} initialResult={{status:'unavailable'}} kind="for_you" labels={labels} locale="en" returnTo="/en"/>))
     expect(screen.getByText('Nothing here yet')).toBeVisible()
+  })
+
+  it('exposes an explicit refresh that revalidates the active feed', async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const refresh=vi.fn()
+    const fetcher=vi.fn(async()=>Response.json({items:[],nextCursor:null}))
+    vi.stubGlobal('fetch',fetcher)
+    render(shared(client,<CachedHomeFeed canMutate={false} initialResult={initial} kind="for_you" labels={labels} locale="en" onRefreshReady={refresh} returnTo="/en"/>))
+    await waitFor(()=>expect(refresh).toHaveBeenCalled())
+    await refresh.mock.calls.at(-1)?.[0]()
+    expect(fetcher).toHaveBeenCalledWith('/api/feed?kind=for_you&locale=en', expect.any(Object))
+    vi.unstubAllGlobals()
   })
 
   it('does not reuse a personalized feed for another viewer scope',()=>{

@@ -1,7 +1,7 @@
 import {existsSync, readFileSync} from 'node:fs'
-import {render, screen, within} from '@testing-library/react'
-import {describe, expect, it} from 'vitest'
-import {SocialSurface} from './SocialSurface.js'
+import {fireEvent, render, screen, waitFor, within} from '@testing-library/react'
+import {describe, expect, it, vi} from 'vitest'
+import {shouldTriggerPullRefresh, SocialSurface} from './SocialSurface.js'
 
 describe('SocialSurface', () => {
   it('has a component and colocated responsive stylesheet', () => {
@@ -38,6 +38,15 @@ describe('SocialSurface', () => {
     expect(viewport).toContainElement(screen.getByText('Post'))
     expect(viewport).not.toContainElement(header)
   })
+
+  it('renders a pull-refresh indicator and uses a release threshold', () => {
+    render(<SocialSurface header={<header><h1>For You</h1></header>} label="Posts" onRefresh={async () => undefined}><article>Post</article></SocialSurface>)
+
+    expect(document.querySelector('[data-pull-refresh-indicator]')).toHaveTextContent('Pull to refresh')
+    expect(shouldTriggerPullRefresh(55)).toBe(false)
+    expect(shouldTriggerPullRefresh(56)).toBe(true)
+  })
+
 
   it('keeps an attached-mode header and viewport inside the same frame', () => {
     render(<SocialSurface frameMode="attached" header={<header className="page-header"><h1>Search</h1></header>} label="Results"><article>Result</article></SocialSurface>)
