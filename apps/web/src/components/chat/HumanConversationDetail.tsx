@@ -285,7 +285,6 @@ function HumanDetail({
         throw Error();
       readSequence.current = result.lastReadSequence;
       setReadError(false);
-      changed.current();
     } catch (cause) {
       if (!owner.signal.aborted) {
         if (

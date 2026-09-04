@@ -490,6 +490,7 @@ it("acknowledges visible focused history and does not invent peer read receipts"
       : Response.json({ items: [message] }),
   );
   vi.stubGlobal("fetch", fetcher);
+  const changed = vi.fn();
   render(
     <HumanConversationDetail
       conversation={conversation}
@@ -497,7 +498,7 @@ it("acknowledges visible focused history and does not invent peer read receipts"
       labels={labels}
       locale="en"
       revision={0}
-      onChanged={() => {}}
+      onChanged={changed}
     />,
   );
   await waitFor(() =>
@@ -506,6 +507,7 @@ it("acknowledges visible focused history and does not invent peer read receipts"
     ),
   );
   expect(screen.queryByText("Read")).toBeNull();
+  expect(changed).not.toHaveBeenCalled();
   vi.restoreAllMocks();
 });
 it("does not mark a new message read while the reader is scrolled away from the latest message", async () => {
