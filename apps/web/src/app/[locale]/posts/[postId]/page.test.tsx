@@ -1,6 +1,7 @@
-import {render, screen} from '@testing-library/react'
+import {act, render, screen} from '@testing-library/react'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import type {PostDetail} from '@aifans/contracts'
+import {CurrentAccountProvider} from '../../../../components/account/CurrentAccountProvider.js'
 
 const {fetchCurrentAccountResult, fetchPost, getOptionalPageAccess, redirectToUserSignIn} = vi.hoisted(() => ({fetchCurrentAccountResult: vi.fn(), fetchPost: vi.fn(), getOptionalPageAccess: vi.fn(), redirectToUserSignIn: vi.fn()}))
 vi.mock('../../../../lib/social-api.js', () => ({fetchPost}))
@@ -32,16 +33,23 @@ describe('post detail route', () => {
   })
 
   it.each(['anonymous', 'auth-required', 'unavailable'] as const)('keeps mutations gated while the client resolves an authenticated access with a %s account result', async (accountStatus) => {
-    const request = vi.fn(() => new Promise<Response>(() => undefined))
+    let resolve!: (response: Response) => void
+    const request = vi.fn(() => new Promise<Response>((next) => { resolve = next }))
     vi.stubGlobal('fetch', request)
     getOptionalPageAccess.mockResolvedValue({status: 'authenticated', token: 'token', viewerScope: 'viewer-a'})
     fetchCurrentAccountResult.mockResolvedValue({status: accountStatus})
 
-    render(await PostPage({params: Promise.resolve({locale: 'en', postId}), searchParams: Promise.resolve({})}))
+    const page = await PostPage({params: Promise.resolve({locale: 'en', postId}), searchParams: Promise.resolve({})})
+    render(<CurrentAccountProvider>{page}</CurrentAccountProvider>)
 
     expect(screen.getByRole('status', {name: 'Comments'})).toHaveAttribute('aria-busy', 'true')
     expect(screen.queryByRole('textbox', {name: 'Write a comment'})).toBeNull()
     expect(request).toHaveBeenCalledWith('/api/me', expect.objectContaining({cache: 'no-store', credentials: 'include'}))
+
+    await act(async () => resolve(new Response(null, {status: accountStatus === 'unavailable' ? 503 : 401})))
+    expect(await screen.findByRole('link', {name: 'Sign in to join the conversation'})).toBeVisible()
+    expect(screen.queryByRole('textbox', {name: 'Write a comment'})).toBeNull()
+    expect(screen.queryByRole('button', {name: /Like 0/})).toBeNull()
   })
 
   it('keeps a valid comment cursor through fetch and guest sign-in return paths', async () => {
