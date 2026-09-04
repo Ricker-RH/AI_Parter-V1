@@ -1,7 +1,7 @@
 'use client'
 
 import {ChatStreamEventSchema, type ChatMessage} from '@aifans/contracts'
-import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent} from 'react'
+import {useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject} from 'react'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import styles from './MessagesWorkspace.module.css'
@@ -137,14 +137,15 @@ export function ChatComposer({conversationId, labels, locale, messages = [], onM
 }
 
 /** Shared text composer presentation; AI streaming and human delivery keep separate protocols. */
-export function ChatComposerForm({draft, setDraft, sending, labels, sendEnabled = true, error, notice, onSend, onRetry}: {draft: string; setDraft: (value: string) => void; sending: boolean; labels: ChatComposerLabels; sendEnabled?: boolean; error?: string | null; notice?: string | undefined; onSend: () => void; onRetry?: (() => void) | undefined}) {
+export function ChatComposerForm({draft, setDraft, sending, labels, sendEnabled = true, error, notice, onSend, onRetry, tools, textareaRef, onBlur, attachmentActive=false}: {draft: string; setDraft: (value: string) => void; sending: boolean; labels: ChatComposerLabels; sendEnabled?: boolean; error?: string | null; notice?: string | undefined; onSend: () => void; onRetry?: (() => void) | undefined; tools?: ReactNode; textareaRef?: RefObject<HTMLTextAreaElement|null>; onBlur?:()=>void; attachmentActive?:boolean}) {
   function submit(event: FormEvent<HTMLFormElement>) {event.preventDefault(); onSend()}
   function keyDown(event: KeyboardEvent<HTMLTextAreaElement>) {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault(); event.currentTarget.form?.requestSubmit()}}
   return <form className={styles.composer} onSubmit={submit}>
-    <textarea aria-label={labels.messagePlaceholder} disabled={!sendEnabled || sending} maxLength={4000} onChange={(event) => setDraft(event.target.value)} onKeyDown={keyDown} placeholder={labels.messagePlaceholder} rows={2} value={draft}/>
-    <button disabled={!sendEnabled || sending || !draft.trim()} type="submit">{sending ? labels.sending : labels.send}</button>
+    <textarea ref={textareaRef} onBlur={onBlur} aria-label={labels.messagePlaceholder} disabled={!sendEnabled || sending || attachmentActive} maxLength={4000} onChange={(event) => setDraft(event.target.value)} onKeyDown={keyDown} placeholder={labels.messagePlaceholder} rows={2} value={draft}/>
+    <button disabled={!sendEnabled || sending || attachmentActive || !draft.trim()} type="submit">{sending ? labels.sending : labels.send}</button>
+    {tools}
     {!sendEnabled || notice ? <p className={styles.composerNotice}>{notice ?? labels.providerUnavailable}</p> : null}
     {error ? <p className={styles.composerError} role="alert">{error}</p> : null}
-    {onRetry ? <button className={styles.retry} disabled={sending || !sendEnabled} onClick={onRetry} type="button">{labels.retry}</button> : null}
+    {onRetry ? <button className={styles.retry} disabled={sending || !sendEnabled || attachmentActive} onClick={onRetry} type="button">{labels.retry}</button> : null}
   </form>
 }

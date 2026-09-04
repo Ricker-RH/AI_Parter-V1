@@ -32,7 +32,7 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
     ...humanItems.flatMap(({conversation, latestMessage, unreadCount}) => {
       if (!conversation.participants.some(person => person.id === selfProfileId)) return []
       const person = conversation.participants.find(person => person.id !== selfProfileId)!
-      return [{kind: 'HUMAN' as const, id: conversation.id, person, body: latestMessage?.content.kind === 'text' ? latestMessage.content.text : '', updatedAt: conversation.updatedAt, unread: unreadCount, selected: conversation.id === selectedHumanId, href: `/${locale}/messages?humanConversation=${conversation.id}`}]
+      return [{kind: 'HUMAN' as const, id: conversation.id, person, body: latestMessage?.content.kind === 'text' ? latestMessage.content.text : latestMessage?.content.kind==='image'?(locale==='zh-CN'?'图片':'Image'):latestMessage?.content.kind==='voice'?(locale==='zh-CN'?'语音':'Voice message'):'', updatedAt: conversation.updatedAt, unread: unreadCount, selected: conversation.id === selectedHumanId, href: `/${locale}/messages?humanConversation=${conversation.id}`}]
     }),
   ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))
   const visibleRows = normalizedQuery ? rows.filter(row => [row.person.displayName, row.person.username, row.body].some(value => value.toLocaleLowerCase(locale).includes(normalizedQuery))) : rows

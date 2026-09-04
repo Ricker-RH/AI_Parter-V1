@@ -38,6 +38,10 @@ export function HumanMessagesWorkspace({
     "unconfigured",
   );
   const [readCursors, setReadCursors] = useState<Record<string, number>>({});
+  const [transient, setTransient] = useState<
+    Record<string, { typing: number; online: number }>
+  >({});
+  const transientTimes = useRef(new Map<string, number>());
   const [revoked, setRevoked] = useState<Set<string>>(new Set());
   const owner = useRef<AbortController | null>(null);
   const activeRequest = useRef<AbortController | null>(null);
@@ -214,10 +218,16 @@ export function HumanMessagesWorkspace({
         },
         onStateChange: (state) => {
           if (!lifecycle.signal.aborted) setConnection(state);
+          if (state !== "ready") setTransient({});
         },
         onEvent: (event) => {
           if (lifecycle.signal.aborted) return;
           if (event.type === "access_revoked") {
+            setTransient((current) => {
+              const next = { ...current };
+              delete next[event.conversationId];
+              return next;
+            });
             setRevoked(
               (current) => new Set([...current, event.conversationId]),
             );
@@ -226,6 +236,48 @@ export function HumanMessagesWorkspace({
             );
             setInbox(currentInbox.current);
             return;
+          }
+          if (event.type === "typing" || event.type === "presence") {
+            const peer = currentInbox.current
+              .find((item) => item.conversation.id === event.conversationId)
+              ?.conversation.participants.find(
+                (person) => person.id !== selfProfileId,
+              );
+            if (peer?.id !== event.profileId) return;
+            const now = Date.now(),
+              at = Date.parse(event.occurredAt),
+              key = `${event.conversationId}:${event.type}`,
+              ttl = event.type === "typing" ? 5000 : 45000;
+            if (
+              !Number.isFinite(at) ||
+              at > now + 5000 ||
+              at + ttl <= now ||
+              at < (transientTimes.current.get(key) ?? 0)
+            )
+              return;
+            transientTimes.current.set(key, at);
+            setTransient((current) => {
+              const previous = current[event.conversationId] ?? {
+                typing: 0,
+                online: 0,
+              };
+              return {
+                ...current,
+                [event.conversationId]:
+                  event.type === "typing"
+                    ? {
+                        ...previous,
+                        typing: event.isTyping ? Math.min(at, now) + 5000 : 0,
+                      }
+                    : {
+                        typing: event.status === "online" ? previous.typing : 0,
+                        online:
+                          event.status === "online"
+                            ? Math.min(at, now) + 45000
+                            : 0,
+                      },
+              };
+            });
           }
           if (event.type === "read" && event.profileId !== selfProfileId)
             setReadCursors((current) => ({
@@ -258,6 +310,27 @@ export function HumanMessagesWorkspace({
       window.removeEventListener("focus", visible);
     };
   }, [endpoint, refresh, changed, selfProfileId, syncSubscriptions]);
+  useEffect(() => {
+    const timer = setInterval(
+      () =>
+        setTransient((current) => {
+          const now = Date.now();
+          let change = false;
+          const next = { ...current };
+          for (const [id, value] of Object.entries(next)) {
+            const typing = value.typing > now ? value.typing : 0,
+              online = value.online > now ? value.online : 0;
+            if (typing !== value.typing || online !== value.online) {
+              change = true;
+              next[id] = { typing, online };
+            }
+          }
+          return change ? next : current;
+        }),
+      500,
+    );
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     syncSubscriptions();
   }, [selectedHumanId, syncSubscriptions]);
@@ -296,6 +369,16 @@ export function HumanMessagesWorkspace({
         onChanged={changed}
         onAccessRevoked={revokeConversation}
         peerReadSequence={readCursors[selectedHumanId]}
+        peerTyping={Boolean(transient[selectedHumanId]?.typing)}
+        peerOnline={Boolean(transient[selectedHumanId]?.online)}
+        onTyping={(isTyping) => {
+          transport.current?.send({
+            v: 1,
+            type: "typing",
+            conversationId: selectedHumanId,
+            isTyping,
+          });
+        }}
         sectionHeader={mobileHeader}
       />
     ) : (

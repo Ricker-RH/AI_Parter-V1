@@ -24,6 +24,10 @@ import { ChatComposerForm } from "./ChatComposer";
 import { ConversationDetailSurface } from "./ConversationDetail";
 import { HumanAvatar } from "../account/HumanAvatar";
 import styles from "./MessagesWorkspace.module.css";
+import { HumanMediaControls } from "./HumanMediaControls";
+import { HumanMediaMessage } from "./HumanMediaMessage";
+import { HumanEmojiPicker } from "./HumanEmojiPicker";
+import { createTypingSignal } from "../../lib/human-typing";
 
 type Props = {
   conversation: HumanConversation;
@@ -36,6 +40,9 @@ type Props = {
   peerReadSequence?: number | undefined;
   revoked?: boolean;
   sectionHeader?: ReactNode;
+  peerTyping?: boolean;
+  peerOnline?: boolean;
+  onTyping?: (isTyping: boolean) => void;
 };
 export function HumanConversationDetail(props: Props) {
   return (
@@ -56,6 +63,9 @@ function HumanDetail({
   peerReadSequence,
   revoked = false,
   sectionHeader,
+  peerTyping = false,
+  peerOnline = false,
+  onTyping,
 }: Props) {
   const peer = conversation.participants.find(
     (person) => person.id !== selfProfileId,
@@ -63,6 +73,25 @@ function HumanDetail({
   const [items, setItems] = useState<HumanMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const textarea = useRef<HTMLTextAreaElement | null>(null);
+  const typingCallback = useRef(onTyping);
+  typingCallback.current = onTyping;
+  const typing = useRef<ReturnType<typeof createTypingSignal> | null>(null);
+  useEffect(() => {
+    const signal = createTypingSignal(conversation.id, (frame) =>
+      typingCallback.current?.(frame.isTyping),
+    );
+    typing.current = signal;
+    const stop = () => signal.change(false);
+    window.addEventListener("blur", stop);
+    document.addEventListener("visibilitychange", stop);
+    return () => {
+      signal.dispose();
+      window.removeEventListener("blur", stop);
+      document.removeEventListener("visibilitychange", stop);
+    };
+  }, [conversation.id]);
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -321,6 +350,17 @@ function HumanDetail({
   return (
     <ConversationDetailSurface
       name={peer.displayName}
+      status={
+        peerTyping
+          ? locale === "zh-CN"
+            ? "正在输入…"
+            : "Typing…"
+          : peerOnline
+            ? locale === "zh-CN"
+              ? "在线"
+              : "Online"
+            : undefined
+      }
       username={peer.username}
       backLabel={labels.back}
       backHref={`/${locale}/messages`}
@@ -357,11 +397,19 @@ function HumanDetail({
               }
               key={message.id}
             >
-              <p>
-                {message.content.kind === "text"
-                  ? message.content.text
-                  : labels.invalidResponse}
-              </p>
+              {message.content.kind === "text" ? (
+                <p>{message.content.text}</p>
+              ) : message.content.kind === "image" ||
+                message.content.kind === "voice" ? (
+                <HumanMediaMessage
+                  attachmentId={message.content.attachmentId}
+                  kind={message.content.kind}
+                  zh={locale === "zh-CN"}
+                  onError={handleError}
+                />
+              ) : (
+                <p>{labels.invalidResponse}</p>
+              )}
               {message.senderProfileId === selfProfileId &&
               peerReadSequence !== undefined &&
               peerReadSequence >= message.sequence ? (
@@ -392,14 +440,48 @@ function HumanDetail({
         draft={draft}
         setDraft={(value) => {
           setDraft(value);
+          typing.current?.change(Boolean(value.trim()));
           setFailure(null);
         }}
         sending={sending}
+        attachmentActive={mediaBusy}
+        textareaRef={textarea}
+        onBlur={() => typing.current?.change(false)}
+        tools={
+          <>
+            <HumanEmojiPicker
+              draft={draft}
+              setDraft={(value) => {
+                setDraft(value);
+                setFailure(null);
+              }}
+              textarea={textarea}
+              disabled={sending || mediaBusy || denied || revoked}
+              zh={locale === "zh-CN"}
+            />
+            <HumanMediaControls
+              peerId={peer.id}
+              conversationId={conversation.id}
+              selfProfileId={selfProfileId}
+              locale={locale}
+              disabled={sending || denied || revoked}
+              onBusy={setMediaBusy}
+              onError={handleError}
+              onSent={() => {
+                void refresh();
+                changed.current();
+              }}
+            />
+          </>
+        }
         labels={labels}
         sendEnabled={!denied && !revoked}
         error={error}
         notice={denied ? text.blocked : undefined}
-        onSend={() => void send(failure ?? undefined)}
+        onSend={() => {
+          typing.current?.change(false);
+          if (!mediaBusy) void send(failure ?? undefined);
+        }}
         onRetry={failure ? () => void send(failure) : undefined}
       />
     </ConversationDetailSurface>

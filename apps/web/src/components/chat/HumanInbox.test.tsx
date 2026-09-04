@@ -85,6 +85,72 @@ const conversation = {
     },
   ],
 };
+it("shows only fresh peer presence and clears transient state on disconnect", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        Response.json(
+          url.includes("/messages?")
+            ? { items: [] }
+            : {
+                items: [
+                  {
+                    conversation,
+                    latestMessage: null,
+                    unreadCount: 0,
+                    lastReadSequence: 0,
+                  },
+                ],
+                nextCursor: null,
+              },
+        ),
+      ),
+    ),
+  );
+  render(
+    <MessagesWorkspace
+      items={[]}
+      labels={labels}
+      locale="en"
+      selectedHumanId={id}
+    />,
+  );
+  await screen.findByRole("heading", { name: "Alice" });
+  const event = {
+    v: 1 as const,
+    eventId: self,
+    conversationId: id,
+    occurredAt: new Date().toISOString(),
+    type: "presence" as const,
+    profileId: peer,
+    status: "online" as const,
+  };
+  act(() => mocks.options?.onEvent(event));
+  expect(screen.getByText("Online")).toBeVisible();
+  act(() =>
+    mocks.options?.onEvent({ ...event, eventId: peer, status: "offline" }),
+  );
+  expect(screen.queryByText("Online")).toBeNull();
+  act(() =>
+    mocks.options?.onEvent({
+      ...event,
+      eventId: id,
+      occurredAt: new Date(Date.now() + 1).toISOString(),
+    }),
+  );
+  expect(screen.getByText("Online")).toBeVisible();
+  act(() => mocks.options?.onStateChange?.("reconnecting"));
+  expect(screen.queryByText("Online")).toBeNull();
+  act(() =>
+    mocks.options?.onEvent({
+      ...event,
+      occurredAt: new Date(Date.now() - 60000).toISOString(),
+    }),
+  );
+  expect(screen.queryByText("Online")).toBeNull();
+});
 afterEach(() => {
   mocks.status = "authenticated";
   vi.unstubAllGlobals();

@@ -7,6 +7,10 @@ import {
   HumanReadCursorSchema,
   HumanReadInputSchema,
   HumanSendInputSchema,
+  HumanMediaUploadInputSchema,
+  HumanMediaUploadSchema,
+  HumanMediaAttachmentSchema,
+  HumanMediaDownloadSchema,
 } from "@aifans/contracts";
 import { fetchAifansApi } from "../../../../lib/server-api";
 import {
@@ -52,7 +56,26 @@ async function proxy(
     path[0] === "peers" &&
     uuid.test(path[1]!) &&
     path[2] === "messages";
-  if (!(method === "GET" ? inbox || history : inbox || read || send)) {
+  const reserve =
+    path.length === 3 &&
+    path[0] === "peers" &&
+    uuid.test(path[1]!) &&
+    path[2] === "attachments";
+  const finalize =
+    path.length === 3 &&
+    path[0] === "attachments" &&
+    uuid.test(path[1]!) &&
+    path[2] === "finalize";
+  const download =
+    path.length === 3 &&
+    path[0] === "attachments" &&
+    uuid.test(path[1]!) &&
+    path[2] === "download";
+  if (
+    !(method === "GET"
+      ? inbox || history || download
+      : inbox || read || send || reserve || finalize)
+  ) {
     await cancelBody(request);
     return error("NOT_FOUND", 404);
   }
@@ -60,7 +83,12 @@ async function proxy(
   for (const [key, value] of url.searchParams) {
     if (method !== "GET" || url.searchParams.getAll(key).length !== 1)
       return error("INVALID_REQUEST", 400);
-    if (key === "limit" && /^(?:[1-9]\d?|100)$/.test(value)) continue;
+    if (
+      (inbox || history) &&
+      key === "limit" &&
+      /^(?:[1-9]\d?|100)$/.test(value)
+    )
+      continue;
     if (
       inbox &&
       key === "cursor" &&
@@ -94,16 +122,25 @@ async function proxy(
     } catch {
       return error("INVALID_REQUEST", 422);
     }
-    const parsed = (
-      inbox
-        ? HumanConversationCreateInputSchema
-        : read
-          ? HumanReadInputSchema
-          : HumanSendInputSchema
-    ).safeParse(body);
+    if (finalize && (!object(body) || Object.keys(body).length))
+      return error("INVALID_REQUEST", 422);
+    const parsed = finalize
+      ? { success: true as const, data: {} }
+      : (inbox
+          ? HumanConversationCreateInputSchema
+          : read
+            ? HumanReadInputSchema
+            : reserve
+              ? HumanMediaUploadInputSchema
+              : HumanSendInputSchema
+        ).safeParse(body);
     if (!parsed.success) return error("INVALID_REQUEST", 422);
     body = parsed.data;
-    if (send && "content" in parsed.data && parsed.data.content.kind !== "text")
+    if (
+      send &&
+      "content" in parsed.data &&
+      !["text", "image", "voice"].includes(parsed.data.content.kind)
+    )
       return error("HUMAN_MESSAGE_KIND_UNSUPPORTED", 422);
   }
   try {
@@ -131,7 +168,11 @@ async function proxy(
     }
     const value: unknown = await upstream.json();
     let output: unknown;
-    if (method === "GET" && inbox) output = HumanInboxPageSchema.parse(value);
+    if (reserve) output = HumanMediaUploadSchema.parse(value);
+    else if (finalize) output = HumanMediaAttachmentSchema.parse(value);
+    else if (download) output = HumanMediaDownloadSchema.parse(value);
+    else if (method === "GET" && inbox)
+      output = HumanInboxPageSchema.parse(value);
     else if (read) output = HumanReadCursorSchema.parse(value);
     else {
       const key = history ? "items" : send ? "message" : "conversation";

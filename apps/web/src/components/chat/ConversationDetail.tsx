@@ -18,8 +18,8 @@ export function ConversationDetail(props: ConversationDetailProps) {
   return <ConversationDetailContent key={props.history?.conversation.id ?? 'unavailable'} {...props}/>
 }
 
-export function ConversationDetailSurface({name, username, backHref, backLabel, avatar, sectionHeader, children}: {name: string; username: string; backHref: string; backLabel: string; avatar?: ReactNode; sectionHeader?: ReactNode; children: ReactNode}) {
-  return <section aria-label={name} className={styles.detailPane}>{sectionHeader}<header className={styles.detailHeader}><Link aria-label={backLabel} className={styles.back} href={backHref}>← {backLabel}</Link><div className={styles.detailIdentity}>{avatar ?? <span aria-hidden="true" className={styles.avatar}>{name.slice(0, 1).toUpperCase()}</span>}<div><h2>{name}</h2><p>@{username}</p></div></div></header>{children}</section>
+export function ConversationDetailSurface({name, username, backHref, backLabel, avatar, sectionHeader, children, status}: {name: string; username: string; backHref: string; backLabel: string; avatar?: ReactNode; sectionHeader?: ReactNode; children: ReactNode; status?:ReactNode}) {
+  return <section aria-label={name} className={styles.detailPane}>{sectionHeader}<header className={styles.detailHeader}><Link aria-label={backLabel} className={styles.back} href={backHref}>← {backLabel}</Link><div className={styles.detailIdentity}>{avatar ?? <span aria-hidden="true" className={styles.avatar}>{name.slice(0, 1).toUpperCase()}</span>}<div><h2>{name}</h2><p>{status ?? `@${username}`}</p></div></div></header>{children}</section>
 }
 
 function ConversationDetailContent({history, labels, listCursor, locale, sectionHeader, unavailable = false}: ConversationDetailProps) {

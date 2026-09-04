@@ -349,6 +349,13 @@ it("reuses the failed request key when Send is pressed again on the unchanged dr
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(keys).toHaveLength(2));
   expect(keys[0]).toBe(keys[1]);
+  await screen.findByRole("button", { name: "Retry" });
+  fireEvent.click(screen.getByRole("button", { name: "Emoji" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "😀" }));
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(keys).toHaveLength(3));
+  expect(keys[2]).not.toBe(keys[1]);
 });
 it("clears revoked history and disables the composer when catch-up is denied", async () => {
   const fetcher = vi
