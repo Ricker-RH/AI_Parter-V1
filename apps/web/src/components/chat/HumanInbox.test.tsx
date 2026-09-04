@@ -330,6 +330,80 @@ it("loads human inbox on the normal Messages route and resubscribes/refetches on
   );
   expect(fetcher.mock.calls.length).toBeGreaterThanOrEqual(2);
 });
+it("applies a realtime message without refetching the inbox", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      items: [{ conversation, latestMessage: null, unreadCount: 0, lastReadSequence: 0 }],
+      nextCursor: null,
+    }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<MessagesWorkspace items={[]} labels={labels} locale="en" />);
+  await screen.findByRole("link", { name: /Alice/ });
+  const calls = fetcher.mock.calls.length;
+  act(() =>
+    mocks.options?.onEvent({
+      v: 1,
+      type: "message",
+      eventId: "44444444-4444-4444-8444-444444444444",
+      conversationId: id,
+      occurredAt: "2026-09-02T00:00:00.000Z",
+      message: {
+        v: 1,
+        id: "55555555-5555-4555-8555-555555555555",
+        conversationId: id,
+        senderProfileId: peer,
+        clientRequestId: "66666666-6666-4666-8666-666666666666",
+        sequence: 1,
+        createdAt: "2026-09-02T00:00:00.000Z",
+        content: { kind: "text", text: "Realtime message" },
+      },
+    }),
+  );
+  expect(fetcher).toHaveBeenCalledTimes(calls);
+  expect(screen.getByText("Realtime message")).toBeVisible();
+});
+it("adds a realtime message to the open conversation without a history reload", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  const fetcher = vi.fn().mockImplementation((url: string) =>
+    Promise.resolve(
+      Response.json(
+        url.includes("/messages?")
+          ? { items: [] }
+          : {
+              items: [{ conversation, latestMessage: null, unreadCount: 0, lastReadSequence: 0 }],
+              nextCursor: null,
+            },
+      ),
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
+  await screen.findByText("No messages yet");
+  const calls = fetcher.mock.calls.length;
+  act(() =>
+    mocks.options?.onEvent({
+      v: 1,
+      type: "message",
+      eventId: "44444444-4444-4444-8444-444444444444",
+      conversationId: id,
+      occurredAt: "2026-09-02T00:00:00.000Z",
+      message: {
+        v: 1,
+        id: "55555555-5555-4555-8555-555555555555",
+        conversationId: id,
+        senderProfileId: peer,
+        clientRequestId: "66666666-6666-4666-8666-666666666666",
+        sequence: 1,
+        createdAt: "2026-09-02T00:00:00.000Z",
+        content: { kind: "text", text: "Live detail message" },
+      },
+    }),
+  );
+  expect(fetcher).toHaveBeenCalledTimes(calls);
+  expect(screen.getAllByText("Live detail message")).toHaveLength(2);
+});
 it("disposes the previous account connection and requests immediately on identity change", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   const fetcher = vi.fn().mockReturnValue(new Promise(() => {}));

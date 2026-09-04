@@ -38,6 +38,7 @@ type Props = {
   labels: MessagesLabels;
   locale: Locale;
   revision: number;
+  realtimeMessage?: HumanMessage | null;
   onChanged: () => void;
   onAccessRevoked?: (conversationId: string) => void;
   peerReadSequence?: number | undefined;
@@ -61,6 +62,7 @@ function HumanDetail({
   labels,
   locale,
   revision,
+  realtimeMessage,
   onChanged,
   onAccessRevoked,
   peerReadSequence,
@@ -230,6 +232,18 @@ function HumanDetail({
   useEffect(() => {
     if (!revoked) void refresh();
   }, [refresh, revision, revoked]);
+  useEffect(() => {
+    if (
+      !realtimeMessage ||
+      realtimeMessage.conversationId !== conversation.id ||
+      revoked
+    )
+      return;
+    const next = mergeHumanMessages(messages.current, [realtimeMessage]);
+    if (next === messages.current) return;
+    messages.current = next;
+    setItems(next);
+  }, [conversation.id, realtimeMessage, revoked]);
   useEffect(() => {
     if (revoked) {
       lifecycle.current?.abort();

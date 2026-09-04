@@ -1,6 +1,10 @@
 "use client";
 
-import { HumanInboxPageSchema, type HumanInboxPage } from "@aifans/contracts";
+import {
+  HumanInboxPageSchema,
+  type HumanInboxPage,
+  type HumanMessage,
+} from "@aifans/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { humanRequest, realtimeEndpoint } from "../../lib/human-chat-client";
 import {
@@ -13,6 +17,7 @@ import { ConversationDetail } from "./ConversationDetail";
 import { HumanConversationDetail } from "./HumanConversationDetail";
 import { InboxWorkspaceFrame } from "./InboxWorkspaceFrame";
 import { MessagesSectionHeader } from "./MessagesSectionHeader";
+import { mergeHumanInboxEvent } from "./human-chat-cache";
 import type { MessagesWorkspaceProps } from "./MessagesWorkspace";
 import styles from "./MessagesWorkspace.module.css";
 
@@ -40,6 +45,9 @@ export function HumanMessagesWorkspace({
   );
   const connectionRef = useRef<RealtimeState | "unconfigured">("unconfigured");
   const [readCursors, setReadCursors] = useState<Record<string, number>>({});
+  const [realtimeMessage, setRealtimeMessage] = useState<HumanMessage | null>(
+    null,
+  );
   const [transient, setTransient] = useState<
     Record<string, { typing: number; online: number }>
   >({});
@@ -321,7 +329,14 @@ export function HumanMessagesWorkspace({
                 event.lastReadSequence,
               ),
             }));
-          if (event.type === "message" || event.type === "read") changed();
+          if (event.type === "message") {
+            currentInbox.current = mergeHumanInboxEvent(
+              currentInbox.current,
+              event.message,
+            );
+            setInbox(currentInbox.current);
+            setRealtimeMessage(event.message);
+          }
         },
       });
       transport.current = realtime;
@@ -402,6 +417,7 @@ export function HumanMessagesWorkspace({
         labels={labels}
         locale={locale}
         revision={revision}
+        realtimeMessage={realtimeMessage}
         onChanged={changed}
         onAccessRevoked={revokeConversation}
         peerReadSequence={readCursors[selectedHumanId]}
