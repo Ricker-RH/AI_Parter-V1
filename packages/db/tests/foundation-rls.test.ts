@@ -134,8 +134,7 @@ async function updateAllAllowedProfileFields(
   const result = await client.query(
     `UPDATE public.profiles
      SET username = 'updated_human', display_name = 'Updated human', bio = 'Allowed bio',
-         avatar_object_key = 'avatars/updated.png', preferred_locale = 'zh-CN',
-         creator_mode_enabled = true`,
+         preferred_locale = 'zh-CN', creator_mode_enabled = true`,
   )
   return result.rowCount
 }
@@ -209,6 +208,13 @@ describeIntegration('profiles and settings authorization foundation', () => {
         updateAllAllowedProfileFields(owner, first.subject),
       ).resolves.toBe(1)
       await expect(
+        rejectedQuery(owner, () =>
+          owner.query(
+            "UPDATE public.profiles SET avatar_object_key = 'public/profiles/unverified.png'",
+          ),
+        ),
+      ).rejects.toThrow(/permission denied/)
+      await expect(
         updateOtherDisplayName(owner, first.subject, second.id),
       ).resolves.toBe(0)
       await expect(
@@ -255,10 +261,17 @@ describeIntegration('profiles and settings authorization foundation', () => {
       expect(await readCurrentAccount(owner, null)).toBeNull()
       expect(Object.keys(account as object).sort()).toEqual([
         'account_kind',
+        'avatar_object_key',
+        'background_color_key',
+        'background_focal_x',
+        'background_focal_y',
+        'background_object_key',
+        'background_type',
         'creator_mode_enabled',
         'display_name',
         'id',
         'preferred_locale',
+        'profile_version',
         'username',
       ])
     })

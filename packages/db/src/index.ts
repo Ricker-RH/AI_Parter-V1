@@ -1,16 +1,19 @@
 export {readDatabaseEnv} from './env.js'
 export {migrate} from './migrate.js'
-export {getCurrentAccount, ensureHumanProfile, updateCurrentAccount, createProfileRepository} from './profiles.js'
+export {getCurrentAccount, ensureHumanProfile, updateCurrentAccount, createProfileRepository, ProfileRepositoryError} from './profiles.js'
 export type {
   CurrentAccount,
   EnsureHumanProfileInput,
   HumanProfile,
   ProfileRepository,
+  ProfileAssetReservation,
 } from './profiles.js'
 export {
   accountKindEnum,
   appLocaleEnum,
   appRoleEnum,
+  profileBackgroundTypeEnum,
+  profileAssetRoleEnum,
   auditActorTypeEnum,
   auditSourceEnum,
   auditResultEnum,
@@ -38,6 +41,7 @@ export {
   analyticsOutbox,
   platformSettings,
   profiles,
+  profileAssetUploadReservations,
   ipProfiles,
   channels,
   channelSearchAliases,

@@ -17,6 +17,13 @@ describe('profile provisioning session', () => {
             display_name: 'Operator',
             preferred_locale: 'zh-CN',
             creator_mode_enabled: false,
+            avatar_object_key: null,
+            background_type: 'color',
+            background_color_key: 'paper',
+            background_object_key: null,
+            background_focal_x: 0.5,
+            background_focal_y: 0.5,
+            profile_version: 1,
           }], rowCount: 1}
         }
         return {rows: [], rowCount: null}

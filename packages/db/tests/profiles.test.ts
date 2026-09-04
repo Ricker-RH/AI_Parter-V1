@@ -13,6 +13,7 @@ const actorSession = createActorSession(userPool)
 const repository = createProfileRepository({
   adminPool,
   withActor: actorSession.withActor,
+  publicMediaBaseUrl: 'https://media.example/assets',
 })
 const createdSubjects: string[] = []
 
@@ -23,6 +24,13 @@ function subject(): string {
 afterEach(async () => {
   if (createdSubjects.length === 0) return
   const subjects = createdSubjects.splice(0)
+  await adminPool.query(
+    `DELETE FROM public.profile_asset_upload_reservations
+     WHERE owner_profile_id IN (
+       SELECT id FROM public.profiles WHERE auth_subject = ANY($1::text[])
+     )`,
+    [subjects],
+  )
   await adminPool.query('DELETE FROM public.profiles WHERE auth_subject = ANY($1::text[])', [
     subjects,
   ])
@@ -52,10 +60,14 @@ describeIntegration('authenticated profile repository', () => {
     expect(first.accountKind).toBe('human')
     expect(first.username).toMatch(/^user_[a-f0-9]{25}$/)
     expect(first.displayName).toBe('luna')
-    expect(first.avatarUrl).toBeUndefined()
+    expect(first.avatarUrl).toBeNull()
+    expect(first.profileVersion).toBe(1)
+    expect(first.background).toEqual({type: 'color', colorKey: 'paper'})
     expect(await repository.getCurrentAccount({subject: first.authSubject})).toMatchObject({
       id: first.id,
       kind: 'human',
+      profileVersion: 1,
+      background: {type: 'color', colorKey: 'paper'},
     })
     expect(await repository.getCurrentAccount(null)).toBeNull()
   })
@@ -138,5 +150,260 @@ describeIntegration('authenticated profile repository', () => {
     } finally {
       client.release()
     }
+  })
+
+  it('reserves and confirms actor-owned avatar and background metadata with server keys', async () => {
+    const firstSubject = subject()
+    const secondSubject = subject()
+    createdSubjects.push(firstSubject, secondSubject)
+    const first = await repository.ensureHumanProfile({
+      authSubject: firstSubject,
+      email: null,
+      displayName: 'First',
+    })
+    const second = await repository.ensureHumanProfile({
+      authSubject: secondSubject,
+      email: null,
+      displayName: 'Second',
+    })
+
+    const avatar = await repository.reserveProfileAsset(
+      {subject: first.authSubject},
+      {role: 'avatar', contentType: 'image/jpeg', sizeBytes: 1_200, width: 512, height: 512},
+    )
+    const background = await repository.reserveProfileAsset(
+      {subject: first.authSubject},
+      {role: 'background', contentType: 'image/webp', sizeBytes: 2_400, width: 1_600, height: 900},
+    )
+
+    expect(avatar).toMatchObject({
+      ownerProfileId: first.id,
+      role: 'avatar',
+      contentType: 'image/jpeg',
+      sizeBytes: 1_200,
+      width: 512,
+      height: 512,
+      verifiedAt: null,
+    })
+    expect(avatar.objectKey).toBe(`public/profiles/${first.id}/avatar/${avatar.id}.jpg`)
+    expect(background.objectKey).toBe(
+      `public/profiles/${first.id}/background/${background.id}.webp`,
+    )
+    await expect(
+      repository.getProfileAssetReservation({subject: second.authSubject}, avatar.id),
+    ).resolves.toBeNull()
+    await expect(
+      repository.confirmProfileAsset({subject: second.authSubject}, avatar.id),
+    ).resolves.toBeNull()
+
+    const confirmed = await repository.confirmProfileAsset(
+      {subject: first.authSubject},
+      avatar.id,
+    )
+    expect(confirmed).toMatchObject({id: avatar.id, role: 'avatar'})
+    expect(confirmed?.verifiedAt).toBeTruthy()
+    await expect(
+      repository.getProfileAssetReservation({subject: first.authSubject}, avatar.id),
+    ).resolves.toMatchObject({id: avatar.id, objectKey: avatar.objectKey})
+  })
+
+  it('atomically binds verified visual assets and increments the profile version exactly once', async () => {
+    const authSubject = subject()
+    createdSubjects.push(authSubject)
+    const account = await repository.ensureHumanProfile({
+      authSubject,
+      email: null,
+      displayName: 'Visual',
+    })
+    const avatar = await repository.reserveProfileAsset(
+      {subject: authSubject},
+      {role: 'avatar', contentType: 'image/png', sizeBytes: 1_200, width: 512, height: 512},
+    )
+    const background = await repository.reserveProfileAsset(
+      {subject: authSubject},
+      {role: 'background', contentType: 'image/webp', sizeBytes: 2_400, width: 1_600, height: 900},
+    )
+    await repository.confirmProfileAsset({subject: authSubject}, avatar.id)
+    await repository.confirmProfileAsset({subject: authSubject}, background.id)
+
+    const updated = await repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: account.profileVersion,
+      displayName: 'Updated visual',
+      avatarAssetId: avatar.id,
+      background: {
+        type: 'image',
+        backgroundAssetId: background.id,
+        focalX: 0.25,
+        focalY: 0.75,
+      },
+    })
+    expect(updated).toMatchObject({
+      displayName: 'Updated visual',
+      profileVersion: 2,
+      avatarUrl: `https://media.example/assets/${avatar.objectKey}`,
+      background: {
+        type: 'image',
+        url: `https://media.example/assets/${background.objectKey}`,
+        focalX: 0.25,
+        focalY: 0.75,
+      },
+    })
+    await expect(
+      repository.updateCurrentAccount({subject: authSubject}, {
+        profileVersion: account.profileVersion,
+        displayName: 'Stale',
+      }),
+    ).rejects.toMatchObject({code: 'PROFILE_VERSION_CONFLICT'})
+
+    const persisted = await adminPool.query<{
+      avatar_object_key: string | null
+      background_object_key: string | null
+      profile_version: string
+    }>(
+      `SELECT avatar_object_key, background_object_key, profile_version
+       FROM public.profiles WHERE id = $1`,
+      [account.id],
+    )
+    expect(persisted.rows[0]).toEqual({
+      avatar_object_key: avatar.objectKey,
+      background_object_key: background.objectKey,
+      profile_version: '2',
+    })
+    await expect(
+      adminPool.query<{count: string}>(
+        `SELECT count(*) FROM public.profile_asset_upload_reservations
+         WHERE id = ANY($1::uuid[]) AND consumed_at IS NOT NULL`,
+        [[avatar.id, background.id]],
+      ),
+    ).resolves.toMatchObject({rows: [{count: '2'}]})
+
+    await expect(repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: updated!.profileVersion,
+      avatarAssetId: null,
+      background: {type: 'color', colorKey: 'sage'},
+    })).resolves.toMatchObject({
+      avatarUrl: null,
+      profileVersion: 3,
+      background: {type: 'color', colorKey: 'sage'},
+    })
+    await expect(
+      adminPool.query(
+        `SELECT 1 FROM public.profiles
+         WHERE id = $1 AND avatar_object_key IS NULL AND background_object_key IS NULL`,
+        [account.id],
+      ),
+    ).resolves.toMatchObject({rowCount: 1})
+  })
+
+  it('rejects unverified, expired, consumed, wrong-role, and wrong-owner asset ids', async () => {
+    const firstSubject = subject()
+    const secondSubject = subject()
+    createdSubjects.push(firstSubject, secondSubject)
+    const first = await repository.ensureHumanProfile({authSubject: firstSubject, displayName: 'First'})
+    const second = await repository.ensureHumanProfile({authSubject: secondSubject, displayName: 'Second'})
+    const input = {contentType: 'image/webp' as const, sizeBytes: 1_200, width: 512, height: 512}
+
+    const unverified = await repository.reserveProfileAsset(
+      {subject: firstSubject},
+      {...input, role: 'avatar'},
+    )
+    await expect(repository.updateCurrentAccount({subject: firstSubject}, {
+      profileVersion: first.profileVersion,
+      avatarAssetId: unverified.id,
+    })).rejects.toMatchObject({code: 'PROFILE_ASSET_UNAVAILABLE'})
+
+    const expired = await repository.reserveProfileAsset(
+      {subject: firstSubject},
+      {...input, role: 'avatar'},
+    )
+    await repository.confirmProfileAsset({subject: firstSubject}, expired.id)
+    await adminPool.query(
+      `UPDATE public.profile_asset_upload_reservations
+       SET created_at = clock_timestamp() - interval '11 minutes',
+           expires_at = clock_timestamp() - interval '1 second'
+       WHERE id = $1`,
+      [expired.id],
+    )
+    await expect(repository.updateCurrentAccount({subject: firstSubject}, {
+      profileVersion: first.profileVersion,
+      avatarAssetId: expired.id,
+    })).rejects.toMatchObject({code: 'PROFILE_ASSET_UNAVAILABLE'})
+
+    const wrongRole = await repository.reserveProfileAsset(
+      {subject: firstSubject},
+      {...input, role: 'background'},
+    )
+    await repository.confirmProfileAsset({subject: firstSubject}, wrongRole.id)
+    await expect(repository.updateCurrentAccount({subject: firstSubject}, {
+      profileVersion: first.profileVersion,
+      avatarAssetId: wrongRole.id,
+    })).rejects.toMatchObject({code: 'PROFILE_ASSET_UNAVAILABLE'})
+
+    const wrongOwner = await repository.reserveProfileAsset(
+      {subject: secondSubject},
+      {...input, role: 'avatar'},
+    )
+    await repository.confirmProfileAsset({subject: secondSubject}, wrongOwner.id)
+    await expect(repository.updateCurrentAccount({subject: firstSubject}, {
+      profileVersion: first.profileVersion,
+      avatarAssetId: wrongOwner.id,
+    })).rejects.toMatchObject({code: 'PROFILE_ASSET_UNAVAILABLE'})
+
+    const consumed = await repository.reserveProfileAsset(
+      {subject: firstSubject},
+      {...input, role: 'avatar'},
+    )
+    await repository.confirmProfileAsset({subject: firstSubject}, consumed.id)
+    const bound = await repository.updateCurrentAccount({subject: firstSubject}, {
+      profileVersion: first.profileVersion,
+      avatarAssetId: consumed.id,
+    })
+    await expect(repository.updateCurrentAccount({subject: firstSubject}, {
+      profileVersion: bound!.profileVersion,
+      avatarAssetId: consumed.id,
+    })).rejects.toMatchObject({code: 'PROFILE_ASSET_UNAVAILABLE'})
+    expect(second.profileVersion).toBe(1)
+  })
+
+  it('enforces background consistency and focal bounds in the database', async () => {
+    const authSubject = subject()
+    createdSubjects.push(authSubject)
+    const account = await repository.ensureHumanProfile({authSubject, displayName: 'Constraints'})
+
+    await expect(
+      adminPool.query(
+        "UPDATE public.profiles SET background_type = 'image', background_object_key = NULL WHERE id = $1",
+        [account.id],
+      ),
+    ).rejects.toThrow(/profiles_background_consistency_check/)
+    await expect(
+      adminPool.query(
+        `UPDATE public.profiles SET background_type = 'image',
+          background_object_key = 'public/profiles/asset.webp', background_focal_x = 1.1
+         WHERE id = $1`,
+        [account.id],
+      ),
+    ).rejects.toThrow(/profiles_background_focal_x_check/)
+    await expect(
+      adminPool.query("UPDATE public.profiles SET background_color_key = 'magenta' WHERE id = $1", [account.id]),
+    ).rejects.toThrow(/profiles_background_color_key_check/)
+  })
+
+  it('does not grant authenticated actors raw reservation access', async () => {
+    const authSubject = subject()
+    createdSubjects.push(authSubject)
+    await repository.ensureHumanProfile({authSubject, displayName: 'Private'})
+
+    await expect(
+      actorSession.withActor({subject: authSubject}, (client) =>
+        client.query('SELECT * FROM public.profile_asset_upload_reservations'),
+      ),
+    ).rejects.toThrow(/permission denied/)
+    await expect(
+      adminPool.query<{select_allowed: boolean; update_allowed: boolean}>(
+        `SELECT has_table_privilege('aifans_authenticated', 'public.profile_asset_upload_reservations', 'SELECT') AS select_allowed,
+                has_table_privilege('aifans_authenticated', 'public.profile_asset_upload_reservations', 'UPDATE') AS update_allowed`,
+      ),
+    ).resolves.toMatchObject({rows: [{select_allowed: false, update_allowed: false}]})
   })
 })

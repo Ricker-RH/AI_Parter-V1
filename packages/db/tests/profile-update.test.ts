@@ -8,15 +8,21 @@ const account = {
   display_name: 'Rui',
   preferred_locale: 'zh-CN',
   creator_mode_enabled: false,
+  avatar_object_key: null,
+  background_type: 'color',
+  background_color_key: 'paper',
+  background_object_key: null,
+  background_focal_x: 0.5,
+  background_focal_y: 0.5,
+  profile_version: 2,
 }
 
 describe('authenticated profile updates', () => {
-  it('updates only editable fields through the actor session and returns bio', async () => {
+  it('sends editable fields and the expected version through the atomic profile command', async () => {
     const statements: Array<{text: string; values?: unknown[]}> = []
     const client = {
       query: vi.fn(async (text: string, values?: unknown[]) => {
         statements.push({text, values})
-        if (text.startsWith('UPDATE public.profiles')) return {rows: [], rowCount: 1}
         return {rows: [{current_account: account, bio: null}], rowCount: 1}
       }),
       release: vi.fn(),
@@ -28,22 +34,20 @@ describe('authenticated profile updates', () => {
     })
 
     await expect(repository.updateCurrentAccount({subject: 'verified-subject'}, {
-      username: 'rui_2', displayName: 'Rui', bio: null, preferredLocale: 'zh-CN',
-    })).resolves.toMatchObject({username: 'rui_2', displayName: 'Rui', bio: null})
+      profileVersion: 1, username: 'rui_2', displayName: 'Rui', bio: null, preferredLocale: 'zh-CN',
+    })).resolves.toMatchObject({username: 'rui_2', displayName: 'Rui', bio: null, profileVersion: 2})
 
     expect(withActor).toHaveBeenCalledWith({subject: 'verified-subject'}, expect.any(Function))
-    const update = statements.find(({text}) => text.startsWith('UPDATE public.profiles'))
-    expect(update?.text).toContain('username')
-    expect(update?.text).toContain('display_name')
-    expect(update?.text).toContain('bio')
-    expect(update?.text).toContain('preferred_locale')
-    expect(update?.text).not.toContain('creator_mode_enabled')
-    expect(update?.text).not.toContain('auth_subject')
+    const update = statements.find(({text}) => text.includes('profile_update_current_account'))
     expect(update?.text).toContain('id = public.current_profile_id()')
-
-    const reads = statements.filter(({text}) => text.includes('SELECT public.current_account()'))
-    expect(reads).toHaveLength(1)
-    expect(reads[0]?.text).not.toContain('auth_subject')
-    expect(reads[0]?.text).toContain('id = public.current_profile_id()')
+    expect(update?.values).toEqual([
+      1,
+      'rui_2', true,
+      'Rui', true,
+      null, true,
+      'zh-CN', true,
+      null, false,
+      null, null, null, null, null, false,
+    ])
   })
 })

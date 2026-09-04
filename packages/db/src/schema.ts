@@ -4,8 +4,10 @@ import {
   pgTable,
   text,
   boolean,
+  bigint,
   integer,
   jsonb,
+  numeric,
   smallint,
   timestamp,
   uuid,
@@ -24,6 +26,14 @@ let creatorIpRevisionIdColumn: AnyPgColumn;
 export const accountKindEnum = pgEnum("account_kind", ["human", "ip"]);
 export const appLocaleEnum = pgEnum("app_locale", ["en", "zh-CN"]);
 export const appRoleEnum = pgEnum("app_role", ["operator"]);
+export const profileBackgroundTypeEnum = pgEnum("profile_background_type", [
+  "color",
+  "image",
+]);
+export const profileAssetRoleEnum = pgEnum("profile_asset_role", [
+  "avatar",
+  "background",
+]);
 export const auditActorTypeEnum = pgEnum("audit_actor_type", [
   "human",
   "operator",
@@ -134,6 +144,30 @@ export const profiles = pgTable(
     displayName: text("display_name").notNull(),
     bio: text(),
     avatarObjectKey: text("avatar_object_key"),
+    backgroundType: profileBackgroundTypeEnum("background_type")
+      .notNull()
+      .default("color"),
+    backgroundColorKey: text("background_color_key")
+      .notNull()
+      .default("paper"),
+    backgroundObjectKey: text("background_object_key"),
+    backgroundFocalX: numeric("background_focal_x", {
+      precision: 6,
+      scale: 5,
+      mode: "number",
+    })
+      .notNull()
+      .default(0.5),
+    backgroundFocalY: numeric("background_focal_y", {
+      precision: 6,
+      scale: 5,
+      mode: "number",
+    })
+      .notNull()
+      .default(0.5),
+    profileVersion: bigint("profile_version", {mode: "number"})
+      .notNull()
+      .default(1),
     preferredLocale: appLocaleEnum("preferred_locale").notNull().default("en"),
     creatorModeEnabled: boolean("creator_mode_enabled")
       .notNull()
@@ -167,6 +201,86 @@ export const profiles = pgTable(
     check(
       "profiles_avatar_object_key_length_check",
       sql`${table.avatarObjectKey} IS NULL OR char_length(${table.avatarObjectKey}) <= 512`,
+    ),
+    check(
+      "profiles_background_color_key_check",
+      sql`${table.backgroundColorKey} IN ('paper','sand','mist','sage','sky','lilac','graphite')`,
+    ),
+    check(
+      "profiles_background_object_key_length_check",
+      sql`${table.backgroundObjectKey} IS NULL OR char_length(${table.backgroundObjectKey}) <= 512`,
+    ),
+    check(
+      "profiles_background_focal_x_check",
+      sql`${table.backgroundFocalX} BETWEEN 0 AND 1`,
+    ),
+    check(
+      "profiles_background_focal_y_check",
+      sql`${table.backgroundFocalY} BETWEEN 0 AND 1`,
+    ),
+    check(
+      "profiles_background_consistency_check",
+      sql`(${table.backgroundType} = 'color' AND ${table.backgroundObjectKey} IS NULL) OR (${table.backgroundType} = 'image' AND ${table.backgroundObjectKey} IS NOT NULL)`,
+    ),
+    check("profiles_profile_version_check", sql`${table.profileVersion} > 0`),
+  ],
+);
+
+export const profileAssetUploadReservations = pgTable(
+  "profile_asset_upload_reservations",
+  {
+    id: uuid().primaryKey(),
+    ownerProfileId: uuid("owner_profile_id")
+      .notNull()
+      .references(() => profiles.id),
+    role: profileAssetRoleEnum("role").notNull(),
+    objectKey: text("object_key").notNull().unique(),
+    contentType: text("content_type").notNull(),
+    declaredSizeBytes: integer("declared_size_bytes").notNull(),
+    width: integer().notNull(),
+    height: integer().notNull(),
+    expiresAt: timestamp("expires_at", {withTimezone: true}).notNull(),
+    verifiedAt: timestamp("verified_at", {withTimezone: true}),
+    consumedAt: timestamp("consumed_at", {withTimezone: true}),
+    createdAt: timestamp("created_at", {withTimezone: true})
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("profile_asset_upload_reservations_active_idx")
+      .on(table.ownerProfileId, table.role, table.createdAt)
+      .where(sql`${table.consumedAt} IS NULL`),
+    check(
+      "profile_asset_reservations_object_key_length_check",
+      sql`char_length(${table.objectKey}) BETWEEN 1 AND 512`,
+    ),
+    check(
+      "profile_asset_reservations_content_type_check",
+      sql`${table.contentType} IN ('image/jpeg','image/png','image/webp')`,
+    ),
+    check(
+      "profile_asset_reservations_size_check",
+      sql`${table.declaredSizeBytes} BETWEEN 1 AND 10485760`,
+    ),
+    check(
+      "profile_asset_reservations_width_check",
+      sql`${table.width} BETWEEN 64 AND 12000`,
+    ),
+    check(
+      "profile_asset_reservations_height_check",
+      sql`${table.height} BETWEEN 64 AND 12000`,
+    ),
+    check(
+      "profile_asset_reservations_expiry_check",
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    check(
+      "profile_asset_reservations_consumed_check",
+      sql`${table.consumedAt} IS NULL OR ${table.verifiedAt} IS NOT NULL`,
+    ),
+    check(
+      "profile_asset_reservations_object_key_check",
+      sql`${table.objectKey} = format('public/profiles/%s/%s/%s.%s', ${table.ownerProfileId}, ${table.role}, ${table.id}, CASE ${table.contentType} WHEN 'image/jpeg' THEN 'jpg' WHEN 'image/png' THEN 'png' WHEN 'image/webp' THEN 'webp' END)`,
     ),
   ],
 );

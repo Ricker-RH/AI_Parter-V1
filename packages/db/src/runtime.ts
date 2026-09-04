@@ -95,6 +95,9 @@ export function createDatabaseRuntimeRepositories(
     profiles: createProfileRepository({
       adminPool: provisioningPool,
       withActor,
+      ...(urls.publicMediaBaseUrl
+        ? {publicMediaBaseUrl: urls.publicMediaBaseUrl}
+        : {}),
     }),
     social: createSocialRepository({
       withActor,
