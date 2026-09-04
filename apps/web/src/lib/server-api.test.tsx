@@ -34,6 +34,13 @@ function unexpiredOidcToken(): string {
 }
 
 describe('authenticated server API transport', () => {
+  it('forwards explicitly trusted Origin only for live realtime ticket issuance', async () => {
+    process.env.AIFANS_API_URL = 'https://api.example'
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ticket: 'ticket'}))
+    await fetchAifansApi('/v1/realtime/ticket', {policy: 'live-no-store', trustedOrigin: 'https://app.example', fetcher, requestInit: {method: 'POST', headers: {origin: 'https://evil.example'}}})
+    expect(fetcher).toHaveBeenCalledWith('https://api.example/v1/realtime/ticket', expect.objectContaining({headers: {origin: 'https://app.example'}}))
+    await expect(fetchAifansApi('/v1/me', {policy: 'live-no-store', trustedOrigin: 'https://app.example', fetcher})).rejects.toThrow('Invalid trusted origin')
+  })
   it.each([
     ['public-cache', '/v1/feed', {}],
     ['private-cache', '/v1/me', {getToken: async (): Promise<null> => null, trustedClientHeaders: new Headers({'x-vercel-trusted-oidc-idp-token': 'trusted-header-forgery'})}],

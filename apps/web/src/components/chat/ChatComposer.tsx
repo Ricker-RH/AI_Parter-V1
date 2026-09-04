@@ -133,13 +133,18 @@ export function ChatComposer({conversationId, labels, locale, messages = [], onM
       if (current()) { active.current = false; setSending(false); if (controller.current === request) controller.current = null }
     }
   }
-  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void send(draft) }
-  function keyDown(event: KeyboardEvent<HTMLTextAreaElement>) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }
+  return <ChatComposerForm draft={draft} setDraft={setDraft} sending={sending} labels={labels} sendEnabled={sendEnabled} error={error} onSend={() => void send(draft)} onRetry={failure ? () => void send(failure.body, failure.requestId, failure.messageId) : undefined}/>
+}
+
+/** Shared text composer presentation; AI streaming and human delivery keep separate protocols. */
+export function ChatComposerForm({draft, setDraft, sending, labels, sendEnabled = true, error, notice, onSend, onRetry}: {draft: string; setDraft: (value: string) => void; sending: boolean; labels: ChatComposerLabels; sendEnabled?: boolean; error?: string | null; notice?: string | undefined; onSend: () => void; onRetry?: (() => void) | undefined}) {
+  function submit(event: FormEvent<HTMLFormElement>) {event.preventDefault(); onSend()}
+  function keyDown(event: KeyboardEvent<HTMLTextAreaElement>) {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault(); event.currentTarget.form?.requestSubmit()}}
   return <form className={styles.composer} onSubmit={submit}>
     <textarea aria-label={labels.messagePlaceholder} disabled={!sendEnabled || sending} maxLength={4000} onChange={(event) => setDraft(event.target.value)} onKeyDown={keyDown} placeholder={labels.messagePlaceholder} rows={2} value={draft}/>
     <button disabled={!sendEnabled || sending || !draft.trim()} type="submit">{sending ? labels.sending : labels.send}</button>
-    {!sendEnabled ? <p className={styles.composerNotice}>{labels.providerUnavailable}</p> : null}
+    {!sendEnabled || notice ? <p className={styles.composerNotice}>{notice ?? labels.providerUnavailable}</p> : null}
     {error ? <p className={styles.composerError} role="alert">{error}</p> : null}
-    {failure ? <button className={styles.retry} disabled={sending} onClick={() => void send(failure.body, failure.requestId, failure.messageId)} type="button">{labels.retry}</button> : null}
+    {onRetry ? <button className={styles.retry} disabled={sending || !sendEnabled} onClick={onRetry} type="button">{labels.retry}</button> : null}
   </form>
 }

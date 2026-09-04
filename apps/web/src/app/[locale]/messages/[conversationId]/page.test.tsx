@@ -5,6 +5,7 @@ import {encodeChatConversationCursor, encodeChatMessageCursor} from '@aifans/con
 const {access, conversations, history, redirectToUserSignIn, notFound} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn(), history: vi.fn(), redirectToUserSignIn: vi.fn(), notFound: vi.fn()}))
 vi.mock('../../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn}))
 vi.mock('../../../../lib/chat-api.js', () => ({fetchConversations: conversations, fetchConversationHistory: history}))
+vi.mock('../../../../lib/current-account',()=>({fetchCurrentAccountResult:async()=>({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222'}})}))
 vi.mock('next/navigation', () => ({notFound, useRouter: () => ({refresh: vi.fn()})}))
 import ConversationPage from './page.js'
 
@@ -19,7 +20,9 @@ describe('persistent conversation detail page', () => {
   })
 
   it('reads both the owner-scoped list and selected history after access succeeds', async () => {
-    render(await ConversationPage({params: Promise.resolve({locale: 'en', conversationId: id}), searchParams: Promise.resolve({})}))
+    const page=await ConversationPage({params: Promise.resolve({locale: 'en', conversationId: id}), searchParams: Promise.resolve({})})
+    expect(page?.props.snapshotViewerId).toBe('22222222-2222-4222-8222-222222222222')
+    render(page)
 
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: `/en/messages/${id}`})
     expect(conversations).toHaveBeenCalledWith({token: 'token'})

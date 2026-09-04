@@ -18,6 +18,10 @@ export function ConversationDetail(props: ConversationDetailProps) {
   return <ConversationDetailContent key={props.history?.conversation.id ?? 'unavailable'} {...props}/>
 }
 
+export function ConversationDetailSurface({name, username, backHref, backLabel, avatar, sectionHeader, children}: {name: string; username: string; backHref: string; backLabel: string; avatar?: ReactNode; sectionHeader?: ReactNode; children: ReactNode}) {
+  return <section aria-label={name} className={styles.detailPane}>{sectionHeader}<header className={styles.detailHeader}><Link aria-label={backLabel} className={styles.back} href={backHref}>← {backLabel}</Link><div className={styles.detailIdentity}>{avatar ?? <span aria-hidden="true" className={styles.avatar}>{name.slice(0, 1).toUpperCase()}</span>}<div><h2>{name}</h2><p>@{username}</p></div></div></header>{children}</section>
+}
+
 function ConversationDetailContent({history, labels, listCursor, locale, sectionHeader, unavailable = false}: ConversationDetailProps) {
   const [items, setItems] = useState<ChatMessage[]>(history?.items ?? [])
   const [nextCursor, setNextCursor] = useState(history?.nextCursor ?? null)
@@ -95,10 +99,8 @@ function ConversationDetailContent({history, labels, listCursor, locale, section
     }
   }
   if (unavailable || !history) return <section className={styles.detailPane}>{sectionHeader}<p className={styles.detailNotice} role="alert">{labels.unavailable}</p></section>
-  return <section aria-label={history.conversation.ipProfile.displayName} className={styles.detailPane}>
-    {sectionHeader}
-    <header className={styles.detailHeader}><Link aria-label={labels.back} className={styles.back} href={`/${locale}/messages${listCursor ? `?${new URLSearchParams({cursor: listCursor})}` : ''}`}>← {labels.back}</Link><div className={styles.detailIdentity}><span aria-hidden="true" className={styles.avatar}>{history.conversation.ipProfile.displayName.slice(0, 1).toUpperCase()}</span><div><h2>{history.conversation.ipProfile.displayName}</h2><p>@{history.conversation.ipProfile.username}</p></div></div></header>
+  return <ConversationDetailSurface name={history.conversation.ipProfile.displayName} username={history.conversation.ipProfile.username} backLabel={labels.back} backHref={`/${locale}/messages${listCursor ? `?${new URLSearchParams({cursor: listCursor})}` : ''}`} sectionHeader={sectionHeader}>
     <div className={styles.messageArea}>{nextCursor ? <button className={styles.older} disabled={loadingEarlier} onClick={() => void loadEarlier()} type="button">{labels.loadEarlierMessages}</button> : null}{earlierError ? <p className={styles.detailNotice} role="alert">{labels.unavailable}</p> : null}{items.length === 0 ? <p className={styles.detailNotice}>{labels.emptyHistory}</p> : <ol className={styles.messageList}>{items.map((message) => <li aria-label={message.deliveryState === 'failed' ? labels.messageFailed : undefined} className={message.role === 'human' ? styles.humanMessage : styles.assistantMessage} key={message.id}><p>{message.body}</p>{message.deliveryState === 'failed' ? <span className={styles.failedMarker}>{labels.messageFailed}</span> : null}</li>)}</ol>}<p aria-live="polite" className={styles.liveStatus}>{items.some((message) => message.deliveryState === 'pending') ? labels.sending : ''}</p></div>
     <ChatComposer conversationId={history.conversation.id} key={history.conversation.id} labels={labels} locale={locale} messages={items} onMessages={setItems} sendEnabled={history.conversation.sendEnabled}/>
-  </section>
+  </ConversationDetailSurface>
 }

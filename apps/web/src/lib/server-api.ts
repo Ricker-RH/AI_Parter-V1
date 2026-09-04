@@ -12,7 +12,7 @@ type SharedRequestOptions = {
 export type AifansApiRequestOptions =
   | (SharedRequestOptions & {policy: 'public-cache'; getToken?: never; trustedClientHeaders?: never; trustedIdempotencyKey?: never})
   | (SharedRequestOptions & {policy: 'private-cache'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: never})
-  | (SharedRequestOptions & {policy: 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: string})
+  | (SharedRequestOptions & {policy: 'live-no-store'; getToken?: () => Promise<string | null>; trustedClientHeaders?: Headers; trustedIdempotencyKey?: string; trustedOrigin?: string})
 
 function defaultToken(): Promise<string | null> {
   return getApiBearerToken()
@@ -54,7 +54,7 @@ function safePath(path: string): boolean {
   return (path === '/health' || path.startsWith('/v1/')) && !path.startsWith('//')
 }
 
-function outboundHeaders(input: HeadersInit | undefined, token: string | null, oidcToken: string | null, trustedClientHeaders?: Headers, trustedIdempotencyKey?: string): Headers {
+function outboundHeaders(input: HeadersInit | undefined, token: string | null, oidcToken: string | null, trustedClientHeaders?: Headers, trustedIdempotencyKey?: string, trustedOrigin?: string): Headers {
   const incoming = new Headers(input)
   const headers = new Headers()
   for (const name of ['content-type', 'x-request-id']) {
@@ -65,6 +65,7 @@ function outboundHeaders(input: HeadersInit | undefined, token: string | null, o
   const identity = trustedClientHeaders && createRateLimitIdentity(trustedClientHeaders, Date.now(), process.env.WEB_API_RATE_LIMIT_SIGNING_SECRET)
   if (identity) headers.set('x-aifans-rate-limit-identity', identity)
   if (trustedIdempotencyKey) headers.set('idempotency-key', trustedIdempotencyKey)
+  if (trustedOrigin) headers.set('origin', trustedOrigin)
   if (oidcToken) headers.set('x-vercel-trusted-oidc-idp-token', oidcToken)
   return headers
 }
@@ -75,6 +76,12 @@ export async function fetchAifansApi(
 ): Promise<Response> {
   if (!options || !['public-cache', 'private-cache', 'live-no-store'].includes(options.policy)) throw new Error('Explicit API request policy required')
   if (!safePath(path)) throw new Error('Invalid API path')
+  const trustedOrigin = options.policy === 'live-no-store' ? options.trustedOrigin : undefined
+  if ('trustedOrigin' in options) {
+    let valid = false
+    try {const url = new URL(trustedOrigin!); valid = url.protocol === 'https:' && url.origin === trustedOrigin} catch {}
+    if (!valid || options.policy !== 'live-no-store' || path !== '/v1/realtime/ticket' || options.requestInit?.method !== 'POST') throw new Error('Invalid trusted origin')
+  }
   if (options.policy === 'public-cache' && ('getToken' in options || 'trustedClientHeaders' in options)) throw new Error('Public API cache cannot use authentication')
   if (options.policy !== 'live-no-store' && 'trustedIdempotencyKey' in options) throw new Error('Trusted idempotency keys require a live request')
   const trustedIdempotencyKey = options.policy === 'live-no-store' ? options.trustedIdempotencyKey : undefined
@@ -98,7 +105,7 @@ export async function fetchAifansApi(
     const oidcTokenPromise=invokeProvider(vercelOidcToken)
     const bearerTokenPromise=invokeProvider(getToken)
     const [oidcToken,token]=await Promise.race([Promise.all([oidcTokenPromise,bearerTokenPromise]),timeout])
-    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,oidcToken,trustedClientHeaders,trustedIdempotencyKey)),signal:controller.signal})
+    return await fetcher(`${baseUrl}${path}`, {...requestInit,...(options.policy === 'public-cache' ? {} : {cache: 'no-store' as const}),headers:Object.fromEntries(outboundHeaders(requestInit.headers,token,oidcToken,trustedClientHeaders,trustedIdempotencyKey,trustedOrigin)),signal:controller.signal})
   } finally {
     clearTimeout(timer)
     requestInit.signal?.removeEventListener('abort',onAbort)

@@ -116,7 +116,13 @@ export function readUserReturnTo(locale: Locale, value: string | readonly string
 
   if (pathname === `${base}/search`) return hasSafeSearchQuery(query) ? value : undefined
 
-  if (pathname === `${base}/messages`) return hasCanonicalCursor(query, 'conversation') ? value : undefined
+  if (pathname === `${base}/messages`) {
+    if (queryIsWellFormed(query)) {
+      const params = new URLSearchParams(query)
+      if ([...params.keys()].length === 1 && params.getAll('humanConversation').length === 1 && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.get('humanConversation')!)) return value
+    }
+    return hasCanonicalCursor(query, 'conversation') ? value : undefined
+  }
   const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
   if (pathname === `${base}/messages/notifications`) {
     if (!query) return value

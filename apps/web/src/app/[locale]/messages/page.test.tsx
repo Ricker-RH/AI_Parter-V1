@@ -5,14 +5,25 @@ import en from '../../../../messages/en.json'
 import zh from '../../../../messages/zh-CN.json'
 
 const {access, conversations} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn()}))
+vi.mock('../../../lib/current-account',()=>({fetchCurrentAccountResult:async()=>({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222'}})}))
 vi.mock('../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn: vi.fn()}))
 vi.mock('../../../lib/chat-api.js', () => ({fetchConversations: conversations}))
 vi.mock('next/navigation', () => ({notFound: vi.fn(), useRouter: () => ({refresh: vi.fn()})}))
 import MessagesPage from './page.js'
+import {readUserReturnTo} from '../../../lib/auth/return-to'
 
 const conversation = {id: '11111111-1111-4111-8111-111111111111', ipProfile: {id: '22222222-2222-4222-8222-222222222222', displayName: 'Luma', username: 'luma'}, lastMessage: {body: 'Hello', role: 'assistant' as const, createdAt: '2026-09-01T00:00:00.000Z'}, updatedAt: '2026-09-01T00:00:00.000Z', sendEnabled: true}
 
 describe('persistent messages list page', () => {
+  it('preserves a strictly validated human conversation deep link across authentication', async()=>{
+    const id='33333333-3333-4333-8333-333333333333'
+    const element=await MessagesPage({params:Promise.resolve({locale:'en'}),searchParams:Promise.resolve({humanConversation:id})})
+    expect(element.props.selectedHumanId).toBe(id)
+    expect(element.props.snapshotViewerId).toBe('22222222-2222-4222-8222-222222222222')
+    expect(access).toHaveBeenCalledWith({locale:'en',returnTo:`/en/messages?humanConversation=${id}`})
+    expect(readUserReturnTo('en',`/en/messages?humanConversation=${id}`)).toBe(`/en/messages?humanConversation=${id}`)
+    expect(readUserReturnTo('en',`/en/messages?humanConversation=${id}&humanConversation=${id}`)).toBeUndefined()
+  })
   beforeEach(() => {
     access.mockReset().mockResolvedValue({status: 'authenticated', token: 'token'})
     conversations.mockReset().mockResolvedValue({status: 'ok', data: {items: [conversation], nextCursor: null}})

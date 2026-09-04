@@ -3,6 +3,7 @@ import {MessagesWorkspace} from '../../../../components/chat/MessagesWorkspace'
 import {getMessages, isLocale} from '../../../../i18n/config'
 import {redirectToUserSignIn, requireAuthenticatedPage} from '../../../../lib/auth/access-policy'
 import {fetchConversationHistory, fetchConversations} from '../../../../lib/chat-api'
+import {fetchCurrentAccountResult} from '../../../../lib/current-account'
 import {isCanonicalChatConversationCursor, isCanonicalChatMessageCursor} from '../../../../lib/auth/return-to'
 
 export const instant = false
@@ -25,10 +26,10 @@ export default async function ConversationPage({params, searchParams}: {params: 
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
   if (access.status === 'unavailable') return <MessagesWorkspace items={[]} labels={messages.chat} listUnavailable locale={locale}/>
-  const [list, history] = await Promise.all([fetchConversations({token: access.token, ...(listCursor ? {cursor: listCursor} : {})}), fetchConversationHistory(conversationId, {token: access.token, ...(historyCursor ? {cursor: historyCursor} : {})})])
-  if (list.status === 'auth-required' || history.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
+  const [list, history, viewer] = await Promise.all([fetchConversations({token: access.token, ...(listCursor ? {cursor: listCursor} : {})}), fetchConversationHistory(conversationId, {token: access.token, ...(historyCursor ? {cursor: historyCursor} : {})}),fetchCurrentAccountResult({token:access.token})])
+  if (list.status === 'auth-required' || history.status === 'auth-required' || viewer.status==='auth-required') redirectToUserSignIn({locale, returnTo})
   if (history.status === 'not-found') notFound()
   const items = list.status === 'ok' ? list.data.items : []
   const nextCursor = list.status === 'ok' ? list.data.nextCursor : null
-  return <MessagesWorkspace detailUnavailable={history.status === 'unavailable'} history={history.status === 'ok' ? history.data : undefined} initialCursor={listCursor} items={items} labels={messages.chat} listUnavailable={list.status === 'unavailable'} locale={locale} nextCursor={nextCursor} selectedId={conversationId}/>
+  return <MessagesWorkspace detailUnavailable={history.status === 'unavailable'} history={history.status === 'ok' ? history.data : undefined} initialCursor={listCursor} items={items} labels={messages.chat} listUnavailable={list.status === 'unavailable'} locale={locale} nextCursor={nextCursor} selectedId={conversationId} snapshotViewerId={viewer.status==='authenticated' ? viewer.account.id : undefined}/>
 }

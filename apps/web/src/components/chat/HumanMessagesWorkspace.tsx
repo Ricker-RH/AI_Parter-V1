@@ -1,0 +1,373 @@
+"use client";
+
+import { HumanInboxPageSchema, type HumanInboxPage } from "@aifans/contracts";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { humanRequest, realtimeEndpoint } from "../../lib/human-chat-client";
+import {
+  createRealtimeTransport,
+  type RealtimeState,
+} from "../../lib/realtime-transport";
+import { authHref } from "../../lib/auth/return-to";
+import { ConversationList } from "./ConversationList";
+import { ConversationDetail } from "./ConversationDetail";
+import { HumanConversationDetail } from "./HumanConversationDetail";
+import { InboxWorkspaceFrame } from "./InboxWorkspaceFrame";
+import { MessagesSectionHeader } from "./MessagesSectionHeader";
+import type { MessagesWorkspaceProps } from "./MessagesWorkspace";
+import styles from "./MessagesWorkspace.module.css";
+
+export function HumanMessagesWorkspace({
+  selfProfileId,
+  items,
+  labels,
+  locale,
+  selectedId,
+  selectedHumanId,
+  history,
+  initialCursor,
+  nextCursor,
+  listUnavailable = false,
+  detailUnavailable = false,
+}: MessagesWorkspaceProps & { selfProfileId: string }) {
+  const [inbox, setInbox] = useState<HumanInboxPage["items"]>([]);
+  const [humanCursor, setHumanCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [connection, setConnection] = useState<RealtimeState | "unconfigured">(
+    "unconfigured",
+  );
+  const [readCursors, setReadCursors] = useState<Record<string, number>>({});
+  const [revoked, setRevoked] = useState<Set<string>>(new Set());
+  const owner = useRef<AbortController | null>(null);
+  const activeRequest = useRef<AbortController | null>(null);
+  const transport = useRef<ReturnType<typeof createRealtimeTransport> | null>(
+    null,
+  );
+  const currentInbox = useRef(inbox);
+  const currentSelected = useRef(selectedHumanId);
+  const subscriptions = useRef(new Set<string>());
+  currentSelected.current = selectedHumanId;
+  const endpoint = realtimeEndpoint(
+    process.env.NEXT_PUBLIC_REALTIME_URL,
+    selfProfileId,
+  );
+  const syncSubscriptions = useCallback(() => {
+    const desired = new Set(
+      currentInbox.current.map((item) => item.conversation.id),
+    );
+    if (currentSelected.current) desired.add(currentSelected.current);
+    for (const id of subscriptions.current)
+      if (!desired.has(id)) {
+        transport.current?.send({
+          v: 1,
+          type: "unsubscribe",
+          conversationId: id,
+        });
+        subscriptions.current.delete(id);
+      }
+    for (const id of desired)
+      if (
+        !subscriptions.current.has(id) &&
+        transport.current?.send({ v: 1, type: "subscribe", conversationId: id })
+      )
+        subscriptions.current.add(id);
+  }, []);
+  const refresh = useCallback(
+    async (cursor?: string) => {
+      const lifecycle = owner.current;
+      if (!lifecycle || lifecycle.signal.aborted) return;
+      activeRequest.current?.abort();
+      const request = new AbortController();
+      activeRequest.current = request;
+      const stop = () => request.abort();
+      lifecycle.signal.addEventListener("abort", stop, { once: true });
+      setLoading(true);
+      try {
+        const page = HumanInboxPageSchema.parse(
+          await humanRequest(
+            `conversations?${new URLSearchParams({ limit: "100", ...(cursor ? { cursor } : {}) })}`,
+            request.signal,
+          ),
+        );
+        // Refresh every previously loaded page, not just page one; selected older
+        // conversations and unread counters must not disappear on reconnect.
+        if (!cursor) {
+          const targetCount = currentInbox.current.length;
+          const seenCursors = new Set<string>();
+          for (
+            let count = 1;
+            count < 20 &&
+            page.nextCursor &&
+            (page.items.length < targetCount ||
+              (currentSelected.current &&
+                !page.items.some(
+                  (item) => item.conversation.id === currentSelected.current,
+                )));
+            count++
+          ) {
+            if (seenCursors.has(page.nextCursor))
+              throw Error("Invalid inbox cursor cycle");
+            seenCursors.add(page.nextCursor);
+            const next = HumanInboxPageSchema.parse(
+              await humanRequest(
+                `conversations?${new URLSearchParams({ limit: "100", cursor: page.nextCursor })}`,
+                request.signal,
+              ),
+            );
+            if (request.signal.aborted || lifecycle.signal.aborted) return;
+            page.items.push(...next.items);
+            page.nextCursor = next.nextCursor;
+          }
+        }
+        if (request.signal.aborted || lifecycle.signal.aborted) return;
+        if (
+          page.items.some(
+            (item) =>
+              !item.conversation.participants.some(
+                (person) => person.id === selfProfileId,
+              ),
+          )
+        )
+          throw Error();
+        const merged = cursor
+          ? [
+              ...new Map(
+                [...currentInbox.current, ...page.items].map((item) => [
+                  item.conversation.id,
+                  item,
+                ]),
+              ).values(),
+            ]
+          : page.items;
+        currentInbox.current = merged;
+        setInbox(merged);
+        setHumanCursor(page.nextCursor);
+        setError(false);
+        syncSubscriptions();
+      } catch (cause) {
+        if (!request.signal.aborted && !lifecycle.signal.aborted) {
+          if ((cause as Error).message === "UNAUTHORIZED")
+            globalThis.location.assign(
+              authHref(
+                locale,
+                `/${locale}/messages${currentSelected.current ? `?humanConversation=${currentSelected.current}` : ""}`,
+              ),
+            );
+          else setError(true);
+        }
+      } finally {
+        lifecycle.signal.removeEventListener("abort", stop);
+        if (!request.signal.aborted && !lifecycle.signal.aborted)
+          setLoading(false);
+      }
+    },
+    [locale, selfProfileId, syncSubscriptions],
+  );
+  const changed = useCallback(() => {
+    void refresh();
+    setRevision((value) => value + 1);
+  }, [refresh]);
+  const revokeConversation = useCallback((id: string) => {
+    setRevoked((current) => new Set([...current, id]));
+    currentInbox.current = currentInbox.current.filter(
+      (item) => item.conversation.id !== id,
+    );
+    setInbox(currentInbox.current);
+    transport.current?.send({ v: 1, type: "unsubscribe", conversationId: id });
+    subscriptions.current.delete(id);
+  }, []);
+  useEffect(() => {
+    const lifecycle = new AbortController();
+    owner.current = lifecycle;
+    void refresh();
+    if (endpoint) {
+      const realtime = createRealtimeTransport({
+        endpoint,
+        getTicket: async (signal) => {
+          const response = await fetch("/api/realtime/ticket", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+            cache: "no-store",
+            signal,
+          });
+          if (!response.ok) {
+            await response.body?.cancel();
+            throw Error("Ticket unavailable");
+          }
+          const value: unknown = await response.json();
+          if (
+            !value ||
+            typeof value !== "object" ||
+            !("ticket" in value) ||
+            typeof value.ticket !== "string"
+          )
+            throw Error("Invalid ticket");
+          return value.ticket;
+        },
+        onAuthenticated: () => {
+          subscriptions.current.clear();
+          setReadCursors({});
+          syncSubscriptions();
+          changed();
+        },
+        onStateChange: (state) => {
+          if (!lifecycle.signal.aborted) setConnection(state);
+        },
+        onEvent: (event) => {
+          if (lifecycle.signal.aborted) return;
+          if (event.type === "access_revoked") {
+            setRevoked(
+              (current) => new Set([...current, event.conversationId]),
+            );
+            currentInbox.current = currentInbox.current.filter(
+              (item) => item.conversation.id !== event.conversationId,
+            );
+            setInbox(currentInbox.current);
+            return;
+          }
+          if (event.type === "read" && event.profileId !== selfProfileId)
+            setReadCursors((current) => ({
+              ...current,
+              [event.conversationId]: Math.max(
+                current[event.conversationId] ?? 0,
+                event.lastReadSequence,
+              ),
+            }));
+          if (event.type === "message" || event.type === "read") changed();
+        },
+      });
+      transport.current = realtime;
+      void realtime.connect();
+    }
+    const visible = () => {
+      if (document.visibilityState === "visible") changed();
+    };
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("focus", visible);
+    // Authoritative polling also discovers newly created conversations not yet subscribed.
+    const timer = setInterval(visible, 15_000);
+    return () => {
+      lifecycle.abort();
+      activeRequest.current?.abort();
+      transport.current?.dispose();
+      transport.current = null;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("focus", visible);
+    };
+  }, [endpoint, refresh, changed, selfProfileId, syncSubscriptions]);
+  useEffect(() => {
+    syncSubscriptions();
+  }, [selectedHumanId, syncSubscriptions]);
+  const selected = inbox.find(
+    (item) => item.conversation.id === selectedHumanId,
+  );
+  const mobileHeader = (
+    <div className={styles.mobileDetailSectionHeader}>
+      <MessagesSectionHeader active="chat" labels={labels} locale={locale} />
+    </div>
+  );
+  const humanFooter = loading ? (
+    <p className={styles.detailNotice} role="status">
+      {labels.loadingMore}
+    </p>
+  ) : error ? (
+    <p className={styles.detailNotice} role="alert">
+      {labels.unavailable}
+      <button className={styles.older} onClick={() => void refresh()}>
+        {labels.retry}
+      </button>
+    </p>
+  ) : humanCursor ? (
+    <button className={styles.more} onClick={() => void refresh(humanCursor)}>
+      {labels.loadMore}
+    </button>
+  ) : null;
+  const detail = selectedHumanId ? (
+    selected && !revoked.has(selectedHumanId) ? (
+      <HumanConversationDetail
+        conversation={selected.conversation}
+        selfProfileId={selfProfileId}
+        labels={labels}
+        locale={locale}
+        revision={revision}
+        onChanged={changed}
+        onAccessRevoked={revokeConversation}
+        peerReadSequence={readCursors[selectedHumanId]}
+        sectionHeader={mobileHeader}
+      />
+    ) : (
+      <section className={styles.detailPane}>
+        {mobileHeader}
+        <p className={styles.detailNotice} role="status">
+          {loading ? labels.loadingMore : labels.unavailable}
+        </p>
+        {humanCursor ? (
+          <button
+            className={styles.more}
+            onClick={() => void refresh(humanCursor)}
+          >
+            {labels.loadMore}
+          </button>
+        ) : null}
+      </section>
+    )
+  ) : selectedId ? (
+    <ConversationDetail
+      history={history}
+      labels={labels}
+      listCursor={initialCursor}
+      locale={locale}
+      sectionHeader={mobileHeader}
+      unavailable={detailUnavailable}
+    />
+  ) : (
+    <section className={styles.emptyPane}>
+      <div>
+        <h2>{labels.selectConversation}</h2>
+      </div>
+    </section>
+  );
+  return (
+    <InboxWorkspaceFrame
+      selected={Boolean(selectedId || selectedHumanId)}
+      detail={detail}
+      list={
+        <ConversationList
+          initialCursor={initialCursor}
+          items={items}
+          labels={labels}
+          locale={locale}
+          nextCursor={nextCursor}
+          selectedId={selectedId}
+          selectedHumanId={selectedHumanId}
+          humanItems={inbox.filter(
+            (item) => !revoked.has(item.conversation.id),
+          )}
+          selfProfileId={selfProfileId}
+          humanLoading={loading || error}
+          unavailable={listUnavailable && error}
+          humanFooter={
+            <>
+              {listUnavailable && !error ? (
+                <p className={styles.detailNotice} role="alert">
+                  {labels.unavailable}
+                </p>
+              ) : null}
+              {humanFooter}
+              {connection !== "ready" ? (
+                <p className={styles.detailNotice} role="status">
+                  {locale === "zh-CN"
+                    ? "实时连接暂不可用，消息将定时刷新。"
+                    : "Live connection unavailable. Messages refresh periodically."}
+                </p>
+              ) : null}
+            </>
+          }
+        />
+      }
+    />
+  );
+}
