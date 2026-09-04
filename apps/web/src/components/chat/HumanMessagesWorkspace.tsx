@@ -34,6 +34,7 @@ export function HumanMessagesWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [aiRevision, setAiRevision] = useState(0);
   const [connection, setConnection] = useState<RealtimeState | "unconfigured">(
     "unconfigured",
   );
@@ -50,6 +51,9 @@ export function HumanMessagesWorkspace({
   );
   const currentInbox = useRef(inbox);
   const currentSelected = useRef(selectedHumanId);
+  const currentAiSelected = useRef(selectedId),
+    aiSubscription = useRef<string | null>(null);
+  currentAiSelected.current = selectedHumanId ? undefined : selectedId;
   const subscriptions = useRef(new Set<string>());
   currentSelected.current = selectedHumanId;
   const endpoint = realtimeEndpoint(
@@ -57,6 +61,25 @@ export function HumanMessagesWorkspace({
     selfProfileId,
   );
   const syncSubscriptions = useCallback(() => {
+    const selectedAi = currentAiSelected.current;
+    if (aiSubscription.current && aiSubscription.current !== selectedAi) {
+      transport.current?.send({
+        v: 1,
+        type: "unsubscribe_ai",
+        conversationId: aiSubscription.current,
+      });
+      aiSubscription.current = null;
+    }
+    if (
+      selectedAi &&
+      aiSubscription.current !== selectedAi &&
+      transport.current?.send({
+        v: 1,
+        type: "subscribe_ai",
+        conversationId: selectedAi,
+      })
+    )
+      aiSubscription.current = selectedAi;
     const desired = new Set(
       currentInbox.current.map((item) => item.conversation.id),
     );
@@ -211,6 +234,8 @@ export function HumanMessagesWorkspace({
           return value.ticket;
         },
         onAuthenticated: () => {
+          aiSubscription.current = null;
+          setAiRevision((value) => value + 1);
           subscriptions.current.clear();
           setReadCursors({});
           syncSubscriptions();
@@ -219,6 +244,13 @@ export function HumanMessagesWorkspace({
         onStateChange: (state) => {
           if (!lifecycle.signal.aborted) setConnection(state);
           if (state !== "ready") setTransient({});
+        },
+        onAiEvent: (event) => {
+          if (
+            !lifecycle.signal.aborted &&
+            event.conversationId === currentAiSelected.current
+          )
+            setAiRevision((value) => value + 1);
         },
         onEvent: (event) => {
           if (lifecycle.signal.aborted) return;
@@ -333,7 +365,7 @@ export function HumanMessagesWorkspace({
   }, []);
   useEffect(() => {
     syncSubscriptions();
-  }, [selectedHumanId, syncSubscriptions]);
+  }, [selectedHumanId, selectedId, syncSubscriptions]);
   const selected = inbox.find(
     (item) => item.conversation.id === selectedHumanId,
   );
@@ -399,6 +431,8 @@ export function HumanMessagesWorkspace({
     )
   ) : selectedId ? (
     <ConversationDetail
+      revision={aiRevision}
+      realtimeReady={connection === "ready"}
       history={history}
       labels={labels}
       listCursor={initialCursor}

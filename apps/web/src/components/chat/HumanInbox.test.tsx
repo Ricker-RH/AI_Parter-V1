@@ -159,6 +159,71 @@ afterEach(() => {
   mocks.send.mockReset();
   mocks.account = { id: self, kind: "human" };
 });
+it("subscribes selected AI separately and refreshes authoritative history on its generation event", async () => {
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  mocks.send.mockReturnValue(true);
+  const history = {
+    conversation: {
+      id,
+      ipProfile: { id: peer, displayName: "AI Alice", username: "ai_alice" },
+      lastMessage: null,
+      updatedAt: conversation.updatedAt,
+      sendEnabled: true,
+    },
+    items: [],
+    nextCursor: null,
+  };
+  const fetcher = vi
+    .fn()
+    .mockImplementation((url: string) =>
+      Promise.resolve(
+        Response.json(
+          url.startsWith("/api/conversations/")
+            ? history
+            : { items: [], nextCursor: null },
+        ),
+      ),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <MessagesWorkspace
+      items={[]}
+      labels={labels}
+      locale="en"
+      selectedId={id}
+      history={history}
+      snapshotViewerId={self}
+    />,
+  );
+  await screen.findByRole("heading", { name: "AI Alice" });
+  await act(async () => mocks.options?.onAuthenticated({ reconnected: true }));
+  expect(mocks.send).toHaveBeenCalledWith({
+    v: 1,
+    type: "subscribe_ai",
+    conversationId: id,
+  });
+  const before = fetcher.mock.calls.filter((call) =>
+    call[0].startsWith("/api/conversations/"),
+  ).length;
+  await act(async () =>
+    mocks.options?.onAiEvent?.({
+      v: 1,
+      type: "ai_generation",
+      eventId: self,
+      conversationId: id,
+      messageId: peer,
+      state: "partial",
+      occurredAt: new Date().toISOString(),
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter((call) =>
+        call[0].startsWith("/api/conversations/"),
+      ).length,
+    ).toBeGreaterThan(before),
+  );
+});
 it("never relabels an old server AI snapshot during an account change or unresolved identity", async () => {
   vi.stubGlobal(
     "fetch",
