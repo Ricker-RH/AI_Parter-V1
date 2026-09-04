@@ -154,7 +154,7 @@ describe('PostActions', () => {
     }
   })
 
-  it('uses one four-column interaction grid for posts and comments, with errors below it', async () => {
+  it('keeps four controls in a compact shared row and independent long errors below it', async () => {
     const longLabels = {...labels, interactionError: 'This deliberately long localized action error must wrap below every control without moving them.'}
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({code: 'SOCIAL_UNAVAILABLE'}, {status: 503})))
     const {container} = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={longLabels} liked={false} locale="en" postId={postId} viewerScope="viewer-a" />)
@@ -171,9 +171,9 @@ describe('PostActions', () => {
     expect(feedback).toHaveTextContent(longLabels.interactionError)
     expect(feedback.querySelectorAll('[role="status"]')).toHaveLength(2)
     const stylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
-    expect(stylesheet).toMatch(/\.post-actions__controls\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[^}]*width:\s*min\(100%, var\(--entity-action-width\)\)/)
-    expect(stylesheet).toMatch(/\.post-actions__controls \.post-action\s*\{[^}]*justify-content:\s*flex-start[^}]*min-width:\s*0[^}]*width:\s*100%/)
-    expect(stylesheet).toMatch(/\.comment-actions \.post-actions__controls\s*\{[^}]*width:\s*min\(100%, var\(--entity-action-width\)\)/)
+    expect(stylesheet).toMatch(/\.post-actions__controls\s*\{[^}]*display:\s*inline-flex[^}]*gap:\s*var\(--entity-action-gap\)[^}]*width:\s*fit-content/)
+    expect(stylesheet).toMatch(/\.post-actions__controls \.post-action\s*\{[^}]*min-width:\s*44px/)
+    expect(stylesheet).not.toMatch(/\.post-actions__controls\s*\{[^}]*grid-template-columns:\s*repeat\(4/)
     expect(stylesheet).toMatch(/\.post-actions__feedback\s*\{[^}]*min-width:\s*0[^}]*width:\s*100%/)
   })
 
