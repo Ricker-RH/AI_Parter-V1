@@ -590,7 +590,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .comment-thread-group + .comment-thread-group { border-top: 1px solid var(--shell-border); }
 .comment-thread-item {
   display: grid;
-  gap: 10px;
+  column-gap: 10px;
   grid-template-columns: 44px minmax(0, 1fr);
   padding: 14px 24px;
   position: relative;
@@ -637,7 +637,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   font-style: italic;
 }
 .comment-thread-item--reply { padding-left: 24px; }
-.comment-actions { margin-top: 0; }
+.comment-actions { grid-column: 1 / -1; margin-top: 0; }
 .comment-composer {
   border-bottom: 1px solid var(--shell-border);
   background: color-mix(in srgb, var(--shell-surface) 96%, transparent);

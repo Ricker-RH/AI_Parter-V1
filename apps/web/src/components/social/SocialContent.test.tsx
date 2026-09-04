@@ -423,6 +423,7 @@ describe("real social content", () => {
     expect(commentRows[1]).toHaveAttribute("id", `comment-${deletedComment.id}`);
     expect(commentRows[1]?.querySelector('.comment-avatar')).toBeNull();
     expect(commentRows[1]?.querySelector('.comment-actions')).toBeNull();
+    expect(commentRows[0]?.querySelector('.comment-actions')?.parentElement).toBe(commentRows[0]);
     expect(within(commentRows[0]!).getByRole("link", {name: "Alex"})).toHaveAttribute('href', '/en/humans/44444444-4444-4444-8444-444444444444');
     expect(within(commentRows[0]!).getByRole("button", {name: "Profile: Alex"})).toBeVisible();
     expect(within(commentRows[1]!).queryByRole("link", {name: "Luma"})).toBeNull();
@@ -988,6 +989,6 @@ describe("real social content", () => {
     const css = readFileSync(`${root}/app/globals.css`, 'utf8');
 
     expect(css).toMatch(/\.post-actions \{[^}]*margin-top: 0/);
-    expect(css).toMatch(/\.comment-actions \{ margin-top: 0; \}/);
+    expect(css).toMatch(/\.comment-actions \{ grid-column: 1 \/ -1; margin-top: 0; \}/);
   });
 });

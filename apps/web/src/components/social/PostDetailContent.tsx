@@ -79,8 +79,8 @@ function CommentThreadItem({authenticated, comment, labels, locale, onReply, pos
       </header>
       {creatorLabel ? <span aria-label={creatorLabel} className="creator-attribution">{creatorLabel}</span> : null}
       <p className={comment.state === 'deleted' ? 'deleted-comment' : undefined}>{comment.state === 'deleted' ? labels.deletedComment : comment.body}</p>
-      {!isTombstone ? <CommentActions bookmarked={comment.viewerHasBookmarked ?? false} bookmarkCount={comment.bookmarkCount} canMutate={authenticated && Boolean(viewerScope) && comment.viewerHasLiked !== undefined && comment.viewerHasBookmarked !== undefined} commentId={comment.id} labels={labels} liked={comment.viewerHasLiked ?? false} likeCount={comment.likeCount} locale={locale} onReply={() => onReply({id: comment.id, name: authorName})} postId={postId} replyCount={comment.replyCount} returnTo={returnTo} shareCount={comment.shareCount} {...(viewerScope ? {viewerScope} : {})}/> : null}
     </div>
+    {!isTombstone ? <CommentActions bookmarked={comment.viewerHasBookmarked ?? false} bookmarkCount={comment.bookmarkCount} canMutate={authenticated && Boolean(viewerScope) && comment.viewerHasLiked !== undefined && comment.viewerHasBookmarked !== undefined} commentId={comment.id} labels={labels} liked={comment.viewerHasLiked ?? false} likeCount={comment.likeCount} locale={locale} onReply={() => onReply({id: comment.id, name: authorName})} postId={postId} replyCount={comment.replyCount} returnTo={returnTo} shareCount={comment.shareCount} {...(viewerScope ? {viewerScope} : {})}/> : null}
   </article>
 }
 
