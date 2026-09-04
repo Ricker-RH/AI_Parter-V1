@@ -1,17 +1,12 @@
-import {MyProfilePanel} from '../../../components/profile/MyProfilePanel'
 import {notFound} from 'next/navigation'
-import {connection} from 'next/server'
+import {CachedProfileRoute} from '../../../components/profile/CachedProfileRoute'
 import {getMessages, isLocale} from '../../../i18n/config'
-import {requireAuthenticatedPage} from '../../../lib/auth/access-policy'
 
-export const instant = false
+export const instant = true
 
 export default async function ProfilePage({params}: {params: Promise<{locale: string}>}) {
-  await connection()
   const {locale} = await params
   if (!isLocale(locale)) notFound()
-  const access = await requireAuthenticatedPage({locale, returnTo: `/${locale}/profile`})
-  const m = await getMessages(locale)
-  if (access.status === 'unavailable') return <main><h1 className="sr-only">{m.profile}</h1><section className="empty" role="alert"><p>{m.myProfilePanel.unavailable}</p></section></main>
-  return <main><MyProfilePanel labels={m.myProfilePanel} locale={locale} socialLabels={m} viewerScope={access.viewerScope}/></main>
+  const messages = await getMessages(locale)
+  return <main><CachedProfileRoute labels={messages.myProfilePanel} locale={locale} socialLabels={messages}/></main>
 }

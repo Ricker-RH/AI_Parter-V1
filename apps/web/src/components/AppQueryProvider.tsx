@@ -20,7 +20,7 @@ export function createAppQueryClient() {
 
 function isPrivateAppQuery(query: {queryKey: readonly unknown[]}) {
   const [domain, scope] = query.queryKey;
-  return domain === "my-profile" || domain === "human-chat" || (domain === "home-feed" && scope !== "public");
+  return domain === "my-profile" || domain === "human-chat" || domain === "ai-chat" || (domain === "home-feed" && scope !== "public");
 }
 
 export function AppQueryProvider({children, client: providedClient}: {children: ReactNode; client?: QueryClient}) {

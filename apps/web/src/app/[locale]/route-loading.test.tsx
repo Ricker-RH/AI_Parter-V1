@@ -1,13 +1,11 @@
 import {render} from '@testing-library/react'
 import {describe, expect, it, vi} from 'vitest'
 import SearchLoading from './search/loading.js'
-import MessagesLoading from './messages/loading.js'
 import MessageDetailLoading from './messages/[conversationId]/loading.js'
 import ActivityLoading from './activity/loading.js'
 import LikedLoading from './liked/loading.js'
 import SavedLoading from './bookmarks/loading.js'
 import NotificationsLoading from './notifications/loading.js'
-import ProfileLoading from './profile/loading.js'
 import PublicProfileLoading from './profiles/[profileId]/loading.js'
 import SettingsLoading from './settings/loading.js'
 import AuthLoading from './auth/[view]/loading.js'
@@ -19,13 +17,11 @@ vi.mock('next/navigation', () => ({usePathname: () => '/zh-CN/example'}))
 describe('content-shaped route loading boundaries', () => {
   it.each([
     ['search', SearchLoading, 'search'],
-    ['messages', MessagesLoading, 'messages'],
     ['message detail', MessageDetailLoading, 'message-detail'],
     ['activity', ActivityLoading, 'list'],
     ['liked', LikedLoading, 'list'],
     ['saved', SavedLoading, 'list'],
     ['notifications', NotificationsLoading, 'list'],
-    ['profile', ProfileLoading, 'profile'],
     ['public profile', PublicProfileLoading, 'profile'],
     ['settings', SettingsLoading, 'settings'],
     ['auth', AuthLoading, 'auth'],

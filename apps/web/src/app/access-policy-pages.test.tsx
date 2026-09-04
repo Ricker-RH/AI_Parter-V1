@@ -28,7 +28,6 @@ import * as creatorDraftRoute from './[locale]/creator/[draftId]/page.js'
 import CreatorPage from './[locale]/creator/page.js'
 import NotificationsPage from './[locale]/messages/notifications/page.js'
 import PostPage from './[locale]/posts/[postId]/page.js'
-import ProfilePage from './[locale]/profile/page.js'
 import PublicProfilePage from './[locale]/profiles/[profileId]/page.js'
 import SearchPage from './[locale]/search/page.js'
 
@@ -60,7 +59,6 @@ describe('protected user pages', () => {
   it.each([
     ['bookmarks', () => BookmarksPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/bookmarks'],
     ['notifications', () => NotificationsPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})}), '/en/messages/notifications'],
-    ['my profile', () => ProfilePage({params: Promise.resolve({locale: 'en'})}), '/en/profile'],
     ['AI/IP profile detail', () => PublicProfilePage({params: Promise.resolve({locale: 'en', profileId: 'profile-1'}), searchParams: Promise.resolve({})}), '/en/profiles/profile-1'],
     ['creator root', () => CreatorPage({params: Promise.resolve({locale: 'en'})}), '/en/creator'],
     ['creator draft', () => CreatorDraftPage({params: Promise.resolve({locale: 'en', draftId})}), `/en/creator/${draftId}`],
