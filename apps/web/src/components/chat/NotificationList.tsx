@@ -13,6 +13,7 @@ import {humanProfileLabels} from '../profile/human-profile-labels'
 
 export type NotificationWorkspaceLabels = SocialLabels & {chat: MessagesSectionLabels & {
   back: string
+  loadingMore: string
   notificationActorContext: string
   notificationDetailTitle: string
   notificationListLabel: string
