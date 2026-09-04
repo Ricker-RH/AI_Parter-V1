@@ -436,7 +436,7 @@
   }
 
   .profile {
-    height: calc(100dvh - 50px - env(safe-area-inset-bottom));
+    height: 100%;
   }
 
   .header {

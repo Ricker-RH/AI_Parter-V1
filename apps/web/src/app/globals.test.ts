@@ -84,14 +84,21 @@ describe('ordinary-user fluid shell CSS contract', () => {
   })
 
   it('uses one bounded mobile public-shell viewport with an in-flow safe-area navigation row', () => {
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?html\[data-route-shell="public"\],\s*html\[data-route-shell="public"\] body \{[^}]*height: 100dvh[^}]*overflow: hidden/)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \{[^}]*display: grid[^}]*grid-template-rows: minmax\(0, 1fr\) auto[^}]*height: 100dvh[^}]*min-height: 0[^}]*overflow: hidden[^}]*padding-bottom: 0/)
+    expect(stylesheet).toMatch(/--app-viewport-height:\s*100vh/)
+    expect(stylesheet).toMatch(/@supports \(height: 100dvh\) \{\s*:root \{[^}]*--app-viewport-height:\s*100dvh/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?html\[data-route-shell="public"\],\s*html\[data-route-shell="public"\] body \{[^}]*height: var\(--app-viewport-height\)[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \{[^}]*display: grid[^}]*grid-template-rows: minmax\(0, 1fr\) auto[^}]*height: var\(--app-viewport-height\)[^}]*min-height: 0[^}]*overflow: hidden[^}]*padding-bottom: 0/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[^}]*display: grid[^}]*grid-template-rows: auto minmax\(0, 1fr\)[^}]*height: auto[^}]*min-height: 0[^}]*overflow: hidden/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.mobile-nav \{[^}]*bottom: auto[^}]*position: static/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.shell\[data-shell="public"\]\[data-mobile-top-bar="hidden"\] \.content > \* \{[^}]*grid-row: 1 \/ -1/)
     expect(stylesheet).not.toContain('.content > :only-child')
     expect(stylesheet).not.toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.home-page, \.collection-page \{[^}]*100dvh/)
     expect(stylesheet).not.toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-page \{[^}]*100dvh/)
+  })
+
+  it('keeps message and public content inside the one shell-owned mobile viewport', () => {
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.messages-shell \{[^}]*height: var\(--app-viewport-height\)[^}]*overflow: hidden/)
+    expect(stylesheet).toMatch(/\.shell\[data-shell="public"\] \[data-profile-content-frame\] \{[^}]*height: 100%[^}]*min-height: 0/)
   })
 
   it('uses the Home feed frame contract for liked and saved collections at every responsive boundary', () => {

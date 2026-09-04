@@ -227,6 +227,10 @@ describe('PublicProfileContent', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 700px\)[\s\S]*?\.profileSurface\s*\{[^}]*background:\s*var\(--shell-surface\)[^}]*border:\s*1px solid var\(--shell-border\)[^}]*border-radius:\s*16px/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\)[\s\S]*?\.contextualTitle\s*\{[\s\S]*?position:\s*sticky/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\)[\s\S]*?\.profileSurface\s*\{[\s\S]*?border:\s*0[\s\S]*?border-radius:\s*0/)
+    const mobileStylesheet = stylesheet.split('@media (max-width: 699px) {')[1] ?? ''
+    const mobileProfileRule = mobileStylesheet.match(/\.profile\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(mobileProfileRule).toMatch(/height:\s*100%/)
+    expect(mobileProfileRule).not.toMatch(/100dvh/)
     expect(stylesheet).toMatch(/\.avatar\s*\{[\s\S]*?height:\s*(?:8[0-9]|9[0-9]|1\d{2})px[\s\S]*?width:\s*(?:8[0-9]|9[0-9]|1\d{2})px/)
     expect(stylesheet).toMatch(/\.profile\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0,\s*1fr\)[\s\S]*?overflow:\s*hidden/)
     expect(stylesheet).toMatch(/@media \(min-width: 700px\)[\s\S]*?\.profile\s*\{[\s\S]*?height:\s*calc\(100dvh - 32px\)/)
