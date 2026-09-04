@@ -7,7 +7,7 @@ import type {Locale} from '../i18n/config'
 import {useOptionalCurrentAccount} from './account/CurrentAccountProvider'
 
 type Inbox = {items: Array<{unreadCount: number}>; cursor: string | null}
-type AiInbox = {items: Array<{unreadCount?: number}>; nextCursor: string | null}
+type AiInbox = {status: 'ok'; data: {items: Array<{unreadCount?: number}>; nextCursor: string | null}} | {status: 'auth-required' | 'unavailable'}
 
 export function MobileUnreadBadge({locale}: {locale: Locale}) {
   const client = useQueryClient()
@@ -38,7 +38,7 @@ export function MobileUnreadBadge({locale}: {locale: Locale}) {
       .then(async response => {
         if (!response.ok) throw Error()
         const page = ChatConversationPageSchema.parse(await response.json())
-        if (!controller.signal.aborted) client.setQueryData(aiKey, page)
+        if (!controller.signal.aborted) client.setQueryData(aiKey, {status: 'ok', data: page})
       })
       .catch(() => undefined)
     return () => controller.abort()
@@ -47,7 +47,8 @@ export function MobileUnreadBadge({locale}: {locale: Locale}) {
     if (!profileId || !aiKey) return 0
     const inbox = client.getQueryData<Inbox>(['human-chat', profileId, 'inbox'])
     const aiInbox = client.getQueryData<AiInbox>(aiKey)
-    return (inbox?.items.reduce((total, item) => total + item.unreadCount, 0) ?? 0) + (aiInbox?.items.reduce((total, item) => total + (item.unreadCount ?? 0), 0) ?? 0)
+    const aiItems = aiInbox?.status === 'ok' ? aiInbox.data.items : []
+    return (inbox?.items.reduce((total, item) => total + item.unreadCount, 0) ?? 0) + aiItems.reduce((total, item) => total + (item.unreadCount ?? 0), 0)
   }, [aiKey, client, profileId])
   const subscribe = useCallback((listener: () => void) => client.getQueryCache().subscribe(event => {
     const key = event.query.queryKey

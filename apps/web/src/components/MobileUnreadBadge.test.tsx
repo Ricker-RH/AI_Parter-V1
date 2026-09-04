@@ -12,7 +12,7 @@ const aiKey = ['ai-chat', `human:${account.id}`, 'en', 'inbox', null]
 it('derives one total from both human and IP inbox caches', () => {
   const client = new QueryClient()
   client.setQueryData(key, {items: [{unreadCount: 2}, {unreadCount: 3}, {unreadCount: 0}], cursor: null})
-  client.setQueryData(aiKey, {items: [{unreadCount: 4}], nextCursor: null})
+  client.setQueryData(aiKey, {status: 'ok', data: {items: [{unreadCount: 4}], nextCursor: null}})
   render(<CurrentAccountProvider initialAccount={account}><QueryClientProvider client={client}><AppQueryContext.Provider value><MobileUnreadBadge locale="en"/></AppQueryContext.Provider></QueryClientProvider></CurrentAccountProvider>)
   expect(screen.getByLabelText('9 unread messages')).toHaveTextContent('9')
 })
@@ -20,7 +20,7 @@ it('derives one total from both human and IP inbox caches', () => {
 it('does not show an unread badge when the cached total is zero', () => {
   const client = new QueryClient()
   client.setQueryData(key, {items: [{unreadCount: 0}], cursor: null})
-  client.setQueryData(aiKey, {items: [{unreadCount: 0}], nextCursor: null})
+  client.setQueryData(aiKey, {status: 'ok', data: {items: [{unreadCount: 0}], nextCursor: null}})
   render(<CurrentAccountProvider initialAccount={account}><QueryClientProvider client={client}><AppQueryContext.Provider value><MobileUnreadBadge locale="en"/></AppQueryContext.Provider></QueryClientProvider></CurrentAccountProvider>)
   expect(screen.queryByLabelText(/unread messages/)).toBeNull()
 })
