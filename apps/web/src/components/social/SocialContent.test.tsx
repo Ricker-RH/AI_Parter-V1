@@ -362,14 +362,14 @@ describe("real social content", () => {
     expect(screen.queryByRole("article")).toBeNull();
   });
 
-  it("allows another unavailable retry after a refresh keeps the result mounted", () => {
+  it("allows another unavailable retry after a refresh keeps the result mounted", async () => {
     routerRefresh.mockReset();
     render(<FeedContent labels={labels} locale="en" result={{status: "unavailable"}} />);
 
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
 
     expect(routerRefresh).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", {name: "Retry"})).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", {name: "Retry"})).toBeEnabled());
 
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
     expect(routerRefresh).toHaveBeenCalledTimes(2);
