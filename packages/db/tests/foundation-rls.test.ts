@@ -90,55 +90,6 @@ async function readPublicProfileAsAnon(client: PoolClient, id: string) {
   return result.rows[0]
 }
 
-async function updateOwnDisplayName(
-  client: PoolClient,
-  subject: string,
-  displayName: string,
-) {
-  await become(client, 'aifans_authenticated', { sub: subject })
-  const result = await client.query(
-    'UPDATE public.profiles SET display_name = $1',
-    [displayName],
-  )
-  return result.rowCount
-}
-
-async function updateOtherDisplayName(
-  client: PoolClient,
-  subject: string,
-  otherId: string,
-) {
-  await become(client, 'aifans_authenticated', { sub: subject })
-  const result = await client.query(
-    'UPDATE public.profiles SET display_name = $1 WHERE id = $2',
-    ['Not allowed', otherId],
-  )
-  return result.rowCount
-}
-
-async function changeOwnAccountKind(client: PoolClient, subject: string) {
-  await become(client, 'aifans_authenticated', { sub: subject })
-  return client.query("UPDATE public.profiles SET account_kind = 'ip'")
-}
-
-async function changeOwnAuthSubject(client: PoolClient, subject: string) {
-  await become(client, 'aifans_authenticated', { sub: subject })
-  return client.query("UPDATE public.profiles SET auth_subject = 'not-allowed'")
-}
-
-async function updateAllAllowedProfileFields(
-  client: PoolClient,
-  subject: string,
-) {
-  await become(client, 'aifans_authenticated', { sub: subject })
-  const result = await client.query(
-    `UPDATE public.profiles
-     SET username = 'updated_human', display_name = 'Updated human', bio = 'Allowed bio',
-         preferred_locale = 'zh-CN', creator_mode_enabled = true`,
-  )
-  return result.rowCount
-}
-
 async function insertProfileAsAuthenticated(
   client: PoolClient,
   subject: string,
@@ -197,32 +148,27 @@ describeIntegration('profiles and settings authorization foundation', () => {
     })
   })
 
-  it('permits an authenticated human to update only its own allowed profile fields', async () => {
+  it('denies authenticated actors raw updates to every profile mutation column', async () => {
     await inTransaction(async (owner) => {
       const first = await insertHuman(owner)
-      const second = await insertHuman(owner)
-      await expect(
-        updateOwnDisplayName(owner, first.subject, 'New name'),
-      ).resolves.toBe(1)
-      await expect(
-        updateAllAllowedProfileFields(owner, first.subject),
-      ).resolves.toBe(1)
-      await expect(
-        rejectedQuery(owner, () =>
-          owner.query(
-            "UPDATE public.profiles SET avatar_object_key = 'public/profiles/unverified.png'",
-          ),
-        ),
-      ).rejects.toThrow(/permission denied/)
-      await expect(
-        updateOtherDisplayName(owner, first.subject, second.id),
-      ).resolves.toBe(0)
-      await expect(
-        rejectedQuery(owner, () => changeOwnAccountKind(owner, first.subject)),
-      ).rejects.toThrow(/permission denied/)
-      await expect(
-        rejectedQuery(owner, () => changeOwnAuthSubject(owner, first.subject)),
-      ).rejects.toThrow(/permission denied/)
+      await become(owner, 'aifans_authenticated', {sub: first.subject})
+      for (const statement of [
+        "UPDATE public.profiles SET username = 'updated_human'",
+        "UPDATE public.profiles SET display_name = 'Updated human'",
+        "UPDATE public.profiles SET bio = 'Updated bio'",
+        "UPDATE public.profiles SET avatar_object_key = NULL",
+        "UPDATE public.profiles SET preferred_locale = 'zh-CN'",
+        "UPDATE public.profiles SET creator_mode_enabled = true",
+        "UPDATE public.profiles SET background_type = 'color'",
+        "UPDATE public.profiles SET background_color_key = 'sage'",
+        "UPDATE public.profiles SET background_object_key = NULL",
+        "UPDATE public.profiles SET background_focal_x = 0.25",
+        "UPDATE public.profiles SET background_focal_y = 0.75",
+        "UPDATE public.profiles SET profile_version = profile_version + 1",
+      ]) {
+        await expect(rejectedQuery(owner, () => owner.query(statement)))
+          .rejects.toThrow(/permission denied/)
+      }
       await expect(
         rejectedQuery(owner, () =>
           insertProfileAsAuthenticated(owner, first.subject),
@@ -389,7 +335,7 @@ describeIntegration('profiles and settings authorization foundation', () => {
     })
   })
 
-  it('rejects owner changes to immutable profile fields and maintains updated_at', async () => {
+  it('rejects owner changes to immutable profile fields without changing timestamps', async () => {
     await inTransaction(async (owner) => {
       const first = await insertHuman(owner)
       const original = await owner.query<{
@@ -430,19 +376,12 @@ describeIntegration('profiles and settings authorization foundation', () => {
           ),
         ),
       ).rejects.toThrow()
-      await new Promise((resolve) => setTimeout(resolve, 5))
-      await owner.query(
-        "UPDATE public.profiles SET bio = 'Allowed' WHERE id = $1",
-        [first.id],
-      )
       const updated = await owner.query<{ created_at: Date; updated_at: Date }>(
         'SELECT created_at, updated_at FROM public.profiles WHERE id = $1',
         [first.id],
       )
       expect(updated.rows[0]?.created_at).toEqual(original.rows[0]?.created_at)
-      expect(updated.rows[0]?.updated_at.getTime()).toBeGreaterThan(
-        original.rows[0]?.updated_at.getTime() ?? 0,
-      )
+      expect(updated.rows[0]?.updated_at).toEqual(original.rows[0]?.updated_at)
     })
   })
 })

@@ -109,14 +109,13 @@ describeIntegration('authenticated profile repository', () => {
     ).rejects.toThrow(/permission denied/)
 
     await expect(
-      actorSession.withActor({subject: first.authSubject}, async (client) => {
-        const result = await client.query(
+      actorSession.withActor({subject: first.authSubject}, (client) =>
+        client.query(
           'UPDATE public.profiles SET display_name = $1 WHERE id = $2',
           ['Not allowed', second.id],
-        )
-        return result.rowCount
-      }),
-    ).resolves.toBe(0)
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/)
   })
 
   it('clears role and claim state before its injected connection is reused', async () => {
@@ -293,6 +292,32 @@ describeIntegration('authenticated profile repository', () => {
         [account.id],
       ),
     ).resolves.toMatchObject({rowCount: 1})
+  })
+
+  it('returns the newly committed bio from a versioned update', async () => {
+    const authSubject = subject()
+    createdSubjects.push(authSubject)
+    const initial = await repository.ensureHumanProfile({
+      authSubject,
+      displayName: 'Biography',
+    })
+    const withOldBio = await repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: initial.profileVersion,
+      bio: 'Old biography',
+    })
+
+    const updated = await repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: withOldBio!.profileVersion,
+      bio: 'New biography',
+    })
+
+    expect(updated?.bio).toBe('New biography')
+    await expect(repository.getCurrentAccount({subject: authSubject})).resolves.toMatchObject({
+      bio: 'New biography',
+    })
+    await expect(
+      adminPool.query<{bio: string | null}>('SELECT bio FROM public.profiles WHERE id = $1', [initial.id]),
+    ).resolves.toMatchObject({rows: [{bio: 'New biography'}]})
   })
 
   it('rejects unverified, expired, consumed, wrong-role, and wrong-owner asset ids', async () => {

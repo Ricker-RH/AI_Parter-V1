@@ -23,6 +23,9 @@ describe('authenticated profile updates', () => {
     const client = {
       query: vi.fn(async (text: string, values?: unknown[]) => {
         statements.push({text, values})
+        if (text.includes('profile_update_current_account')) {
+          return {rows: [{current_account: account}], rowCount: 1}
+        }
         return {rows: [{current_account: account, bio: null}], rowCount: 1}
       }),
       release: vi.fn(),
@@ -39,7 +42,7 @@ describe('authenticated profile updates', () => {
 
     expect(withActor).toHaveBeenCalledWith({subject: 'verified-subject'}, expect.any(Function))
     const update = statements.find(({text}) => text.includes('profile_update_current_account'))
-    expect(update?.text).toContain('id = public.current_profile_id()')
+    expect(update?.text).not.toContain('SELECT bio')
     expect(update?.values).toEqual([
       1,
       'rui_2', true,
@@ -49,5 +52,8 @@ describe('authenticated profile updates', () => {
       null, false,
       null, null, null, null, null, false,
     ])
+    const read = statements.find(({text}) => text.includes('SELECT public.current_account()'))
+    expect(read?.text).toContain('id = public.current_profile_id()')
+    expect(statements).toHaveLength(2)
   })
 })

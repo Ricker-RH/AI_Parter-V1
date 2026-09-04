@@ -391,7 +391,12 @@ BEGIN
 END;
 $$;
 
-REVOKE UPDATE (avatar_object_key) ON public.profiles FROM aifans_authenticated;
+REVOKE UPDATE (
+  username, display_name, bio, avatar_object_key, preferred_locale,
+  creator_mode_enabled, background_type, background_color_key,
+  background_object_key, background_focal_x, background_focal_y,
+  profile_version
+) ON public.profiles FROM aifans_authenticated;
 REVOKE ALL ON TABLE public.profile_asset_upload_reservations FROM PUBLIC, aifans_anon, aifans_authenticated;
 REVOKE ALL ON TYPE public.profile_background_type, public.profile_asset_role FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.profile_reserve_asset(uuid,public.profile_asset_role,text,text,integer,integer,integer) FROM PUBLIC, aifans_anon;

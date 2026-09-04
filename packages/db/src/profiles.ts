@@ -403,11 +403,10 @@ export function createProfileRepository({
       return runWithActor(actor, async (client) => {
         const background = input.background
         try {
-          const result = await client.query<CurrentAccountRow>(
+          const updated = await client.query<CurrentAccountRow>(
             `SELECT public.profile_update_current_account(
                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
-             ) AS current_account,
-             (SELECT bio FROM public.profiles WHERE id = public.current_profile_id()) AS bio`,
+             ) AS current_account`,
             [
               input.profileVersion,
               input.username ?? null,
@@ -427,6 +426,11 @@ export function createProfileRepository({
               background?.type === 'image' ? background.focalY : null,
               background !== undefined,
             ],
+          )
+          if (updated.rows[0]?.current_account == null) return null
+          const result = await client.query<CurrentAccountRow>(
+            `SELECT public.current_account() AS current_account,
+                    (SELECT bio FROM public.profiles WHERE id = public.current_profile_id()) AS bio`,
           )
           const row = result.rows[0]
           return normalizeCurrentAccount(
