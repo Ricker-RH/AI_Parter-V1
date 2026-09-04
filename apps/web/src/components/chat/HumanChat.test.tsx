@@ -307,6 +307,7 @@ it("mixes human and AI rows in timestamp order and searches both without fake em
     "page",
   );
   expect(screen.getByText("3")).toBeVisible();
+  expect(screen.getByText("L").closest("[data-avatar-kind]")).toHaveAttribute("data-avatar-kind", "ip");
   fireEvent.change(screen.getByRole("searchbox"), {
     target: { value: "Alice" },
   });

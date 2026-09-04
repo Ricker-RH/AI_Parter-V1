@@ -3,6 +3,7 @@
 import {ChatConversationPageSchema, type ChatConversationSummary, type HumanInboxPage} from '@aifans/contracts'
 import Link from 'next/link'
 import {useDeferredValue, useEffect, useRef, useState, type ReactNode} from 'react'
+import {Avatar} from '../account/Avatar'
 import {HumanAvatar} from '../account/HumanAvatar'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
@@ -83,8 +84,8 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
     {rows.length > 0 && visibleRows.length === 0 ? <p className={styles.searchEmpty} role="status">{nextCursor ? labels.partialSearchResults : labels.noSearchResults}</p> : null}
     <nav className={styles.conversationList}>{visibleRows.map(row => {
       return <Link aria-current={row.selected ? 'page' : undefined} className={styles.conversationRow} href={row.href} key={`${row.kind}:${row.id}`}>
-        {row.kind === 'HUMAN' ? <HumanAvatar decorative human={row.person} size="small"/> : <span aria-hidden="true" className={styles.avatar}>{row.person.displayName.slice(0, 1).toUpperCase()}</span>}
-        <span className={styles.conversationCopy}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong>{row.kind === 'HUMAN' ? <span className={styles.preview}>HUMAN</span> : null}{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadLabel}>{row.unread}</span> : null}</span><span className={styles.preview}>{row.body}</span></span>
+        {row.kind === 'HUMAN' ? <HumanAvatar decorative human={row.person} size="small"/> : <Avatar avatarUrl={null} decorative displayName={row.person.displayName} identityId={row.person.id} kind="ip" size="small"/>}
+        <span className={styles.conversationCopy}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong>{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadBadge}>{row.unread > 99 ? '99+' : row.unread}</span> : null}</span><span className={styles.preview}>{row.body}</span></span>
       </Link>
     })}</nav>
     {loadMoreError ? <p className={styles.paginationError} role="alert">{labels.loadMoreError}</p> : null}

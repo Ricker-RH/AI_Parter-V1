@@ -39,3 +39,11 @@ describe('Avatar', () => {
     expect(screen.queryByRole('img')).toBeNull()
   })
 })
+
+  it('marks an IP avatar with a stable identity halo', () => {
+    const {container, rerender} = render(<Avatar avatarUrl={null} displayName="Luna" identityId="ip-luna" kind="ip" size="medium"/>)
+    expect(container.firstElementChild).toHaveAttribute('data-avatar-kind', 'ip')
+    const halo = container.firstElementChild?.getAttribute('data-avatar-halo')
+    rerender(<Avatar avatarUrl={null} displayName="Renamed Luna" identityId="ip-luna" kind="ip" size="medium"/>)
+    expect(container.firstElementChild).toHaveAttribute('data-avatar-halo', halo)
+  })

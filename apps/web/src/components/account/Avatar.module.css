@@ -36,3 +36,18 @@
   height: 55%;
   width: 55%;
 }
+
+.ip {
+  animation: avatar-halo 2.8s ease-in-out infinite alternate;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--avatar-halo, #7c5cff) 82%, transparent), 0 0 14px color-mix(in srgb, var(--avatar-halo, #7c5cff) 55%, transparent);
+}
+.ip[data-avatar-halo='0'] { --avatar-halo: #7c5cff; }
+.ip[data-avatar-halo='1'] { --avatar-halo: #2f80ed; }
+.ip[data-avatar-halo='2'] { --avatar-halo: #12b886; }
+.ip[data-avatar-halo='3'] { --avatar-halo: #ff922b; }
+.ip[data-avatar-halo='4'] { --avatar-halo: #f06595; }
+.ip[data-avatar-halo='5'] { --avatar-halo: #22b8cf; }
+.ip[data-avatar-halo='6'] { --avatar-halo: #94d82d; }
+.ip[data-avatar-halo='7'] { --avatar-halo: #e599f7; }
+@keyframes avatar-halo { from { box-shadow: 0 0 0 1px color-mix(in srgb, var(--avatar-halo) 65%, transparent), 0 0 7px color-mix(in srgb, var(--avatar-halo) 35%, transparent); } to { box-shadow: 0 0 0 3px color-mix(in srgb, var(--avatar-halo) 90%, transparent), 0 0 18px color-mix(in srgb, var(--avatar-halo) 60%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .ip { animation: none; } }
