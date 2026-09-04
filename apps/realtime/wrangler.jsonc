@@ -19,7 +19,10 @@
           "simple": { "limit": 10, "period": 10 },
         },
       ],
-      "vars": { "ALLOWED_ORIGINS": "", "UPSTREAM_API_URL": "" },
+      "vars": {
+        "ALLOWED_ORIGINS": "https://ai-parter-v1-web-git-codex-ux-slice-0-1-ruihao-luos-projects.vercel.app",
+        "UPSTREAM_API_URL": "https://aifans-api-dev-git-codex-ux-slice-0-1-ruihao-luos-projects.vercel.app"
+      },
       "durable_objects": {
         "bindings": [{ "name": "MAILBOXES", "class_name": "RealtimeMailbox" }],
       },
