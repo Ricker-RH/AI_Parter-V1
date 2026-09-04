@@ -27,7 +27,8 @@ export function shouldShowFloatingCreatorAction(pathname: string): boolean {
 export function shouldSuppressPublicMobileTopBar(pathname: string): boolean {
   const path = pathname.split(/[?#]/, 1)[0] ?? pathname
   return /^\/(?:en|zh-CN)\/channels(?:\/|$)/.test(path)
-    || /^\/(?:en|zh-CN)\/(?:posts|profiles)\/[^/]+\/?$/.test(path)
+    || /^\/(?:en|zh-CN)\/(?:posts|profiles|humans)\/[^/]+\/?$/.test(path)
+    || /^\/(?:en|zh-CN)\/profile\/?$/.test(path)
     || shouldSuppressPublicMobileNav(pathname)
 }
 

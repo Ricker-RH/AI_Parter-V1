@@ -416,9 +416,14 @@
   }
 
   .mobileBrand svg {
+    color: currentColor;
+    display: block;
     height: 30px;
     width: 30px;
   }
+
+  .mobileBrand svg path:first-of-type { fill: currentColor; }
+  .mobileBrand svg path:nth-of-type(2) { fill: var(--shell-surface); }
 
   .more :global(.more-trigger-icon) {
     display: none;

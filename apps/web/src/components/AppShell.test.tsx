@@ -98,9 +98,13 @@ describe('AppShell', () => {
     expect(document.querySelector('.mobile-top-bar')).toBeNull()
   })
 
-  it('omits the generic mobile header when a public profile supplies its own contextual header', () => {
-    pathname = '/en/profiles/11111111-1111-4111-8111-111111111111'
-    render(<AppShell locale="en" labels={labels}><main>Public profile</main></AppShell>)
+  it.each([
+    '/en/profile',
+    '/en/humans/11111111-1111-4111-8111-111111111111',
+    '/en/profiles/11111111-1111-4111-8111-111111111111',
+  ])('omits the generic mobile header when the profile route supplies its own contextual header: %s', (route) => {
+    pathname = route
+    render(<AppShell locale="en" labels={labels}><main>Profile</main></AppShell>)
     expect(document.querySelector('[data-shell="public"]')).toHaveAttribute('data-mobile-top-bar', 'hidden')
     expect(document.querySelector('.mobile-top-bar')).toBeNull()
   })
