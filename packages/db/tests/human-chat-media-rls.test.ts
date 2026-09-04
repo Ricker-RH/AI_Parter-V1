@@ -6,6 +6,30 @@ const pool=new Pool({connectionString})
 const suite=connectionString?describe:describe.skip
 suite('private HUMAN attachment PostgreSQL authorization',()=>{
  afterAll(()=>pool.end())
+ it('serializes the owner quota across concurrent reservations to different peers',async()=>{
+  const setup=await pool.connect(),first=await pool.connect(),second=await pool.connect()
+  const ids=[randomUUID(),randomUUID(),randomUUID()]
+  try{
+   for(const id of ids)await setup.query("INSERT INTO public.profiles(id,auth_subject,account_kind,username,display_name) VALUES($1,$2,'human',$3,'quota')",[id,`quota-${id}`,`q_${id.replaceAll('-','').slice(0,20)}`])
+   const activate=async(c:typeof first)=>{await c.query('BEGIN');await c.query('SET LOCAL ROLE aifans_authenticated');await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:`quota-${ids[0]}`})])}
+   await activate(first)
+   for(let n=0;n<9;n++)await first.query("SELECT * FROM public.human_dm_reserve_attachment($1,'image','image/png',100)",[ids[1]])
+   await first.query('COMMIT')
+   await activate(first);await activate(second)
+   await first.query("SELECT * FROM public.human_dm_reserve_attachment($1,'image','image/png',100)",[ids[1]])
+   const pending=second.query("SELECT * FROM public.human_dm_reserve_attachment($1,'image','image/png',100)",[ids[2]]).then(()=>({state:'inserted'}),error=>({state:'rejected',code:error.code}))
+   const beforeCommit=await Promise.race([pending,new Promise(resolve=>setTimeout(()=>resolve({state:'waiting'}),150))])
+   expect(beforeCommit).toEqual({state:'waiting'})
+   await first.query('COMMIT')
+   expect(await pending).toEqual({state:'rejected',code:'22023'})
+   await second.query('ROLLBACK')
+   expect((await setup.query('SELECT count(*)::int AS total FROM public.human_dm_attachments WHERE owner_profile_id=$1',[ids[0]])).rows[0].total).toBe(10)
+  }finally{
+   await first.query('ROLLBACK');await second.query('ROLLBACK')
+   await setup.query('DELETE FROM public.profiles WHERE id=ANY($1::uuid[])',[ids])
+   setup.release();first.release();second.release()
+  }
+ })
  it('denies forgery, binds peer, consumes once and keeps participant-only reads',async()=>{
   const c=await pool.connect()
   try {

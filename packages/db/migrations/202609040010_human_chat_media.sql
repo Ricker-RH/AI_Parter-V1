@@ -31,6 +31,11 @@ CREATE FUNCTION public.human_dm_reserve_attachment(target_profile_id uuid, reque
 RETURNS public.human_dm_attachments LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE actor_id uuid; conversation public.human_dm_conversations; result public.human_dm_attachments; mutual boolean;
 BEGIN
+ actor_id:=public.social_current_human_profile_id();
+ IF actor_id IS NULL THEN RAISE EXCEPTION 'authenticated human required' USING ERRCODE='42501'; END IF;
+ -- The quota is owner-wide, not pair-wide. Always acquire this lock before
+ -- the pair lock so concurrent uploads to different peers cannot both pass.
+ PERFORM pg_advisory_xact_lock(hashtextextended(actor_id::text,412054));
  actor_id:=public.human_lock_pair(target_profile_id);
  SELECT * INTO conversation FROM public.human_dm_open(target_profile_id);
  SELECT EXISTS(SELECT 1 FROM public.follows WHERE follower_profile_id=actor_id AND followed_profile_id=target_profile_id)
