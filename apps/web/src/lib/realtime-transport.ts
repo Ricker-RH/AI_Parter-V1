@@ -105,7 +105,7 @@ export function createRealtimeTransport(options: RealtimeTransportOptions) {
       if (current !== generation || disposed) return
       if (typeof ticket !== 'string' || !ticket.trim()) { authRequired(); return }
     } catch {
-      if (current === generation && !disposed) authRequired()
+      if (current === generation && !disposed) reconnect()
       return
     }
     controller = undefined

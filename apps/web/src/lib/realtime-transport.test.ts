@@ -169,13 +169,16 @@ describe('provider-neutral realtime transport', () => {
     h.transport.dispose()
   })
 
-  it('does not leak ticket provider errors and requires refresh after ticket rejection', async () => {
+  it('reconnects after a temporary ticket provider failure without exposing its detail', async () => {
     vi.useFakeTimers()
-    const h = setup({getTicket: async () => { throw new Error('secret-ticket') }})
+    const getTicket = vi.fn().mockRejectedValueOnce(new Error('secret-ticket')).mockResolvedValueOnce('fresh-ticket')
+    const h = setup({getTicket, reconnect: {maxAttempts: 1, baseDelayMs: 10, maxDelayMs: 10}, random: () => 1})
     await expect(h.transport.connect()).resolves.toBeUndefined()
-    await vi.runAllTimersAsync()
-    expect(h.onStateChange).toHaveBeenLastCalledWith('auth-required')
+    expect(h.onStateChange).toHaveBeenLastCalledWith('reconnecting')
     expect(JSON.stringify(h.onStateChange.mock.calls)).not.toContain('secret-ticket')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(getTicket).toHaveBeenCalledTimes(2)
+    expect(h.sockets).toHaveLength(1)
     h.transport.dispose()
   })
 
