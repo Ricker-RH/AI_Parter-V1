@@ -49,6 +49,23 @@ describe('realtime session migration',()=>{
   })
 })
 integration('durable realtime session PostgreSQL security',()=>{
+  it('resolves only opted-in mutual peers, bounds offline grace and revokes immediately',()=>fixture(async(c,a,b,other,conversation)=>{
+    const id=randomUUID();await redeem(c,a,id);
+    const resolve=async(grace=false,actor=a)=>(await c.query('SELECT public.realtime_ephemeral_recipient($1,$2,$3,$4,$5) AS peer',[id,actor.subject,actor.id,conversation,grace])).rows[0].peer;
+    expect(await resolve()).toBeNull();
+    await c.query('RESET ROLE');
+    await c.query('INSERT INTO public.follows(follower_profile_id,followed_profile_id) VALUES($1,$2),($2,$1)',[a.id,b.id]);
+    await c.query('INSERT INTO public.human_social_preferences(profile_id,show_presence) VALUES($1,true),($2,true)',[a.id,b.id]);
+    await c.query('SET LOCAL ROLE aifans_platform');
+    expect(await resolve()).toBe(b.id);expect(await resolve(false,other)).toBeNull();
+    await c.query('RESET ROLE');await c.query("UPDATE public.realtime_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE jti=$1",[id]);await c.query('SET LOCAL ROLE aifans_platform');
+    expect(await resolve()).toBeNull();expect(await resolve(true)).toBe(b.id);
+    await c.query('RESET ROLE');await c.query('UPDATE public.human_social_preferences SET show_presence=false WHERE profile_id=$1',[b.id]);await c.query('SET LOCAL ROLE aifans_platform');
+    expect(await resolve(true)).toBeNull();
+    await c.query('RESET ROLE');await c.query('UPDATE public.human_social_preferences SET show_presence=true WHERE profile_id=$1',[b.id]);await c.query("UPDATE public.realtime_sessions SET expires_at=clock_timestamp()-interval '61 seconds' WHERE jti=$1",[id]);await c.query('SET LOCAL ROLE aifans_platform');
+    expect(await resolve(true)).toBeNull();
+    await c.query('SET LOCAL ROLE aifans_authenticated');await denied(c,'SELECT public.realtime_ephemeral_recipient($1,$2,$3,$4,false)',[id,a.subject,a.id,conversation]);
+  }));
   afterAll(()=>pool.end())
   it('permits exactly one redemption across simultaneous platform connections',async()=>{
     const setup=await pool.connect(),left=await pool.connect(),right=await pool.connect()

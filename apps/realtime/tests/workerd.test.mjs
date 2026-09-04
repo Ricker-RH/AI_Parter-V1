@@ -15,12 +15,50 @@ const secret = "local-runtime-test-only-not-a-deployed-secret";
 const origin = "https://app.example";
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate) {
-  for (let i = 0; i < 250; i++) {
+  for (let i = 0; i < 500; i++) {
     if (predicate()) return;
     await pause(20);
   }
   throw new Error("runtime condition timed out");
 }
+
+test('actual workerd: reciprocal presence snapshots and typing fanout do not deadlock', {timeout:20000},async()=>{
+  const peerId='66666666-6666-4666-8666-666666666666';
+  const bundle=await build({entryPoints:[fileURLToPath(new URL('../src/index.ts',import.meta.url))],bundle:true,write:false,format:'esm',platform:'browser',target:'es2024',external:['cloudflare:workers']});
+  let mf;
+  mf=new Miniflare(convertV4MiniflareOptions({name:'ephemeral-cross-mailbox-test',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-09-04',cf:false,
+    bindings:{ALLOWED_ORIGINS:origin,UPSTREAM_API_URL:'https://api.example',REALTIME_INTERNAL_SECRET:secret},durableObjects:{MAILBOXES:{className:'RealtimeMailbox',useSQLite:true}},
+    ratelimits:{ADMISSION_LIMITER:{namespace_id:'2026090402',simple:{limit:10,period:10}}},
+    outboundService:async request=>{
+      const body=await request.json();assert.equal(request.headers.get('Authorization'),`Bearer ${secret}`);
+      if(request.url.endsWith('/redeem'))return Response.json({subject:body.ticket,profileId:body.ticket,sessionId:body.ticket,sessionExpiresAt:Date.now()+60000});
+      if(request.url.endsWith('/authorize'))return Response.json({allowed:true,presenceAllowed:true});
+      assert.ok(request.url.endsWith('/ephemeral'));
+      const recipient=body.profileId===profileId?peerId:profileId;
+      const event={v:1,eventId:crypto.randomUUID(),conversationId,occurredAt:new Date().toISOString(),profileId:body.profileId,...(body.type==='typing'?{type:'typing',isTyping:body.isTyping}:{type:'presence',status:body.status})};
+      const deliveries=[{recipientProfileId:recipient,event}];
+      if(body.snapshot){
+        const response=await mf.dispatchFetch(`https://ws.example/internal/status/${recipient}`,{method:'POST',headers:{Authorization:`Bearer ${secret}`,'Content-Type':'application/json'},body:JSON.stringify({conversationId})});
+        assert.equal(response.status,200);
+        deliveries.push({recipientProfileId:body.profileId,event:{...event,eventId:crypto.randomUUID(),profileId:recipient,type:'presence',status:(await response.json()).online?'online':'offline'}});
+      }
+      return Response.json({deliveries});
+    },
+  }));
+  const sockets=[];const messages=[[],[]];
+  try {
+    for(const [index,id]of [profileId,peerId].entries()){
+      const response=await mf.dispatchFetch(`https://ws.example/connect/${id}`,{headers:{Upgrade:'websocket',Origin:origin,'CF-Connecting-IP':`203.0.113.${index+10}`}});
+      const ws=response.webSocket;assert.ok(ws);ws.accept();sockets.push(ws);ws.addEventListener('message',e=>messages[index].push(JSON.parse(e.data)));
+      ws.send(JSON.stringify({v:1,type:'auth',ticket:id}));
+    }
+    await until(()=>messages.every(list=>list.some(e=>e.type==='auth_ok')));
+    for(const ws of sockets)ws.send(JSON.stringify({v:1,type:'subscribe',conversationId}));
+    await until(()=>messages.every(list=>list.some(e=>e.type==='presence'&&e.status==='online')));
+    sockets[0].send(JSON.stringify({v:1,type:'typing',conversationId,isTyping:true}));
+    await until(()=>messages[1].some(e=>e.type==='typing'&&e.isTyping&&e.profileId===profileId));
+  }finally{for(const ws of sockets){try{ws.close()}catch{}}await mf.dispose()}
+});
 
 test(
   "actual workerd: origin-bound auth, session subscription, fanout and current block denial",
@@ -36,6 +74,7 @@ test(
       external: ["cloudflare:workers"],
     });
     let allowed = true;
+    let presenceAllowed = true;
     const requests = [];
     const mf = new Miniflare(
       convertV4MiniflareOptions({
@@ -81,7 +120,8 @@ test(
           assert.equal(body.profileId, profileId);
           assert.equal(body.sessionId, sessionId);
           assert.equal(body.conversationId, conversationId);
-          return Response.json({ allowed, presenceAllowed: false });
+          if(request.url.endsWith('/ephemeral')) return Response.json({deliveries:[]});
+          return Response.json({ allowed, presenceAllowed });
         },
       }),
     );
@@ -123,6 +163,9 @@ test(
       await until(() =>
         requests.some((request) => request.path.endsWith("/authorize")),
       );
+      ws.send(JSON.stringify({v:1,type:'typing',conversationId,isTyping:true}));
+      await until(()=>requests.some(request=>request.path.endsWith('/ephemeral')&&request.body.type==='typing'&&request.body.isTyping));
+      await until(()=>requests.some(request=>request.path.endsWith('/ephemeral')&&request.body.type==='typing'&&request.body.isTyping===false));
       const event = {
         v: 1,
         eventId: "44444444-4444-4444-8444-444444444444",
@@ -145,6 +188,7 @@ test(
       assert.equal((await publish(event)).status, 204);
       await until(() => messages.some((message) => message.type === "typing"));
       const { isTyping, ...base } = event;
+      presenceAllowed=false;
       assert.equal(
         (await publish({ ...base, type: "presence", status: "online" })).status,
         204,
@@ -192,6 +236,21 @@ test(
       await until(() =>
         denial.some((message) => message.type === "auth_error"),
       );
+      allowed=true;presenceAllowed=true;
+      const secondResponse=await mf.dispatchFetch(endpoint,{headers:{Upgrade:'websocket',Origin:origin,'CF-Connecting-IP':'203.0.113.9'}});
+      const second=secondResponse.webSocket;second.accept();sockets.push(second);
+      let secondReady=false;second.addEventListener('message',e=>{if(JSON.parse(e.data).type==='auth_ok')secondReady=true});
+      second.send(JSON.stringify({v:1,type:'auth',ticket:'valid'}));await until(()=>secondReady);
+      const status=async()=>{
+        const r=await mf.dispatchFetch(`https://ws.example/internal/status/${profileId}`,{method:'POST',headers:{Authorization:`Bearer ${secret}`,'Content-Type':'application/json'},body:JSON.stringify({conversationId})});
+        assert.equal(r.status,200);return (await r.json()).online;
+      };
+      assert.equal(await status(),true);
+      const offlineCount=()=>requests.filter(r=>r.path.endsWith('/ephemeral')&&r.body.status==='offline').length;
+      const beforeOffline=offlineCount();ws.close();await pause(100);
+      assert.equal(await status(),true);assert.equal(offlineCount(),beforeOffline);
+      presenceAllowed=false;assert.equal(await status(),false);presenceAllowed=true;
+      second.close();await until(()=>offlineCount()>beforeOffline);assert.equal(await status(),false);
       for (const ticket of ["redirect", "short"]) {
         const r = await mf.dispatchFetch(endpoint, {
           headers: {
@@ -228,7 +287,7 @@ test(
         "upstream redirect must never be followed",
       );
     } finally {
-      for (const socket of sockets) socket.close();
+      for (const socket of sockets) {try {socket.close()} catch {/* Already closed by lifecycle assertions. */}}
       await mf.dispose();
     }
   },

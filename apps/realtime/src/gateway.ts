@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IdentitySchema, type Upstream } from "./session.js";
+import {HumanRealtimeEventSchema,type HumanRealtimeEvent} from '@aifans/contracts';
 export interface Configuration {
   ALLOWED_ORIGINS?: string;
   UPSTREAM_API_URL?: string;
@@ -34,13 +35,15 @@ export function admit(
 ):
   | { status: number }
   | { profileId: string; kind: "connect"; origin: string }
-  | { profileId: string; kind: "event" } {
+  | { profileId: string; kind: "event" }
+  | { profileId: string; kind: 'status' } {
   if (!configured(env)) return { status: 503 };
   const url = new URL(request.url);
   if (url.search) return { status: 400 };
   const connect = url.pathname.match(/^\/connect\/([^/]+)$/);
   const event = url.pathname.match(/^\/internal\/events\/([^/]+)$/);
-  const id = (connect ?? event)?.[1];
+  const status = url.pathname.match(/^\/internal\/status\/([^/]+)$/);
+  const id = (connect ?? event ?? status)?.[1];
   if (!id || !z.uuid().safeParse(id).success) return { status: 404 };
   if (connect) {
     const origin = request.headers.get("Origin") ?? "";
@@ -57,7 +60,7 @@ export function admit(
     `Bearer ${env.REALTIME_INTERNAL_SECRET}`
   )
     return { status: 403 };
-  return { profileId: id.toLowerCase(), kind: "event" };
+  return { profileId: id.toLowerCase(), kind: status?'status':"event" };
 }
 export async function boundedJson(
   request: Request | Response,
@@ -88,7 +91,7 @@ export async function boundedJson(
     new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
   );
 }
-export function upstream(env: Configuration): Upstream {
+export function upstream(env: Configuration,dispatch?:(recipient:string,event:HumanRealtimeEvent)=>void): Upstream {
   async function post(path: string, body: unknown) {
     if (!configured(env)) throw new Error("unconfigured");
     const result = await fetch(
@@ -110,6 +113,12 @@ export function upstream(env: Configuration): Upstream {
     return boundedJson(result, 4096);
   }
   return {
+    ephemeral:async(identity,input)=>{
+      const result=z.strictObject({deliveries:z.array(z.strictObject({recipientProfileId:z.uuid(),event:HumanRealtimeEventSchema})).max(2)}).parse(await post('ephemeral',{
+        subject:identity.subject,profileId:identity.profileId,sessionId:identity.sessionId,...input,
+      }));
+      for(const delivery of result.deliveries) dispatch?.(delivery.recipientProfileId,delivery.event);
+    },
     now: () => Date.now(),
     redeem: async (ticket, origin) =>
       IdentitySchema.parse(await post("redeem", { ticket, origin })),

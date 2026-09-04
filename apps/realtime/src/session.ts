@@ -14,6 +14,7 @@ export const IdentitySchema = z.strictObject({
   sessionExpiresAt: z.number().int().positive(),
 });
 export type Identity = z.infer<typeof IdentitySchema>;
+export type EphemeralInput = {conversationId:string} & ({type:'typing';isTyping:boolean}|{type:'presence';status:'online'|'offline';snapshot?:boolean});
 export interface Upstream {
   now(): number;
   redeem(ticket: string, origin: string): Promise<Identity>;
@@ -22,6 +23,7 @@ export interface Upstream {
     conversationId: string,
     eventType?: string,
   ): Promise<{ allowed: boolean; presenceAllowed: boolean }>;
+  ephemeral?(identity:Identity,input:EphemeralInput):Promise<void>;
 }
 const StateSchema = z.strictObject({
   v: z.literal(1),
@@ -34,8 +36,10 @@ const StateSchema = z.strictObject({
   closed: z.boolean(),
   identity: IdentitySchema.nullable(),
   subscriptions: z.array(z.uuid()).max(32),
+  typing: z.record(z.string(),z.object({sentAt:z.number(),expiresAt:z.number(),isTyping:z.boolean()})).default({}),
 });
 const FrameSchema = z.discriminatedUnion("type", [
+  z.strictObject({v:z.literal(1),type:z.literal('typing'),conversationId:z.uuid(),isTyping:z.boolean()}),
   z.strictObject({
     v: z.literal(1),
     type: z.literal("auth"),
@@ -72,6 +76,7 @@ export function initialize(
     closed: false,
     identity: null,
     subscriptions: [],
+    typing: {},
   });
 }
 export function deadline(ws: SocketPort): number | null {
@@ -170,6 +175,7 @@ export async function receive(
       return;
     }
     if (frame.type === "unsubscribe") {
+      delete s.typing[frame.conversationId];
       s.subscriptions = s.subscriptions.filter(
         (id) => id !== frame.conversationId,
       );
@@ -180,6 +186,15 @@ export async function receive(
     if (expire(ws, ports.now())) return;
     s = read(ws);
     if (!access.allowed) return;
+    if(frame.type==='typing') {
+      if(!access.presenceAllowed || !s.subscriptions.includes(frame.conversationId)) return;
+      const previous=s.typing[frame.conversationId];
+      if(previous && previous.isTyping===frame.isTyping && ports.now()-previous.sentAt<1000) return;
+      s.typing[frame.conversationId]={sentAt:ports.now(),expiresAt:ports.now()+5000,isTyping:frame.isTyping};
+      write(ws,s);
+      await ports.ephemeral?.(s.identity!,{type:'typing',conversationId:frame.conversationId,isTyping:frame.isTyping});
+      return;
+    }
     if (!s.subscriptions.includes(frame.conversationId)) {
       if (s.subscriptions.length >= 32) {
         close(ws, s, 4429);
@@ -201,6 +216,7 @@ export async function deliver(ws: SocketPort, input: unknown, ports: Upstream) {
   if (!s.identity || !s.subscriptions.includes(event.conversationId)) return;
   // Revocation is emitted only by the trusted API and must reach former members.
   if (event.type === "access_revoked") {
+    delete s.typing[event.conversationId];
     s.subscriptions = s.subscriptions.filter(
       (id) => id !== event.conversationId,
     );
@@ -218,15 +234,41 @@ export async function deliver(ws: SocketPort, input: unknown, ports: Upstream) {
     s = read(ws);
     if (!s.subscriptions.includes(event.conversationId)) return;
     if (!access.allowed) {
+      delete s.typing[event.conversationId];
       s.subscriptions = s.subscriptions.filter(
         (id) => id !== event.conversationId,
       );
       write(ws, s);
       return;
     }
-    if (event.type === "presence" && !access.presenceAllowed) return;
+    if ((event.type === "presence" || event.type==='typing') && !access.presenceAllowed) return;
     ws.send(JSON.stringify(event));
   } catch {
     close(ws, read(ws), 1011);
   }
+}
+export function liveSessions(sockets:SocketPort[],now:number) {
+  return sockets.flatMap(ws=>{
+    const parsed=StateSchema.safeParse(ws.deserializeAttachment());
+    if(!parsed.success || parsed.data.closed || !parsed.data.identity || parsed.data.identity.sessionExpiresAt<=now) return [];
+    return [{identity:parsed.data.identity,subscriptions:parsed.data.subscriptions}];
+  });
+}
+export function disconnect(ws:SocketPort) {
+  const parsed=StateSchema.safeParse(ws.deserializeAttachment());
+  if(parsed.success) {parsed.data.closed=true;write(ws,parsed.data)}
+}
+export async function expireTyping(ws:SocketPort,ports:Upstream) {
+  const parsed=StateSchema.safeParse(ws.deserializeAttachment());
+  if(!parsed.success || !parsed.data.identity) return;
+  const state=parsed.data;
+  for(const [conversationId,typing] of Object.entries(state.typing)) {
+    if(!typing.isTyping || typing.expiresAt>ports.now()) continue;
+    delete state.typing[conversationId];write(ws,state);
+    try {await ports.ephemeral?.(state.identity!,{type:'typing',conversationId,isTyping:false})} catch { /* Receiver TTL also clears on failure. */ }
+  }
+}
+export function typingDeadline(ws:SocketPort):number[] {
+  const parsed=StateSchema.safeParse(ws.deserializeAttachment());
+  return parsed.success&&!parsed.data.closed?Object.values(parsed.data.typing).filter(t=>t.isTyping).map(t=>t.expiresAt):[];
 }

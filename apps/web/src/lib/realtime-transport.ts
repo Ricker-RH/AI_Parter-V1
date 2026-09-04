@@ -24,12 +24,13 @@ export interface RealtimeTransportOptions {
 
 export type RealtimeState = 'connecting' | 'authenticating' | 'ready' | 'reconnecting' | 'auth-required' | 'exhausted' | 'disposed'
 export type RealtimeSubscription = {v: 1; type: 'subscribe' | 'unsubscribe'; conversationId: string}
+export type RealtimeTyping = {v:1;type:'typing';conversationId:string;isTyping:boolean}
 
-function isSubscription(value: RealtimeSubscription): boolean {
-  return !!value && value.v === 1 && ['subscribe', 'unsubscribe'].includes(value.type)
+function isSubscription(value: RealtimeSubscription | RealtimeTyping): boolean {
+  return !!value && value.v === 1 && ['subscribe', 'unsubscribe','typing'].includes(value.type)
     && typeof value.conversationId === 'string'
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.conversationId)
-    && Object.keys(value).length === 3
+    && (value.type==='typing' ? typeof value.isTyping==='boolean' && Object.keys(value).length===4 : Object.keys(value).length === 3)
 }
 
 /** Inert until connect(); owns no storage, visibility listeners, or read receipts. */
@@ -166,7 +167,7 @@ export function createRealtimeTransport(options: RealtimeTransportOptions) {
   }
   return {
     connect,
-    send(envelope: RealtimeSubscription): boolean {
+    send(envelope: RealtimeSubscription | RealtimeTyping): boolean {
       if (!ready || !socket || socket.readyState !== 1 || !isSubscription(envelope)) return false
       try { socket.send(JSON.stringify(envelope)); return true }
       catch { reconnect(); return false }

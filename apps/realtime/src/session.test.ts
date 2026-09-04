@@ -65,6 +65,30 @@ async function auth(s: ReturnType<typeof setup>) {
   );
 }
 describe("hibernation-safe gateway sessions", () => {
+  it("accepts identity-free typing only for a subscribed, currently permitted conversation and throttles", async () => {
+    const s = setup(); await auth(s);
+    const emitted: unknown[] = [];
+    const ports = {...s.ports, ephemeral: async (...args: unknown[]) => {emitted.push(args)}};
+    const frame = JSON.stringify({v:1,type:'typing',conversationId,isTyping:true});
+    await core.receive(s.socket, frame, ports);
+    expect(emitted).toEqual([]);
+    await core.receive(s.socket,JSON.stringify({v:1,type:'subscribe',conversationId}),ports);
+    await core.receive(s.socket,frame,ports);
+    await core.receive(s.socket,frame,ports);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toEqual([s.socket.data.identity,{type:'typing',conversationId,isTyping:true}]);
+    s.setPresence(false); s.setNow(3000);
+    await core.receive(s.socket,frame,ports);
+    expect(emitted).toHaveLength(1);
+    await core.receive(s.socket,JSON.stringify({v:1,type:'unsubscribe',conversationId}),ports);
+    expect(s.socket.data.typing).toEqual({});
+  });
+  it("filters typing when presence privacy is revoked", async () => {
+    const s=setup(); await auth(s);
+    await core.receive(s.socket,JSON.stringify({v:1,type:'subscribe',conversationId}),s.ports);
+    s.setPresence(false); await core.deliver(s.socket,event,s.ports);
+    expect(s.socket.sent).toEqual([{v:1,type:'auth_ok'}]);
+  });
   it("does not let pending sockets consume authenticated device capacity", async () => {
     const pending = Array.from({ length: 10 }, () => {
       const s = setup();

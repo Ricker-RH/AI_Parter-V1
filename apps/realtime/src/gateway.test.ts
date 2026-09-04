@@ -6,6 +6,11 @@ const env = {
   UPSTREAM_API_URL: "https://api.example",
   REALTIME_INTERNAL_SECRET: "x".repeat(32),
 };
+it('admits status reads only with internal auth',()=>{
+ const url=`https://ws.example/internal/status/${profile}`;
+ expect(gateway.admit(new Request(url,{method:'POST'}),env)).toEqual({status:403});
+ expect(gateway.admit(new Request(url,{method:'POST',headers:{Authorization:`Bearer ${env.REALTIME_INTERNAL_SECRET}`}}),env)).toEqual({kind:'status',profileId:profile});
+});
 it("exports fail-closed request admission", () =>
   expect(gateway.admit).toBeTypeOf("function"));
 it("enforces streamed body byte limit without content-length", async () => {

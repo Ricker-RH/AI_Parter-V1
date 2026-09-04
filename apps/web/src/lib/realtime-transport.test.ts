@@ -37,6 +37,16 @@ const event = {v: 1, type: 'read', eventId: '22222222-2222-4222-8222-22222222222
 afterEach(() => vi.useRealTimers())
 
 describe('provider-neutral realtime transport', () => {
+  it('sends typing without client identity only after authentication',async()=>{
+    const h=setup(); const typing={v:1,type:'typing',conversationId,isTyping:true} as const;
+    expect(h.transport.send(typing)).toBe(false);
+    await h.transport.connect();const socket=h.sockets[0]!;socket.open();socket.receive({v:1,type:'auth_ok'});
+    expect(h.transport.send(typing)).toBe(true);
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual(typing);
+    expect(h.transport.send({...typing,profileId:conversationId} as never)).toBe(false);
+    expect(h.transport.send({...typing,isTyping:'yes'} as never)).toBe(false);
+    h.transport.dispose();expect(h.transport.send(typing)).toBe(false);
+  });
   it('exports a transport constructor', () => {
     expect(transportModule).toHaveProperty('createRealtimeTransport')
   })
