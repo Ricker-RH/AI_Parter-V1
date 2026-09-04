@@ -1,6 +1,6 @@
 'use client'
 
-import {PublicIpProfileSchema, type FeedPost} from '@aifans/contracts'
+import {type FeedPost} from '@aifans/contracts'
 import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
 import {useContext, useEffect, useRef, useState} from 'react'
@@ -10,6 +10,7 @@ import {authHref} from '../../lib/auth/return-to'
 import {AppQueryContext, createAppQueryClient} from '../AppQueryProvider'
 import {ProfileFollowButton} from './ProfileFollowButton'
 import type {SocialLabels} from './types'
+import {ipProfileCacheKey, loadIpProfile} from '../profile/profile-cache'
 
 type AuthorPreviewProps = {
   author: FeedPost['author']
@@ -22,19 +23,6 @@ type AuthorPreviewProps = {
   viewerScope?: string
 }
 
-type ProfilePreview = {followerCount: number; viewerFollows?: boolean}
-
-function profilePreviewKey(authorId: string, viewerScope?: string) {
-  return ['ip-profile-preview', viewerScope ?? 'guest', authorId] as const
-}
-
-async function loadProfilePreview(authorId: string, signal?: AbortSignal): Promise<ProfilePreview> {
-  const response = await fetch(`/api/social/profiles/${authorId}`, {credentials: 'include', ...(signal ? {signal} : {})})
-  const parsed = response.ok ? PublicIpProfileSchema.safeParse(await response.json()) : null
-  if (!parsed?.success || parsed.data.profile.id !== authorId) throw new Error('profile unavailable')
-  return {followerCount: parsed.data.followerCount, ...(parsed.data.viewerFollows === undefined ? {} : {viewerFollows: parsed.data.viewerFollows})}
-}
-
 function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, returnTo, context = 'post', viewerScope}: AuthorPreviewProps) {
   const [open, setOpen] = useState(false)
   const [followingOverride, setFollowingOverride] = useState<boolean>()
@@ -43,10 +31,10 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
   const queryClient = useQueryClient()
   const profileHref = `/${locale}/profiles/${author.id}`
   const profileLabel = labels.profile ?? 'Profile'
-  const queryKey = profilePreviewKey(author.id, viewerScope)
+  const queryKey = ipProfileCacheKey(author.id, viewerScope)
   const preview = useQuery({
     queryKey,
-    queryFn: ({signal}) => loadProfilePreview(author.id, signal),
+    queryFn: ({signal}) => loadIpProfile(author.id, signal),
     enabled: open,
     retry: false,
     staleTime: 30_000,
@@ -56,7 +44,7 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
   function prefetchProfile() {
     void queryClient.prefetchQuery({
       queryKey,
-      queryFn: ({signal}) => loadProfilePreview(author.id, signal),
+      queryFn: ({signal}) => loadIpProfile(author.id, signal),
       staleTime: 30_000,
     })
   }

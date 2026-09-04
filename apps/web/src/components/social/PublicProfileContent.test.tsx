@@ -1,4 +1,5 @@
 import {fireEvent, render, screen, within} from '@testing-library/react'
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 import type {AnchorHTMLAttributes, ReactNode} from 'react'
@@ -8,6 +9,7 @@ import {PublicProfileContent} from './PublicProfileContent.js'
 import {PublicProfileTabs} from './PublicProfileTabs.js'
 import type {SocialLabels} from './types.js'
 import styles from './PublicProfileContent.module.css'
+import {AppQueryContext} from '../AppQueryProvider.js'
 
 const moduleUrl = import.meta.url
 const stylesheet = readFileSync(fileURLToPath(new URL('./PublicProfileContent.module.css', moduleUrl)), 'utf8')
@@ -37,6 +39,31 @@ const profile = {kind: 'ip' as const, id: '11111111-1111-4111-8111-111111111111'
 const feedProfile = profile
 
 describe('PublicProfileContent', () => {
+  it('uses the author-card cache for follower and follow state before refreshing the IP profile', () => {
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
+    client.setQueryData(['ip-profile-preview', 'viewer-a', profile.id], {
+      profile,
+      followerCount: 27,
+      viewerFollows: true,
+      posts: {items: [], nextCursor: null},
+    })
+
+    render(<QueryClientProvider client={client}><AppQueryContext.Provider value><PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}}} viewerScope="viewer-a" /></AppQueryContext.Provider></QueryClientProvider>)
+
+    expect(screen.getByText('27 followers')).toBeVisible()
+    expect(screen.getByRole('button', {name: 'Following'})).toBeVisible()
+  })
+
+  it('accepts a newer server profile when the same route is refreshed', async () => {
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
+    const view = render(<QueryClientProvider client={client}><AppQueryContext.Provider value><PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile, followerCount: 12, viewerFollows: false, posts: {items: [], nextCursor: null}}}} viewerScope="viewer-a" /></AppQueryContext.Provider></QueryClientProvider>)
+
+    view.rerender(<QueryClientProvider client={client}><AppQueryContext.Provider value><PublicProfileContent labels={labels} locale="en" result={{status: 'ok', data: {profile, followerCount: 28, viewerFollows: true, posts: {items: [], nextCursor: null}}}} viewerScope="viewer-a" /></AppQueryContext.Provider></QueryClientProvider>)
+
+    expect(await screen.findByText('28 followers')).toBeVisible()
+    expect(screen.getByRole('button', {name: 'Following'})).toBeVisible()
+  })
+
   it('replaces pagination state and aborts stale loads when the profile or viewer changes', async () => {
     const first: FeedPagePost = {id: '22222222-2222-4222-8222-222222222222', body: 'Profile A post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0, bookmarkCount: 0, shareCount: 0}
     const next: FeedPagePost = {id: '33333333-3333-4333-8333-333333333333', body: 'Profile B post', languageCode: 'en', publishedAt: '2026-09-02T12:00:00.000Z', author: feedProfile, likeCount: 0, commentCount: 0, bookmarkCount: 0, shareCount: 0}

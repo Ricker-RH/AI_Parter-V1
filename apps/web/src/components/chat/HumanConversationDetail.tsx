@@ -5,6 +5,7 @@ import {
   type HumanConversation,
   type HumanMessage,
 } from "@aifans/contracts";
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -393,7 +394,7 @@ function HumanDetail({
       username={peer.username}
       backLabel={labels.back}
       backHref={`/${locale}/messages`}
-      avatar={<HumanAvatar decorative human={peer} size="small" />}
+      avatar={<Link aria-label={`Profile: ${peer.displayName}`} href={`/${locale}/humans/${peer.id}`}><HumanAvatar decorative human={peer} size="small" /></Link>}
       sectionHeader={sectionHeader}
     >
       <div

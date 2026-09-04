@@ -1,6 +1,6 @@
 'use client'
 
-import {HumanProfileSchema,type HumanProfile} from '@aifans/contracts'
+import {type HumanProfile} from '@aifans/contracts'
 import {QueryClientProvider,useQuery,useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
 import {useContext,useEffect,useRef,useState} from 'react'
@@ -10,23 +10,14 @@ import {AppQueryContext,createAppQueryClient} from '../AppQueryProvider'
 import {HumanAvatar} from '../account/HumanAvatar'
 import {HumanProfileActions} from '../profile/HumanProfileActions'
 import {humanProfileLabels} from '../profile/human-profile-labels'
+import {humanProfileCacheKey, loadHumanProfile} from '../profile/profile-cache'
 
 type Props={human:{id:string;displayName:string;avatarUrl?:string|null|undefined};locale:Locale;viewerScope?:string}
-
-function humanProfilePreviewKey(profileId:string,viewerScope?:string){return ['human-profile-preview',viewerScope??'guest',profileId] as const}
-
-async function loadHumanProfile(profileId:string,signal?:AbortSignal):Promise<HumanProfile>{
- const response=await fetch(`/api/humans/${profileId}`,{cache:'no-store',credentials:'same-origin',...(signal?{signal}:{})})
- if(!response.ok)throw Error('profile unavailable')
- const next=HumanProfileSchema.parse(await response.json())
- if(next.identity.id!==profileId)throw Error('profile unavailable')
- return next
-}
 
 function ScopedHumanAuthorPreview({human,locale,viewerScope}:Props){
  const [open,setOpen]=useState(false)
  const trigger=useRef<HTMLButtonElement>(null),dialog=useRef<HTMLDivElement>(null),labels=humanProfileLabels(locale)
- const queryClient=useQueryClient(),queryKey=humanProfilePreviewKey(human.id,viewerScope)
+ const queryClient=useQueryClient(),queryKey=humanProfileCacheKey(human.id,viewerScope)
  const query=useQuery({queryKey,queryFn:({signal})=>loadHumanProfile(human.id,signal),enabled:open,retry:false,staleTime:30_000})
  const profile=query.data??null
  const href=`/${locale}/humans/${human.id}`,identity=profile?.identity??human

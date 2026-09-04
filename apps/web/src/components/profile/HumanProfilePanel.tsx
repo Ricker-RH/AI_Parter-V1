@@ -1,7 +1,8 @@
 'use client'
 import type {HumanProfile} from '@aifans/contracts'
+import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
-import {useState,type CSSProperties} from 'react'
+import {useContext, useEffect, useRef, useState,type CSSProperties} from 'react'
 import type {Locale} from '../../i18n/config'
 import {Avatar} from '../account/Avatar'
 import {ProfilePageHeader} from './ProfilePageHeader'
@@ -12,8 +13,12 @@ import {humanProfileLabels} from './human-profile-labels'
 import {HumanProfileTabs} from './HumanProfileTabs'
 import type {SocialLabels} from '../social/types'
 import styles from './MyProfilePanel.module.css'
+import {AppQueryContext, createAppQueryClient} from '../AppQueryProvider'
+import {humanProfileCacheKey, loadHumanProfile} from './profile-cache'
 
-export function HumanProfilePanel({initialProfile,locale,socialLabels,viewerScope}:{initialProfile:HumanProfile;locale:Locale;socialLabels:SocialLabels;viewerScope?:string}){
+type Props = {initialProfile:HumanProfile;locale:Locale;socialLabels:SocialLabels;viewerScope?:string}
+
+function HumanProfilePanelContent({initialProfile,locale,socialLabels,viewerScope}:Props){
  const [profile,setProfile]=useState(initialProfile),labels=humanProfileLabels(locale)
  const [serverProfile,setServerProfile]=useState(initialProfile)
  // Reset before committing a render, so refreshed privacy never paints stale tab content.
@@ -32,4 +37,31 @@ export function HumanProfilePanel({initialProfile,locale,socialLabels,viewerScop
    <HumanProfileTabs profile={profile} locale={locale} socialLabels={socialLabels} {...(viewerScope?{viewerScope}:{})}/>
   </div></div>
  </div></div>
+}
+
+function CachedHumanProfilePanel(props: Props) {
+ const queryClient=useQueryClient(),queryKey=humanProfileCacheKey(props.initialProfile.identity.id,props.viewerScope)
+ const initialProfile=useRef(props.initialProfile)
+ const hasPreview=queryClient.getQueryData(queryKey)!==undefined
+ const query=useQuery({
+  initialData:props.initialProfile,
+  queryFn:({signal})=>loadHumanProfile(props.initialProfile.identity.id,signal),
+  queryKey,
+  refetchOnMount:hasPreview?'always':false,
+  retry:false,
+  staleTime:30_000,
+ })
+ useEffect(()=>{
+  if(initialProfile.current===props.initialProfile)return
+  initialProfile.current=props.initialProfile
+  queryClient.setQueryData(queryKey,props.initialProfile)
+ },[props.initialProfile,queryClient,queryKey])
+ return <HumanProfilePanelContent {...props} initialProfile={query.data??props.initialProfile}/>
+}
+
+export function HumanProfilePanel(props:Props){
+ const shared=useContext(AppQueryContext)
+ const [client]=useState(createAppQueryClient)
+ const content=<CachedHumanProfilePanel {...props}/>
+ return shared?content:<QueryClientProvider client={client}>{content}</QueryClientProvider>
 }

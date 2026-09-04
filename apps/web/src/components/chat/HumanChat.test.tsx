@@ -377,6 +377,25 @@ it("loads human history, sends text without the AI endpoint, and retries with th
     ),
   ).toHaveLength(historyCalls);
 });
+it("links the human conversation header avatar to the peer profile", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ items: [message] })));
+  render(
+    <HumanConversationDetail
+      conversation={conversation}
+      selfProfileId={self}
+      labels={labels}
+      locale="en"
+      revision={0}
+      onChanged={() => {}}
+    />,
+  );
+
+  await screen.findByText("Hello from Alice");
+  expect(screen.getByRole("link", { name: "Profile: Alice" })).toHaveAttribute(
+    "href",
+    `/en/humans/${peer}`,
+  );
+});
 it("does not acknowledge hidden history and aborts outstanding work on unmount", async () => {
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
   const request = vi

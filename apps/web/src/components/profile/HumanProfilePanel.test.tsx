@@ -1,8 +1,10 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {afterEach, expect, it, vi} from 'vitest'
 import type {HumanProfile} from '@aifans/contracts'
 import {HumanProfilePanel as Panel} from './HumanProfilePanel'
 import messages from '../../../messages/en.json'
+import {AppQueryContext} from '../AppQueryProvider'
 function HumanProfilePanel(props:Omit<Parameters<typeof Panel>[0],'socialLabels'>){return <Panel {...props} socialLabels={messages}/>}
 
 const push = vi.fn()
@@ -11,6 +13,14 @@ vi.mock('../GlobalMoreMenu',()=>({GlobalMoreMenu:()=>null}))
 const id='11111111-1111-4111-8111-111111111111'
 export const profile: HumanProfile={v:1,identity:{kind:'HUMAN',id,displayName:'Rui',username:'rui',avatarUrl:null},bio:'Hello there',background:{type:'color',colorKey:'paper'},visibility:'private',isOwner:false,relationship:{following:false,followedBy:true,blockedByViewer:false,canMessage:true,messageDisabledReason:null},tabs:{ips:{state:'locked'},liked:{state:'locked'},saved:{state:'locked'},following:{state:'locked'}}}
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks()})
+it('uses the author-card cache for the initial human relationship state',()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+ client.setQueryData(['human-profile-preview','viewer-a',id],{...profile,bio:'Cached profile',relationship:{...profile.relationship,following:true}})
+ render(<QueryClientProvider client={client}><AppQueryContext.Provider value><HumanProfilePanel initialProfile={profile} locale="en" viewerScope="viewer-a"/></AppQueryContext.Provider></QueryClientProvider>)
+ expect(screen.getByText('Cached profile')).toBeVisible()
+ expect(screen.getByRole('button',{name:'Following'})).toBeVisible()
+})
+
 it('keeps identity visible but locks all four private tabs without fetching content',()=>{
  const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher)
  render(<HumanProfilePanel initialProfile={profile} locale="en"/>)
