@@ -88,7 +88,9 @@ export const UpdateCurrentAccountSchema = z.strictObject({
   preferredLocale: LocaleSchema.optional(),
   avatarAssetId: z.uuid().nullable().optional(),
   background: ProfileBackgroundInputSchema.optional(),
-}).refine((value) => Object.keys(value).some((key) => key !== 'profileVersion'), {
+}).refine((value) => Object.entries(value).some(
+  ([key, fieldValue]) => key !== 'profileVersion' && fieldValue !== undefined,
+), {
   message: 'At least one profile field is required',
 })
 
