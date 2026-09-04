@@ -98,6 +98,17 @@ afterEach(() => {
 });
 
 describe("ConversationDetail", () => {
+  it("marks a visible IP conversation read without reloading the page", () => {
+    const sendBeacon = vi.fn(() => true);
+    Object.defineProperty(navigator, "sendBeacon", {configurable: true, value: sendBeacon});
+    render(
+      <ConversationDetail history={first} labels={labels} locale="en" />,
+    );
+    expect(sendBeacon).toHaveBeenCalledWith(
+      `/api/conversations/${first.conversation.id}/read`,
+      expect.any(Blob),
+    );
+  });
   it("uses visible fallback polling only without realtime and updates saved generation state", async () => {
     vi.useFakeTimers();
     const human = {

@@ -258,6 +258,19 @@ export function registerChatRoutes(app: Hono<{Variables: ApiVariables}>, depende
     return c.json(ChatHistoryPageSchema.parse(history))
   })
 
+  app.post('/v1/chat/conversations/:conversationId/read', async (c) => {
+    const human = await requireHuman(c, dependencies)
+    if (!human.ok) return human.response
+    const id = ConversationIdSchema.safeParse(c.req.param('conversationId'))
+    const query = safeQuery(c)
+    if (!id.success || query === null || !EmptyQuerySchema.safeParse(query).success) return invalidRequest(c, 400)
+    const repository = storage(c, dependencies)
+    if (repository instanceof Response || !repository.markRead) return apiError(c, 503, 'CHAT_STORAGE_NOT_CONFIGURED', 'Chat storage is not configured')
+    const conversation = await repository.markRead(human.actor, {conversationId: id.data, sendEnabled: Boolean(dependencies.chat)})
+    if (!conversation) return apiError(c, 404, 'CHAT_CONVERSATION_NOT_FOUND', 'Conversation was not found')
+    return c.json(ChatConversationSummarySchema.parse(conversation))
+  })
+
   app.post('/v1/chat/conversations/:conversationId/messages', async (c) => {
     const human = await requireHuman(c, dependencies)
     if (!human.ok) return human.response

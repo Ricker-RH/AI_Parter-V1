@@ -15,7 +15,7 @@ import styles from './MessagesWorkspace.module.css'
 
 export type MessagesLabels = ConversationListLabels & ConversationDetailLabels & {selectConversation: string}
 
-export type MessagesWorkspaceProps = {items: ChatConversationSummary[]; labels: MessagesLabels; locale: Locale; snapshotViewerStatus?: 'authenticated' | 'unavailable' | undefined; snapshotViewerId?: string | undefined; selectedId?: string | undefined; selectedHumanId?: string | undefined; history?: ChatHistoryPage | undefined; initialCursor?: string | undefined; nextCursor?: string | null | undefined; listUnavailable?: boolean | undefined; detailUnavailable?: boolean | undefined}
+export type MessagesWorkspaceProps = {items: ChatConversationSummary[]; labels: MessagesLabels; locale: Locale; snapshotViewerStatus?: 'authenticated' | 'unavailable' | undefined; snapshotViewerId?: string | undefined; selectedId?: string | undefined; selectedHumanId?: string | undefined; history?: ChatHistoryPage | undefined; initialCursor?: string | undefined; nextCursor?: string | null | undefined; listUnavailable?: boolean | undefined; detailUnavailable?: boolean | undefined; onIpConversationRead?: ((conversation: ChatConversationSummary) => void) | undefined}
 export function MessagesWorkspace(props: MessagesWorkspaceProps) {
   const current=useOptionalCurrentAccount()
   const router=useRouter()
@@ -32,7 +32,7 @@ export function MessagesWorkspace(props: MessagesWorkspaceProps) {
   if (current?.status==='authenticated' && current.account?.kind==='human') return <HumanChatQueryProvider profileId={current.account.id}><HumanMessagesWorkspace key={current.account.id} {...props} selfProfileId={current.account.id}/></HumanChatQueryProvider>
   return <AiMessagesWorkspace {...props}/>
 }
-function AiMessagesWorkspace({items, labels, locale, selectedId, history, initialCursor, nextCursor, listUnavailable = false, detailUnavailable = false}: MessagesWorkspaceProps) {
+function AiMessagesWorkspace({items, labels, locale, selectedId, history, initialCursor, nextCursor, listUnavailable = false, detailUnavailable = false, onIpConversationRead}: MessagesWorkspaceProps) {
   const mobileHeader = <div className={styles.mobileDetailSectionHeader}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/></div>
-  return <InboxWorkspaceFrame detail={selectedId ? <ConversationDetail history={history} labels={labels} listCursor={initialCursor} locale={locale} sectionHeader={mobileHeader} unavailable={detailUnavailable}/> : listUnavailable ? null : <section className={styles.emptyPane}><div><h2>{labels.selectConversation}</h2></div></section>} list={<ConversationList initialCursor={initialCursor} items={items} labels={labels} locale={locale} nextCursor={nextCursor} selectedId={selectedId} unavailable={listUnavailable}/>} listUnavailable={listUnavailable} selected={Boolean(selectedId)}/>
+  return <InboxWorkspaceFrame detail={selectedId ? <ConversationDetail history={history} labels={labels} listCursor={initialCursor} locale={locale} onConversationRead={onIpConversationRead} sectionHeader={mobileHeader} unavailable={detailUnavailable}/> : listUnavailable ? null : <section className={styles.emptyPane}><div><h2>{labels.selectConversation}</h2></div></section>} list={<ConversationList initialCursor={initialCursor} items={items} labels={labels} locale={locale} nextCursor={nextCursor} selectedId={selectedId} unavailable={listUnavailable}/>} listUnavailable={listUnavailable} selected={Boolean(selectedId)}/>
 }

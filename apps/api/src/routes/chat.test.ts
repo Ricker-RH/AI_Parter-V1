@@ -17,7 +17,7 @@ const stamp = '2026-09-02T12:00:00.000Z'
 const humanMessage = {id: humanMessageId, role: 'human' as const, body: 'Hello', deliveryState: 'pending' as const, createdAt: stamp}
 const sentHumanMessage = {...humanMessage, deliveryState: 'sent' as const}
 const assistantMessage = {id: assistantMessageId, role: 'assistant' as const, body: 'Hi there', deliveryState: 'sent' as const, createdAt: stamp}
-const summary = {id: conversationId, ipProfile: {id: ipProfileId, username: 'public_ip', displayName: 'Public IP'}, lastMessage: null, updatedAt: stamp, sendEnabled: true}
+const summary = {id: conversationId, ipProfile: {id: ipProfileId, username: 'public_ip', displayName: 'Public IP'}, lastMessage: null, updatedAt: stamp, sendEnabled: true, unreadCount: 0}
 
 function targets(available = true, calls: unknown[] = []): ChatTargetPort { return {isPublicChatIp: async (actor, targetId) => { calls.push({actor, targetId}); return available }} }
 function repository(overrides: Partial<ChatRepositoryPort> = {}): ChatRepositoryPort {
@@ -78,6 +78,19 @@ describe('persistent chat conversations', () => {
     const response = await createApp(dependencies()).request(`/v1/chat/conversations/${conversationId}/messages?limit=50`)
     expect(response.status).toBe(200); expect(ChatHistoryPageSchema.parse(await response.json())).toEqual({conversation: summary, items: [sentHumanMessage], nextCursor: null})
     await expectError(await createApp(dependencies({conversations: repository({listMessages: async () => null})})).request(`/v1/chat/conversations/${otherConversationId}/messages`), 404, 'CHAT_CONVERSATION_NOT_FOUND')
+  })
+  it('marks an IP conversation read without enabling the provider or changing its owner', async () => {
+    const calls: unknown[] = []
+    const conversations = repository({
+      markRead: async (actor, input) => {
+        calls.push({actor, input})
+        return {...summary, unreadCount: 0}
+      },
+    })
+    const response = await createApp(dependencies({conversations})).request(`/v1/chat/conversations/${conversationId}/read`, {method: 'POST'})
+    expect(response.status).toBe(200)
+    expect(ChatConversationSummarySchema.parse(await response.json())).toMatchObject({id: conversationId, unreadCount: 0})
+    expect(calls).toEqual([{actor: {subject: identity.subject}, input: {conversationId, sendEnabled: false}}])
   })
   it('validates auth and storage before target/provider configuration', async () => {
     await expectError(await createApp({auth: missingAuth, profiles, conversations: repository()}).request('/v1/chat/conversations'), 401, 'AUTH_REQUIRED')

@@ -28,6 +28,7 @@ export type ChatRepositoryPort = {
   getOrCreateConversation(actor: ChatRepositoryActor, input: {humanProfileId: string; ipProfileId: string; sendEnabled: boolean}): Promise<ChatConversationSummary | null>
   getConversation(actor: ChatRepositoryActor, input: {conversationId: string; sendEnabled: boolean}): Promise<ChatConversationSummary | null>
   listMessages(actor: ChatRepositoryActor, input: {conversationId: string; limit: number; cursor?: string; sendEnabled: boolean}): Promise<ChatHistoryPage | null>
+  markRead?(actor: ChatRepositoryActor, input: {conversationId: string; sendEnabled: boolean}): Promise<ChatConversationSummary | null>
   beginHumanMessage(actor: ChatRepositoryActor, input: {conversationId: string; requestId: string; body: string}): Promise<BeginHumanMessageResult | null>
   completeProviderReply(actor: ChatRepositoryActor, input: CompleteProviderReplyInput): Promise<ChatSendResponse | null>
   failHumanMessage(actor: ChatRepositoryActor, input: {conversationId: string; humanMessageId: string}): Promise<boolean>

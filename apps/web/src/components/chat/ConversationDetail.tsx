@@ -47,6 +47,7 @@ type ConversationDetailProps = {
   unavailable?: boolean | undefined;
   revision?: number;
   realtimeReady?: boolean;
+  onConversationRead?: ((conversation: ChatHistoryPage['conversation']) => void) | undefined;
 };
 
 export function ConversationDetail(props: ConversationDetailProps) {
@@ -110,6 +111,7 @@ function ConversationDetailContent({
   unavailable = false,
   revision = 0,
   realtimeReady = false,
+  onConversationRead,
 }: ConversationDetailProps) {
   const [items, setItems] = useState<ChatMessage[]>(history?.items ?? []);
   const [nextCursor, setNextCursor] = useState(history?.nextCursor ?? null);
@@ -164,6 +166,15 @@ function ConversationDetailContent({
       if (!owner.signal.aborted) setEarlierError(true);
     }
   }, [history?.conversation.id, locale]);
+  useEffect(() => {
+    const conversation = history?.conversation
+    if (!conversation) return
+    const accepted = navigator.sendBeacon?.(
+      `/api/conversations/${conversation.id}/read`,
+      new Blob([], {type: 'application/json'}),
+    )
+    if (accepted) onConversationRead?.({...conversation, unreadCount: 0})
+  }, [history?.conversation, onConversationRead])
   useEffect(() => {
     if (revision > 0) void refresh();
   }, [revision, refresh]);

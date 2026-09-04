@@ -11,10 +11,11 @@ describe('chat contracts', () => {
   it('accepts only strict provider-neutral chat projections', () => {
     const identity = {id: ipProfileId, username: 'luna_ip', displayName: 'Luna'}
     const message = {id: messageId, role: 'human' as const, body: 'Hello', deliveryState: 'sent' as const, createdAt: timestamp}
-    const summary = {id: conversationId, ipProfile: identity, lastMessage: {body: 'Hello', role: 'human' as const, createdAt: timestamp}, updatedAt: timestamp, sendEnabled: true}
+    const summary = {id: conversationId, ipProfile: identity, lastMessage: {body: 'Hello', role: 'human' as const, createdAt: timestamp}, updatedAt: timestamp, sendEnabled: true, unreadCount: 0}
 
     expect(ChatMessageSchema.parse(message)).toEqual(message)
     expect(ChatConversationSummarySchema.parse(summary)).toEqual(summary)
+    expect(ChatConversationSummarySchema.parse({...summary, unreadCount: 2})).toEqual({...summary, unreadCount: 2})
     expect(ChatConversationPageSchema.parse({items: [summary], nextCursor: null})).toEqual({items: [summary], nextCursor: null})
     expect(ChatHistoryPageSchema.parse({conversation: summary, items: [message], nextCursor: null})).toEqual({conversation: summary, items: [message], nextCursor: null})
     expect(ChatHistoryPageSchema.safeParse({items: [message], nextCursor: null}).success).toBe(false)

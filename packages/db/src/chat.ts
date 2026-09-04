@@ -31,6 +31,7 @@ type ConversationRow = {
   last_body: string | null
   last_role: 'human' | 'assistant' | null
   last_created_at: Date | string | null
+  unread_count?: string | number
 }
 type MessageRow = {
   id: string
@@ -52,6 +53,7 @@ export type ChatRepository = {
   getOrCreateConversation(actor: Actor, input: {humanProfileId: string; ipProfileId: string; sendEnabled: boolean}): Promise<ChatConversationSummary | null>
   getConversation(actor: Actor, input: {conversationId: string; sendEnabled: boolean}): Promise<ChatConversationSummary | null>
   listMessages(actor: Actor, input: {conversationId: string; limit: number; cursor?: string; sendEnabled: boolean}): Promise<ChatHistoryPage | null>
+  markRead(actor: Actor, input: {conversationId: string; sendEnabled: boolean}): Promise<ChatConversationSummary | null>
   beginHumanMessage(actor: Actor, input: {conversationId: string; requestId: string; body: string}): Promise<BeginHumanMessageResult | null>
   completeProviderReply(actor: Actor, input: CompleteProviderReplyInput): Promise<ChatSendResponse | null>
   failHumanMessage(actor: Actor, input: {conversationId: string; humanMessageId: string}): Promise<boolean>
@@ -77,7 +79,10 @@ const utcTimestamp = (column: string) => `to_char(${column} AT TIME ZONE 'UTC', 
 
 function conversationProjection({sentOnly = false}: {sentOnly?: boolean} = {}) { return `
 SELECT conversation.id, conversation.ip_profile_id, ip.username, ip.display_name, ${utcTimestamp('conversation.updated_at')} AS updated_at,
-  last_message.body AS last_body, last_message.role AS last_role, last_message.created_at AS last_created_at
+  last_message.body AS last_body, last_message.role AS last_role, last_message.created_at AS last_created_at,
+  (SELECT count(*)::text FROM public.chat_messages unread
+    WHERE unread.conversation_id=conversation.id AND unread.role='assistant' AND unread.delivery_state='sent'
+      AND unread.created_at>conversation.last_read_at) AS unread_count
 FROM public.chat_conversations conversation
 JOIN public.profiles ip ON ip.id = conversation.ip_profile_id
 ${sentOnly ? 'JOIN' : 'LEFT JOIN'} LATERAL (
@@ -113,6 +118,7 @@ function conversation(row: ConversationRow, sendEnabled: boolean): ChatConversat
       : {body: row.last_body, role: row.last_role, createdAt: iso(row.last_created_at)},
     updatedAt: iso(row.updated_at),
     sendEnabled,
+    unreadCount: z.coerce.number().int().min(0).parse(row.unread_count ?? 0),
   })
 }
 async function getConversationFromClient(client: QueryClient, conversationId: string, sendEnabled: boolean): Promise<ChatConversationSummary | null> {
@@ -160,6 +166,13 @@ WHERE conversation.human_profile_id = $1::uuid AND conversation.ip_profile_id = 
     },
 
     getConversation: (actor, input) => runWithActor(actor, (client) => getConversationFromClient(client, input.conversationId, input.sendEnabled)),
+
+    async markRead(actor,input) {
+      return runWithActor(actor,async client => {
+        const updated=await client.query<{id:string}>('UPDATE public.chat_conversations SET last_read_at=clock_timestamp() WHERE id=$1::uuid RETURNING id',[input.conversationId])
+        return updated.rows[0] ? getConversationFromClient(client,input.conversationId,input.sendEnabled) : null
+      })
+    },
 
     async listMessages(actor, input) {
       const take = limit(input.limit)

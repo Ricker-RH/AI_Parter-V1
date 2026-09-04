@@ -1,8 +1,8 @@
 'use client'
 
-import {ChatConversationPageSchema, type ChatConversationPage} from '@aifans/contracts'
-import {useQuery} from '@tanstack/react-query'
-import {useEffect, useRef} from 'react'
+import {ChatConversationPageSchema, type ChatConversationPage, type ChatConversationSummary} from '@aifans/contracts'
+import {useQuery, useQueryClient} from '@tanstack/react-query'
+import {useCallback, useEffect, useRef} from 'react'
 import {useRouter} from 'next/navigation'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
@@ -36,9 +36,17 @@ function messageReturnTo(locale:Locale, selectedHumanId?:string, cursor?:string)
 export function CachedMessagesWorkspace({labels,locale,initialCursor,selectedHumanId}:{labels:MessagesLabels;locale:Locale;initialCursor?:string;selectedHumanId?:string}){
   const {account,status}=useCurrentAccount()
   const router=useRouter()
+  const queryClient=useQueryClient()
   const redirected=useRef(false)
   const returnTo=messageReturnTo(locale,selectedHumanId,initialCursor)
   const scope=account?`${account.kind}:${account.id}`:'anonymous'
+  const onIpConversationRead=useCallback((read:ChatConversationSummary)=>{
+    queryClient.setQueriesData<AiInboxResult>({queryKey:['ai-chat',scope,locale,'inbox']},cached=>
+      cached?.status==='ok'
+        ? {...cached,data:{...cached.data,items:cached.data.items.map(item=>item.id===read.id?read:item)}}
+        : cached,
+    )
+  },[locale,queryClient,scope])
   const inbox=useQuery({
     enabled:status==='authenticated'&&Boolean(account),
     queryKey:['ai-chat',scope,locale,'inbox',initialCursor??null],
@@ -57,5 +65,5 @@ export function CachedMessagesWorkspace({labels,locale,initialCursor,selectedHum
 
   const result=inbox.data
   if(account.kind!=='human'&&inbox.isPending&&!result)return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><p className={styles.detailNotice} role="status">{labels.loadingMore}</p></aside>}/>
-  return <MessagesWorkspace initialCursor={initialCursor} items={result?.status==='ok'?result.data.items:[]} labels={labels} listUnavailable={result?.status==='unavailable'} locale={locale} nextCursor={result?.status==='ok'?result.data.nextCursor:null} selectedHumanId={selectedHumanId} snapshotViewerId={account.id} snapshotViewerStatus="authenticated"/>
+  return <MessagesWorkspace initialCursor={initialCursor} items={result?.status==='ok'?result.data.items:[]} labels={labels} listUnavailable={result?.status==='unavailable'} locale={locale} nextCursor={result?.status==='ok'?result.data.nextCursor:null} onIpConversationRead={onIpConversationRead} selectedHumanId={selectedHumanId} snapshotViewerId={account.id} snapshotViewerStatus="authenticated"/>
 }

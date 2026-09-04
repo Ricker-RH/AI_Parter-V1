@@ -25,6 +25,11 @@ describe('ConversationList', () => {
     expect(screen.queryByText('Sep 1')).toBeNull()
   })
 
+  it('shows the persisted IP unread count in the same round badge as human chats', () => {
+    render(<ConversationList items={[{...item, unreadCount: 2}]} labels={labels} locale="en"/>)
+    expect(screen.getByLabelText('2 unread messages')).toHaveTextContent('2')
+  })
+
   it('opens a conversation from its copy while its avatar opens the IP profile', () => {
     render(<ConversationList items={[item]} labels={labels} locale="en"/>)
 

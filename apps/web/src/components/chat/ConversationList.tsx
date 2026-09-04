@@ -29,7 +29,7 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
   const controller = useRef<AbortController | null>(null)
   const normalizedQuery = useDeferredValue(query).trim().toLocaleLowerCase(locale)
   const rows = [
-    ...entries.map(({conversation, listCursor}) => ({kind: 'IP' as const, id: conversation.id, person: conversation.ipProfile, body: conversation.lastMessage?.body ?? '', updatedAt: conversation.updatedAt, unread: 0, selected: conversation.id === selectedId, href: `/${locale}/messages/${conversation.id}${listCursor ? `?${new URLSearchParams({listCursor})}` : ''}`})),
+    ...entries.map(({conversation, listCursor}) => ({kind: 'IP' as const, id: conversation.id, person: conversation.ipProfile, body: conversation.lastMessage?.body ?? '', updatedAt: conversation.updatedAt, unread: conversation.unreadCount ?? 0, selected: conversation.id === selectedId, href: `/${locale}/messages/${conversation.id}${listCursor ? `?${new URLSearchParams({listCursor})}` : ''}`})),
     ...humanItems.flatMap(({conversation, latestMessage, unreadCount}) => {
       if (!conversation.participants.some(person => person.id === selfProfileId)) return []
       const person = conversation.participants.find(person => person.id !== selfProfileId)!

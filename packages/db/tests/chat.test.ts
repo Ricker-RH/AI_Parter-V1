@@ -86,7 +86,7 @@ describe('chat repository', () => {
     expect(fake.queries[0]?.values).toEqual([null, null, 2])
     expect(page.items[0]).toEqual({
       id: conversationId, ipProfile: {id: ipProfileId, username: 'sage_ip', displayName: 'Sage'},
-      lastMessage: {body: 'Newest', role: 'assistant', createdAt: later}, updatedAt: later, sendEnabled: true,
+      lastMessage: {body: 'Newest', role: 'assistant', createdAt: later}, updatedAt: later, sendEnabled: true, unreadCount: 0,
     })
     expect(JSON.stringify(page)).not.toContain('provider-')
     expect(decodeChatConversationCursor(page.nextCursor!)).toEqual({v: 1, kind: 'chat-conversations', updatedAt: later, id: conversationId})
@@ -140,6 +140,16 @@ describe('chat repository', () => {
     ]))
     expect(fake.queries[0]?.values).toEqual([humanProfileId, ipProfileId])
     expect(item?.sendEnabled).toBe(false)
+  })
+
+  it('advances only the owner read cursor and preserves conversation ordering', async () => {
+    const fake = fakeWithActor([result([{id: conversationId}]), result([conversationRow({unread_count: '0'})])])
+    const item = await createChatRepository(fake.withActor).markRead(actor, {conversationId, sendEnabled: true})
+    expect(fake.actor()).toEqual(actor)
+    expect(fake.queries[0]).toMatchObject({values: [conversationId]})
+    expect(fake.queries[0]?.text).toContain('SET last_read_at=clock_timestamp()')
+    expect(fake.queries[1]?.text).toContain('unread.created_at>conversation.last_read_at')
+    expect(item).toMatchObject({id: conversationId, unreadCount: 0})
   })
 
   it('returns chronological history and anchors its next cursor to the oldest fetched message', async () => {
