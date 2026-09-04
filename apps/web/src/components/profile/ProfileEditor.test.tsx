@@ -352,7 +352,8 @@ describe('ProfileEditor', () => {
 
     expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled()
     expect(screen.getByLabelText('Upload avatar')).toBeDisabled()
-    expect(screen.getByRole('status')).toHaveTextContent('Uploading…')
+    expect(screen.getByTestId('avatar-upload-overlay')).toHaveAttribute('aria-label', 'Uploading…')
+    expect(screen.queryByText('Uploading…')).toBeNull()
   })
 
   it('aborts and revokes a stale network upload on replacement, then ignores it after unmount', async () => {

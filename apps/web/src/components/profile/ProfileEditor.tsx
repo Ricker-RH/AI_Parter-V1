@@ -325,6 +325,8 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   const backgroundColor = activeColor ? PROFILE_BACKGROUND_COLORS[activeColor] : PROFILE_BACKGROUND_COLORS.paper
   const previewStyle = {backgroundColor, ...(backgroundImage ? {backgroundImage: `url("${backgroundImage}")`, backgroundPosition: `${focalX * 100}% ${focalY * 100}%`} : {})} satisfies CSSProperties
   const shownAvatar = avatarPreview ?? (avatarEdit === null ? null : baseAccount.avatarUrl)
+  const avatarUploading = avatarUpload.status === 'validating' || avatarUpload.status === 'uploading'
+  const backgroundUploading = backgroundUpload.status === 'validating' || backgroundUpload.status === 'uploading'
   const colorKeys = Object.keys(PROFILE_BACKGROUND_COLORS) as ProfileBackgroundColorKey[]
   const toggle = (field: 'displayName' | 'username' | 'bio') => setExpanded((current) => ({...current, [field]: !current[field]}))
 
@@ -339,22 +341,20 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
         <section className={styles.row} data-profile-edit-row>
           <button aria-label={labels.avatar} aria-expanded={assetMenu === 'avatar'} aria-haspopup="menu" aria-controls="profile-avatar-menu" ref={avatarTrigger} className={styles.rowTrigger} disabled={saving} onClick={() => setAssetMenu(assetMenu === 'avatar' ? null : 'avatar')} type="button">
             <span className={styles.rowLabel}>{labels.avatar}</span>
-            <span className={styles.rowValue}>{avatarPreview ? <span className={styles.avatarPreview}><img alt={labels.avatar} src={avatarPreview}/></span> : <span aria-label={labels.avatar} role="img"><Avatar avatarUrl={shownAvatar} decorative displayName={draft.displayName} size="medium"/></span>}</span>
+            <span className={styles.rowValue}>{avatarPreview ? <span className={`${styles.assetPreview} ${styles.avatarPreview}`}><img alt={labels.avatar} src={avatarPreview}/>{avatarUploading ? <UploadOverlay label={labels.uploading} target="avatar"/> : null}</span> : <span aria-label={labels.avatar} className={`${styles.assetPreview} ${styles.avatarPreview}`} role="img"><Avatar avatarUrl={shownAvatar} decorative displayName={draft.displayName} size="medium"/>{avatarUploading ? <UploadOverlay label={labels.uploading} target="avatar"/> : null}</span>}</span>
             <Chevron/>
           </button>
           <input accept={IMAGE_TYPES.join(',')} aria-label={labels.avatarUpload} className="sr-only" disabled={blocked} onChange={(event) => onFile('avatar', event)} ref={avatarInput} tabIndex={-1} type="file"/>
-          {avatarUpload.status === 'validating' || avatarUpload.status === 'uploading' ? <p className={styles.uploadStatus} role="status">{labels.uploading}</p> : null}
           {avatarUpload.status === 'failed' ? <div className={styles.controls}><button onClick={() => void upload('avatar', avatarUpload.file)} type="button">{labels.uploadRetry}</button></div> : null}
         </section>
 
         <section className={styles.row} data-profile-edit-row>
           <button aria-label={labels.background} aria-expanded={assetMenu === 'background' || assetMenu === 'background-image'} aria-haspopup="dialog" aria-controls="profile-background-menu" ref={backgroundTrigger} className={styles.rowTrigger} disabled={saving} onClick={() => setAssetMenu(assetMenu?.startsWith('background') ? null : 'background')} type="button">
             <span className={styles.rowLabel}>{labels.background}</span>
-            <span className={styles.rowValue}><span className={styles.backgroundPreview} data-testid="background-preview" style={previewStyle}/></span>
+            <span className={styles.rowValue}><span className={`${styles.assetPreview} ${styles.backgroundPreview}`} data-testid="background-preview" style={previewStyle}>{backgroundUploading ? <UploadOverlay label={labels.uploading} target="background"/> : null}</span></span>
             <Chevron/>
           </button>
           <input accept={IMAGE_TYPES.join(',')} aria-label={labels.backgroundUpload} className="sr-only" disabled={blocked} onChange={(event) => onFile('background', event)} ref={backgroundInput} tabIndex={-1} type="file"/>
-          {backgroundUpload.status === 'validating' || backgroundUpload.status === 'uploading' ? <p className={styles.uploadStatus} role="status">{labels.uploading}</p> : null}
           {backgroundUpload.status === 'failed' ? <div className={styles.controls}><button onClick={() => void upload('background', backgroundUpload.file)} type="button">{labels.uploadRetry}</button></div> : null}
         </section>
 
@@ -387,6 +387,10 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
       </>}
     </ProfileEditorMenu> : null}
   </div>
+}
+
+function UploadOverlay({label,target}: {label:string;target:AssetTarget}) {
+  return <span aria-label={label} className={styles.uploadOverlay} data-testid={`${target}-upload-overlay`} role="status"><span aria-hidden="true" className={styles.uploadSpinner}/></span>
 }
 
 function Chevron() {
