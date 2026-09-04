@@ -4,8 +4,8 @@ import {encodeChatConversationCursor, encodeChatMessageCursor} from '@aifans/con
 import en from '../../../../messages/en.json'
 import zh from '../../../../messages/zh-CN.json'
 
-const {access, conversations} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn()}))
-vi.mock('../../../lib/current-account',()=>({fetchCurrentAccountResult:async()=>({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222'}})}))
+const {access, conversations, viewer} = vi.hoisted(() => ({access: vi.fn(), conversations: vi.fn(), viewer: vi.fn()}))
+vi.mock('../../../lib/current-account',()=>({fetchCurrentAccountResult:viewer}))
 vi.mock('../../../lib/auth/access-policy.js', () => ({requireAuthenticatedPage: access, redirectToUserSignIn: vi.fn()}))
 vi.mock('../../../lib/chat-api.js', () => ({fetchConversations: conversations}))
 vi.mock('next/navigation', () => ({notFound: vi.fn(), useRouter: () => ({refresh: vi.fn()})}))
@@ -27,6 +27,17 @@ describe('persistent messages list page', () => {
   beforeEach(() => {
     access.mockReset().mockResolvedValue({status: 'authenticated', token: 'token'})
     conversations.mockReset().mockResolvedValue({status: 'ok', data: {items: [conversation], nextCursor: null}})
+    viewer.mockReset().mockResolvedValue({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222',kind:'ai'}})
+  })
+
+  it('does not wait for AI conversations before rendering a human inbox', async () => {
+    viewer.mockResolvedValue({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222',kind:'human'}})
+
+    const element = await MessagesPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})})
+
+    expect(conversations).not.toHaveBeenCalled()
+    expect(element.props.snapshotViewerId).toBe('22222222-2222-4222-8222-222222222222')
+    expect(element.props.items).toEqual([])
   })
 
   it('loads owner-scoped conversations only after the page access guard', async () => {

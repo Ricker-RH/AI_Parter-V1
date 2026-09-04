@@ -19,8 +19,13 @@ export default async function MessagesPage({params, searchParams}: {params: Prom
   const access = await requireAuthenticatedPage({locale, returnTo})
   const messages = await getMessages(locale)
   if (access.status === 'unavailable') return <MessagesWorkspace items={[]} labels={messages.chat} listUnavailable locale={locale} snapshotViewerStatus="unavailable"/>
-  const [result, viewer] = await Promise.all([fetchConversations({token: access.token, ...(cursor ? {cursor} : {})}),fetchCurrentAccountResult({token:access.token})])
-  if (result.status === 'auth-required' || viewer.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
+  const viewer = await fetchCurrentAccountResult({token:access.token})
+  if (viewer.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
+  if (viewer.status === 'authenticated' && viewer.account.kind === 'human') {
+    return <MessagesWorkspace initialCursor={cursor} items={[]} labels={messages.chat} locale={locale} selectedHumanId={selectedHumanId} snapshotViewerId={viewer.account.id} snapshotViewerStatus="authenticated"/>
+  }
+  const result = await fetchConversations({token: access.token, ...(cursor ? {cursor} : {})})
+  if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const items = result.status === 'ok' ? result.data.items : []
   const nextCursor = result.status === 'ok' ? result.data.nextCursor : null
   return <MessagesWorkspace initialCursor={cursor} items={items} labels={messages.chat} listUnavailable={result.status === 'unavailable'} locale={locale} nextCursor={nextCursor} selectedHumanId={selectedHumanId} snapshotViewerId={viewer.status==='authenticated' ? viewer.account.id : undefined} snapshotViewerStatus={viewer.status==='authenticated' ? 'authenticated' : 'unavailable'}/>
