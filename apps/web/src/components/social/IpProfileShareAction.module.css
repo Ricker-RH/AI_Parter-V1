@@ -23,7 +23,7 @@
 .card span, .card small { color: var(--shell-muted); font-size: 12px; }
 .send { background: var(--shell-text); border: 1px solid var(--shell-text); border-radius: 12px; color: var(--shell-surface); cursor: pointer; font: inherit; font-weight: 700; min-height: 44px; }
 .send:disabled { cursor: progress; opacity: .6; }
-.actions { border-top: 1px solid var(--shell-border); display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; padding-top: 14px; }
+.actions { border-top: 1px solid var(--shell-border); display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; padding-top: 14px; }
 .actions button { background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 12px; color: var(--shell-text); cursor: pointer; font: inherit; font-weight: 650; min-height: 48px; padding: 8px; }
 .status, .error { font-size: 13px; margin: 12px 0 0; text-align: center; }
 .error { color: #d92d3a; }
