@@ -40,6 +40,7 @@ type Props = {
   revision: number;
   realtimeMessage?: HumanMessage | null;
   onChanged: () => void;
+  onMessageSent?: (message: HumanMessage) => void;
   onAccessRevoked?: (conversationId: string) => void;
   peerReadSequence?: number | undefined;
   revoked?: boolean;
@@ -64,6 +65,7 @@ function HumanDetail({
   revision,
   realtimeMessage,
   onChanged,
+  onMessageSent,
   onAccessRevoked,
   peerReadSequence,
   revoked = false,
@@ -358,8 +360,9 @@ function HumanDetail({
       // Catch up history first: do not advance past messages received concurrently with this send.
       setDraft("");
       setFailure(null);
-      await refresh();
-      changed.current();
+      messages.current = mergeHumanMessages(messages.current, [message]);
+      setItems(messages.current);
+      onMessageSent?.(message);
     } catch (cause) {
       if (!owner.signal.aborted) {
         setFailure(input);

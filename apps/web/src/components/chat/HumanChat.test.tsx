@@ -357,6 +357,9 @@ it("loads human history, sends text without the AI endpoint, and retries with th
     />,
   );
   expect(await screen.findByText("Hello from Alice")).toBeVisible();
+  const historyCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+    ([url]) => String(url).includes("/messages?"),
+  ).length;
   fireEvent.change(screen.getByRole("textbox"), {
     target: { value: "Hello Alice" },
   });
@@ -367,6 +370,11 @@ it("loads human history, sends text without the AI endpoint, and retries with th
   expect(calls[0]!.url).toBe(`/api/human-chat/peers/${peer}/messages`);
   expect(calls[0]!.body.clientRequestId).toBe(calls[1]!.body.clientRequestId);
   expect(await screen.findByText("Hello Alice")).toBeVisible();
+  expect(
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) =>
+      String(url).includes("/messages?"),
+    ),
+  ).toHaveLength(historyCalls);
 });
 it("does not acknowledge hidden history and aborts outstanding work on unmount", async () => {
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");

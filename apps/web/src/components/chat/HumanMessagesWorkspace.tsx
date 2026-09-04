@@ -419,6 +419,10 @@ export function HumanMessagesWorkspace({
         revision={revision}
         realtimeMessage={realtimeMessage}
         onChanged={changed}
+        onMessageSent={(message) => {
+          currentInbox.current = mergeHumanInboxEvent(currentInbox.current, message);
+          setInbox(currentInbox.current);
+        }}
         onAccessRevoked={revokeConversation}
         peerReadSequence={readCursors[selectedHumanId]}
         peerTyping={Boolean(transient[selectedHumanId]?.typing)}
