@@ -21,9 +21,6 @@ export default async function MessagesPage({params, searchParams}: {params: Prom
   if (access.status === 'unavailable') return <MessagesWorkspace items={[]} labels={messages.chat} listUnavailable locale={locale} snapshotViewerStatus="unavailable"/>
   const viewer = await fetchCurrentAccountResult({token:access.token})
   if (viewer.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
-  if (viewer.status === 'authenticated' && viewer.account.kind === 'human') {
-    return <MessagesWorkspace initialCursor={cursor} items={[]} labels={messages.chat} locale={locale} selectedHumanId={selectedHumanId} snapshotViewerId={viewer.account.id} snapshotViewerStatus="authenticated"/>
-  }
   const result = await fetchConversations({token: access.token, ...(cursor ? {cursor} : {})})
   if (result.status === 'auth-required') redirectToUserSignIn({locale, returnTo})
   const items = result.status === 'ok' ? result.data.items : []

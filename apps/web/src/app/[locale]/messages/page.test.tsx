@@ -30,14 +30,13 @@ describe('persistent messages list page', () => {
     viewer.mockReset().mockResolvedValue({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222',kind:'ai'}})
   })
 
-  it('does not wait for AI conversations before rendering a human inbox', async () => {
+  it('keeps AI conversations available for human accounts that also use human chat', async () => {
     viewer.mockResolvedValue({status:'authenticated',account:{id:'22222222-2222-4222-8222-222222222222',kind:'human'}})
 
     const element = await MessagesPage({params: Promise.resolve({locale: 'en'}), searchParams: Promise.resolve({})})
 
-    expect(conversations).not.toHaveBeenCalled()
-    expect(element.props.snapshotViewerId).toBe('22222222-2222-4222-8222-222222222222')
-    expect(element.props.items).toEqual([])
+    expect(conversations).toHaveBeenCalledWith({token: 'token'})
+    expect(element.props.items).toEqual([conversation])
   })
 
   it('loads owner-scoped conversations only after the page access guard', async () => {
