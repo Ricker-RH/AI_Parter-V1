@@ -28,3 +28,18 @@ it('rejects oversized mutation bodies before forwarding',async()=>{
  expect((await PUT(req(`${id}/follow`,'PUT',`{"padding":"${'x'.repeat(33_000)}"}`),context([id,'follow']))).status).toBe(413)
  expect(fetchAifansApi).not.toHaveBeenCalled()
 })
+it('allows only bounded unique paging fields on visitor tab paths',async()=>{
+ vi.mocked(fetchAifansApi).mockResolvedValue(Response.json({state:'ready',tab:'ips',items:[],nextCursor:null}))
+ expect((await GET(req(`${id}/tabs/ips?limit=20&cursor=next_page`,'GET'),context([id,'tabs','ips']))).status).toBe(200)
+ expect(fetchAifansApi).toHaveBeenCalledWith(`/v1/humans/${id}/tabs/ips?limit=20&cursor=next_page`,expect.anything())
+ vi.mocked(fetchAifansApi).mockClear()
+ for(const query of ['limit=51','limit=0','limit=01','cursor=','cursor=a&cursor=b','limit=20&limit=20','viewerId=forged'])expect((await GET(req(`${id}/tabs/ips?${query}`,'GET'),context([id,'tabs','ips']))).status).toBe(400)
+ expect(fetchAifansApi).not.toHaveBeenCalled()
+})
+it('enforces locked-only shape and matching ready tab on proxy response',async()=>{
+ vi.mocked(fetchAifansApi).mockResolvedValueOnce(Response.json({state:'locked',items:[]})).mockResolvedValueOnce(Response.json({state:'ready',tab:'following',items:[],nextCursor:null})).mockResolvedValueOnce(Response.json({state:'locked'}))
+ expect((await GET(req(`${id}/tabs/ips`,'GET'),context([id,'tabs','ips']))).status).toBe(502)
+ expect((await GET(req(`${id}/tabs/ips`,'GET'),context([id,'tabs','ips']))).status).toBe(502)
+ const response=await GET(req(`${id}/tabs/ips`,'GET'),context([id,'tabs','ips']))
+ expect(response.status).toBe(200);expect(await response.json()).toEqual({state:'locked'})
+})

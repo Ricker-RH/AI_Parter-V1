@@ -1,7 +1,9 @@
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, expect, it, vi} from 'vitest'
 import type {HumanProfile} from '@aifans/contracts'
-import {HumanProfilePanel} from './HumanProfilePanel'
+import {HumanProfilePanel as Panel} from './HumanProfilePanel'
+import messages from '../../../messages/en.json'
+function HumanProfilePanel(props:Omit<Parameters<typeof Panel>[0],'socialLabels'>){return <Panel {...props} socialLabels={messages}/>}
 
 const push = vi.fn()
 vi.mock('next/navigation', () => ({useRouter: () => ({push, replace:vi.fn(), refresh:vi.fn()}), usePathname:()=>'/en/humans/peer'}))
@@ -19,11 +21,11 @@ it('keeps identity visible but locks all four private tabs without fetching cont
  fireEvent.keyDown(screen.getAllByRole('tab')[0]!,{key:'End'})
  expect(screen.getAllByRole('tab')[3]).toHaveFocus()
 })
-it('does not use owner content endpoints for a public visitor',()=>{
- const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher)
+it('uses only visitor content endpoints for a public visitor',async()=>{
+ const fetcher=vi.fn().mockResolvedValue(Response.json({state:'ready',tab:'ips',items:[],nextCursor:null}));vi.stubGlobal('fetch',fetcher)
  render(<HumanProfilePanel initialProfile={{...profile,visibility:'public',tabs:{ips:{state:'available'},liked:{state:'available'},saved:{state:'available'},following:{state:'available'}}}} locale="en"/>)
- expect(screen.getByRole('tabpanel')).toHaveTextContent('This section is not available yet')
- expect(fetcher).not.toHaveBeenCalled()
+ expect(await screen.findByText('No content yet.')).toBeVisible()
+ expect(fetcher).toHaveBeenCalledWith(`/api/humans/${id}/tabs/ips?limit=20`,expect.anything())
 })
 it('follows back using strict empty JSON then refreshes authoritative relationship',async()=>{
  const fetcher=vi.fn().mockResolvedValueOnce(Response.json({changed:true})).mockResolvedValueOnce(Response.json({...profile,relationship:{...profile.relationship,following:true}}));vi.stubGlobal('fetch',fetcher)
@@ -58,4 +60,11 @@ it('shows mutation failure without claiming a successful follow',async()=>{
 it('all tabs keep their referenced panels mounted for assistive technology',()=>{
  render(<HumanProfilePanel initialProfile={profile} locale="en"/>)
  for(const tab of screen.getAllByRole('tab'))expect(document.getElementById(tab.getAttribute('aria-controls')!)).not.toBeNull()
+})
+it('applies a fresh server profile when privacy changes on the same route',async()=>{
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({state:'ready',tab:'ips',items:[],nextCursor:null})))
+ const view=render(<HumanProfilePanel initialProfile={{...profile,visibility:'public',tabs:{ips:{state:'available'},liked:{state:'available'},saved:{state:'available'},following:{state:'available'}}}} locale="en"/>)
+ await screen.findByText('No content yet.')
+ view.rerender(<HumanProfilePanel initialProfile={profile} locale="en"/>)
+ expect(await screen.findByText(/This profile is private/)).toBeVisible()
 })

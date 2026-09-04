@@ -6,6 +6,8 @@ import {PROFILE_BACKGROUND_COLORS, ProfileEditor, clampFocalPoint, type ProfileE
 
 const {replace} = vi.hoisted(() => ({replace: vi.fn()}))
 vi.mock('next/navigation', () => ({useRouter: () => ({replace})}))
+// Preferences have their own network/permission tests; isolate profile-asset request ordering here.
+vi.mock('./HumanPreferencesEditor', () => ({HumanPreferencesEditor: () => <section aria-label="Privacy and presence"/>}))
 
 const account = AccountSchema.parse({
   id: '11111111-1111-4111-8111-111111111111', kind: 'human', username: 'rui', displayName: 'Rui', bio: 'Hello',

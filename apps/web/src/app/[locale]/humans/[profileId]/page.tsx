@@ -3,7 +3,7 @@ import Link from 'next/link'
 import {notFound,redirect} from 'next/navigation'
 import {HumanProfilePanel} from '../../../../components/profile/HumanProfilePanel'
 import {humanProfileLabels} from '../../../../components/profile/human-profile-labels'
-import {isLocale} from '../../../../i18n/config'
+import {getMessages,isLocale} from '../../../../i18n/config'
 import {fetchAifansApi} from '../../../../lib/server-api'
 import {redirectToUserSignIn,requireAuthenticatedPage} from '../../../../lib/auth/access-policy'
 import {uuid} from '../../../../lib/chat-proxy'
@@ -23,5 +23,5 @@ export default async function Page({params}:{params:Promise<{locale:string;profi
  const parsed=HumanProfileSchema.safeParse(await response.json().catch(()=>null))
  if(!parsed.success||parsed.data.identity.id!==profileId)return unavailable
  if(parsed.data.isOwner)redirect(`/${locale}/profile`)
- return <main><HumanProfilePanel key={`${profileId}:${access.viewerScope}`} initialProfile={parsed.data} locale={locale}/></main>
+ return <main><HumanProfilePanel key={`${profileId}:${access.viewerScope}`} initialProfile={parsed.data} locale={locale} socialLabels={await getMessages(locale)} viewerScope={access.viewerScope}/></main>
 }
