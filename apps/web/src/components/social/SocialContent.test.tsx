@@ -988,7 +988,10 @@ describe("real social content", () => {
     const root = process.cwd().endsWith('/apps/web') ? 'src' : 'apps/web/src';
     const css = readFileSync(`${root}/app/globals.css`, 'utf8');
 
+    expect(css).toMatch(/\.post-card \{[^}]*padding: 16px 24px 0/);
+    expect(css).toMatch(/\.comment-thread-item \{[^}]*padding: 16px 24px 0/);
     expect(css).toMatch(/\.post-actions \{[^}]*margin-top: 0/);
     expect(css).toMatch(/\.comment-actions \{ grid-column: 1 \/ -1; margin-top: 0; \}/);
+    expect(css).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-card \{[^}]*padding: 12px 12px 0;?[^}]*\}[\s\S]*?\.comment-thread-item \{[^}]*padding-block: 12px 0;[^}]*padding-inline: 12px/);
   });
 });

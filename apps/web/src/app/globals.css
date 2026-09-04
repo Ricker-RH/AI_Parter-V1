@@ -598,7 +598,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   display: grid;
   column-gap: 10px;
   grid-template-columns: 44px minmax(0, 1fr);
-  padding: 14px 24px;
+  padding: 16px 24px 0;
   position: relative;
 }
 .comment-avatar-rail { min-height: 44px; position: relative; z-index: 0; }
@@ -2081,7 +2081,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .activity-tabs { padding-inline: 20px; }
   .post-card { padding: 12px 12px 0; }
   .post-action { min-height: 44px; }
-  .comment-thread-item { padding-inline: 12px; }
+  .comment-thread-item { padding-block: 12px 0; padding-inline: 12px; }
   .comment-thread-item--reply { padding-left: 12px; }
   .post-detail-scroll-region { --post-detail-mode-clearance: 0px; --post-detail-reply-state-clearance: 0px; --post-detail-feedback-state-clearance: 0px; --social-scroll-bottom-clearance: calc(var(--post-detail-mode-clearance) + var(--post-detail-reply-state-clearance) + var(--post-detail-feedback-state-clearance) + var(--mobile-scroll-breathing-room)); scroll-padding-bottom: var(--social-scroll-bottom-clearance); }
   .post-detail-scroll-region[data-composer-mode="authenticated"] { --post-detail-mode-clearance: var(--post-detail-composer-clearance); }
