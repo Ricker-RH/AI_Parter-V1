@@ -39,6 +39,15 @@ async function resolveActor(c: ApiContext, dependencies: Dependencies, required:
   return actor
 }
 export function registerHumanSocialRoutes(app: Hono<{Variables: ApiVariables}>, dependencies: Dependencies) {
+  app.get('/v1/human-preferences',async c=>{
+    try{
+      const actor=await resolveActor(c,dependencies,true)
+      if(actor instanceof Response)return actor
+      if(!strictQuery(c,empty))return invalid(c)
+      if(!dependencies.humanSocial)return unavailable(c)
+      return c.json(preferences.parse(await dependencies.humanSocial.getPreferences(actor!)))
+    }catch(error){return failure(c,error)}
+  })
   app.get('/v1/humans/:profileId', async c => {
     try {
       const viewer = await resolveActor(c, dependencies, false)

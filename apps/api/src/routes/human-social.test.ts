@@ -8,7 +8,7 @@ const path = `/v1/humans/${profileId}`
 const locked = {state: 'locked'}
 const profile = HumanProfileSchema.parse({v: 1, identity: {kind: 'HUMAN', id: profileId, username: 'test_human', displayName: 'Human', avatarUrl: null}, visibility: 'private', isOwner: false, relationship: {following: false, followedBy: false, blockedByViewer: false, canMessage: false, messageDisabledReason: 'authentication_required'}, tabs: {ips: locked, liked: locked, saved: locked, following: locked}})
 function setup(overrides: Partial<AppDependencies> = {}) {
-  const humanSocial = {getPublicProfile: vi.fn(async () => profile), setPreferences: vi.fn(async () => ({visibility: 'private' as const, showPresence: false})), follow: vi.fn(async () => ({changed: true})), unfollow: vi.fn(async () => ({changed: true})), block: vi.fn(async () => ({changed: true})), unblock: vi.fn(async () => ({changed: true}))}
+  const humanSocial = {getPreferences:vi.fn(async()=>({visibility:'private' as const,showPresence:true})),getPublicProfile: vi.fn(async () => profile), setPreferences: vi.fn(async () => ({visibility: 'private' as const, showPresence: false})), follow: vi.fn(async () => ({changed: true})), unfollow: vi.fn(async () => ({changed: true})), block: vi.fn(async () => ({changed: true})), unblock: vi.fn(async () => ({changed: true}))}
   const profiles = {ensureHumanProfile: vi.fn(), getCurrentAccount: vi.fn(async () => AccountSchema.parse({id: viewerId, kind: 'human', username: 'test_viewer', displayName: 'Viewer', preferredLocale: 'en', creatorModeEnabled: false}))}
   const auth = {verify: vi.fn(async () => ({status: 'authenticated', identity: actor} as const))}
   return {humanSocial, profiles, app: createApp({humanSocial, profiles, auth, ...overrides})}
@@ -16,6 +16,12 @@ function setup(overrides: Partial<AppDependencies> = {}) {
 const body = (method: string, value: unknown = {}) => ({method, headers: {'content-type': 'application/json'}, body: JSON.stringify(value)})
 
 describe('human social routes', () => {
+  it('requires a human actor to read exact persisted preferences, with strict queries',async()=>{
+    const {app,humanSocial}=setup()
+    const response=await app.request('/v1/human-preferences');expect(response.status).toBe(200);expect(await response.json()).toEqual({visibility:'private',showPresence:true});expect(humanSocial.getPreferences).toHaveBeenCalledWith(actor)
+    expect((await app.request('/v1/human-preferences?profileId='+profileId)).status).toBe(400)
+    expect((await setup({auth:{verify:async()=>({status:'missing'})}}).app.request('/v1/human-preferences')).status).toBe(401)
+  })
   it('returns private locked profile metadata to anonymous viewers', async () => {
     const {app, humanSocial} = setup({auth: {verify: async () => ({status: 'missing'})}})
     const response = await app.request(path)

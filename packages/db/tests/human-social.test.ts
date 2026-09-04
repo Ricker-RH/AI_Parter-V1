@@ -10,6 +10,11 @@ function setup(rows:Record<string,unknown>[]=[row],base='https://media.example.t
  return{query,session,publicSession,repo:createHumanSocialRepository({withActor:session,withPublic:publicSession as never,publicMediaBaseUrl:base})}
 }
 describe('human social repository',()=>{
+ it('reads preferences in verified actor session without exposing identity or presence timestamps',async()=>{
+  const {repo,session}=setup([{profile_id:id,profile_visibility:'private',show_presence:true}])
+  expect(await repo.getPreferences(actor)).toEqual({visibility:'private',showPresence:true});expect(session).toHaveBeenCalledWith(actor,expect.any(Function))
+  await expect(setup([]).repo.getPreferences(actor)).rejects.toMatchObject({code:'42501'})
+ })
  it('projects strict private basic profile under public session without activity metadata',async()=>{
   const {repo,publicSession,query}=setup();const result=await repo.getPublicProfile({viewer:null,profileId:id})
   expect(publicSession).toHaveBeenCalledOnce();expect(query).toHaveBeenCalledWith('SELECT * FROM public.human_public_profile($1)',[id])
