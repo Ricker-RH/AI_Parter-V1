@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto'
-import type {HumanRealtimeEvent} from '@aifans/contracts'
+import type {RealtimeEvent} from '@aifans/contracts'
 import type {RealtimePublisher} from '../adapters/realtime-publisher.js'
 
-export type RealtimeOutboxItem={id:string;eventId:string;attemptCount:number;recipientProfileIds:string[];event:HumanRealtimeEvent}
+export type RealtimeOutboxItem={id:string;eventId:string;attemptCount:number;recipientProfileIds:string[];event:RealtimeEvent}
 export type RealtimeOutboxPort={
   claim(input:{leaseToken:string;limit:number;leaseSeconds:number}):Promise<RealtimeOutboxItem[]>
   acknowledge(id:string,leaseToken:string):Promise<boolean>

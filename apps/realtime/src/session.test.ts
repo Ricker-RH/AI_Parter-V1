@@ -65,6 +65,22 @@ async function auth(s: ReturnType<typeof setup>) {
   );
 }
 describe("hibernation-safe gateway sessions", () => {
+  it('isolates AI owner subscriptions from human presence and rechecks AI authorization on delivery',async()=>{
+    const s=setup();await auth(s);s.setPresence(false)
+    const checks:string[]=[]
+    const ports={...s.ports,authorize:async(_identity:unknown,_conversation:string,type?:string)=>{checks.push(type??'human');return {allowed:true,presenceAllowed:false}}}
+    await core.receive(s.socket,JSON.stringify({v:1,type:'subscribe_ai',conversationId}),ports)
+    expect(s.socket.closed).toBeUndefined()
+    expect(core.liveSessions([s.socket],1000)[0]?.subscriptions).toEqual([])
+    const ai={v:1,type:'ai_generation',eventId:profileId,conversationId,messageId:profileId,state:'partial',occurredAt:'2026-09-04T00:00:00Z'}
+    await core.deliver(s.socket,ai,ports)
+    expect(s.socket.sent.at(-1)).toEqual(ai);expect(checks).toEqual(['ai_generation','ai_generation'])
+    const count=s.socket.sent.length
+    await core.deliver(s.socket,event,ports)
+    expect(s.socket.sent).toHaveLength(count)
+    await core.receive(s.socket,JSON.stringify({v:1,type:'unsubscribe_ai',conversationId}),ports)
+    await core.deliver(s.socket,ai,ports);expect(s.socket.sent).toHaveLength(count)
+  })
   it("accepts identity-free typing only for a subscribed, currently permitted conversation and throttles", async () => {
     const s = setup(); await auth(s);
     const emitted: unknown[] = [];

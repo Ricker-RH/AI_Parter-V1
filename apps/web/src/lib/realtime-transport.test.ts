@@ -37,6 +37,19 @@ const event = {v: 1, type: 'read', eventId: '22222222-2222-4222-8222-22222222222
 afterEach(() => vi.useRealTimers())
 
 describe('provider-neutral realtime transport', () => {
+  it('uses explicit AI subscriptions and dispatches AI invalidations separately with deduplication',async()=>{
+    const onAiEvent=vi.fn(),h=setup({onAiEvent}),frame={v:1,type:'subscribe_ai',conversationId} as const
+    expect(h.transport.send(frame)).toBe(false)
+    await h.transport.connect();const socket=h.sockets[0]!;socket.open();socket.receive({v:1,type:'auth_ok'})
+    expect(h.transport.send(frame)).toBe(true)
+    expect(h.transport.send({...frame,type:'unsubscribe_ai'})).toBe(true)
+    const ai={v:1,type:'ai_generation',eventId:conversationId,conversationId,messageId:conversationId,state:'partial',occurredAt:'2026-09-04T10:00:00Z'}
+    socket.receive(ai);socket.receive(ai)
+    expect(onAiEvent).toHaveBeenCalledExactlyOnceWith(ai);expect(h.onEvent).not.toHaveBeenCalled()
+    socket.receive({...ai,eventId:event.eventId,answer:'injected'})
+    expect(onAiEvent).toHaveBeenCalledTimes(1)
+    h.transport.dispose()
+  })
   it('sends typing without client identity only after authentication',async()=>{
     const h=setup(); const typing={v:1,type:'typing',conversationId,isTyping:true} as const;
     expect(h.transport.send(typing)).toBe(false);

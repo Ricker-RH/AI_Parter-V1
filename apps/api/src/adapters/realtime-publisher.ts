@@ -1,7 +1,7 @@
-import {HumanRealtimeEventSchema} from '@aifans/contracts'
+import {RealtimeEventSchema} from '@aifans/contracts'
 import {z} from 'zod'
 
-export type RealtimePublisher = {publish(recipientProfileId:string,event:z.infer<typeof HumanRealtimeEventSchema>):Promise<void>}
+export type RealtimePublisher = {publish(recipientProfileId:string,event:z.infer<typeof RealtimeEventSchema>):Promise<void>}
 
 /** Server-only transport; callers choose recipients from authoritative database data. */
 export function createRealtimePublisher(options:{baseUrl:string;secret:string;fetcher?:typeof fetch}):RealtimePublisher {
@@ -13,7 +13,7 @@ export function createRealtimePublisher(options:{baseUrl:string;secret:string;fe
   return {
     async publish(recipientProfileId,event) {
       const recipient=z.uuid().parse(recipientProfileId)
-      const body=JSON.stringify(HumanRealtimeEventSchema.parse(event))
+      const body=JSON.stringify(RealtimeEventSchema.parse(event))
       if(new TextEncoder().encode(body).byteLength>16384) throw new Error('Invalid realtime event')
       try {
         const response=await fetcher(`${options.baseUrl}/internal/events/${recipient}`,{

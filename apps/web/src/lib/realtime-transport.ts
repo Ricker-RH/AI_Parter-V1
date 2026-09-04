@@ -13,6 +13,7 @@ export interface RealtimeTransportOptions {
   getTicket(signal: AbortSignal): Promise<string>
   webSocketFactory?: (endpoint: string) => RealtimeSocket
   onEvent: (event: HumanRealtimeEvent) => void
+  onAiEvent?: (event: AiRealtimeEvent) => void
   /** Re-fetch authoritative history and explicitly resubscribe here. No local replay. */
   onAuthenticated: (context: {reconnected: boolean}) => void
   onStateChange?: (state: RealtimeState) => void
@@ -23,11 +24,11 @@ export interface RealtimeTransportOptions {
 }
 
 export type RealtimeState = 'connecting' | 'authenticating' | 'ready' | 'reconnecting' | 'auth-required' | 'exhausted' | 'disposed'
-export type RealtimeSubscription = {v: 1; type: 'subscribe' | 'unsubscribe'; conversationId: string}
+export type RealtimeSubscription = {v: 1; type: 'subscribe' | 'unsubscribe' | 'subscribe_ai' | 'unsubscribe_ai'; conversationId: string}
 export type RealtimeTyping = {v:1;type:'typing';conversationId:string;isTyping:boolean}
 
 function isSubscription(value: RealtimeSubscription | RealtimeTyping): boolean {
-  return !!value && value.v === 1 && ['subscribe', 'unsubscribe','typing'].includes(value.type)
+  return !!value && value.v === 1 && ['subscribe', 'unsubscribe','subscribe_ai','unsubscribe_ai','typing'].includes(value.type)
     && typeof value.conversationId === 'string'
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.conversationId)
     && (value.type==='typing' ? typeof value.isTyping==='boolean' && Object.keys(value).length===4 : Object.keys(value).length === 3)
@@ -142,7 +143,7 @@ export function createRealtimeTransport(options: RealtimeTransportOptions) {
           }
         }
         if (!ready) return
-        const parsed = HumanRealtimeEventSchema.safeParse(value)
+        const parsed = RealtimeEventSchema.safeParse(value)
         if (!parsed.success) return
         const event = parsed.data
         // Revocation is security-critical even when its event ID was already seen.
@@ -154,7 +155,8 @@ export function createRealtimeTransport(options: RealtimeTransportOptions) {
         if (seen.has(event.eventId)) return
         seen.add(event.eventId)
         if (seen.size > capacity) seen.delete(seen.values().next().value!)
-        options.onEvent(event)
+        if(event.type==='ai_generation')options.onAiEvent?.(event)
+        else options.onEvent(event)
       }
       connection.onclose = ({code}) => {
         if (!active()) return
@@ -189,4 +191,4 @@ export function createRealtimeTransport(options: RealtimeTransportOptions) {
     },
   }
 }
-import {HumanRealtimeEventSchema, type HumanRealtimeEvent} from '@aifans/contracts'
+import {RealtimeEventSchema, type HumanRealtimeEvent, type AiRealtimeEvent} from '@aifans/contracts'

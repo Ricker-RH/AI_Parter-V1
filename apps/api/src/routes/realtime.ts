@@ -19,7 +19,7 @@ const exactOrigin = z.string().max(256).refine(value => {
 })
 const ticket = z.string().min(1).max(4096)
 const redeemInput = z.strictObject({ticket, origin: exactOrigin})
-const authorizeInput = identity.extend({sessionId: z.uuid(), conversationId: z.uuid(), eventType: z.enum(['message', 'read', 'typing', 'presence', 'access_revoked']).optional()})
+const authorizeInput = identity.extend({sessionId: z.uuid(), conversationId: z.uuid(), eventType: z.enum(['message', 'read', 'typing', 'presence', 'access_revoked', 'ai_generation']).optional()})
 const sessionOutput = identity.extend({sessionId: z.uuid(), sessionExpiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)})
 const accessOutput = z.strictObject({allowed: z.boolean(), presenceAllowed: z.boolean()})
 const ticketOutput = z.strictObject({ticket})

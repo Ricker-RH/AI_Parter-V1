@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HumanRealtimeEventSchema } from "@aifans/contracts";
+import { RealtimeEventSchema } from "@aifans/contracts";
 
 export interface SocketPort {
   serializeAttachment(value: unknown): void;
@@ -36,6 +36,7 @@ const StateSchema = z.strictObject({
   closed: z.boolean(),
   identity: IdentitySchema.nullable(),
   subscriptions: z.array(z.uuid()).max(32),
+  aiSubscriptions: z.array(z.uuid()).max(32).default([]),
   typing: z.record(z.string(),z.object({sentAt:z.number(),expiresAt:z.number(),isTyping:z.boolean()})).default({}),
 });
 const FrameSchema = z.discriminatedUnion("type", [
@@ -47,7 +48,7 @@ const FrameSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     v: z.literal(1),
-    type: z.enum(["subscribe", "unsubscribe"]),
+    type: z.enum(["subscribe", "unsubscribe", "subscribe_ai", "unsubscribe_ai"]),
     conversationId: z.uuid(),
   }),
 ]);
@@ -76,6 +77,7 @@ export function initialize(
     closed: false,
     identity: null,
     subscriptions: [],
+    aiSubscriptions: [],
     typing: {},
   });
 }
@@ -174,6 +176,7 @@ export async function receive(
       close(ws, s, 4401);
       return;
     }
+    if(frame.type==='unsubscribe_ai') {s.aiSubscriptions=s.aiSubscriptions.filter(id=>id!==frame.conversationId);write(ws,s);return;}
     if (frame.type === "unsubscribe") {
       delete s.typing[frame.conversationId];
       s.subscriptions = s.subscriptions.filter(
@@ -182,10 +185,17 @@ export async function receive(
       write(ws, s);
       return;
     }
-    const access = await ports.authorize(s.identity, frame.conversationId);
+    const access = await ports.authorize(s.identity, frame.conversationId, frame.type==='subscribe_ai'?'ai_generation':undefined);
     if (expire(ws, ports.now())) return;
     s = read(ws);
     if (!access.allowed) return;
+    if(frame.type==='subscribe_ai') {
+      if(!s.aiSubscriptions.includes(frame.conversationId)) {
+        if(s.subscriptions.length+s.aiSubscriptions.length>=32){close(ws,s,4429);return;}
+        s.aiSubscriptions.push(frame.conversationId);write(ws,s);
+      }
+      return;
+    }
     if(frame.type==='typing') {
       if(!access.presenceAllowed || !s.subscriptions.includes(frame.conversationId)) return;
       const previous=s.typing[frame.conversationId];
@@ -196,7 +206,7 @@ export async function receive(
       return;
     }
     if (!s.subscriptions.includes(frame.conversationId)) {
-      if (s.subscriptions.length >= 32) {
+      if (s.subscriptions.length+s.aiSubscriptions.length >= 32) {
         close(ws, s, 4429);
         return;
       }
@@ -209,11 +219,12 @@ export async function receive(
   }
 }
 export async function deliver(ws: SocketPort, input: unknown, ports: Upstream) {
-  const parsed = HumanRealtimeEventSchema.safeParse(input);
+  const parsed = RealtimeEventSchema.safeParse(input);
   if (!parsed.success || expire(ws, ports.now())) return;
   const event = parsed.data;
   let s = read(ws);
-  if (!s.identity || !s.subscriptions.includes(event.conversationId)) return;
+  const subscriptionKey=event.type==='ai_generation'?'aiSubscriptions':'subscriptions';
+  if (!s.identity || !s[subscriptionKey].includes(event.conversationId)) return;
   // Revocation is emitted only by the trusted API and must reach former members.
   if (event.type === "access_revoked") {
     delete s.typing[event.conversationId];
@@ -232,10 +243,10 @@ export async function deliver(ws: SocketPort, input: unknown, ports: Upstream) {
     );
     if (expire(ws, ports.now())) return;
     s = read(ws);
-    if (!s.subscriptions.includes(event.conversationId)) return;
+    if (!s[subscriptionKey].includes(event.conversationId)) return;
     if (!access.allowed) {
       delete s.typing[event.conversationId];
-      s.subscriptions = s.subscriptions.filter(
+      s[subscriptionKey] = s[subscriptionKey].filter(
         (id) => id !== event.conversationId,
       );
       write(ws, s);

@@ -3,7 +3,7 @@ export type RealtimeSession = RealtimeIdentity & {sessionId: string; sessionExpi
 export type RealtimeAuthorization = RealtimeIdentity & {
   sessionId: string
   conversationId: string
-  eventType?: 'message' | 'read' | 'typing' | 'presence' | 'access_revoked'
+  eventType?: 'message' | 'read' | 'typing' | 'presence' | 'access_revoked' | 'ai_generation'
 }
 export type RealtimePort = {
   issue(identity: RealtimeIdentity, origin: string): Promise<string>

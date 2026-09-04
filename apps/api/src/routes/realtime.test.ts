@@ -88,6 +88,8 @@ describe('realtime authorization routes', () => {
     expect(realtime.redeem).toHaveBeenCalledWith(redeemBody)
     expect(await (await app.request(paths.authorize, post({...authorizeBody, eventType: 'typing'}, {authorization: `Bearer ${secret}`}))).json()).toEqual({allowed: true, presenceAllowed: false})
     expect(realtime.authorize).toHaveBeenCalledWith({...authorizeBody, eventType: 'typing'}); expect(auth.verify).not.toHaveBeenCalled()
+    expect((await app.request(paths.authorize,post({...authorizeBody,eventType:'ai_generation'},{authorization:`Bearer ${secret}`}))).status).toBe(200)
+    expect(realtime.authorize).toHaveBeenCalledWith({...authorizeBody,eventType:'ai_generation'})
   })
   it('rejects unknown, duplicate and malformed callback inputs without storage', async () => {
     const {app, realtime} = setup()

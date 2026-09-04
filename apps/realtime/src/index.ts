@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { HumanRealtimeEventSchema } from "@aifans/contracts";
+import { RealtimeEventSchema } from "@aifans/contracts";
 import { admit, boundedJson, upstream, type Configuration } from "./gateway.js";
 import {
   deadline,
@@ -56,7 +56,7 @@ export class RealtimeMailbox extends DurableObject<Env> {
       if (route.kind === "event") {
         let event;
         try {
-          event = HumanRealtimeEventSchema.parse(await boundedJson(request));
+          event = RealtimeEventSchema.parse(await boundedJson(request));
         } catch {
           return new Response(null, { status: 400 });
         }
