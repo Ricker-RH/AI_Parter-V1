@@ -9,7 +9,7 @@
   "env": {
     "test": {
       "name": "aifans-realtime-isolated-test",
-      "workers_dev": false,
+      "workers_dev": true,
       "preview_urls": false,
       "triggers": {"crons": ["* * * * *"]},
       "ratelimits": [
