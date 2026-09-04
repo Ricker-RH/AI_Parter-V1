@@ -1,4 +1,4 @@
-import {HumanShareTargetQuerySchema,HumanShareTargetSchema,HumanShareTargetPageSchema,HumanShareResolutionSchema} from '@aifans/contracts'
+import {HumanShareTargetQuerySchema,HumanShareTargetSchema,HumanShareTargetPageSchema,HumanShareRecipientPageSchema,HumanShareResolutionSchema} from '@aifans/contracts'
 import type {Actor} from '@aifans/db'
 import {z} from 'zod'
 import type {Context,Hono} from 'hono'
@@ -29,6 +29,13 @@ function failure(c:C,error:unknown){
 }
 export function registerHumanChatRichContentRoutes(app:Hono<{Variables:ApiVariables}>,d:Dependencies){
  app.use('/v1/human-chat/share-targets*',async(c,next)=>{c.header('Cache-Control','private, no-store');await next()})
+ app.use('/v1/human-chat/share-recipients',async(c,next)=>{c.header('Cache-Control','private, no-store');await next()})
+ app.get('/v1/human-chat/share-recipients',async c=>{
+  try{const current=await actor(c,d);if(current instanceof Response)return current
+   if(!strictQuery(c,empty))return apiError(c,400,'INVALID_REQUEST','Request is invalid')
+   return c.json(HumanShareRecipientPageSchema.parse(await d.humanChatRichContent!.listShareRecipients(current)))
+  }catch(e){return failure(c,e)}
+ })
  app.get('/v1/human-chat/share-targets',async c=>{
   try{const current=await actor(c,d);if(current instanceof Response)return current
    const value=strictQuery(c,query);if(!value)return apiError(c,400,'INVALID_REQUEST','Request is invalid')

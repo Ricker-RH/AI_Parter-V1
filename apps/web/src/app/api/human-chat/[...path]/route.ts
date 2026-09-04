@@ -13,6 +13,7 @@ import {
   HumanMediaDownloadSchema,
   HumanStickerIdSchema,
   HumanShareTargetPageSchema,
+  HumanShareRecipientPageSchema,
   HumanShareResolutionSchema,
   HumanShareTargetQuerySchema,
 } from "@aifans/contracts";
@@ -46,6 +47,7 @@ async function proxy(
   const { path } = await context.params;
   const inbox = path.length === 1 && path[0] === "conversations";
   const shareSearch = path.length === 1 && path[0] === "share-targets";
+  const shareRecipients = path.length === 1 && path[0] === "share-recipients";
   const shareResolve =
     path.length === 3 &&
     path[0] === "share-targets" &&
@@ -83,7 +85,7 @@ async function proxy(
     path[2] === "download";
   if (
     !(method === "GET"
-      ? inbox || history || download || shareSearch || shareResolve
+      ? inbox || history || download || shareSearch || shareRecipients || shareResolve
       : inbox || read || send || reserve || finalize)
   ) {
     await cancelBody(request);
@@ -192,6 +194,7 @@ async function proxy(
     const value: unknown = await upstream.json();
     let output: unknown;
     if (shareSearch) output = HumanShareTargetPageSchema.parse(value);
+    else if (shareRecipients) output = HumanShareRecipientPageSchema.parse(value);
     else if (shareResolve) output = HumanShareResolutionSchema.parse(value);
     else if (reserve) output = HumanMediaUploadSchema.parse(value);
     else if (finalize) output = HumanMediaAttachmentSchema.parse(value);

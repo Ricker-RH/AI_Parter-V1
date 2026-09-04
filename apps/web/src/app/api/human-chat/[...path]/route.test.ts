@@ -287,3 +287,17 @@ it("rejects duplicate paging fields and malformed response shapes", async () => 
     ).status,
   ).toBe(502);
 });
+it("forwards server-authorized mutual share recipients with avatar URLs", async () => {
+  const items = [{ id, displayName: "Mutual", avatarUrl: "https://cdn.example/avatar.webp" }];
+  upstream.mockResolvedValueOnce(Response.json({ items }));
+  const response = await GET(
+    new Request("https://app.test/api/human-chat/share-recipients"),
+    context(["share-recipients"]),
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ items });
+  expect(upstream).toHaveBeenCalledWith(
+    "/v1/human-chat/share-recipients",
+    expect.objectContaining({ policy: "live-no-store" }),
+  );
+});

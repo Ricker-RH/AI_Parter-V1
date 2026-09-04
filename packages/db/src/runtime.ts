@@ -132,7 +132,7 @@ export function createDatabaseRuntimeRepositories(
     realtimeSessions: createPostgresRealtimeSessionRepository({withPlatformActor}),
     humanRealtimeOutbox: createPostgresHumanRealtimeOutboxRepository({withPlatformActor}),
     humanChatMedia:createHumanChatMediaRepository({withActor,withPlatformActor}),
-    humanChatRichContent:createHumanChatRichContentRepository({withActor}),
+    humanChatRichContent:createHumanChatRichContentRepository({withActor,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     realtimeRevocation:createRealtimeRevocationRepository({withActor}),
     aiRealtimeOutbox:createPostgresAiRealtimeOutboxRepository({withPlatformActor}),
     realtimeEphemeral:createPostgresRealtimeEphemeralRepository({withPlatformActor}),

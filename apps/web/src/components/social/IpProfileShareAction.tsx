@@ -1,7 +1,7 @@
 'use client'
 
 import type {PublicIp} from '@aifans/contracts'
-import {HumanMessageSchema, HumanRelationshipBatchSchema, HumanShareTargetPageSchema} from '@aifans/contracts'
+import {HumanMessageSchema, HumanShareRecipientPageSchema} from '@aifans/contracts'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import {HumanAvatar} from '../account/HumanAvatar'
@@ -78,16 +78,11 @@ function IpProfileShareSheet({locale, onClose, profile}: Props & {onClose: () =>
   useEffect(() => {
     if (account?.kind !== 'human') { setRecipients([]); return }
     const controller = new AbortController()
-    void fetch('/api/human-chat/share-targets?kind=human&q=&limit=20', {cache: 'no-store', credentials: 'same-origin', method: 'GET', signal: controller.signal})
+    void fetch('/api/human-chat/share-recipients', {cache: 'no-store', credentials: 'same-origin', method: 'GET', signal: controller.signal})
       .then(async response => {
         if (!response.ok) throw Error('FRIENDS_UNAVAILABLE')
-        const page = HumanShareTargetPageSchema.parse(await response.json())
-        const people = page.items.map(card => ({id: card.target.id, displayName: card.title}))
-        if (people.length === 0) { if (!controller.signal.aborted) setRecipients([]); return }
-        const relationships = await fetch('/api/human-relationships', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({profileIds: people.map(person => person.id)}), cache: 'no-store', credentials: 'same-origin', signal: controller.signal})
-        if (!relationships.ok) throw Error('FRIENDS_UNAVAILABLE')
-        const eligible = new Set(HumanRelationshipBatchSchema.parse(await relationships.json()).items.filter(item => item.following && item.followedBy).map(item => item.profileId))
-        if (!controller.signal.aborted) setRecipients(people.filter(person => eligible.has(person.id)))
+        const page = HumanShareRecipientPageSchema.parse(await response.json())
+        if (!controller.signal.aborted) setRecipients(page.items)
       })
       .catch(() => { if (!controller.signal.aborted) setRecipients(null) })
     return () => controller.abort()

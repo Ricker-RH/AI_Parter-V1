@@ -4,7 +4,7 @@ import {registerHumanChatRichContentRoutes} from './human-chat-rich-content.js'
 import type {ApiVariables} from '../middleware/request-id.js'
 const id='edc5b166-125d-4af3-ac8c-233a773f66c1'
 function setup(){
- const port={listTargets:vi.fn(async()=>({items:[{target:{kind:'human',id},title:'Server Name',subtitle:'@name'}]})),resolveTarget:vi.fn(async()=>({state:'unavailable'}))}
+ const port={listTargets:vi.fn(async()=>({items:[{target:{kind:'human',id},title:'Server Name',subtitle:'@name'}]})),listShareRecipients:vi.fn(async()=>({items:[{id,displayName:'Mutual',avatarUrl:null}]})),resolveTarget:vi.fn(async()=>({state:'unavailable'}))}
  const app=new Hono<{Variables:ApiVariables}>();app.use('*',async(c,next)=>{c.set('requestId','test');await next()})
  registerHumanChatRichContentRoutes(app,{auth:{verify:async()=>({status:'authenticated',identity:{subject:'owner'}})} as never,profiles:{getCurrentAccount:async()=>({kind:'human'})} as never,humanChatRichContent:port as never})
  return {app,port}
@@ -17,6 +17,9 @@ describe('HUMAN internal share routes',()=>{
   expect(port.listTargets).toHaveBeenCalledWith({subject:'owner'},{kind:'human',q:'Name',limit:20})
   expect((await app.request(`/v1/human-chat/share-targets/post/${id}`)).status).toBe(200)
   expect(port.resolveTarget).toHaveBeenCalledWith({subject:'owner'},{kind:'post',id})
+  const recipients=await app.request('/v1/human-chat/share-recipients')
+  expect(recipients.status).toBe(200);expect(await recipients.json()).toEqual({items:[{id,displayName:'Mutual',avatarUrl:null}]})
+  expect(port.listShareRecipients).toHaveBeenCalledWith({subject:'owner'})
  })
  it('rejects URL targets, unknown/duplicate query keys and invalid bounds',async()=>{
   const {app,port}=setup()
