@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChatIcon } from "./ChatIcon";
-import { HumanMessageSchema } from "@aifans/contracts";
+import { HumanMessageSchema, type HumanMessage } from "@aifans/contracts";
 import { humanRequest } from "../../lib/human-chat-client";
 import {
   mediaContentType,
@@ -23,7 +23,7 @@ type Props = {
   selfProfileId: string;
   locale: Locale;
   disabled: boolean;
-  onSent: () => void;
+  onSent: (message: HumanMessage) => void;
   onError: (cause: unknown) => void;
   onBusy: (busy: boolean) => void;
   compact?: boolean;
@@ -213,7 +213,7 @@ export function HumanMediaControls(props: Props) {
       )
         throw Error("HUMAN_MEDIA_INVALID");
       cancel();
-      callbacks.current.onSent();
+      callbacks.current.onSent(message);
     } catch (cause) {
       if (!request.signal.aborted) {
         setError(true);

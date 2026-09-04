@@ -375,6 +375,11 @@ function HumanDetail({
       }
     }
   }
+  function mergeSent(message: HumanMessage) {
+    messages.current = mergeHumanMessages(messages.current, [message]);
+    setItems(messages.current);
+    onMessageSent?.(message);
+  }
   return (
     <ConversationDetailSurface
       name={
@@ -623,10 +628,9 @@ function HumanDetail({
               disabled={sending || richBusy || denied || revoked}
               onBusy={setMediaBusy}
               onError={handleError}
-              onSent={() => {
+              onSent={(message) => {
                 setError(null);
-                void refresh();
-                changed.current();
+                mergeSent(message);
               }}
             />
             <HumanRichComposer
@@ -638,10 +642,9 @@ function HumanDetail({
               disabled={sending || mediaBusy || denied || revoked}
               onBusy={setRichBusy}
               onError={handleError}
-              onSent={() => {
+              onSent={(message) => {
                 setError(null);
-                void refresh();
-                changed.current();
+                mergeSent(message);
               }}
             />
           </div>

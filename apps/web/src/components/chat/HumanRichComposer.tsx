@@ -4,6 +4,7 @@ import {
   HUMAN_CHAT_STICKERS,
   HumanMessageSchema,
   HumanShareTargetPageSchema,
+  type HumanMessage,
   type HumanShareCard,
   type HumanShareTarget,
 } from "@aifans/contracts";
@@ -27,7 +28,7 @@ type Props = {
   selfProfileId: string;
   locale: Locale;
   disabled: boolean;
-  onSent: () => void;
+  onSent: (message: HumanMessage) => void;
   onError: (cause: unknown) => void;
   onBusy: (busy: boolean) => void;
   panel?: "emoji" | "more" | null;
@@ -142,7 +143,7 @@ export function HumanRichComposer(props: Props) {
       )
         throw Error("HUMAN_CHAT_INVALID_RESPONSE");
       cancel();
-      callbacks.current.onSent();
+      callbacks.current.onSent(message);
     } catch (cause) {
       if (!request.signal.aborted) {
         setFailed(true);
