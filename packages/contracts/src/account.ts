@@ -2,6 +2,8 @@ import {z} from 'zod'
 
 export const LocaleSchema = z.enum(['en', 'zh-CN'])
 
+const HttpUrlSchema = z.url({protocol: /^https?$/})
+
 export const ProfileBackgroundColorKeySchema = z.enum([
   'paper',
   'sand',
@@ -19,7 +21,7 @@ export const ProfileBackgroundSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('image'),
-    url: z.url(),
+    url: HttpUrlSchema,
     focalX: z.number().min(0).max(1),
     focalY: z.number().min(0).max(1),
   }),
@@ -39,10 +41,10 @@ export const ProfileAssetIntentRequestSchema = z.strictObject({
 export const ProfileAssetIntentSchema = z.strictObject({
   assetId: z.uuid(),
   method: z.literal('PUT'),
-  url: z.url(),
+  url: HttpUrlSchema,
   headers: z.record(z.string(), z.string()),
   expiresAt: z.iso.datetime(),
-  maxBytes: z.number().int(),
+  maxBytes: z.number().int().min(1),
 })
 
 export const ProfileAssetConfirmationRequestSchema = z.strictObject({
@@ -60,9 +62,10 @@ export const AccountSchema = z.object({
   username: z.string().min(3).max(30).regex(/^[a-z0-9_]+$/),
   displayName: z.string().min(1).max(80),
   bio: z.string().max(500).nullable().optional(),
-  avatarUrl: z.url().nullable().optional(),
+  avatarUrl: HttpUrlSchema.nullable().optional(),
   preferredLocale: LocaleSchema,
   creatorModeEnabled: z.boolean(),
+  // Temporary legacy normalization; Task 2 replaces this with authoritative DB profile_version.
   profileVersion: z.number().int().positive().default(1),
   background: ProfileBackgroundSchema.default({type: 'color', colorKey: 'paper'}),
 })

@@ -16,7 +16,7 @@ const labels = {
   saveError: 'Profile could not be saved.', invalidName: 'Enter a name.', invalidUsername: 'Use 3–30 lowercase letters, numbers, or underscores.',
   back:'Back',search:'Search',more:'More',tabs:'Profile sections',myIps:'My IPs',liked:'Liked',savedTab:'Saved',following:'Following',loadingSection:'Loading section…',unavailableSection:'Unable to load this section.',retrySection:'Try again',myIpsEmpty:'No IPs yet',likedEmpty:'No liked posts yet',savedEmpty:'No saved posts yet',followingEmpty:'Not following anyone yet',
 }
-const account = {id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30', kind: 'human', username: 'rui', displayName: 'Rui', bio: null, preferredLocale: 'en', creatorModeEnabled: false}
+const account = {id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30', kind: 'human', username: 'rui', displayName: 'Rui', bio: null, preferredLocale: 'en', creatorModeEnabled: false, profileVersion: 7, background: {type: 'color', colorKey: 'paper'}}
 const moduleUrl = import.meta.url
 const stylesheet = readFileSync(fileURLToPath(new URL('./MyProfilePanel.module.css', moduleUrl)), 'utf8')
 const globalStylesheet = readFileSync(fileURLToPath(new URL('../../app/globals.css', moduleUrl)), 'utf8')
@@ -49,6 +49,8 @@ describe('MyProfilePanel', () => {
     expect(screen.getByRole('heading', {level: 2, name: 'Rui Updated'})).toBeVisible()
     expect(screen.getByRole('button', {name: 'Edit profile'})).toHaveFocus()
     expect(request).toHaveBeenLastCalledWith('/api/me', expect.objectContaining({method: 'PATCH'}))
+    expect(JSON.parse(String((request.mock.calls.at(-1)?.[1] as RequestInit).body)))
+      .toMatchObject({profileVersion: 7, displayName: 'Rui Updated', bio: 'Hello'})
   })
 
   it('keeps the edit modal open and reports save failures', async () => {

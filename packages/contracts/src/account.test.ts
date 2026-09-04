@@ -221,4 +221,40 @@ describe('AIFANS contracts', () => {
       expect(schema.safeParse(input).success, label).toBe(false)
     }
   })
+
+  describe.each([
+    ['javascript', 'javascript:alert(1)'],
+    ['data', 'data:image/png;base64,AA=='],
+    ['file', 'file:///tmp/avatar.png'],
+    ['ftp', 'ftp://uploads.example.com/avatar.png'],
+  ])('rejects %s URLs', (_scheme, url) => {
+    it('for public profile images', () => {
+      expect(ProfileBackgroundSchema.safeParse({
+        type: 'image', url, focalX: 0.5, focalY: 0.5,
+      }).success).toBe(false)
+      expect(AccountSchema.safeParse({...account, avatarUrl: url}).success).toBe(false)
+    })
+
+    it('for signed profile asset intents', () => {
+      expect(ProfileAssetIntentSchema.safeParse({
+        assetId: '361967d8-e74f-4f6a-a6b7-ff29656de9f4',
+        method: 'PUT',
+        url,
+        headers: {'content-type': 'image/webp'},
+        expiresAt: '2026-09-04T12:00:00.000Z',
+        maxBytes: 10_485_760,
+      }).success).toBe(false)
+    })
+  })
+
+  it.each([0, -1])('rejects a profile asset intent maxBytes of %s', (maxBytes) => {
+    expect(ProfileAssetIntentSchema.safeParse({
+      assetId: '361967d8-e74f-4f6a-a6b7-ff29656de9f4',
+      method: 'PUT',
+      url: 'https://uploads.example.com/profile',
+      headers: {'content-type': 'image/webp'},
+      expiresAt: '2026-09-04T12:00:00.000Z',
+      maxBytes,
+    }).success).toBe(false)
+  })
 })

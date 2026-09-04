@@ -25,7 +25,7 @@ function parseAccount(value: unknown): Account | null {
 
 export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {labels: MyProfileLabels; locale: Locale; socialLabels?: SocialLabels; viewerScope?: string}) {
   const [state, setState] = useState<State>({status: 'loading'})
-  const [draft, setDraft] = useState<UpdateCurrentAccount>({})
+  const [draft, setDraft] = useState<Partial<UpdateCurrentAccount>>({})
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [fieldError, setFieldError] = useState<'name' | 'username' | null>(null)
@@ -122,7 +122,7 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
   const value = (key: keyof UpdateCurrentAccount) => draft[key] === undefined ? key === 'bio' ? account.bio ?? '' : account[key === 'displayName' ? 'displayName' : key === 'preferredLocale' ? 'preferredLocale' : 'username'] : draft[key]
   function beginEdit() {
     dismissingEdit.current = false
-    setDraft({username: account.username, displayName: account.displayName, bio: account.bio ?? null, preferredLocale: account.preferredLocale})
+    setDraft({profileVersion: account.profileVersion, username: account.username, displayName: account.displayName, bio: account.bio ?? null, preferredLocale: account.preferredLocale})
     setFieldError(null); setMessage(null); setState({status: 'editing', account})
   }
   async function save() {
