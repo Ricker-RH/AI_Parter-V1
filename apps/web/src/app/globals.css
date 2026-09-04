@@ -2097,8 +2097,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 @media (min-width: 700px) and (max-width: 1183px) {
   .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
   .shell[data-shell="public"] .content { background: var(--shell-surface); height: calc(100dvh - 32px); margin-left: max(100px, calc((100% - 640px) / 2)); margin-top: 16px; overflow: hidden; width: min(640px, calc(100% - 100px)); }
-  .mobile-nav, .mobile-unread-badge { align-items: center; background: #e5484d; border: 2px solid var(--shell-surface); border-radius: 999px; color: #fff; display: inline-flex; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; justify-content: center; line-height: 1; min-height: 18px; min-width: 18px; padding: 0 4px; position: absolute; right: calc(50% - 22px); top: 2px; z-index: 1; }
-.mobile-top-bar { display: none; }
+  .mobile-nav, .mobile-top-bar { display: none; }
   .mobile-feed-tabs { display: none; }
   .shell[data-shell="public"] .desktop-nav { background: var(--shell-surface); bottom: 0; display: block; left: 0; overflow: visible; padding: 24px 10px; position: fixed; top: 0; width: 76px; z-index: 20; }
   .shell[data-shell="public"] .desktop-nav .brand { margin: 2px 0 28px 10px; width: 32px; }
@@ -2129,8 +2128,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .shell[data-shell="public"] { display: block; margin: 0; max-width: none; position: relative; width: 100%; }
   .shell[data-shell="public"] .content { background: var(--shell-surface); height: calc(100dvh - 32px); margin-left: max(272px, calc((100% - 640px) / 2)); margin-top: 16px; overflow: hidden; width: min(640px, calc(100% - 272px)); }
   .shell[data-shell="public"] .desktop-nav { bottom: 0; left: 0; position: fixed; top: 0; width: 248px; z-index: 10; }
-  .mobile-nav, .mobile-unread-badge { align-items: center; background: #e5484d; border: 2px solid var(--shell-surface); border-radius: 999px; color: #fff; display: inline-flex; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 800; justify-content: center; line-height: 1; min-height: 18px; min-width: 18px; padding: 0 4px; position: absolute; right: calc(50% - 22px); top: 2px; z-index: 1; }
-.mobile-top-bar { display: none; }
+  .mobile-nav, .mobile-top-bar { display: none; }
   .desktop-nav .rail-controls, .mobile-feed-tabs { display: none; }
   .home-page, .collection-page, .post-detail-page { height: 100%; }
   .post-detail-title { justify-self: start; }

@@ -28,6 +28,12 @@ describe('ordinary-user fluid shell CSS contract', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.content \{[\s\S]*?margin-left: max\(272px, calc\(\(100% - 640px\) \/ 2\)\)/)
   })
 
+  it('hides the mobile navigation before applying desktop rail layouts', () => {
+    expect(stylesheet).not.toContain('.mobile-nav, .mobile-unread-badge')
+    expect(stylesheet).toMatch(/@media \(min-width: 700px\) and \(max-width: 1183px\) \{[\s\S]*?\.mobile-nav, \.mobile-top-bar \{ display: none;/)
+    expect(stylesheet).toMatch(/@media \(min-width: 1184px\) \{[\s\S]*?\.mobile-nav, \.mobile-top-bar \{ display: none;/)
+  })
+
   it('adds recommendations at 1328px without making them a primary-layout column', () => {
     expect(stylesheet).toMatch(/@media \(min-width: 1328px\) \{[\s\S]*?\.shell\[data-shell="public"\] \.right-rail \{[\s\S]*?position: absolute/)
   })
