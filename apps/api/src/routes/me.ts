@@ -167,6 +167,25 @@ export function registerMeRoutes(
       const actor = {subject: authenticated.subject}
       const reservation = await profileRepository.getProfileAssetReservation(actor, pathId.data)
       if (!reservation) return apiError(c, 404, 'PROFILE_ASSET_NOT_FOUND', 'Profile asset was not found')
+      const cleanup = async () => {
+        try {
+          await profileAssets.cleanupStaging({
+            stagingObjectKey: reservation.stagingObjectKey,
+            finalObjectKey: reservation.finalObjectKey,
+            contentType: reservation.uploadContentType,
+            sizeBytes: reservation.sizeBytes,
+          })
+        } catch {
+          // Confirmation is durable even when staging deletion has an ambiguous outcome.
+        }
+      }
+      if (reservation.verifiedAt) {
+        await cleanup()
+        return c.json(ProfileAssetConfirmationResponseSchema.parse({
+          assetId: reservation.id,
+          role: reservation.role,
+        }), 200)
+      }
       const finalized = await profileAssets.finalizeUpload({
         stagingObjectKey: reservation.stagingObjectKey,
         finalObjectKey: reservation.finalObjectKey,
@@ -182,6 +201,7 @@ export function registerMeRoutes(
       }
       const confirmed = await profileRepository.confirmProfileAsset(actor, pathId.data, finalized.finalObjectKey)
       if (!confirmed) return apiError(c, 409, 'PROFILE_ASSET_EXPIRED', 'Profile asset reservation expired')
+      await cleanup()
       return c.json(ProfileAssetConfirmationResponseSchema.parse({assetId: confirmed.id, role: confirmed.role}), 200)
     } catch (error) {
       return profileError(c, error)

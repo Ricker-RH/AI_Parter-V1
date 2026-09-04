@@ -32,4 +32,10 @@ export type ProfileAssetPort = {
     width: number
     height: number
   }>
+  cleanupStaging(input: {
+    stagingObjectKey: string
+    finalObjectKey: string
+    contentType: ProfileImageContentType
+    sizeBytes: number
+  }): Promise<void>
 }

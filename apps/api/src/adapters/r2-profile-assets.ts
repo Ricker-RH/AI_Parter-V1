@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -16,6 +17,10 @@ import {
 
 type Driver = {
   sign(input: {bucket: string; key: string; contentType: string; contentLength: number; expiresIn: number}): Promise<string>
+  inspect(input: {bucket: string; key: string}): Promise<{
+    contentType: string | undefined
+    sizeBytes: number | undefined
+  } | null>
   read(input: {bucket: string; key: string}): Promise<unknown | null>
   write(input: {bucket: string; key: string; body: Uint8Array; contentType: 'image/webp'; cacheControl: string;
     ifNoneMatch: '*'}): Promise<void>
@@ -94,6 +99,15 @@ function awsDriver(configuration: R2PostMediaEnvironment): Driver {
   return {
     sign: (input) => getSignedUrl(client, new PutObjectCommand({Bucket: input.bucket, Key: input.key,
       ContentType: input.contentType, ContentLength: input.contentLength}), {expiresIn: input.expiresIn}),
+    async inspect(input) {
+      try {
+        const object = await client.send(new HeadObjectCommand({Bucket: input.bucket, Key: input.key}))
+        return {contentType: object.ContentType, sizeBytes: object.ContentLength}
+      } catch (error) {
+        if (statusCode(error) === 404) return null
+        throw error
+      }
+    },
     async read(input) {
       try {
         return (await client.send(new GetObjectCommand({Bucket: input.bucket, Key: input.key}))).Body ?? null
@@ -136,6 +150,21 @@ export function createR2ProfileAssetPort(configuration: R2PostMediaEnvironment, 
       if (!role.success || role.data !== stagingKey.exec(input.stagingObjectKey)?.[2]) invalid()
       if (!Number.isInteger(input.width) || input.width < 64 || input.width > 12_000
         || !Number.isInteger(input.height) || input.height < 64 || input.height > 12_000) invalid()
+
+      try {
+        const existing = await driver.inspect({bucket: configuration.bucket, key: input.finalObjectKey})
+        if (existing) {
+          if (existing.contentType !== 'image/webp' || !Number.isInteger(existing.sizeBytes)
+            || existing.sizeBytes! < 1 || existing.sizeBytes! > PROFILE_ASSET_MAX_BYTES) invalid()
+          const scale = role.data === 'avatar' ? 1 : Math.min(1, 2400 / input.width, 1600 / input.height)
+          return {finalObjectKey: input.finalObjectKey, contentType: 'image/webp', sizeBytes: existing.sizeBytes!,
+            width: role.data === 'avatar' ? 512 : Math.round(input.width * scale),
+            height: role.data === 'avatar' ? 512 : Math.round(input.height * scale)}
+        }
+      } catch (error) {
+        if (isProfileError(error)) throw error
+        unavailable()
+      }
 
       let source: Buffer
       try {
@@ -181,14 +210,17 @@ export function createR2ProfileAssetPort(configuration: R2PostMediaEnvironment, 
           unavailable()
         }
       }
+      return {finalObjectKey: input.finalObjectKey, contentType: 'image/webp', sizeBytes: normalized.length,
+        width: outputWidth, height: outputHeight}
+    },
+    async cleanupStaging(input) {
+      validateKeys(input)
       try {
         await driver.delete({bucket: configuration.bucket, key: input.stagingObjectKey})
       } catch (error) {
         if (isProfileError(error)) throw error
         unavailable()
       }
-      return {finalObjectKey: input.finalObjectKey, contentType: 'image/webp', sizeBytes: normalized.length,
-        width: outputWidth, height: outputHeight}
     },
   }
 }

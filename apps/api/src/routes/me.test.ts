@@ -51,6 +51,7 @@ function setup(overrides: {auth?: unknown; profiles?: unknown; profileAssets?: u
     })),
     finalizeUpload: vi.fn(async () => ({finalObjectKey, contentType: 'image/webp' as const,
       sizeBytes: 1_024, width: 512, height: 512})),
+    cleanupStaging: vi.fn(async () => undefined),
   } : overrides.profileAssets
   const app = new Hono<{Variables: ApiVariables}>()
   app.use('*', requestIdMiddleware)
@@ -59,7 +60,8 @@ function setup(overrides: {auth?: unknown; profiles?: unknown; profileAssets?: u
     profiles,
     profileAssets: profileAssets as never,
   })
-  return {app, profiles, profileAssets: profileAssets as {createUploadIntent: ReturnType<typeof vi.fn>; finalizeUpload: ReturnType<typeof vi.fn>}}
+  return {app, profiles, profileAssets: profileAssets as {createUploadIntent: ReturnType<typeof vi.fn>;
+    finalizeUpload: ReturnType<typeof vi.fn>; cleanupStaging: ReturnType<typeof vi.fn>}}
 }
 
 async function expectError(response: Response, status: number, code: string) {
@@ -195,6 +197,49 @@ describe('current account routes', () => {
     })
     expect(profileAssets.finalizeUpload).toHaveBeenCalledBefore(profiles.confirmProfileAsset)
     expect(profiles.confirmProfileAsset).toHaveBeenCalledWith({subject: 'subject'}, assetId, finalObjectKey)
+    expect(profiles.confirmProfileAsset).toHaveBeenCalledBefore(profileAssets.cleanupStaging)
+  })
+
+  it('keeps staging after a transient confirmation failure and succeeds on retry', async () => {
+    const confirmProfileAsset = vi.fn()
+      .mockRejectedValueOnce(new Error('database unavailable'))
+      .mockResolvedValueOnce({...reservation, verifiedAt: '2026-09-04T00:01:00.000Z'})
+    const configured = setup({profiles: {confirmProfileAsset}})
+    const request = () => configured.app.request(`/v1/me/assets/${assetId}/confirm`, {
+      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
+    })
+    expect((await request()).status).toBe(500)
+    expect(configured.profileAssets.cleanupStaging).not.toHaveBeenCalled()
+    expect((await request()).status).toBe(200)
+    expect(configured.profileAssets.finalizeUpload).toHaveBeenCalledTimes(2)
+    expect(configured.profileAssets.cleanupStaging).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns an already verified reservation idempotently and cleans staging best-effort', async () => {
+    const verified = {...reservation, verifiedAt: '2026-09-04T00:01:00.000Z'}
+    const configured = setup({profiles: {getProfileAssetReservation: vi.fn(async () => verified)}})
+    const response = await configured.app.request(`/v1/me/assets/${assetId}/confirm`, {
+      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({assetId, role: 'avatar'})
+    expect(configured.profileAssets.finalizeUpload).not.toHaveBeenCalled()
+    expect(configured.profiles.confirmProfileAsset).not.toHaveBeenCalled()
+    expect(configured.profileAssets.cleanupStaging).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fail a confirmed request when staging cleanup is ambiguous', async () => {
+    const configured = setup({profileAssets: {
+      createUploadIntent: vi.fn(),
+      finalizeUpload: vi.fn(async () => ({finalObjectKey, contentType: 'image/webp' as const,
+        sizeBytes: 1_024, width: 512, height: 512})),
+      cleanupStaging: vi.fn(async () => { throw new Error('ambiguous delete failure') }),
+    }})
+    const response = await configured.app.request(`/v1/me/assets/${assetId}/confirm`, {
+      method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({assetId}),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({assetId, role: 'avatar'})
   })
 
   it('maps a reservation that expires between inspection and confirmation to a safe conflict', async () => {

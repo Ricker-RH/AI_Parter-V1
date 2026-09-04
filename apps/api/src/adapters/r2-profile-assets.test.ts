@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto'
-import {GetObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3'
+import {GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 import {describe, expect, it, vi} from 'vitest'
 import {createR2ProfileAssetPort} from './r2-profile-assets.js'
@@ -24,7 +24,7 @@ function intentInput(overrides: Record<string, unknown> = {}) {
 
 function driver(overrides: Record<string, unknown> = {}) {
   return {
-    sign: vi.fn(async () => 'https://signed.example/upload'), read: vi.fn(),
+    sign: vi.fn(async () => 'https://signed.example/upload'), inspect: vi.fn(async () => null), read: vi.fn(),
     write: vi.fn(), delete: vi.fn(), now: () => new Date('2026-09-04T00:00:00.000Z'),
     ...overrides,
   }
@@ -68,7 +68,7 @@ describe('R2 public profile asset adapter', () => {
     expect(dependencies.sign).not.toHaveBeenCalled()
   })
 
-  it('decodes, rotates, strips metadata, normalizes an avatar to immutable WebP, then deletes staging', async () => {
+  it('decodes, rotates, strips metadata, and normalizes an avatar without deleting staging', async () => {
     const source = await sharp({create: {width: 600, height: 800, channels: 3, background: '#5271ff'}})
       .jpeg().withMetadata({orientation: 6}).toBuffer()
     const inputKeys = keys('avatar', 'jpg'), calls: string[] = []
@@ -86,11 +86,11 @@ describe('R2 public profile asset adapter', () => {
       finalObjectKey: inputKeys.finalObjectKey, contentType: 'image/webp', width: 512, height: 512,
       sizeBytes: expect.any(Number),
     })
-    expect(calls).toEqual(['read', 'write', 'delete'])
+    expect(calls).toEqual(['read', 'write'])
     expect(dependencies.write).toHaveBeenCalledWith({bucket: 'public-media', key: inputKeys.finalObjectKey,
       body: expect.any(Uint8Array), contentType: 'image/webp',
       cacheControl: 'public, max-age=31536000, immutable', ifNoneMatch: '*'})
-    expect(dependencies.delete).toHaveBeenCalledWith({bucket: 'public-media', key: inputKeys.stagingObjectKey})
+    expect(dependencies.delete).not.toHaveBeenCalled()
     const metadata = await sharp(finalBytes!).metadata()
     expect(metadata).toMatchObject({format: 'webp', width: 512, height: 512})
     expect(metadata.orientation).toBeUndefined()
@@ -127,12 +127,13 @@ describe('R2 public profile asset adapter', () => {
     expect(dependencies.write).not.toHaveBeenCalled()
   })
 
-  it('publishes a copied final object that later staging mutations cannot change', async () => {
-    const sourceA = await sharp({create: {width: 512, height: 512, channels: 3, background: '#ef4444'}}).png().toBuffer()
-    const sourceB = await sharp({create: {width: 512, height: 512, channels: 3, background: '#3b82f6'}}).png().toBuffer()
-    expect(sourceB.length).toBe(sourceA.length)
-    const inputKeys = keys(), store = new Map<string, Buffer>([[inputKeys.stagingObjectKey, sourceA]])
+  it('retries from an existing final object when staging is absent without recreating it', async () => {
+    const source = await sharp({create: {width: 512, height: 512, channels: 3, background: '#ef4444'}}).png().toBuffer()
+    const inputKeys = keys(), store = new Map<string, Buffer>([[inputKeys.stagingObjectKey, source]])
     const port = createR2ProfileAssetPort(configuration, driver({
+      inspect: vi.fn(async ({key}: {key: string}) => store.has(key)
+        ? {contentType: 'image/webp', sizeBytes: store.get(key)!.length}
+        : null),
       read: vi.fn(async ({key}: {key: string}) => store.get(key)),
       write: vi.fn(async ({key, body, ifNoneMatch}: {key: string; body: Uint8Array; ifNoneMatch: string}) => {
         expect(ifNoneMatch).toBe('*')
@@ -144,15 +145,14 @@ describe('R2 public profile asset adapter', () => {
       delete: vi.fn(async ({key}: {key: string}) => { store.delete(key) }),
     }))
     await port.finalizeUpload({...inputKeys, role: 'avatar', contentType: 'image/png',
-      sizeBytes: sourceA.length, width: 512, height: 512})
+      sizeBytes: source.length, width: 512, height: 512})
     const published = Buffer.from(store.get(inputKeys.finalObjectKey)!)
-    store.set(inputKeys.stagingObjectKey, sourceB)
+    store.delete(inputKeys.stagingObjectKey)
     await expect(port.finalizeUpload({...inputKeys, role: 'avatar', contentType: 'image/png',
-      sizeBytes: sourceB.length, width: 512, height: 512})).resolves.toMatchObject({
+      sizeBytes: source.length, width: 512, height: 512})).resolves.toMatchObject({
       finalObjectKey: inputKeys.finalObjectKey, contentType: 'image/webp',
     })
     expect(store.get(inputKeys.finalObjectKey)).toEqual(published)
-    expect(store.has(inputKeys.stagingObjectKey)).toBe(false)
     await expect(sharp(store.get(inputKeys.finalObjectKey)!).metadata()).resolves.toMatchObject({format: 'webp'})
   })
 
@@ -172,12 +172,13 @@ describe('R2 public profile asset adapter', () => {
       sizeBytes: source.length, width: 512, height: 512}
     await expect(Promise.all([port.finalizeUpload(input), port.finalizeUpload(input)])).resolves.toHaveLength(2)
     expect(dependencies.write).toHaveBeenCalledTimes(2)
-    expect(dependencies.delete).toHaveBeenCalledTimes(2)
+    expect(dependencies.delete).not.toHaveBeenCalled()
   })
 
   it('sets If-None-Match on the real AWS final PutObject command', async () => {
     const source = await sharp({create: {width: 512, height: 512, channels: 3, background: '#f59e0b'}}).png().toBuffer()
     const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async (command: unknown) => {
+      if (command instanceof HeadObjectCommand) throw Object.assign(new Error('missing'), {$metadata: {httpStatusCode: 404}})
       if (command instanceof GetObjectCommand) return {Body: source} as never
       return {} as never
     })
@@ -191,5 +192,17 @@ describe('R2 public profile asset adapter', () => {
     } finally {
       send.mockRestore()
     }
+  })
+
+  it('cleans staging only when explicitly requested', async () => {
+    const inputKeys = keys()
+    const dependencies = driver({delete: vi.fn(async () => undefined)})
+    await createR2ProfileAssetPort(configuration, dependencies).cleanupStaging({
+      stagingObjectKey: inputKeys.stagingObjectKey,
+      finalObjectKey: inputKeys.finalObjectKey,
+      contentType: 'image/png',
+      sizeBytes: 4_096,
+    })
+    expect(dependencies.delete).toHaveBeenCalledWith({bucket: 'public-media', key: inputKeys.stagingObjectKey})
   })
 })
