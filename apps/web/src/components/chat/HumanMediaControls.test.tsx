@@ -29,6 +29,95 @@ const props = {
   onError: vi.fn(),
   onBusy: vi.fn(),
 };
+it("cancels a held recording when released before permission arrives", async () => {
+  let resolve!: (stream: MediaStream) => void;
+  const stop = vi.fn();
+  vi.stubGlobal("PointerEvent", MouseEvent);
+  vi.stubGlobal("navigator", {
+    mediaDevices: {
+      getUserMedia: () =>
+        new Promise<MediaStream>((done) => {
+          resolve = done;
+        }),
+    },
+  });
+  vi.stubGlobal("MediaRecorder", { isTypeSupported: () => true });
+  const slot = document.createElement("div");
+  document.body.append(slot);
+  const view = render(
+    <HumanMediaControls {...props} compact voiceSlot={slot} />,
+  );
+  const button = screen.getByRole("button", { name: "Hold to talk" });
+  fireEvent.pointerDown(button, { button: 0, clientY: 100 });
+  fireEvent.pointerUp(button, { button: 0, clientY: 100 });
+  await act(async () =>
+    resolve({ getTracks: () => [{ stop }] } as unknown as MediaStream),
+  );
+  expect(stop).toHaveBeenCalledOnce();
+  expect(screen.queryByText("Stop recording")).toBeNull();
+  expect(upload).not.toHaveBeenCalled();
+  view.unmount();
+  slot.remove();
+});
+it("releases an active held recording into a preview and pointercancel discards without sending", async () => {
+  const stop = vi.fn();
+  vi.stubGlobal("PointerEvent", MouseEvent);
+  vi.stubGlobal(
+    "URL",
+    Object.assign(URL, {
+      createObjectURL: () => "blob:voice",
+      revokeObjectURL: vi.fn(),
+    }),
+  );
+  vi.stubGlobal("navigator", {
+    mediaDevices: {
+      getUserMedia: async () => ({ getTracks: () => [{ stop }] }),
+    },
+  });
+  class Recorder {
+    static isTypeSupported() {
+      return true;
+    }
+    state = "inactive";
+    mimeType = "audio/webm";
+    onstop = () => {};
+    ondataavailable = (_: { data: Blob }) => {};
+    start() {
+      this.state = "recording";
+    }
+    stop() {
+      this.state = "inactive";
+      this.ondataavailable({ data: new Blob(["voice"]) });
+      this.onstop();
+    }
+  }
+  vi.stubGlobal("MediaRecorder", Recorder);
+  const slot = document.createElement("div");
+  document.body.append(slot);
+  const view = render(
+    <HumanMediaControls {...props} compact voiceSlot={slot} />,
+  );
+  const button = screen.getByRole("button", { name: "Hold to talk" });
+  await act(async () =>
+    fireEvent.pointerDown(button, { button: 0, clientY: 100 }),
+  );
+  expect(button).not.toBeDisabled();
+  expect(screen.getByText("Recording 0/60s")).toBeVisible();
+  fireEvent.pointerUp(button, { clientY: 100 });
+  expect(screen.getByRole("button", { name: "Send attachment" })).toBeVisible();
+  expect(stop).toHaveBeenCalledOnce();
+  expect(upload).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await act(async () =>
+    fireEvent.pointerDown(button, { button: 0, clientY: 100 }),
+  );
+  fireEvent.pointerCancel(button);
+  expect(screen.queryByRole("button", { name: "Send attachment" })).toBeNull();
+  expect(stop).toHaveBeenCalledTimes(2);
+  expect(upload).not.toHaveBeenCalled();
+  view.unmount();
+  slot.remove();
+});
 it("stops a microphone granted after permission was cancelled", async () => {
   let resolve!: (stream: MediaStream) => void;
   const stop = vi.fn();

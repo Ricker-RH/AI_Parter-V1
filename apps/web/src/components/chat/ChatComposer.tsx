@@ -13,6 +13,7 @@ import {
 import type { Locale } from "../../i18n/config";
 import { authHref } from "../../lib/auth/return-to";
 import styles from "./MessagesWorkspace.module.css";
+import { ChatIcon } from "./ChatIcon";
 
 export type ChatComposerLabels = {
   messagePlaceholder: string;
@@ -497,6 +498,10 @@ export function ChatComposerForm({
   textareaRef,
   onBlur,
   attachmentActive = false,
+  leading,
+  trailing,
+  alternativeInput,
+  onFocus,
 }: {
   draft: string;
   setDraft: (value: string) => void;
@@ -511,7 +516,20 @@ export function ChatComposerForm({
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   onBlur?: () => void;
   attachmentActive?: boolean;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  alternativeInput?: ReactNode;
+  onFocus?: () => void;
 }) {
+  const ownTextarea = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = textareaRef ?? ownTextarea;
+  useEffect(() => {
+    const input = inputRef.current;
+    if (input) {
+      input.style.height = "44px";
+      input.style.height = `${Math.min(132, Math.max(44, input.scrollHeight))}px`;
+    }
+  }, [draft, alternativeInput]);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSend();
@@ -528,24 +546,37 @@ export function ChatComposerForm({
   }
   return (
     <form className={styles.composer} onSubmit={submit}>
-      <textarea
-        ref={textareaRef}
-        onBlur={onBlur}
-        aria-label={labels.messagePlaceholder}
-        disabled={!sendEnabled || sending || attachmentActive}
-        maxLength={4000}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={keyDown}
-        placeholder={labels.messagePlaceholder}
-        rows={2}
-        value={draft}
-      />
-      <button
-        disabled={!sendEnabled || sending || attachmentActive || !draft.trim()}
-        type="submit"
-      >
-        {sending ? labels.sending : labels.send}
-      </button>
+      <div className={styles.composerRow}>
+        {leading}
+        {alternativeInput ?? (
+          <textarea
+            ref={inputRef}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            aria-label={labels.messagePlaceholder}
+            disabled={!sendEnabled || sending || attachmentActive}
+            maxLength={4000}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={keyDown}
+            placeholder={labels.messagePlaceholder}
+            rows={1}
+            value={draft}
+          />
+        )}
+        {trailing}
+        {(!trailing || draft.trim() || sending) && !alternativeInput ? (
+          <button
+            className={styles.sendIcon}
+            aria-label={sending ? labels.sending : labels.send}
+            disabled={
+              !sendEnabled || sending || attachmentActive || !draft.trim()
+            }
+            type="submit"
+          >
+            <ChatIcon name="send" />
+          </button>
+        ) : null}
+      </div>
       {tools}
       {!sendEnabled || notice ? (
         <p className={styles.composerNotice}>

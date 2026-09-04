@@ -26,7 +26,7 @@ import { HumanAvatar } from "../account/HumanAvatar";
 import styles from "./MessagesWorkspace.module.css";
 import { HumanMediaControls } from "./HumanMediaControls";
 import { HumanMediaMessage } from "./HumanMediaMessage";
-import { HumanEmojiPicker } from "./HumanEmojiPicker";
+import { ChatIcon } from "./ChatIcon";
 import { createTypingSignal } from "../../lib/human-typing";
 import { HumanRichComposer } from "./HumanRichComposer";
 import { HumanShareMessage } from "./HumanShareMessage";
@@ -78,6 +78,10 @@ function HumanDetail({
   const [sending, setSending] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [richBusy, setRichBusy] = useState(false);
+  const [panel, setPanel] = useState<"emoji" | "more" | null>(null);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceSlot, setVoiceSlot] = useState<HTMLDivElement | null>(null);
+  const selection = useRef([0, 0]);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const typingCallback = useRef(onTyping);
   typingCallback.current = onTyping;
@@ -123,6 +127,7 @@ function HumanDetail({
           blocked: "无法发送消息，对方关系或账号权限已变更。",
           mutual: "已发送一条消息，互相关注后可继续聊天。",
           read: "已读",
+          sent: "已发送",
           readFailed: "已读状态更新失败，请重试。",
           more: "加载更多消息",
         }
@@ -130,6 +135,7 @@ function HumanDetail({
           blocked: "Messaging is unavailable because access has changed.",
           mutual: "One message sent. Follow each other to continue chatting.",
           read: "Read",
+          sent: "Sent",
           readFailed: "Could not update read status. Please retry.",
           more: "Load more messages",
         };
@@ -353,18 +359,14 @@ function HumanDetail({
   }
   return (
     <ConversationDetailSurface
-      name={peer.displayName}
-      status={
+      name={
         peerTyping
           ? locale === "zh-CN"
-            ? "正在输入…"
+            ? "对方正在输入中…"
             : "Typing…"
-          : peerOnline
-            ? locale === "zh-CN"
-              ? "在线"
-              : "Online"
-            : undefined
+          : peer.displayName
       }
+      status={peerOnline ? (locale === "zh-CN" ? "在线" : "Online") : undefined}
       username={peer.username}
       backLabel={labels.back}
       backHref={`/${locale}/messages`}
@@ -426,10 +428,22 @@ function HumanDetail({
               ) : (
                 <p>{labels.invalidResponse}</p>
               )}
-              {message.senderProfileId === selfProfileId &&
-              peerReadSequence !== undefined &&
-              peerReadSequence >= message.sequence ? (
-                <span className={styles.preview}>{text.read}</span>
+              {message.senderProfileId === selfProfileId ? (
+                <span
+                  className={styles.preview}
+                  role="img"
+                  aria-label={
+                    peerReadSequence !== undefined &&
+                    peerReadSequence >= message.sequence
+                      ? text.read
+                      : text.sent
+                  }
+                >
+                  {peerReadSequence !== undefined &&
+                  peerReadSequence >= message.sequence
+                    ? "✓✓"
+                    : "✓"}
+                </span>
               ) : null}
             </li>
           ))}
@@ -453,6 +467,75 @@ function HumanDetail({
         ) : null}
       </div>
       <ChatComposerForm
+        leading={
+          <button
+            type="button"
+            className={styles.composerIcon}
+            aria-label={
+              voiceMode
+                ? locale === "zh-CN"
+                  ? "键盘"
+                  : "Keyboard"
+                : locale === "zh-CN"
+                  ? "语音"
+                  : "Voice"
+            }
+            disabled={sending || mediaBusy || richBusy || denied || revoked}
+            onClick={() => {
+              setVoiceMode(!voiceMode);
+              setPanel(null);
+              typing.current?.change(false);
+              if (voiceMode)
+                requestAnimationFrame(() => textarea.current?.focus());
+            }}
+          >
+            <ChatIcon name={voiceMode ? "keyboard" : "voice"} />
+          </button>
+        }
+        trailing={
+          <>
+            <button
+              type="button"
+              className={styles.composerIcon}
+              aria-label={locale === "zh-CN" ? "表情" : "Emoji"}
+              aria-expanded={panel === "emoji"}
+              disabled={sending || mediaBusy || richBusy || denied || revoked}
+              onClick={() => {
+                selection.current = [
+                  textarea.current?.selectionStart ?? draft.length,
+                  textarea.current?.selectionEnd ?? draft.length,
+                ];
+                textarea.current?.blur();
+                setVoiceMode(false);
+                setPanel(panel === "emoji" ? null : "emoji");
+              }}
+            >
+              <ChatIcon name="emoji" />
+            </button>
+            {!draft.trim() || voiceMode ? (
+              <button
+                type="button"
+                className={styles.composerIcon}
+                aria-label={locale === "zh-CN" ? "更多功能" : "More actions"}
+                aria-expanded={panel === "more"}
+                disabled={sending || mediaBusy || richBusy || denied || revoked}
+                onClick={() => {
+                  textarea.current?.blur();
+                  setVoiceMode(false);
+                  setPanel(panel === "more" ? null : "more");
+                }}
+              >
+                <ChatIcon name="plus" />
+              </button>
+            ) : null}
+          </>
+        }
+        alternativeInput={
+          voiceMode ? (
+            <div className={styles.voiceSlot} ref={setVoiceSlot} />
+          ) : undefined
+        }
+        onFocus={() => setPanel(null)}
         draft={draft}
         setDraft={(value) => {
           setDraft(value);
@@ -464,18 +547,56 @@ function HumanDetail({
         textareaRef={textarea}
         onBlur={() => typing.current?.change(false)}
         tools={
-          <div className={styles.composerTools}>
-            <HumanEmojiPicker
-              draft={draft}
-              setDraft={(value) => {
-                setDraft(value);
-                setFailure(null);
-              }}
-              textarea={textarea}
-              disabled={sending || mediaBusy || richBusy || denied || revoked}
-              zh={locale === "zh-CN"}
-            />
+          <div
+            className={styles.compactTools}
+            data-open={panel !== null || mediaBusy || richBusy}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setPanel(null);
+                textarea.current?.focus();
+              }
+            }}
+          >
+            {panel === "emoji" ? (
+              <div
+                className={styles.emojiGrid}
+                aria-label={locale === "zh-CN" ? "选择表情" : "Choose emoji"}
+              >
+                {["😀", "😂", "🥰", "👍", "❤️", "🎉", "🙏", "😊"].map(
+                  (emoji) => (
+                    <button
+                      type="button"
+                      key={emoji}
+                      aria-label={emoji}
+                      onClick={() => {
+                        const start = selection.current[0] ?? draft.length,
+                          end = selection.current[1] ?? start;
+                        const next =
+                          draft.slice(0, start) + emoji + draft.slice(end);
+                        if (next.length <= 4000) {
+                          setDraft(next);
+                          setFailure(null);
+                        }
+                        setPanel(null);
+                        requestAnimationFrame(() => {
+                          textarea.current?.focus();
+                          textarea.current?.setSelectionRange(
+                            start + emoji.length,
+                            start + emoji.length,
+                          );
+                        });
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ),
+                )}
+              </div>
+            ) : null}
             <HumanMediaControls
+              compact
+              showLibrary={panel === "more"}
+              voiceSlot={voiceMode ? voiceSlot : null}
               peerId={peer.id}
               conversationId={conversation.id}
               selfProfileId={selfProfileId}
@@ -490,6 +611,7 @@ function HumanDetail({
               }}
             />
             <HumanRichComposer
+              panel={panel}
               peerId={peer.id}
               conversationId={conversation.id}
               selfProfileId={selfProfileId}

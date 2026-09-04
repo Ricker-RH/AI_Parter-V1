@@ -11,6 +11,7 @@ import type { Locale } from "../../i18n/config";
 import { humanRequest } from "../../lib/human-chat-client";
 import { ProfileEditorMenu } from "../profile/ProfileEditorMenu";
 import styles from "./MessagesWorkspace.module.css";
+import { ChatIcon } from "./ChatIcon";
 type Selection = {
   requestId: string;
   content:
@@ -29,6 +30,7 @@ type Props = {
   onSent: () => void;
   onError: (cause: unknown) => void;
   onBusy: (busy: boolean) => void;
+  panel?: "emoji" | "more" | null;
 };
 export function HumanRichComposer(props: Props) {
   const [mode, setMode] = useState<"stickers" | "share" | null>(null),
@@ -48,6 +50,9 @@ export function HumanRichComposer(props: Props) {
     locked = useRef(false),
     callbacks = useRef(props);
   callbacks.current = props;
+  useEffect(() => {
+    setMode(null);
+  }, [props.panel]);
   useEffect(() => {
     if (selection) confirmButton.current?.focus();
   }, [selection]);
@@ -155,6 +160,7 @@ export function HumanRichComposer(props: Props) {
       {!selection ? (
         <>
           <button
+            hidden={props.panel !== undefined && props.panel !== "emoji"}
             ref={stickerAnchor}
             type="button"
             aria-haspopup="menu"
@@ -162,9 +168,11 @@ export function HumanRichComposer(props: Props) {
             disabled={props.disabled}
             onClick={() => setMode(mode === "stickers" ? null : "stickers")}
           >
+            {props.panel !== undefined ? <ChatIcon name="sticker" /> : null}
             {zh ? "贴纸" : "Stickers"}
           </button>
           <button
+            hidden={props.panel !== undefined && props.panel !== "more"}
             ref={shareAnchor}
             type="button"
             aria-haspopup="dialog"
@@ -172,6 +180,7 @@ export function HumanRichComposer(props: Props) {
             disabled={props.disabled}
             onClick={() => setMode(mode === "share" ? null : "share")}
           >
+            {props.panel !== undefined ? <ChatIcon name="share" /> : null}
             {zh ? "分享" : "Share"}
           </button>
         </>

@@ -31,7 +31,7 @@ export function AiGenerationSnapshot({
   return (
     <li className={styles.assistantMessage}>
       {generation.answer ? <p>{generation.answer}</p> : null}
-      <span className={styles.preview} role="status">
+      <span className={styles.generationStatus} role="status">
         {status}
       </span>
     </li>

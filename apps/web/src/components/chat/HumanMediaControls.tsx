@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChatIcon } from "./ChatIcon";
 import { HumanMessageSchema } from "@aifans/contracts";
 import { humanRequest } from "../../lib/human-chat-client";
 import {
@@ -24,6 +26,9 @@ type Props = {
   onSent: () => void;
   onError: (cause: unknown) => void;
   onBusy: (busy: boolean) => void;
+  compact?: boolean;
+  showLibrary?: boolean;
+  voiceSlot?: HTMLElement | null;
 };
 export function HumanMediaControls(props: Props) {
   const [preview, setPreview] = useState<Preview | null>(null),
@@ -39,6 +44,8 @@ export function HumanMediaControls(props: Props) {
     timer = useRef<ReturnType<typeof setInterval> | null>(null),
     generation = useRef(0),
     locked = useRef(false);
+  const held = useRef(false),
+    pressY = useRef(0);
   const callbacks = useRef(props);
   callbacks.current = props;
   const zh = props.locale === "zh-CN";
@@ -60,6 +67,7 @@ export function HumanMediaControls(props: Props) {
     locked.current = false;
   }
   function cancel() {
+    held.current = false;
     clear();
     setPreview(null);
     setRecording(false);
@@ -220,9 +228,83 @@ export function HumanMediaControls(props: Props) {
   }
   return (
     <div className={styles.mediaTools}>
+      {props.voiceSlot
+        ? createPortal(
+            <button
+              type="button"
+              className={styles.holdToTalk}
+              disabled={props.disabled || !!preview || busy}
+              aria-label={zh ? "按住说话" : "Hold to talk"}
+              onContextMenu={(event) => event.preventDefault()}
+              onPointerDown={(event) => {
+                if (event.button !== 0 || held.current) return;
+                event.preventDefault();
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                pressY.current = event.clientY;
+                void record();
+                held.current = true;
+              }}
+              onPointerUp={(event) => {
+                if (!held.current) return;
+                held.current = false;
+                if (pressY.current - event.clientY > 60 || !recorder.current)
+                  cancel();
+                else if (recorder.current.state === "recording")
+                  recorder.current.stop();
+              }}
+              onPointerCancel={cancel}
+              onLostPointerCapture={() => {
+                if (held.current) cancel();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  cancel();
+                  return;
+                }
+                if (
+                  (event.key === " " || event.key === "Enter") &&
+                  !event.repeat &&
+                  !held.current
+                ) {
+                  event.preventDefault();
+                  void record();
+                  held.current = true;
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key !== " " && event.key !== "Enter") return;
+                event.preventDefault();
+                held.current = false;
+                if (recorder.current?.state === "recording")
+                  recorder.current.stop();
+                else cancel();
+              }}
+              onBlur={() => {
+                if (held.current) cancel();
+              }}
+            >
+              {recording
+                ? zh
+                  ? "松开预览 · 上滑取消"
+                  : "Release to preview · slide up to cancel"
+                : pending
+                  ? zh
+                    ? "等待麦克风…"
+                    : "Microphone…"
+                  : zh
+                    ? "按住说话"
+                    : "Hold to talk"}
+            </button>,
+            props.voiceSlot,
+          )
+        : null}
       {!preview && !recording && !pending ? (
-        <>
+        <div
+          className={props.compact ? styles.actionGrid : styles.mediaTools}
+          hidden={props.compact && !props.showLibrary}
+        >
           <label className={styles.mediaAction}>
+            {props.compact ? <ChatIcon name="image" /> : null}
             {zh ? "图片" : "Image"}
             <input
               aria-label={zh ? "选择图片" : "Choose image"}
@@ -243,6 +325,7 @@ export function HumanMediaControls(props: Props) {
             />
           </label>
           <label className={styles.mediaAction}>
+            {props.compact ? <ChatIcon name="camera" /> : null}
             {zh ? "拍照" : "Camera"}
             <input
               aria-label={zh ? "拍照" : "Take photo"}
@@ -263,14 +346,16 @@ export function HumanMediaControls(props: Props) {
               }}
             />
           </label>
-          <button
-            type="button"
-            disabled={props.disabled}
-            onClick={() => void record()}
-          >
-            {zh ? "语音" : "Voice"}
-          </button>
-        </>
+          {!props.compact ? (
+            <button
+              type="button"
+              disabled={props.disabled}
+              onClick={() => void record()}
+            >
+              {zh ? "语音" : "Voice"}
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {pending ? (
         <span role="status">

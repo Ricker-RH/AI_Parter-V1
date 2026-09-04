@@ -98,6 +98,92 @@ it("treats an authoritative blocked read response as revoked access, not a retry
 });
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+it("temporarily replaces the HUMAN title while typing and restores it", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ items: [] })),
+  );
+  const props = {
+    conversation,
+    selfProfileId: self,
+    labels,
+    locale: "zh-CN" as const,
+    revision: 0,
+    onChanged() {},
+  };
+  const view = render(<HumanConversationDetail {...props} peerTyping />);
+  expect(
+    screen.getByRole("heading", { name: "对方正在输入中…" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Alice" })).toBeNull();
+  view.rerender(<HumanConversationDetail {...props} peerTyping={false} />);
+  expect(screen.getByRole("heading", { name: "Alice" })).toBeInTheDocument();
+  await screen.findByText("No messages yet");
+});
+it("shows a single server-sent check and doubles it only at the authoritative peer read cursor", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({ items: [{ ...message, senderProfileId: self }] }),
+    ),
+  );
+  const props = {
+    conversation,
+    selfProfileId: self,
+    labels,
+    locale: "en" as const,
+    revision: 0,
+    onChanged() {},
+  };
+  const view = render(<HumanConversationDetail {...props} />);
+  expect(await screen.findByRole("img", { name: "Sent" })).toHaveTextContent(
+    "✓",
+  );
+  expect(screen.queryByRole("img", { name: "Read" })).toBeNull();
+  view.rerender(
+    <HumanConversationDetail {...props} peerReadSequence={message.sequence} />,
+  );
+  expect(screen.getByRole("img", { name: "Read" })).toHaveTextContent("✓✓");
+  view.rerender(
+    <HumanConversationDetail
+      {...props}
+      locale="zh-CN"
+      peerReadSequence={message.sequence}
+    />,
+  );
+  expect(screen.getByRole("img", { name: "已读" })).toBeInTheDocument();
+});
+it("keeps HUMAN actions collapsed and switches mutually exclusive panels", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ items: [] })),
+  );
+  render(
+    <HumanConversationDetail
+      conversation={conversation}
+      selfProfileId={self}
+      labels={labels}
+      locale="en"
+      revision={0}
+      onChanged={() => {}}
+    />,
+  );
+  await screen.findByText("No messages yet");
+  expect(screen.queryByLabelText("Choose image")).not.toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  expect(screen.getByLabelText("Choose image")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Emoji" }));
+  expect(screen.getByRole("button", { name: "😀" })).toBeVisible();
+  expect(screen.getByLabelText("Choose image")).not.toBeVisible();
+  expect(screen.getByRole("button", { name: "Stickers" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Voice" }));
+  expect(screen.getByRole("button", { name: "Hold to talk" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "😀" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Keyboard" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
+  expect(screen.getByRole("button", { name: "Send" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+});
 const labels = {
   title: "Messages",
   chatTab: "Chats",
@@ -351,7 +437,7 @@ it("reuses the failed request key when Send is pressed again on the unchanged dr
   expect(keys[0]).toBe(keys[1]);
   await screen.findByRole("button", { name: "Retry" });
   fireEvent.click(screen.getByRole("button", { name: "Emoji" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "😀" }));
+  fireEvent.click(screen.getByRole("button", { name: "😀" }));
   expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(keys).toHaveLength(3));
