@@ -42,7 +42,7 @@ async function collect(port: ReturnType<typeof createDifyChatPort>, request = in
 afterEach(() => vi.restoreAllMocks())
 
 describe('Dify chat adapter', () => {
-  it('accepts agent-chat SSE including empty agent chunks and ignores thought events without altering answer text',async()=>{
+  it('accepts agent-chat SSE including empty chunks and separates explicit thought content',async()=>{
     const ids={conversation_id:'conv_external_01',message_id:'msg_external_01',task_id:'task_01',created_at:1705639511}
     const port=createDifyChatPort({baseUrl:'https://dify.example.test/v1',apiKey:'test-only',fetcher:async()=>sseResponse([
       event({event:'agent_message',answer:'',...ids}),
@@ -51,7 +51,59 @@ describe('Dify chat adapter', () => {
       event({event:'agent_message',answer:'你好',...ids}),
       event({event:'message_end',metadata:{},...ids}),
     ])})
-    await expect(collect(port)).resolves.toEqual({deltas:['<think>text</think>','你好'],result:{answer:'<think>text</think>你好',providerConversationId:ids.conversation_id,providerMessageId:ids.message_id}})
+    await expect(collect(port)).resolves.toEqual({deltas:['你好'],result:{answer:'你好',providerConversationId:ids.conversation_id,providerMessageId:ids.message_id}})
+  })
+  it('removes thought sections across every tag/text boundary before yielding or completing',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}
+    const text='前<think>\nThe hidden reasoning\n</think>连接<think>second</think>成功'
+    const partitions=[...Array.from({length:text.length+1},(_,at)=>[text.slice(0,at),text.slice(at)]),[...text]]
+    for(const parts of partitions){
+      const port=createDifyChatPort({baseUrl:'https://dify.example.test',apiKey:'test-only',fetcher:async()=>sseResponse([
+        ...parts.map(answer=>event({event:'agent_message',answer,...ids})),
+        event({event:'agent_message',answer:'',...ids}),event({event:'agent_thought',thought:'ignore'}),event({event:'message_end',...ids}),
+      ])})
+      const result=await collect(port)
+      expect(result.deltas.join('')).toBe('前连接成功');expect(result.result.answer).toBe('前连接成功')
+    }
+  })
+  it('preserves ordinary text and incomplete non-tag prefixes exactly',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}
+    for(const text of ['Normal thoughts are ordinary text.','2 < 3; <thinking>literal</thinking>','tail <thi','plain </think> text','<THINK>case-sensitive</THINK>']){
+      const port=createDifyChatPort({baseUrl:'https://dify.example.test',apiKey:'test-only',fetcher:async()=>sseResponse([
+        ...[...text].map(answer=>event({event:'message',answer,...ids})),event({event:'message_end',...ids}),
+      ])})
+      const result=await collect(port);expect(result.deltas.join('')).toBe(text);expect(result.result.answer).toBe(text)
+    }
+  })
+  it('does not count hidden content toward visible length and safely handles nested explicit sections',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}
+    const port=createDifyChatPort({baseUrl:'https://dify.example.test',apiKey:'test-only',fetcher:async()=>sseResponse([
+      event({event:'agent_message',answer:`<think>${'x'.repeat(5000)}<think>nested</think>still hidden</think>${'a'.repeat(3996)}<thi`,...ids}),
+      event({event:'message_end',...ids}),
+    ])})
+    const result=await collect(port);expect(result.deltas.join('')).toBe('a'.repeat(3996)+'<thi');expect(result.result.answer.length).toBe(4000)
+  })
+  it('allows valid small answer frames whose repeated SSE metadata exceeds 64 KiB',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}
+    const chunks=[...Array.from({length:1000},()=>event({event:'agent_message',answer:'a',...ids})),event({event:'message_end',...ids})]
+    expect(encoder.encode(chunks.join('')).byteLength).toBeGreaterThan(65536)
+    const port=createDifyChatPort({baseUrl:'https://dify.example.test',apiKey:'test-only',fetcher:async()=>sseResponse(chunks)})
+    const result=await collect(port);expect(result.deltas.join('')).toBe('a'.repeat(1000));expect(result.result.answer).toBe('a'.repeat(1000))
+  })
+  it('fails closed for unfinished thoughts or streams exceeding the raw byte limit',async()=>{
+    const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}
+    const message=(answer:string)=>event({event:'agent_message',answer,...ids})
+    for(const chunks of [
+      [message('<think>hidden'),event({event:'message_end',...ids})],
+      [message('visible<think>hidden')],
+      [message('<think>hidden</thi'),event({event:'message_end',...ids})],
+      [message('<think>'),...Array.from({length:80},()=>message('x'.repeat(1000))),message('</think>ok'),event({event:'message_end',...ids})],
+      [message('a'.repeat(3997)+'<thi'),event({event:'message_end',...ids})],
+      [...Array.from({length:1500},()=>event({event:'agent_thought',thought:'思'.repeat(1000)})),message('ok'),event({event:'message_end',...ids})],
+    ]){
+      const port=createDifyChatPort({baseUrl:'https://dify.example.test',apiKey:'test-only',fetcher:async()=>sseResponse(chunks)})
+      await expect(collect(port)).rejects.toBeInstanceOf(ChatProviderError)
+    }
   })
   it('applies the existing identity, answer length and terminal rules equally to agent_message',async()=>{
     const ids={conversation_id:'conv_external_01',message_id:'msg_external_01'}

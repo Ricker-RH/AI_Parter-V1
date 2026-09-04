@@ -14,6 +14,8 @@ type DifyEnvironment = {
 }
 
 const MAX_BUFFERED_BYTES = 64 * 1024
+const MAX_RAW_ANSWER_BYTES = 64 * 1024
+const MAX_WIRE_BYTES = 4 * 1024 * 1024
 const MAX_ANSWER_LENGTH = 4_000
 const MAX_PROVIDER_ID_LENGTH = 512
 const encoder = new TextEncoder()
@@ -31,6 +33,34 @@ const IGNORED_EVENTS = new Set([
 
 function providerError(): ChatProviderError {
   return new ChatProviderError()
+}
+
+/** Hold possible tag prefixes until resolved; never retain hidden thought text. */
+function visibleAnswerStream() {
+  const open = '<think>', close = '</think>'
+  let pending = '', depth = 0
+  return {
+    push(text: string): string {
+      let visible = ''
+      for (const character of text) {
+        pending += character
+        while (pending) {
+          if (pending === open) { depth += 1; pending = ''; break }
+          if (depth > 0 && pending === close) { depth -= 1; pending = ''; break }
+          if (open.startsWith(pending) || (depth > 0 && close.startsWith(pending))) break
+          if (depth === 0) visible += pending[0]
+          pending = pending.slice(1)
+        }
+      }
+      return visible
+    },
+    finish(): string {
+      if (depth !== 0) throw providerError()
+      const visible = pending
+      pending = ''
+      return visible
+    },
+  }
 }
 
 function boundedText(value: unknown): string | undefined {
@@ -114,6 +144,8 @@ export function createDifyChatPort({baseUrl, apiKey, fetcher = fetch}: DifyChatO
         let buffered = ''
         let frameLines: string[] = []
         let answer = ''
+        let wireBytes = 0, rawAnswerBytes = 0
+        const visibleStream = visibleAnswerStream()
         let providerConversationId: string | undefined
         let providerMessageId: string | undefined
         let terminal: ProviderChatResult | undefined
@@ -147,15 +179,22 @@ export function createDifyChatPort({baseUrl, apiKey, fetcher = fetch}: DifyChatO
           if (event === 'message' || event === 'agent_message') {
             if (typeof value.answer !== 'string') throw providerError()
             registerIds(value)
-            if (value.answer.length === 0) return undefined
-            if (answer.length + value.answer.length > MAX_ANSWER_LENGTH) throw providerError()
-            answer += value.answer
-            return {type: 'delta' as const, delta: value.answer}
+            rawAnswerBytes += encoder.encode(value.answer).byteLength
+            if (rawAnswerBytes > MAX_RAW_ANSWER_BYTES) throw providerError()
+            const visible = visibleStream.push(value.answer)
+            if (visible.length === 0) return undefined
+            if (answer.length + visible.length > MAX_ANSWER_LENGTH) throw providerError()
+            answer += visible
+            return {type: 'delta' as const, delta: visible}
           }
           if (event === 'message_end') {
             registerIds(value)
+            const tail = visibleStream.finish()
+            if (answer.length + tail.length > MAX_ANSWER_LENGTH) throw providerError()
+            answer += tail
             if (answer.length < 1) throw providerError()
             terminal = {answer, providerConversationId: providerConversationId!, providerMessageId: providerMessageId!}
+            if (tail) return {type: 'delta' as const, delta: tail}
           }
           return undefined
         }
@@ -184,6 +223,8 @@ export function createDifyChatPort({baseUrl, apiKey, fetcher = fetch}: DifyChatO
           try {
             const next = await reader.read()
             if (next.done) break
+            wireBytes += next.value.byteLength
+            if (wireBytes > MAX_WIRE_BYTES) throw providerError()
             buffered += decoder.decode(next.value, {stream: true})
           } catch {
             throw providerError()
