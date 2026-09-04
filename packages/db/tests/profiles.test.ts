@@ -334,6 +334,47 @@ describeIntegration('authenticated profile repository', () => {
     ).resolves.toMatchObject({rows: [{bio: 'New biography'}]})
   })
 
+  it('updates focal coordinates on the bound image without consuming another asset', async () => {
+    const authSubject = subject()
+    createdSubjects.push(authSubject)
+    const initial = await repository.ensureHumanProfile({authSubject, displayName: 'Focal'})
+
+    await expect(repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: initial.profileVersion,
+      background: {type: 'image', focalX: 0.2, focalY: 0.8},
+    })).rejects.toMatchObject({code: 'PROFILE_ASSET_UNAVAILABLE'})
+
+    const background = await repository.reserveProfileAsset(
+      {subject: authSubject},
+      {role: 'background', contentType: 'image/webp', sizeBytes: 2_400, width: 1_600, height: 900},
+    )
+    await repository.confirmProfileAsset({subject: authSubject}, background.id, background.finalObjectKey)
+    const bound = await repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: initial.profileVersion,
+      background: {type: 'image', backgroundAssetId: background.id, focalX: 0.5, focalY: 0.5},
+    })
+
+    const focused = await repository.updateCurrentAccount({subject: authSubject}, {
+      profileVersion: bound!.profileVersion,
+      background: {type: 'image', focalX: 0.2, focalY: 0.8},
+    })
+
+    expect(focused).toMatchObject({
+      profileVersion: 3,
+      background: {type: 'image', url: `https://media.example/assets/${background.finalObjectKey}`, focalX: 0.2, focalY: 0.8},
+    })
+    await expect(adminPool.query<{
+      background_object_key: string | null
+      consumed_count: string
+    }>(
+      `SELECT p.background_object_key,
+              (SELECT count(*) FROM public.profile_asset_upload_reservations r
+               WHERE r.owner_profile_id = p.id AND r.consumed_at IS NOT NULL) AS consumed_count
+       FROM public.profiles p WHERE p.id = $1`,
+      [initial.id],
+    )).resolves.toMatchObject({rows: [{background_object_key: background.finalObjectKey, consumed_count: '1'}]})
+  })
+
   it('rejects unverified, expired, consumed, wrong-role, and wrong-owner asset ids', async () => {
     const firstSubject = subject()
     const secondSubject = subject()

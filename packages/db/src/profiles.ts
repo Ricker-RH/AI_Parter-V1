@@ -428,7 +428,7 @@ export function createProfileRepository({
               input.avatarAssetId !== undefined,
               background?.type ?? null,
               background?.type === 'color' ? background.colorKey : null,
-              background?.type === 'image' ? background.backgroundAssetId : null,
+              background?.type === 'image' ? background.backgroundAssetId ?? null : null,
               background?.type === 'image' ? background.focalX : null,
               background?.type === 'image' ? background.focalY : null,
               background !== undefined,

@@ -36,14 +36,14 @@ export type ProfileEditorLabels = {
   colorPaper: string; colorSand: string; colorMist: string; colorSage: string; colorSky: string; colorLilac: string; colorGraphite: string
 }
 
-type TextDraft = {displayName: string; username: string; bio: string; preferredLocale: Locale}
+type TextDraft = {displayName: string; username: string; bio: string; preferredLocale: Locale; profileVersion: number; baseAccount: Account}
 type UploadState = {status: 'idle'} | {status: 'uploading'; file: File} | {status: 'failed'; file: File}
-type ImageDraft = {type: 'image'; assetId: string; focalX: number; focalY: number}
+type ImageDraft = {type: 'image'; assetId?: string; focalX: number; focalY: number}
 type BackgroundEdit = {type: 'color'; colorKey: ProfileBackgroundColorKey} | ImageDraft
 type AssetTarget = 'avatar' | 'background'
 
 function textDraftFor(account: Account): TextDraft {
-  return {displayName: account.displayName, username: account.username, bio: account.bio ?? '', preferredLocale: account.preferredLocale}
+  return {displayName: account.displayName, username: account.username, bio: account.bio ?? '', preferredLocale: account.preferredLocale, profileVersion: account.profileVersion, baseAccount: account}
 }
 
 export function clampFocalPoint(value: number): number {
@@ -99,18 +99,22 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
     }
   }, [])
 
-  useEffect(() => {
-    if (account && draft === null) setDraft(textDraftFor(account))
-  }, [account, draft])
-
   const uploading = avatarUpload.status === 'uploading' || backgroundUpload.status === 'uploading'
-  const textDirty = Boolean(account && draft && (
-    draft.displayName !== account.displayName || draft.username !== account.username || draft.bio !== (account.bio ?? '') || draft.preferredLocale !== account.preferredLocale
+  const baseAccount = draft?.baseAccount ?? account
+  const textDirty = Boolean(baseAccount && draft && (
+    draft.displayName !== baseAccount.displayName || draft.username !== baseAccount.username || draft.bio !== (baseAccount.bio ?? '') || draft.preferredLocale !== baseAccount.preferredLocale
   ))
-  const avatarDirty = avatarEdit !== undefined && !(avatarEdit === null && !account?.avatarUrl)
-  const backgroundDirty = backgroundEdit !== undefined && (backgroundEdit.type === 'image' || account?.background.type !== 'color' || account.background.colorKey !== backgroundEdit.colorKey)
+  const avatarDirty = avatarEdit !== undefined && !(avatarEdit === null && !baseAccount?.avatarUrl)
+  const backgroundDirty = backgroundEdit !== undefined && (backgroundEdit.type === 'image'
+    ? backgroundEdit.assetId !== undefined || baseAccount?.background.type !== 'image' || backgroundEdit.focalX !== baseAccount.background.focalX || backgroundEdit.focalY !== baseAccount.background.focalY
+    : baseAccount?.background.type !== 'color' || baseAccount.background.colorKey !== backgroundEdit.colorKey)
   const dirty = textDirty || avatarDirty || backgroundDirty || avatarUpload.status !== 'idle' || backgroundUpload.status !== 'idle'
   const blocked = saving || uploading
+
+  useEffect(() => {
+    if (!account) return
+    if (draft === null || (!dirty && draft.profileVersion !== account.profileVersion)) resetTo(account)
+  }, [account, draft, dirty])
 
   useEffect(() => {
     function beforeUnload(event: BeforeUnloadEvent) {
@@ -192,26 +196,32 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   }
 
   function removeBackgroundImage() {
-    const colorKey = account?.background.type === 'color' ? account.background.colorKey : 'paper'
+    const colorKey = baseAccount?.background.type === 'color' ? baseAccount.background.colorKey : 'paper'
     selectColor(colorKey)
   }
 
   function updateFocal(axis: 'focalX' | 'focalY', value: number) {
-    setBackgroundEdit((current) => current?.type === 'image' ? {...current, [axis]: clampFocalPoint(value)} : current)
+    setBackgroundEdit((current) => {
+      if (current?.type === 'image') return {...current, [axis]: clampFocalPoint(value)}
+      if (current === undefined && baseAccount?.background.type === 'image') {
+        return {type: 'image', focalX: axis === 'focalX' ? clampFocalPoint(value) : baseAccount.background.focalX, focalY: axis === 'focalY' ? clampFocalPoint(value) : baseAccount.background.focalY}
+      }
+      return current
+    })
   }
 
   function buildPayload(): UpdateCurrentAccount | null {
-    if (!account || !draft) return null
-    const payload: Record<string, unknown> = {profileVersion: account.profileVersion}
-    if (draft.displayName !== account.displayName) payload.displayName = draft.displayName
-    if (draft.username !== account.username) payload.username = draft.username
-    if (draft.bio !== (account.bio ?? '')) payload.bio = draft.bio.trim() ? draft.bio : null
-    if (draft.preferredLocale !== account.preferredLocale) payload.preferredLocale = draft.preferredLocale
+    if (!baseAccount || !draft) return null
+    const payload: Record<string, unknown> = {profileVersion: draft.profileVersion}
+    if (draft.displayName !== baseAccount.displayName) payload.displayName = draft.displayName
+    if (draft.username !== baseAccount.username) payload.username = draft.username
+    if (draft.bio !== (baseAccount.bio ?? '')) payload.bio = draft.bio.trim() ? draft.bio : null
+    if (draft.preferredLocale !== baseAccount.preferredLocale) payload.preferredLocale = draft.preferredLocale
     if (avatarEdit !== undefined) payload.avatarAssetId = avatarEdit
     if (backgroundEdit?.type === 'color') {
-      if (account.background.type !== 'color' || account.background.colorKey !== backgroundEdit.colorKey) payload.background = backgroundEdit
+      if (baseAccount.background.type !== 'color' || baseAccount.background.colorKey !== backgroundEdit.colorKey) payload.background = backgroundEdit
     } else if (backgroundEdit?.type === 'image') {
-      payload.background = {type: 'image', backgroundAssetId: backgroundEdit.assetId, focalX: backgroundEdit.focalX, focalY: backgroundEdit.focalY}
+      payload.background = {type: 'image', ...(backgroundEdit.assetId ? {backgroundAssetId: backgroundEdit.assetId} : {}), focalX: backgroundEdit.focalX, focalY: backgroundEdit.focalY}
     }
     const parsed = UpdateCurrentAccountSchema.safeParse(payload)
     if (!parsed.success) {
@@ -252,16 +262,17 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   }
 
   if (loading || (account && draft === null)) return <section className={styles.state} role="status">{labels.loading}</section>
-  if (!account || !draft) return <section className={styles.state} role="alert"><p>{labels.authUnavailable}</p><button onClick={() => void refetch()} type="button">{labels.retry}</button></section>
+  if (!account || !draft || !baseAccount) return <section className={styles.state} role="alert"><p>{labels.authUnavailable}</p><button onClick={() => void refetch()} type="button">{labels.retry}</button></section>
 
-  const activeColor = backgroundEdit?.type === 'color' ? backgroundEdit.colorKey : backgroundEdit ? null : account.background.type === 'color' ? account.background.colorKey : null
-  const focalX = backgroundEdit?.type === 'image' ? backgroundEdit.focalX : account.background.type === 'image' ? account.background.focalX : 0.5
-  const focalY = backgroundEdit?.type === 'image' ? backgroundEdit.focalY : account.background.type === 'image' ? account.background.focalY : 0.5
-  const backgroundImage = backgroundPreview ?? (backgroundEdit?.type === 'color' ? null : account.background.type === 'image' ? account.background.url : null)
+  const activeColor = backgroundEdit?.type === 'color' ? backgroundEdit.colorKey : backgroundEdit ? null : baseAccount.background.type === 'color' ? baseAccount.background.colorKey : null
+  const focalX = backgroundEdit?.type === 'image' ? backgroundEdit.focalX : baseAccount.background.type === 'image' ? baseAccount.background.focalX : 0.5
+  const focalY = backgroundEdit?.type === 'image' ? backgroundEdit.focalY : baseAccount.background.type === 'image' ? baseAccount.background.focalY : 0.5
+  const backgroundImage = backgroundPreview ?? (backgroundEdit?.type === 'color' ? null : baseAccount.background.type === 'image' ? baseAccount.background.url : null)
   const backgroundColor = activeColor ? PROFILE_BACKGROUND_COLORS[activeColor] : PROFILE_BACKGROUND_COLORS.paper
   const previewStyle = {backgroundColor, ...(backgroundImage ? {backgroundImage: `url("${backgroundImage}")`, backgroundPosition: `${focalX * 100}% ${focalY * 100}%`} : {})} satisfies CSSProperties
-  const shownAvatar = avatarPreview ?? (avatarEdit === null ? null : account.avatarUrl)
+  const shownAvatar = avatarPreview ?? (avatarEdit === null ? null : baseAccount.avatarUrl)
   const colorKeys = Object.keys(PROFILE_BACKGROUND_COLORS) as ProfileBackgroundColorKey[]
+  const focalEditable = backgroundEdit?.type === 'image' || (backgroundEdit === undefined && baseAccount.background.type === 'image')
 
   return <div className={styles.page}>
     <header className={styles.header}>
@@ -277,7 +288,7 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
             <div className={styles.avatarPreview}>{shownAvatar ? <img alt={labels.avatar} src={shownAvatar}/> : <span aria-hidden="true">{draft.displayName.slice(0, 1).toUpperCase()}</span>}</div>
             <div className={styles.assetActions}>
               <label className={styles.fileAction}>{labels.avatarUpload}<input accept={IMAGE_TYPES.join(',')} aria-label={labels.avatarUpload} disabled={blocked} onChange={(event) => onFile('avatar', event)} type="file"/></label>
-              {(shownAvatar || account.avatarUrl) ? <button disabled={blocked} onClick={() => { replacePreview('avatar', null); setAvatarUpload({status: 'idle'}); setAvatarEdit(null) }} type="button">{labels.avatarRemove}</button> : null}
+              {(shownAvatar || baseAccount.avatarUrl) ? <button disabled={blocked} onClick={() => { replacePreview('avatar', null); setAvatarUpload({status: 'idle'}); setAvatarEdit(null) }} type="button">{labels.avatarRemove}</button> : null}
               {avatarUpload.status === 'uploading' ? <span role="status">{labels.uploading}</span> : null}
               {avatarUpload.status === 'failed' ? <button onClick={() => void upload('avatar', avatarUpload.file)} type="button">{labels.uploadRetry}</button> : null}
             </div>
@@ -295,8 +306,8 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
           </div>
           <fieldset className={styles.colors}><legend className="sr-only">{labels.background}</legend>{colorKeys.map((key) => <label key={key}><input checked={activeColor === key} disabled={blocked} name="profile-background-color" onChange={() => selectColor(key)} type="radio"/><span aria-hidden="true" style={{background: PROFILE_BACKGROUND_COLORS[key]}}/><em>{colorLabel(labels, key)}</em></label>)}</fieldset>
           <div className={styles.focalControls}>
-            <label>{labels.focalX}<input aria-label={labels.focalX} disabled={blocked || backgroundEdit?.type !== 'image'} max="1" min="0" onChange={(event) => updateFocal('focalX', Number(event.target.value))} step="0.01" type="range" value={focalX}/></label>
-            <label>{labels.focalY}<input aria-label={labels.focalY} disabled={blocked || backgroundEdit?.type !== 'image'} max="1" min="0" onChange={(event) => updateFocal('focalY', Number(event.target.value))} step="0.01" type="range" value={focalY}/></label>
+            <label>{labels.focalX}<input aria-label={labels.focalX} disabled={blocked || !focalEditable} max="1" min="0" onChange={(event) => updateFocal('focalX', Number(event.target.value))} step="0.01" type="range" value={focalX}/></label>
+            <label>{labels.focalY}<input aria-label={labels.focalY} disabled={blocked || !focalEditable} max="1" min="0" onChange={(event) => updateFocal('focalY', Number(event.target.value))} step="0.01" type="range" value={focalY}/></label>
           </div>
         </section>
 

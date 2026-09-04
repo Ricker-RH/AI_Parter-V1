@@ -1,7 +1,7 @@
 import {AccountSchema, type Account} from '@aifans/contracts'
 import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
-import {CurrentAccountProvider} from '../account/CurrentAccountProvider.js'
+import {CurrentAccountProvider, publishAccountUpdate} from '../account/CurrentAccountProvider.js'
 import {PROFILE_BACKGROUND_COLORS, ProfileEditor, clampFocalPoint, type ProfileEditorLabels} from './ProfileEditor.js'
 
 const {replace} = vi.hoisted(() => ({replace: vi.fn()}))
@@ -144,6 +144,55 @@ describe('ProfileEditor', () => {
     expect(screen.getByTestId('background-preview').style.backgroundImage).toBe('')
     expect(clampFocalPoint(-1)).toBe(0)
     expect(clampFocalPoint(2)).toBe(1)
+  })
+
+  it('edits focal coordinates for an existing saved background without uploading again', async () => {
+    const imageAccount = AccountSchema.parse({...account, background: {type: 'image', url: 'https://media.example/background.webp', focalX: 0.25, focalY: 0.75}})
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({...imageAccount, profileVersion: 5, background: {...imageAccount.background, focalX: 0.4, focalY: 0.6}}))
+    renderEditor(imageAccount)
+
+    expect(screen.getByLabelText('Horizontal focus')).toBeEnabled()
+    fireEvent.change(screen.getByLabelText('Horizontal focus'), {target: {value: '0.4'}})
+    fireEvent.change(screen.getByLabelText('Vertical focus'), {target: {value: '0.6'}})
+    expect(screen.getByTestId('background-preview')).toHaveStyle({backgroundImage: 'url("https://media.example/background.webp")', backgroundPosition: '40% 60%'})
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}))
+
+    await waitFor(() => expect(replace).toHaveBeenCalled())
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toEqual({
+      profileVersion: 4,
+      background: {type: 'image', focalX: 0.4, focalY: 0.6},
+    })
+  })
+
+  it('disables saved-image focal controls after switching the draft to a color', () => {
+    const imageAccount = AccountSchema.parse({...account, background: {type: 'image', url: 'https://media.example/background.webp', focalX: 0.25, focalY: 0.75}})
+    renderEditor(imageAccount)
+
+    fireEvent.click(screen.getByRole('radio', {name: 'Paper'}))
+
+    expect(screen.getByLabelText('Horizontal focus')).toBeDisabled()
+    expect(screen.getByTestId('background-preview').style.backgroundImage).toBe('')
+  })
+
+  it('refreshes a pristine draft from account updates', () => {
+    renderEditor()
+
+    act(() => publishAccountUpdate({...account, displayName: 'Remote Name', profileVersion: 5}))
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Remote Name')
+  })
+
+  it('keeps a dirty draft and its base version when the shared account advances', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, {status: 409}))
+    renderEditor()
+    fireEvent.change(screen.getByLabelText('Name'), {target: {value: 'Local Draft'}})
+
+    act(() => publishAccountUpdate({...account, displayName: 'Remote Name', profileVersion: 5}))
+    expect(screen.getByLabelText('Name')).toHaveValue('Local Draft')
+    fireEvent.click(screen.getByRole('button', {name: 'Save'}))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('changed elsewhere')
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body))).toMatchObject({profileVersion: 4, displayName: 'Local Draft'})
   })
 
   it('removes an avatar with null and sends only changed fields', async () => {

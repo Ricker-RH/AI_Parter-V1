@@ -331,11 +331,14 @@ AS $$
 DECLARE
   actor_profile_id uuid;
   current_version bigint;
+  current_background_type public.profile_background_type;
+  current_background_key text;
   selected_avatar_key text;
   selected_background_key text;
   result jsonb;
 BEGIN
-  SELECT p.id, p.profile_version INTO actor_profile_id, current_version
+  SELECT p.id, p.profile_version, p.background_type, p.background_object_key
+    INTO actor_profile_id, current_version, current_background_type, current_background_key
   FROM public.profiles p
   WHERE p.auth_subject = app.current_auth_subject() AND p.account_kind = 'human'
   FOR UPDATE;
@@ -364,7 +367,7 @@ BEGIN
   IF change_background THEN
     IF requested_background_type IS NULL THEN
       RAISE EXCEPTION 'INVALID_PROFILE_BACKGROUND' USING ERRCODE = '23514';
-    ELSIF requested_background_type = 'image' THEN
+    ELSIF requested_background_type = 'image' AND requested_background_asset_id IS NOT NULL THEN
       SELECT r.final_object_key INTO selected_background_key
       FROM public.profile_asset_upload_reservations r
       WHERE r.id = requested_background_asset_id
@@ -377,6 +380,11 @@ BEGIN
       IF selected_background_key IS NULL THEN
         RAISE EXCEPTION 'PROFILE_ASSET_UNAVAILABLE' USING ERRCODE = 'P0001';
       END IF;
+    ELSIF requested_background_type = 'image' THEN
+      IF current_background_type IS DISTINCT FROM 'image' OR current_background_key IS NULL THEN
+        RAISE EXCEPTION 'PROFILE_ASSET_UNAVAILABLE' USING ERRCODE = 'P0001';
+      END IF;
+      selected_background_key := current_background_key;
     END IF;
   END IF;
 
@@ -413,7 +421,7 @@ BEGIN
     SET consumed_at = clock_timestamp()
     WHERE id = requested_avatar_asset_id;
   END IF;
-  IF change_background AND requested_background_type = 'image' THEN
+  IF change_background AND requested_background_type = 'image' AND requested_background_asset_id IS NOT NULL THEN
     UPDATE public.profile_asset_upload_reservations
     SET consumed_at = clock_timestamp()
     WHERE id = requested_background_asset_id;

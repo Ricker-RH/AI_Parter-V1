@@ -109,6 +109,24 @@ describe('AIFANS contracts', () => {
     }).success).toBe(false)
   })
 
+  it('accepts a strict focal-only edit for an already-bound background image', () => {
+    expect(ProfileBackgroundInputSchema.parse({type: 'image', focalX: 0.1, focalY: 0.9}))
+      .toEqual({type: 'image', focalX: 0.1, focalY: 0.9})
+    expect(UpdateCurrentAccountSchema.safeParse({
+      profileVersion: 3,
+      background: {type: 'image', focalX: 0.1, focalY: 0.9},
+    }).success).toBe(true)
+  })
+
+  it.each([
+    {type: 'image', focalX: -0.01, focalY: 0.5},
+    {type: 'image', focalX: 0.5, focalY: 1.01},
+    {type: 'image', focalX: 0.5, focalY: 0.5, url: 'https://evil.example/image.webp'},
+    {type: 'image', focalX: 0.5, focalY: 0.5, objectKey: 'private/background.webp'},
+  ])('rejects an invalid or non-strict focal-only background edit', (background) => {
+    expect(ProfileBackgroundInputSchema.safeParse(background).success).toBe(false)
+  })
+
   it('accepts strict profile upload intent and confirmation contracts without exposing object keys', () => {
     expect(ProfileAssetIntentRequestSchema.parse({
       role: 'avatar',

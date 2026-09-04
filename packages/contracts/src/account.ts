@@ -77,7 +77,7 @@ export const ProfileBackgroundInputSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('image'),
-    backgroundAssetId: z.uuid(),
+    backgroundAssetId: z.uuid().optional(),
     focalX: z.number().min(0).max(1),
     focalY: z.number().min(0).max(1),
   }),
