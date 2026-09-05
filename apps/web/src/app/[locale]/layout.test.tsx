@@ -58,3 +58,9 @@ describe('locale layout analytics identity', () => {
     expect(document.documentElement.dataset.routeShell).toBe(resolveShellKind(pathname))
   })
 })
+
+ it.each([['/en/profile', 'true'], ['/zh-CN/humans/person', 'true'], ['/en', 'false'], ['/en/profile/edit', 'false']])('prepaints cover route %s', (pathname, expected) => {
+   window.history.replaceState({}, '', pathname)
+   window.eval(ROOT_LOCALE_SCRIPT)
+   expect(document.documentElement.dataset.profileRoute).toBe(expected)
+ })

@@ -2247,18 +2247,9 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
     padding-top: env(safe-area-inset-top, 0px);
     background-color: var(--shell-surface);
   }
-  .shell:has([data-profile-background]) {
+  html[data-profile-route="true"] .shell {
     --header-safe-area-top: env(safe-area-inset-top, 0px);
     padding-top: 0;
-  }
-  .shell::after {
-    content: '';
-    position: fixed;
-    inset: 0 0 auto;
-    height: env(safe-area-inset-top, 0px);
-    background: linear-gradient(to bottom, rgb(0 0 0 / 48%), rgb(0 0 0 / 24%) 75%, transparent);
-    pointer-events: none;
-    z-index: 1000;
   }
   .mobile-top-bar { height: 56px; padding-top: 2px; }
   .post-detail-header { min-height: 56px; padding-top: 6px; }

@@ -12,6 +12,7 @@ function localeFromPathname(pathname: string) {
 export function RootLocaleSync() {
   const pathname = usePathname()
   useLayoutEffect(() => {
+    document.documentElement.dataset.profileRoute = String(/^\/(?:en|zh-CN)\/(?:profile\/?|(?:profiles|humans)\/[^/]+\/?)$/.test(pathname))
     document.documentElement.lang = localeFromPathname(pathname)
     document.documentElement.dataset.routeShell = resolveShellKind(pathname)
   }, [pathname])

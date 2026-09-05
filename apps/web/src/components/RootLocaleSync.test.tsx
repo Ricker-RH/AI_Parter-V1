@@ -29,3 +29,12 @@ describe('RootLocaleSync', () => {
     expect(document.documentElement.dataset.routeShell).toBe(resolveShellKind(pathname))
   })
 })
+
+ it('restores the shell safe area when leaving a retained profile page', () => {
+   usePathname.mockReturnValue('/en/profile')
+   const view = render(<RootLocaleSync />)
+   expect(document.documentElement.dataset.profileRoute).toBe('true')
+   usePathname.mockReturnValue('/en')
+   view.rerender(<RootLocaleSync />)
+   expect(document.documentElement.dataset.profileRoute).toBe('false')
+ })
