@@ -113,9 +113,9 @@
 .mediaAction input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
 .mediaAction:focus-within { outline: 2px solid currentColor; outline-offset: 2px; }
 .mediaPreview { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
-.mediaPreview img, .mediaBubble img { display: block; max-width: 100%; max-height: 320px; border-radius: 16px; object-fit: contain; }
+.mediaPreview img, .mediaBubble img { display: block; max-width: 100%; height: auto; max-height: 320px; border-radius: 16px; object-fit: contain; }
 .mediaPreview img { max-height: 160px; }
-.mediaPreview audio, .mediaBubble audio { width: min(100%, 300px); }
+.mediaPreview audio, .mediaBubble audio { display: block; width: 300px; max-width: 100%; }
 .mediaBubble { max-width: 100%; overflow: hidden; }
 .emojiTools { grid-column: 1 / -1; }
 .composerTools { grid-column: 1 / -1; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; min-width: 0; }

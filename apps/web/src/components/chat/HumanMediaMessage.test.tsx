@@ -9,12 +9,32 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { HumanMediaMessage } from "./HumanMediaMessage";
 import { HumanChatQueryProvider } from "./HumanChatQueryProvider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 const id = "11111111-1111-4111-8111-111111111111";
+it("reuses downloaded image bytes after re-entry while rechecking authorization", async () => {
+  vi.stubGlobal("URL", class extends URL {
+    static createObjectURL = vi.fn(() => "blob:cached-image");
+    static revokeObjectURL = vi.fn();
+  });
+  const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+  const fetcher = vi.fn(async (url: string) => url.startsWith("https:")
+    ? new Response("image", {headers: {"content-type": "image/webp"}})
+    : Response.json({url: "https://assets.test/image", expiresAt: new Date(Date.now() + 60_000).toISOString(), attachment: {attachmentId: id, kind: "image", contentType: "image/webp", sizeBytes: 5, width: 10, height: 10}}));
+  vi.stubGlobal("fetch", fetcher);
+  const ui = <QueryClientProvider client={client}><HumanMediaMessage selfProfileId={id} attachmentId={id} kind="image" zh={false} onError={() => {}} /></QueryClientProvider>;
+  const first = render(ui);
+  await waitFor(() => expect(screen.getByAltText("Chat image")).toHaveAttribute("src", "blob:cached-image"));
+  first.unmount();
+  render(ui);
+  await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => url.startsWith("/api/"))).toHaveLength(2));
+  expect(fetcher.mock.calls.filter(([url]) => url.startsWith("https:"))).toHaveLength(1);
+  expect(screen.getByAltText("Chat image")).toHaveAttribute("src", "blob:cached-image");
+});
 function renderMedia(props: Omit<Parameters<typeof HumanMediaMessage>[0], "selfProfileId">) {
   return render(
     <HumanChatQueryProvider profileId={id}>
@@ -64,7 +84,7 @@ it("shares an in-memory private attachment descriptor across message remounts", 
     </HumanChatQueryProvider>,
   );
   await waitFor(() => expect(screen.getAllByAltText("Chat image")).toHaveLength(2));
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls.filter(([url]) => String(url).startsWith("/api/"))).toHaveLength(1);
 });
 it("refreshes expired voice authorization on playback before resuming", async () => {
   const expiredAt = Date.now() + 60000;
@@ -104,6 +124,21 @@ it("refreshes expired voice authorization on playback before resuming", async ()
   await waitFor(() =>
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled(),
   );
+});
+it("does not replace a voice source on a timer during playback", async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(async () => Response.json({
+    url: "https://assets.test/voice", expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    attachment: {attachmentId: id, kind: "voice", contentType: "audio/mp4", sizeBytes: 10},
+  }));
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    const view = renderMedia({attachmentId: id, kind: "voice", zh: false, onError() {}});
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    fireEvent.play(view.container.querySelector("audio")!);
+    await act(async () => { await vi.advanceTimersByTimeAsync(50_000); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  } finally { vi.useRealTimers(); }
 });
 it("reports revoked attachment access instead of showing a stale URL", async () => {
   vi.stubGlobal(

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import styles from "./MessagesWorkspace.module.css";
 import { useHumanAttachment } from "./useHumanAttachment";
 export function HumanMediaMessage({
@@ -19,7 +19,15 @@ export function HumanMediaMessage({
   const resume = useRef(false),
     audio = useRef<HTMLAudioElement | null>(null);
   const [renderFailed, setRenderFailed] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string>();
   const attachment = useHumanAttachment(selfProfileId, attachmentId, kind);
+  const imageBlob = attachment.isError ? undefined : attachment.data?.imageBlob;
+  useLayoutEffect(() => {
+    if (!imageBlob) { setImageUrl(undefined); return; }
+    const url = URL.createObjectURL(imageBlob);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [imageBlob]);
   callback.current = onError;
   useEffect(() => {
     if (attachment.error) callback.current(attachment.error);
@@ -40,7 +48,7 @@ export function HumanMediaMessage({
     void attachment.refetch({ cancelRefetch: false });
     return true;
   }
-  const url = attachment.data?.url;
+  const url = imageUrl ?? (imageBlob ? undefined : attachment.data?.url);
   const failed = attachment.isError || renderFailed;
   return (
     <div className={styles.mediaBubble}>
@@ -48,6 +56,8 @@ export function HumanMediaMessage({
         kind === "image" ? (
           <img
             src={url}
+            width={attachment.data?.attachment.width}
+            height={attachment.data?.attachment.height}
             alt={zh ? "聊天图片" : "Chat image"}
             referrerPolicy="no-referrer"
             onError={() => setRenderFailed(true)}
@@ -68,7 +78,10 @@ export function HumanMediaMessage({
         <button
           type="button"
           className={styles.older}
-          onClick={() => void attachment.refetch()}
+          onClick={() => {
+            setRenderFailed(false);
+            void attachment.refetch();
+          }}
         >
           {zh ? "重新加载附件" : "Reload attachment"}
         </button>

@@ -6,9 +6,12 @@ import {
   type HumanMessage,
 } from "@aifans/contracts";
 import Link from "next/link";
+import { QueryClientContext } from "@tanstack/react-query";
 import {
   useCallback,
+  useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -78,7 +81,27 @@ function HumanDetail({
   const peer = conversation.participants.find(
     (person) => person.id !== selfProfileId,
   )!;
-  const [items, setItems] = useState<HumanMessage[]>([]);
+  const queryClient = useContext(QueryClientContext);
+  const historyKey = ["human-chat", selfProfileId, "history", conversation.id] as const;
+  const [cached] = useState(() => queryClient?.getQueryData<{
+    items: HumanMessage[]; afterSequence: number; more: boolean;
+  }>(historyKey));
+  const [items, updateItems] = useState<HumanMessage[]>(cached?.items ?? []);
+  // Only authoritative history advances this cursor. A realtime/send response
+  // may arrive ahead of earlier messages that still need reconciliation.
+  const confirmedSequence = useRef(cached?.afterSequence ?? 0);
+  const hasMore = useRef(cached?.more ?? false);
+  const historyLoaded = useRef(Boolean(cached));
+  function setItems(next: HumanMessage[]) {
+    updateItems(next);
+    queryClient?.setQueryData(historyKey, {
+      items: next, afterSequence: confirmedSequence.current, more: hasMore.current,
+    });
+  }
+  function clearHistory() {
+    updateItems([]);
+    queryClient?.removeQueries({queryKey: historyKey});
+  }
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
@@ -105,8 +128,8 @@ function HumanDetail({
       document.removeEventListener("visibilitychange", stop);
     };
   }, [conversation.id]);
-  const [loading, setLoading] = useState(true);
-  const [more, setMore] = useState(false);
+  const [loading, setLoading] = useState(!cached);
+  const [more, setMore] = useState(cached?.more ?? false);
   const [error, setError] = useState<string | null>(null);
   const [failure, setFailure] = useState<{
     text: string;
@@ -116,7 +139,7 @@ function HumanDetail({
   const [readError, setReadError] = useState(false);
   const lifecycle = useRef<AbortController | null>(null);
   const historyRequest = useRef<AbortController | null>(null);
-  const messages = useRef<HumanMessage[]>([]);
+  const messages = useRef<HumanMessage[]>(cached?.items ?? []);
   const readSequence = useRef(0);
   const reading = useRef(false);
   const sendingRef = useRef(false);
@@ -148,7 +171,7 @@ function HumanDetail({
     lifecycle.current?.abort();
     historyRequest.current?.abort();
     setDenied(true);
-    setItems([]);
+    clearHistory();
     messages.current = [];
     setDraft("");
     setFailure(null);
@@ -189,9 +212,9 @@ function HumanDetail({
     owner.signal.addEventListener("abort", stop, { once: true });
     // A reconciliation must retain a usable history; only the first empty read
     // owns the visible loading state.
-    setLoading(messages.current.length === 0);
+    setLoading(!historyLoaded.current && messages.current.length === 0);
     try {
-      let after = messages.current.at(-1)?.sequence ?? 0;
+      let after = confirmedSequence.current;
       // Bounded catch-up; the continuation remains available for exceptionally large histories.
       for (let page = 0; page < 20; page++) {
         const batch = humanHistory(
@@ -212,6 +235,9 @@ function HumanDetail({
         )
           throw Error("HUMAN_CHAT_INVALID_RESPONSE");
         messages.current = mergeHumanMessages(messages.current, batch);
+        confirmedSequence.current = batch.at(-1)?.sequence ?? after;
+        hasMore.current = batch.length === 100;
+        historyLoaded.current = true;
         setItems(messages.current);
         setMore(batch.length === 100);
         if (batch.length < 100) break;
@@ -251,7 +277,7 @@ function HumanDetail({
     if (revoked) {
       lifecycle.current?.abort();
       historyRequest.current?.abort();
-      setItems([]);
+      clearHistory();
       messages.current = [];
       setDenied(true);
       setError(text.blocked);
@@ -304,9 +330,21 @@ function HumanDetail({
       reading.current = false;
     }
   }, [conversation.id, selfProfileId]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (atBottom.current && messageArea.current)
       messageArea.current.scrollTop = messageArea.current.scrollHeight;
+  }, [items, loading]);
+  useEffect(() => {
+    const area = messageArea.current;
+    if (!area || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (atBottom.current) area.scrollTop = area.scrollHeight;
+    });
+    observer.observe(area);
+    if (area.querySelector("ol")) observer.observe(area.querySelector("ol")!);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
     void acknowledge();
     const visible = () => {
       void acknowledge();
@@ -361,6 +399,7 @@ function HumanDetail({
       // Catch up history first: do not advance past messages received concurrently with this send.
       setDraft("");
       setFailure(null);
+      atBottom.current = true;
       messages.current = mergeHumanMessages(messages.current, [message]);
       setItems(messages.current);
       onMessageSent?.(message);
@@ -377,6 +416,7 @@ function HumanDetail({
     }
   }
   function mergeSent(message: HumanMessage) {
+    atBottom.current = true;
     messages.current = mergeHumanMessages(messages.current, [message]);
     setItems(messages.current);
     onMessageSent?.(message);

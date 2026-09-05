@@ -380,7 +380,10 @@ export function HumanMessagesWorkspace({
       void realtime.connect();
     }
     const visible = () => {
-      if (document.visibilityState === "visible") changed();
+      if (document.visibilityState === "visible") {
+        changed();
+        setRevision((value) => value + 1);
+      }
     };
     document.addEventListener("visibilitychange", visible);
     window.addEventListener("focus", visible);

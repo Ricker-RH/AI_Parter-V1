@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConversationList } from "./ConversationList";
 import { HumanConversationDetail } from "./HumanConversationDetail";
 import { realtimeEndpoint } from "../../lib/human-chat-client";
@@ -265,6 +266,57 @@ const message = {
   content: { kind: "text" as const, text: "Hello from Alice" },
 };
 afterEach(() => vi.unstubAllGlobals());
+it("restores history immediately on re-entry and reconciles from the confirmed cursor", async () => {
+  const client = new QueryClient();
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json({items: [message]}))
+    .mockImplementation(() => new Promise(() => {}));
+  vi.stubGlobal("fetch", fetcher);
+  const detail = <QueryClientProvider client={client}><HumanConversationDetail conversation={conversation} selfProfileId={self} labels={labels} locale="en" revision={0} onChanged={() => {}} /></QueryClientProvider>;
+  const first = render(detail);
+  await screen.findByText("Hello from Alice");
+  first.unmount();
+  render(detail);
+  expect(screen.getByText("Hello from Alice")).toBeVisible();
+  expect(screen.queryByText("Loading")).toBeNull();
+  expect(fetcher.mock.calls.at(-1)?.[0]).toContain("afterSequence=1");
+});
+
+it("follows late media resizing at the bottom but preserves intentional history scrolling", async () => {
+  let resize!: ResizeObserverCallback;
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { resize = callback; }
+    observe() {} disconnect() {}
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({items: [message]})));
+  const view = render(<HumanConversationDetail conversation={conversation} selfProfileId={self} labels={labels} locale="en" revision={0} onChanged={() => {}} />);
+  await screen.findByText("Hello from Alice");
+  const area = view.container.querySelector("ol")!.parentElement!;
+  Object.defineProperties(area, {scrollHeight: {configurable: true, value: 1000}, clientHeight: {value: 400}});
+  expect(resize).toBeTypeOf("function");
+  act(() => resize([], {} as ResizeObserver));
+  expect(area.scrollTop).toBe(1000);
+  area.scrollTop = 100;
+  fireEvent.scroll(area);
+  Object.defineProperty(area, "scrollHeight", {value: 1300});
+  act(() => resize([], {} as ResizeObserver));
+  expect(area.scrollTop).toBe(100);
+});
+
+it("does not skip a missed message when realtime arrives ahead of the history cursor", async () => {
+  const second = {...message, id: "66666666-6666-4666-8666-666666666666", sequence: 2, content: {kind: "text" as const, text: "Missed message"}};
+  const third = {...message, id: "77777777-7777-4777-8777-777777777777", sequence: 3, content: {kind: "text" as const, text: "Realtime message"}};
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json({items: [message]}))
+    .mockResolvedValueOnce(Response.json({items: [second, third]}));
+  vi.stubGlobal("fetch", fetcher);
+  const props = {conversation, selfProfileId: self, labels, locale: "en" as const, onChanged() {}};
+  const view = render(<HumanConversationDetail {...props} revision={0} />);
+  await screen.findByText("Hello from Alice");
+  view.rerender(<HumanConversationDetail {...props} revision={0} realtimeMessage={third} />);
+  await screen.findByText("Realtime message");
+  view.rerender(<HumanConversationDetail {...props} revision={1} realtimeMessage={third} />);
+  await screen.findByText("Missed message");
+  expect(fetcher.mock.calls.at(-1)?.[0]).toContain("afterSequence=1");
+});
 it("mixes human and AI rows in timestamp order and searches both without fake empty messages", () => {
   render(
     <ConversationList

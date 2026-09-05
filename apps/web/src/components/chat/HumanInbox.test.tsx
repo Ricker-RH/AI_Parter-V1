@@ -217,7 +217,7 @@ it("keeps a loaded inbox visible during disconnected fallback reconciliation", a
     ),
   );
 });
-it("does not reload open history when a visible page reconciles its inbox", async () => {
+it("reconciles open history as well as the inbox when returning to a visible page", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   const fetcher = vi.fn().mockImplementation((url: string) =>
     Promise.resolve(
@@ -233,8 +233,23 @@ it("does not reload open history when a visible page reconciles its inbox", asyn
   await screen.findByText("No messages yet");
   const historyCalls = fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length;
   fireEvent.focus(window);
-  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(historyCalls + 2));
-  expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length).toBe(historyCalls);
+  await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length).toBe(historyCalls + 1));
+});
+it("receives a missed message in the open conversation through disconnected polling", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
+  let historyReads = 0;
+  const received = {v: 1, id: "44444444-4444-4444-8444-444444444444", conversationId: id, senderProfileId: peer, clientRequestId: "55555555-5555-4555-8555-555555555555", sequence: 1, createdAt: conversation.createdAt, content: {kind: "text", text: "Arrived while disconnected"}};
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.includes("/messages?")) return Response.json({items: ++historyReads === 1 ? [] : [received]});
+    if (url === "/api/inbox/preferences") return Response.json({items: []});
+    return Response.json({items: [{conversation, latestMessage: null, unreadCount: 0, lastReadSequence: 0}], nextCursor: null});
+  }));
+  render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(screen.getByText("No messages yet")).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  expect(screen.getByText("Arrived while disconnected")).toBeVisible();
 });
 it("subscribes selected AI separately and refreshes authoritative history on its generation event", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
