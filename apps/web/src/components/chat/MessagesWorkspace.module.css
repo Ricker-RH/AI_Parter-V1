@@ -1,8 +1,8 @@
 .workspace { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; min-width: 0; overflow-x: hidden; }
 .listPane, .detailPane, .emptyPane { min-width: 0; }
 .listPane { display: flex; flex-direction: column; }
-.sectionHeader { display: grid; gap: 14px; padding: 20px 16px 14px; }
-.titleRow { align-items: center; display: flex; min-height: 44px; }
+.sectionHeader { display: grid; gap: 17px; padding: 0 21px 14px; }
+.titleRow { align-items: center; display: flex; min-height: 60px; margin-inline: -21px; padding: 0 20px; }
 .titleRow h1 { font-size: 19px; font-weight: 650; letter-spacing: -.015em; line-height: 1.2; margin: 0; }
 .sectionTabs { display: flex; gap: 4px; }
 .sectionTabs a { align-items: center; background: transparent; border: 0; border-radius: 999px; display: inline-flex; font-size: 13px; font-weight: 500; isolation: isolate; justify-content: center; min-height: 44px; padding: 0 12px; position: relative; }
@@ -146,3 +146,8 @@
 .shareSearch > button { display: grid; gap: 4px; text-align: left; overflow-wrap: anywhere; }
 .shareSearch [role="group"] { display: flex; gap: 4px; }
 .shareSearch [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
+
+@media (max-width: 699px) {
+  .sectionHeader { gap: 14px; padding-inline: 16px; }
+  .titleRow { margin-inline: -16px; }
+}
