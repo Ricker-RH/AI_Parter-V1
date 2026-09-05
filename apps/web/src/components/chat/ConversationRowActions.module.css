@@ -1,7 +1,10 @@
 .row {position:relative;overflow:hidden;}
 .content {position:relative;background:var(--shell-canvas);transition:transform 160ms ease;touch-action:pan-y;}
 .swipeActions {position:absolute;inset:0 0 0 auto;display:flex;width:152px;}
-.swipeActions button {width:76px;border:0;background:var(--shell-hover);color:var(--shell-text);font:inherit;}
+.swipeActions button {width:76px;border:0;background:color-mix(in srgb, #52657b 92%, var(--shell-text));color:#fff;font:inherit;font-size:14px;font-weight:600;padding:8px;cursor:pointer;}
+.swipeActions button.danger {background:color-mix(in srgb, #c73545 92%, var(--shell-text));color:#fff;}
+.swipeActions button:active {filter:brightness(.9);}
+.swipeActions button:focus-visible {outline:2px solid #fff;outline-offset:-4px;}
 .backdrop {position:fixed;inset:0;z-index:10000;}
 .backdrop:has(.dialog) {display:grid;place-items:center;background:rgb(0 0 0 / 35%);padding:20px;}
 .menu,.dialog {background:var(--shell-canvas);color:var(--shell-text);border:1px solid var(--shell-border);box-shadow:0 8px 32px rgb(0 0 0 / 16%);border-radius:16px;padding:8px;}
