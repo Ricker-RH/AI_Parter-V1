@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import {connection} from 'next/server'
 import {SettingsContent} from '../../../components/settings/SettingsContent'
 import {getMessages, isLocale} from '../../../i18n/config'
@@ -15,9 +16,9 @@ export default async function SettingsPage({params}: {params: Promise<{locale: s
   const access = await requireAuthenticatedPage({locale, returnTo: `/${locale}/settings`})
   const m = await getMessages(locale)
   if (access.status === 'unavailable') {
-    return <main><header className="page-header"><h1 className="page-title">{m.settings}</h1></header><section className={styles.unavailable} role="alert"><p>{m.unavailableDescription}</p></section></main>
+    return <main className={styles.page}><header className={styles.header}><Link aria-label={locale==='zh-CN'?'返回':'Back'} href={`/${locale}/profile`}>‹</Link><h1>{m.settings}</h1></header><section className={styles.unavailable} role="alert"><p>{m.unavailableDescription}</p></section></main>
   }
 
   const auth = readWebAuthEnv(process.env)
-  return <main><header className="page-header"><h1 className="page-title">{m.settings}</h1></header><SettingsContent configured={auth.status === 'configured'} locale={locale}/></main>
+  return <main className={styles.page}><header className={styles.header}><Link aria-label={locale==='zh-CN'?'返回':'Back'} href={`/${locale}/profile`}>‹</Link><h1>{m.settings}</h1></header><div className={styles.scroller}><SettingsContent configured={auth.status === 'configured'} locale={locale}/></div></main>
 }

@@ -57,3 +57,6 @@
   .controls { padding-inline: 20px; }
 }
 @media (max-width:520px) { .colors { grid-template-columns: repeat(4,minmax(44px,1fr)); row-gap: 12px; } }
+.header.header {display:flex;gap:12px;align-items:center;}
+.header.header h1 {clip:auto;clip-path:none;display:block;font-size:18px;height:auto;overflow:visible;position:static;text-align:left;white-space:normal;width:auto;margin:0;}
+.header.header .save {margin-left:auto;}

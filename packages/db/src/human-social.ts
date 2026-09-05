@@ -43,7 +43,7 @@ export function createHumanSocialRepository({withActor,withPublic,publicMediaBas
   },
   async getPreferences(actor:Actor){
    return withActor(actor,async client=>{
-    const result=await client.query("SELECT me.id AS profile_id,coalesce(p.profile_visibility,'private') AS profile_visibility,coalesce(p.show_presence,false) AS show_presence FROM (SELECT public.social_current_human_profile_id() AS id) me LEFT JOIN public.human_social_preferences p ON p.profile_id=me.id WHERE me.id IS NOT NULL")
+    const result=await client.query("SELECT me.id AS profile_id,coalesce(p.profile_visibility,'private') AS profile_visibility,coalesce(p.show_presence,false) AS show_presence FROM (SELECT public.current_profile_id() AS id) me LEFT JOIN public.human_social_preferences p ON p.profile_id=me.id WHERE me.id IS NOT NULL")
     if(!result.rows[0])throw Object.assign(new Error('HUMAN_ACCOUNT_REQUIRED'),{code:'42501'})
     const r=PreferencesRow.parse(result.rows[0]);return{visibility:r.profile_visibility,showPresence:r.show_presence}
    })

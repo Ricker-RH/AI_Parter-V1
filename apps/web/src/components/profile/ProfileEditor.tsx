@@ -333,7 +333,7 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
   return <div className={styles.page}>
     <header className={`${headerStyles.contextualTitle} ${styles.header}`}>
       <button aria-label={labels.back} className={headerStyles.back} disabled={blocked} onClick={leave} type="button"><svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg></button>
-      <h1>{labels.title}</h1>
+      <h1>{locale==='zh-CN'?'编辑主页':'Edit profile'}</h1>
       <button className={styles.save} disabled={!dirty || blocked || avatarUpload.status === 'failed' || backgroundUpload.status === 'failed'} form={PROFILE_EDITOR_FORM_ID} type="submit">{saving ? labels.saving : labels.save}</button>
     </header>
     <div className={styles.scroller}>

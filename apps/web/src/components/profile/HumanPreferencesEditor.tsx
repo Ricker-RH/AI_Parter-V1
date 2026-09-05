@@ -4,7 +4,7 @@ import {useEffect,useRef,useState} from 'react'
 import type {Locale} from '../../i18n/config'
 import {parseHumanPreferences,type HumanPreferences} from '../../lib/human-preferences'
 import {humanProfileLabels} from './human-profile-labels'
-import styles from './ProfileEditor.module.css'
+import styles from './HumanPreferencesEditor.module.css'
 
 type PreferenceCopy = {private:string;presence:string;on:string;off:string;privateHelp:string;presenceHelp:string}
 
@@ -33,8 +33,8 @@ export function HumanPreferencesEditor({locale}:{locale:Locale}){
  }
  useEffect(()=>{void update();return()=>{request.current?.abort();busy.current=false}},[])
  const ready = preferences !== null
- return <section aria-label={text.title} className={styles.form} style={{marginTop:16}}>
-  <div className={styles.message}><h2 style={{fontSize:16,margin:0}}>{text.title}</h2><p>{text.immediate}</p></div>
+ return <section aria-label={text.title} className={styles.form}>
+  <div className={styles.message}><h2 style={{fontSize:16,margin:0}}>{text.title}</h2></div>
   <PreferenceRow help={copy.privateHelp} label={copy.private} placeholderId="human-preference-private-placeholder" {...(ready ? {checked: preferences.visibility==='private', onToggle: ()=>void update({visibility:preferences.visibility==='private'?'public':'private'}), value: preferences.visibility==='private' ? copy.on : copy.off} : {})}/>
   <PreferenceRow help={copy.presenceHelp} label={copy.presence} placeholderId="human-preference-presence-placeholder" {...(ready ? {checked: preferences.showPresence, onToggle: ()=>void update({showPresence:!preferences.showPresence}), value: preferences.showPresence ? copy.on : copy.off} : {})}/>
   {pending ? <span className="sr-only" role="status">{labels.loading}</span> : null}
