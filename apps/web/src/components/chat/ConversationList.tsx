@@ -88,7 +88,7 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
       const conversationLabel = locale === 'zh-CN' ? `打开与 ${row.person.displayName} 的对话` : `Open conversation: ${row.person.displayName}`
       return <div className={styles.conversationRow} data-selected={row.selected || undefined} key={`${row.kind}:${row.id}`}>
         <Link aria-label={profileLabel} className={styles.conversationAvatar} href={profileHref}>
-          {row.kind === 'HUMAN' ? <HumanAvatar decorative human={row.person} size="small"/> : <Avatar avatarUrl={null} decorative displayName={row.person.displayName} identityId={row.person.id} kind="ip" size="small"/>}
+          {row.kind === 'HUMAN' ? <HumanAvatar className={styles.listAvatar!} decorative human={row.person} size="medium"/> : <Avatar avatarUrl={null} className={styles.listAvatar!} decorative displayName={row.person.displayName} identityId={row.person.id} kind="ip" size="medium"/>}
         </Link>
         <Link aria-current={row.selected ? 'page' : undefined} aria-label={conversationLabel} className={styles.conversationCopy} href={row.href}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong>{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadBadge}>{row.unread > 99 ? '99+' : row.unread}</span> : null}</span><span className={styles.preview}>{row.body}</span></Link>
       </div>
