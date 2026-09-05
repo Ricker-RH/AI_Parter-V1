@@ -1,0 +1,15 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px 48px;
+  text-align: center;
+  color: var(--shell-text);
+}
+.art { display: block; width: 112px; height: 91px; margin-bottom: 16px; color: var(--shell-muted); }
+.root h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; letter-spacing: 0; }
+.root p { max-width: 280px; margin: 8px 0 0; color: var(--shell-muted); font-size: 14px; line-height: 1.65; text-wrap: pretty; }
+.action { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 40px; margin-top: 20px; padding: 0 20px; border: 1px solid var(--shell-border); border-radius: 999px; background: var(--shell-surface); color: var(--shell-text); font-size: 14px; font-weight: 600; text-decoration: none; }
+.action:hover { background: var(--shell-hover); }
+.action:focus-visible { outline: 2px solid var(--shell-text); outline-offset: 4px; }
+@media (min-width: 768px) { .root { padding-block: 48px 56px; } }

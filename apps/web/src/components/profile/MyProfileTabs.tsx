@@ -1,7 +1,7 @@
 'use client'
 
 import {CreatorIpPageSchema, FeedPageSchema, FollowedIpPageSchema, type CreatorIp, type FeedPage, type FollowedIp} from '@aifans/contracts'
-import {EmptyState} from '@aifans/ui'
+import {ProfileEmptyState} from './ProfileEmptyState'
 import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
 import {useContext, useRef, useState, type KeyboardEvent} from 'react'
@@ -77,7 +77,7 @@ function SectionContent({empty,labels,locale,loadingMore,moreUnavailable,onLoadM
   if(!section)return <div className={styles.tabState} role="status">{labels.loadingSection}</div>
   if(section.status==='auth')return <div className={styles.tabState} role="alert"><p>{labels.authRequired}</p><Link href={authHref(locale,`/${locale}/profile`)}>{labels.signIn}</Link></div>
   if(section.status==='unavailable')return <div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p><button onClick={onRetry} type="button">{labels.retrySection}</button></div>
-  if(!section.items.length&&!section.nextCursor)return <div className={styles.tabEmpty}><EmptyState description="" title={empty}/></div>
+  if(!section.items.length&&!section.nextCursor)return <ProfileEmptyState kind={tab} locale={locale} own title={empty}/>
   const more=section.nextCursor&&!moreUnavailable?<button className={styles.loadMore} disabled={loadingMore} onClick={onLoadMore} type="button">{loadingMore?labels.loadingSection:socialLabels.loadMore}</button>:null
   const retryMore=moreUnavailable?<div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p><button onClick={onLoadMore} type="button">{labels.retrySection}</button></div>:null
   if(tab==='ips'||tab==='following')return <div><div className={styles.ipList}>{(section.items as Array<CreatorIp|FollowedIp>).map((ip)=>{

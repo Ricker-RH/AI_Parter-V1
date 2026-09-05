@@ -3,7 +3,7 @@
 import {PublicIpProfileSchema, type FeedPost, type PublicPostMedia} from '@aifans/contracts'
 import {useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent} from 'react'
 import type {Locale} from '../../i18n/config'
-import {EmptyState} from '@aifans/ui'
+import {ProfileEmptyState} from '../profile/ProfileEmptyState'
 import {PostCard} from './PostCard'
 import type {SocialLabels} from './types'
 import styles from './PublicProfileContent.module.css'
@@ -152,7 +152,7 @@ function ScopedPublicProfileTabs({canMutate, labels, locale, posts, profileId, r
       <button aria-controls={mediaId} aria-selected={active === 'media'} className={styles.tab} id="profile-media-tab" onClick={() => setActive('media')} onKeyDown={onTabKeyDown} ref={mediaTab} role="tab" tabIndex={active === 'media' ? 0 : -1} type="button">{labels.profileMedia ?? labels.postMedia}</button>
     </div>
     <div aria-labelledby="profile-posts-tab" hidden={active !== 'posts'} id={postsId} role="tabpanel">
-      {items.length ? items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>) : <div className={styles.empty}><EmptyState description={labels.homeEmptyDescription} title={labels.homeEmptyTitle}/></div>}
+      {items.length ? items.map((post) => <PostCard canMutate={canMutate} key={post.id} labels={labels} locale={locale} post={post} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>) : <ProfileEmptyState kind="posts" locale={locale} title={labels.homeEmptyTitle}/>}
       {loadMoreControl}
     </div>
     <div aria-labelledby="profile-media-tab" className={styles.mediaPanel} hidden={active !== 'media'} id={mediaId} role="tabpanel">
@@ -162,7 +162,7 @@ function ScopedPublicProfileTabs({canMutate, labels, locale, posts, profileId, r
           const alt = media.altText ?? `${labels.profileMedia ?? labels.postMedia} ${index + 1}`
           return <button aria-label={alt} className={styles.mediaThumbnail} key={media.id} onClick={(event) => {opener.current = event.currentTarget; setViewerIndex(index)}} type="button"><img alt="" height={media.height ?? undefined} loading="lazy" src={media.url} width={media.width ?? undefined}/></button>
         })}</div>
-      </section>) : <div className={styles.empty}><EmptyState description={labels.profileMediaEmptyDescription ?? 'Images shared in posts appear here.'} title={labels.profileMediaEmptyTitle ?? 'No media yet'}/></div>}
+      </section>) : <ProfileEmptyState kind="media" locale={locale} title={labels.profileMediaEmptyTitle ?? 'No media yet'}/>}
       {loadMoreControl}
     </div>
     {viewerItem ? <div className={styles.viewerBackdrop} onClick={(event) => {event.stopPropagation(); if (event.target === event.currentTarget) closeViewer()}}>
