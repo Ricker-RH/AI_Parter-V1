@@ -47,7 +47,7 @@ describe('AuthorPreview modal', () => {
   it('does not close when the dialog receives a mouse down', () => {
     const {dialog} = renderOpenPreview()
 
-    fireEvent.mouseDown(dialog)
+    fireEvent.click(dialog)
 
     expect(screen.getByRole('dialog', {name: 'Luma'})).toBeVisible()
   })
@@ -57,7 +57,7 @@ describe('AuthorPreview modal', () => {
     const backdrop = dialog.parentElement
     expect(backdrop).not.toBeNull()
 
-    fireEvent.mouseDown(backdrop!)
+    fireEvent.click(backdrop!)
 
     expect(screen.queryByRole('dialog', {name: 'Luma'})).toBeNull()
     expect(trigger).toHaveFocus()
@@ -113,7 +113,7 @@ describe('AuthorPreview modal', () => {
     expect(screen.getByRole('button', {name: 'Following'})).toBeDisabled()
 
     const dialog = screen.getByRole('dialog', {name: 'Luma'})
-    fireEvent.mouseDown(dialog.parentElement!)
+    fireEvent.click(dialog.parentElement!)
 
     await waitFor(() => expect(followSignal).toHaveProperty('aborted', true))
     fireEvent.click(trigger)

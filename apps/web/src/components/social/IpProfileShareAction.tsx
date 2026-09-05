@@ -1,5 +1,7 @@
 'use client'
 
+import {outsideDismiss} from '../../lib/ui/outside-dismiss'
+
 import type {PublicIp} from '@aifans/contracts'
 import {HumanMessageSchema, HumanShareRecipientPageSchema} from '@aifans/contracts'
 import {createPortal} from 'react-dom'
@@ -51,7 +53,9 @@ function downloadShareGraphic(profile: Pick<PublicIp, 'id' | 'displayName' | 'us
 export function IpProfileShareAction({locale, profile}: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
-  return <div className={styles.menu}>
+  const menuRoot = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (!menuOpen) return; return outsideDismiss(target => Boolean(menuRoot.current?.contains(target)), () => setMenuOpen(false)) }, [menuOpen])
+  return <div className={styles.menu} ref={menuRoot}>
     <button aria-expanded={menuOpen} aria-haspopup="menu" aria-label={locale === 'zh-CN' ? '更多' : 'More'} className={styles.menuTrigger} onClick={() => setMenuOpen(value => !value)} type="button">•••</button>
     {menuOpen ? <div className={styles.menuPopover} role="menu"><button onClick={() => { setMenuOpen(false); setSheetOpen(true) }} role="menuitem" type="button">{locale === 'zh-CN' ? '分享' : 'Share'}</button></div> : null}
     {sheetOpen ? <IpProfileShareSheet locale={locale} onClose={() => setSheetOpen(false)} profile={profile}/> : null}
@@ -128,7 +132,7 @@ export function IpProfileShareSheet({locale, onClose, profile, targetKind = 'ip'
     } catch (error) { setStatus((error as Error).message === 'RELATIONSHIP_CHANGED' ? 'relationship-error' : 'error') } finally { setSending(false) }
   }
 
-  return createPortal(<div className={styles.backdrop} onClick={event => event.stopPropagation()} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+  return createPortal(<div className={styles.backdrop} onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) onClose() }}>
     <section aria-label={`${text.share} ${profile.displayName}`} aria-modal="true" className={styles.sheet} role="dialog">
       <div className={styles.handle} onPointerDown={event => setDragStart(event.clientY)} onPointerUp={event => { if (dragStart !== null && event.clientY - dragStart > 80) onClose(); setDragStart(null) }}/><header><h2>{text.title}</h2><button aria-label={text.close} onClick={onClose} type="button">×</button></header>
       <div className={styles.recipients} aria-label={text.friend}>{recipients === null ? <p role="status">…</p> : recipients.length === 0 ? <p>{text.empty}</p> : recipients.map((person, index) => <button aria-pressed={selected?.id === person.id} className={styles.recipient} key={person.id} onClick={() => setSelected(person)} ref={index === 0 ? firstRecipient : undefined} type="button"><HumanAvatar decorative human={person} size="medium"/><span>{person.displayName}</span></button>)}</div>

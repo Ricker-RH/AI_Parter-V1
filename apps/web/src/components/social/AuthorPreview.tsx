@@ -92,7 +92,7 @@ function ScopedAuthorPreview({author, canMutate, followsAuthor, labels, locale, 
   const chatAction = <StartChatButton authenticated={canMutate} ipProfileId={author.id} labels={{startChat: labels.startChat, startingChat: labels.startingChat, chatStartError: labels.chatStartError}} locale={locale}/>
   const triggerClass = context === 'comment' ? 'comment-avatar-trigger' : 'post-avatar-trigger'
   const avatarClass = context === 'comment' ? 'comment-avatar' : 'avatar'
-  const modal = <div className="author-preview-backdrop" data-author-preview-backdrop onClick={(event) => event.stopPropagation()} onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
+  const modal = <div className="author-preview-backdrop" data-author-preview-backdrop onClick={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) close() }}>
     <div aria-label={author.displayName} aria-modal="true" className="author-preview-dialog" onMouseDown={(event) => event.stopPropagation()} ref={dialog} role="dialog">
       <div className="author-preview-heading">
         <div><Link href={profileHref}><strong>{author.displayName}</strong></Link><span>@{author.username}</span></div>

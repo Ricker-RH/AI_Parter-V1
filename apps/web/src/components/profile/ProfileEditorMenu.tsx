@@ -1,5 +1,7 @@
 'use client'
 
+import {outsideDismiss} from '../../lib/ui/outside-dismiss'
+
 import {useLayoutEffect, useRef, useState, type ReactNode, type RefObject} from 'react'
 import {createPortal} from 'react-dom'
 import styles from './ProfileEditor.module.css'
@@ -32,9 +34,6 @@ export function ProfileEditorMenu({anchor, children, id, label, onClose, selecto
     place()
     items()[0]?.focus()
     function dismiss() { close.current(); anchor.current?.focus() }
-    function outside(event: MouseEvent) {
-      if (!menu.current?.contains(event.target as Node) && !anchor.current?.contains(event.target as Node)) close.current()
-    }
     function keydown(event: KeyboardEvent) {
       if (event.key === 'Escape') { event.preventDefault(); dismiss(); return }
       if (!menu.current?.contains(document.activeElement)) return
@@ -46,12 +45,12 @@ export function ProfileEditorMenu({anchor, children, id, label, onClose, selecto
       const destination = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1 : event.key === 'ArrowDown' ? (current + 1) % controls.length : event.key === 'ArrowUp' ? (current - 1 + controls.length) % controls.length : -1
       if (destination >= 0) { event.preventDefault(); controls[destination]?.focus() }
     }
-    document.addEventListener('mousedown', outside)
+    const removeOutside = outsideDismiss(target => Boolean(menu.current?.contains(target) || anchor.current?.contains(target)), () => close.current())
     document.addEventListener('keydown', keydown)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     return () => {
-      document.removeEventListener('mousedown', outside)
+      removeOutside()
       document.removeEventListener('keydown', keydown)
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)

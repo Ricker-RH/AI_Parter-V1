@@ -46,7 +46,7 @@ export function ReportProblemDialog({labels, onClose}: {labels: ReportProblemLab
     }
   }
 
-  return <div className="report-problem-overlay">
+  return <div className="report-problem-overlay" onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) onClose() }}>
     <div aria-labelledby="report-problem-title" aria-modal="true" className="report-problem-dialog" onKeyDown={trapFocus} ref={dialog} role="dialog">
       <button aria-label={labels.close} className="report-problem-close" onClick={onClose} ref={closeButton} type="button">←</button>
       <header className="report-problem-header">

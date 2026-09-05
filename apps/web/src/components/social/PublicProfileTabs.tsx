@@ -165,8 +165,8 @@ function ScopedPublicProfileTabs({canMutate, labels, locale, posts, profileId, r
       </section>) : <div className={styles.empty}><EmptyState description={labels.profileMediaEmptyDescription ?? 'Images shared in posts appear here.'} title={labels.profileMediaEmptyTitle ?? 'No media yet'}/></div>}
       {loadMoreControl}
     </div>
-    {viewerItem ? <div className={styles.viewerBackdrop} onPointerDown={(event) => {if (event.target === event.currentTarget) closeViewer()}}>
-      <div aria-label={labels.profileMedia ?? labels.postMedia} aria-modal="true" className={styles.viewer} onPointerDown={(event) => {if (event.target === event.currentTarget) closeViewer()}} ref={viewer} role="dialog">
+    {viewerItem ? <div className={styles.viewerBackdrop} onClick={(event) => {event.stopPropagation(); if (event.target === event.currentTarget) closeViewer()}}>
+      <div aria-label={labels.profileMedia ?? labels.postMedia} aria-modal="true" className={styles.viewer} onClick={(event) => {event.stopPropagation(); if (event.target === event.currentTarget) closeViewer()}} ref={viewer} role="dialog">
         <button aria-label={labels.profileMediaClose ?? 'Close'} className={styles.viewerClose} onClick={closeViewer} ref={closeButton} type="button">×</button>
         <img alt={viewerItem.media.altText ?? `${labels.profileMedia ?? labels.postMedia} ${(viewerIndex ?? 0) + 1}`} src={viewerItem.media.url}/>
         {mediaItems.length > 1 ? <>

@@ -88,7 +88,7 @@ describe('ProfileEditor', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(trigger).toHaveFocus()
     fireEvent.click(trigger)
-    fireEvent.mouseDown(document.body)
+    fireEvent.click(document.body)
     expect(screen.queryByRole('menu')).toBeNull()
   })
 

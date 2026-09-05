@@ -83,7 +83,7 @@ describe('PostDetailHeader', () => {
     expect(trigger).toHaveFocus()
 
     fireEvent.click(trigger)
-    fireEvent.mouseDown(screen.getByRole('button', {name: 'Outside'}))
+    fireEvent.click(screen.getByRole('button', {name: 'Outside'}))
     expect(screen.queryByRole('menu')).toBeNull()
     expect(trigger).toHaveFocus()
   })

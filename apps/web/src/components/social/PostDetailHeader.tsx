@@ -1,5 +1,7 @@
 'use client'
 
+import {outsideDismiss} from '../../lib/ui/outside-dismiss'
+
 import {useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent} from 'react'
 import {useRouter} from 'next/navigation'
 import Link from 'next/link'
@@ -48,7 +50,7 @@ export function PostDetailHeader({actionsLabel, canonicalPath, fallbackHref, lab
   function close() { setOpen(false); trigger.current?.focus() }
   function openMenu(edge: 'first'|'last' = 'first') { focusEdge.current = edge; setOpen(true) }
   useEffect(() => { if (!open || !focusEdge.current) return; const items = menuItems(); const target = focusEdge.current === 'last' ? items.at(-1) : items[0]; focusEdge.current = null; target?.focus() }, [open])
-  useEffect(() => { if (!open) return; const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; const onPointerDown = (event: MouseEvent) => { if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close() }; document.addEventListener('keydown', onKeyDown); document.addEventListener('mousedown', onPointerDown); return () => { document.removeEventListener('keydown', onKeyDown); document.removeEventListener('mousedown', onPointerDown) } }, [open])
+  useEffect(() => { if (!open) return; const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; document.addEventListener('keydown', onKeyDown); const removeOutside = outsideDismiss(target => Boolean(menu.current?.contains(target) || trigger.current?.contains(target)), close); return () => { document.removeEventListener('keydown', onKeyDown); removeOutside() } }, [open])
   function navigateMenu(event: ReactKeyboardEvent<HTMLDivElement>) { const items = menuItems(); const current = items.indexOf(document.activeElement as HTMLButtonElement); const destination = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (current + 1 + items.length) % items.length : event.key === 'ArrowUp' ? (current - 1 + items.length) % items.length : -1; if (destination >= 0) { event.preventDefault(); items[destination]?.focus() } }
   function back() { const currentReferrer = referrer ?? document.referrer; if (hasSameOriginAppReferrer(currentReferrer, window.location.origin, locale)) router.back(); else router.push(fallbackHref ?? `/${locale}`) }
   async function copy() { try { if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable'); await navigator.clipboard.writeText(canonicalUrl()); setStatus(labels.copySuccess) } catch { setStatus('') } finally { close() } }

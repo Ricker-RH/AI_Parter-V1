@@ -207,7 +207,7 @@ describe('PublicProfileContent', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Moon one'}))
     screen.getByRole('button', {name: 'Outside'}).focus()
     expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Close'})).toHaveFocus()
-    fireEvent.pointerDown(container.querySelector(`.${styles.viewerBackdrop}`)!)
+    fireEvent.click(container.querySelector(`.${styles.viewerBackdrop}`)!)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 

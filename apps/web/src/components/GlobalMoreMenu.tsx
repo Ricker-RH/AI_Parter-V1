@@ -1,5 +1,7 @@
 'use client'
 
+import {outsideDismiss} from '../lib/ui/outside-dismiss'
+
 import Link from 'next/link'
 import {useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent} from 'react'
 import type {Locale} from '../i18n/config'
@@ -99,14 +101,11 @@ export function GlobalMoreMenu({authenticated, contactHref, labels, locale, onSi
   useEffect(() => {
     if (!open) return
     function onKeyDown(event: KeyboardEvent) { if (event.key === 'Escape' && !reportOpen) close() }
-    function onPointerDown(event: MouseEvent) {
-      if (!reportOpen && !menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close()
-    }
     document.addEventListener('keydown', onKeyDown)
-    document.addEventListener('mousedown', onPointerDown)
+    const removeOutside = outsideDismiss(target => reportOpen || Boolean(menu.current?.contains(target) || trigger.current?.contains(target)), close)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      document.removeEventListener('mousedown', onPointerDown)
+      removeOutside()
     }
   }, [open, reportOpen])
 
