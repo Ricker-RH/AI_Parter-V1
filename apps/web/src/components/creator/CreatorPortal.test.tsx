@@ -10,6 +10,12 @@ import styles from './CreatorPortal.module.css'
 const {router}=vi.hoisted(()=>({router:{replace:vi.fn()}}))
 vi.mock('next/navigation',()=>({useRouter:()=>router}))
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks()})
+function writeLayout(name:string,container:HTMLElement) {
+  if(process.env.CREATOR_LAYOUT_FIXTURE!=='1')return
+  const globalCss=readFileSync('apps/web/src/app/globals.css','utf8').replace(/^@import[^;]+;/gm,'')
+  const componentCss=readFileSync('apps/web/src/components/creator/CreatorPortal.module.css','utf8').replace(/\.([a-zA-Z][\w-]*)/g,(match,key)=>styles[key]?`.${styles[key]}`:match)
+  writeFileSync(`/tmp/aifans-creator-${name}.html`,`<!doctype html><html lang="en" data-route-shell="creator"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${globalCss}\n${componentCss}</style><body><div class="creator-shell"><div class="shell" data-shell="public" data-mobile-top-bar="hidden"><aside class="desktop-nav">AIFANS</aside><div class="content">${container.innerHTML}</div><nav class="mobile-nav"><a class="mobile-link">Home</a><a class="mobile-link">Channels</a><a class="mobile-link">Messages</a><a class="mobile-link">Profile</a></nav></div></div></body></html>`)
+}
 describe('Creator destinations',()=>{
   it('opens distinct routes without a gallery or fetching drafts on the portal',()=>{
     const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher)
@@ -19,6 +25,7 @@ describe('Creator destinations',()=>{
     expect(screen.getByRole('link',{name:/Generate images/})).toHaveAttribute('href','/en/creator/images')
     expect(fetcher).not.toHaveBeenCalled()
     expect(screen.queryByRole('img')).toBeNull()
+    writeLayout('portal',container)
     if(process.env.CREATOR_LAYOUT_FIXTURE==='1') {
       const globalCss=readFileSync('apps/web/src/app/globals.css','utf8').replace(/^@import[^;]+;/gm,'')
       const componentCss=readFileSync('apps/web/src/components/creator/CreatorPortal.module.css','utf8').replace(/\.([a-zA-Z][\w-]*)/g,(match,key)=>styles[key]?`.${styles[key]}`:match)
@@ -27,7 +34,7 @@ describe('Creator destinations',()=>{
   })
   it('preserves in-progress creation when switching and keyboard navigating tabs',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockImplementation(()=>Promise.resolve(Response.json({items:[],nextCursor:null}))))
-    render(<CreatorCenter workspace locale="en" labels={en.creator}/>)
+    const {container}=render(<CreatorCenter workspace locale="en" labels={en.creator}/>)
     fireEvent.change(screen.getByLabelText('Describe your IP'),{target:{value:'My character'}})
     expect(screen.getByRole('radio',{name:'Private'})).toBeChecked()
     fireEvent.click(screen.getByRole('radio',{name:'Public'}))
@@ -38,12 +45,14 @@ describe('Creator destinations',()=>{
     expect(screen.getByLabelText('Describe your IP')).toHaveValue('My character')
     expect(screen.getByRole('radio',{name:'Public'})).toBeChecked()
     expect(screen.getByText('Public IPs require approval before they can be visible to others.')).toBeVisible()
+    writeLayout('studio',container)
   })
   it('provides a real creation path when no draft is available for image generation',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({items:[],nextCursor:null})))
-    render(<CreatorImages locale="en"/>)
+    const {container}=render(<CreatorImages locale="en"/>)
     expect(await screen.findByRole('link',{name:/Create and save/})).toHaveAttribute('href','/en/creator/studio')
     expect(screen.queryByRole('button',{name:'Generate images'})).toBeNull()
+    writeLayout('images',container)
   })
   it('redirects expired image sessions without showing success',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({},{status:401})))
