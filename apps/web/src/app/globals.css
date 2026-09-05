@@ -1362,6 +1362,18 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .creator-page {
   min-height: 100%;
 }
+.creator-shell .shell[data-shell="public"] .content { overflow-y:auto; overscroll-behavior-y:contain; }
+.creator-shell .shell[data-shell="public"] .right-rail { display:none; }
+@media(min-width:700px) {
+  .creator-shell .shell[data-shell="public"] .content { border:1px solid var(--shell-border); border-radius:16px; }
+}
+.creator-shell [hidden] { display:none !important; }
+.creator-shell .creator-list-item { min-width:0; }
+.creator-shell .creator-list-item > div { min-width:0; }
+.creator-shell .creator-list-item strong { overflow-wrap:anywhere; }
+@media(max-width:699px) {
+  .creator-shell .creator-form,.creator-shell .creator-references,.creator-shell .creator-authorization,.creator-shell .creator-ip { border-radius:0; border-inline:0; margin-inline:0; }
+}
 .creator-hero {
   border-bottom: 1px solid var(--shell-border);
   padding: 38px 28px 30px;

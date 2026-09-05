@@ -14,6 +14,11 @@ const uniqueStrings = <T extends z.ZodType<string>>(item: T, maximum: number) =>
     });
 
 export const CreatorVisualTypeSchema = z.enum(["realistic", "anime", "hybrid"]);
+export const CreatorGenerationResultSchema = z.object({
+  jobId: z.uuid(),
+  status: z.enum(['queued', 'ready']),
+  candidates: z.array(z.object({id:z.uuid(),readIntent:z.object({url:z.url(),method:z.literal('GET'),expiresAt:z.iso.datetime()})})).max(8),
+});
 export const CreatorReferenceRoleSchema = z.enum([
   "avatar",
   "cover",

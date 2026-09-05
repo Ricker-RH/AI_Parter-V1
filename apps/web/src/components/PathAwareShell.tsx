@@ -26,7 +26,7 @@ export function PathAwareShell({authConfigured, children, creatorModeEnabled, la
     case 'admin': shell = <AdminShell authConfigured={authConfigured} locale={locale}>{children}</AdminShell>; break
     case 'auth': shell = <AuthShell>{children}</AuthShell>; break
     case 'messages': shell = <MessagesShell activeChat={isActiveChatRoute(pathname, searchParams.get('humanConversation'))} floatingCreatorAction={floatingCreatorAction} labels={labels} locale={locale}>{children}</MessagesShell>; break
-    case 'creator': shell = <CreatorShell>{children}</CreatorShell>; break
+    case 'creator': shell = <CreatorShell labels={labels} locale={locale}>{children}</CreatorShell>; break
     default: shell = <PublicShell floatingCreatorAction={floatingCreatorAction} labels={labels} locale={locale} suppressMobileNav={shouldSuppressPublicMobileNav(pathname)} suppressMobileTopBar={shouldSuppressPublicMobileTopBar(pathname)}>{children}</PublicShell>
   }
   return <>{shell}<Suspense fallback={null}><RouteReadySignal content={children}/></Suspense><Suspense fallback={null}><NavigationFeedback locale={locale} release={release}/></Suspense></>
