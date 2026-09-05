@@ -7,7 +7,7 @@ const css = readFileSync('apps/web/src/app/globals.css','utf8')
   .replace(/^@import[^\n]+\n/, '')
   .replaceAll('and (display-mode: standalone)', '')
   .replace(/env\(safe-area-inset-top(?:,\s*0px)?\)/g, '59px')
-  .replace(/env\(safe-area-inset-bottom\)/g, '34px')
+  .replace(/env\(safe-area-inset-bottom(?:,\s*0px)?\)/g, '34px')
 
 test('retained profile content cannot pull ordinary navigation into the status area', async ({page}) => {
   await page.setViewportSize({width:390,height:844})
@@ -37,4 +37,12 @@ test('settings and preference rows share gutters without card borders at all siz
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
     if(width===390) await page.screenshot({path:'/tmp/aifans-settings-layout-fixture.png'})
   }
+})
+
+test('oversized browser bottom insets do not inflate the navigation controls', async ({page})=>{
+  await page.setViewportSize({width:390,height:844})
+  await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><nav class="mobile-nav"><a class="mobile-link">Home</a></nav>')
+  await page.addStyleTag({content:css.replace('min(34px, 34px)','min(100px, 34px)')})
+  expect((await page.locator('.mobile-nav').boundingBox())?.height).toBe(84)
+  expect((await page.locator('.mobile-link').boundingBox())?.height).toBe(49)
 })

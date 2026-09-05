@@ -12,7 +12,7 @@
   --entity-action-gap: 8px;
   --content-scroll-end-space: 16px;
   --app-viewport-height: 100vh;
-  --mobile-safe-area-bottom: env(safe-area-inset-bottom);
+  --mobile-safe-area-bottom: min(env(safe-area-inset-bottom, 0px), 34px);
   --mobile-bottom-nav-height: calc(50px + var(--mobile-safe-area-bottom));
   --mobile-scroll-breathing-room: 16px;
   --post-detail-composer-clearance: 83px;
