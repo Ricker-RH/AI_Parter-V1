@@ -39,10 +39,10 @@ test('settings and preference rows share gutters without card borders at all siz
   }
 })
 
-test('oversized browser bottom insets do not inflate the navigation controls', async ({page})=>{
+test('system bottom insets reserve background space without enlarging navigation controls', async ({page})=>{
   await page.setViewportSize({width:390,height:844})
   await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><nav class="mobile-nav"><a class="mobile-link">Home</a></nav>')
-  await page.addStyleTag({content:css.replace('min(34px, 34px)','min(100px, 34px)')})
-  expect((await page.locator('.mobile-nav').boundingBox())?.height).toBe(84)
+  await page.addStyleTag({content:css.replaceAll('34px','100px')})
+  expect((await page.locator('.mobile-nav').boundingBox())?.height).toBe(150)
   expect((await page.locator('.mobile-link').boundingBox())?.height).toBe(49)
 })

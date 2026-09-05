@@ -655,8 +655,8 @@ describe("real social content", () => {
     expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="authenticated"\]\s*\{[^}]*--post-detail-mode-clearance:\s*var\(--post-detail-composer-clearance\)/);
     expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="signin"\]\s*\{[^}]*--post-detail-mode-clearance:\s*var\(--post-detail-signin-clearance\)/);
     expect(stylesheet).toMatch(/\.post-detail-scroll-region\[data-composer-mode="loading"\]\s*\{[^}]*--post-detail-mode-clearance:\s*var\(--post-detail-loading-clearance\)/);
-    expect(stylesheet).not.toContain(':has(');
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-composer-dock\s*\{[^}]*bottom:\s*var\(--mobile-bottom-nav-height\)[^}]*position:\s*fixed/);
+    expect(stylesheet).not.toMatch(/\.post-detail-scroll-region[^\{]*:has\(/);
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*?\.post-detail-composer-dock\s*\{[^}]*bottom:\s*0[^}]*position:\s*absolute/);
     expect(stylesheet).toMatch(/\.mobile-nav\s*\{[^}]*height:\s*var\(--mobile-bottom-nav-height\)[^}]*padding:\s*0 max\(8px, env\(safe-area-inset-left\)\) var\(--mobile-safe-area-bottom\)/);
     expect(stylesheet).not.toMatch(/\.comments-section\s*\{[^}]*padding-bottom/);
     expect(source.match(/<CommentComposer/g)).toHaveLength(1);

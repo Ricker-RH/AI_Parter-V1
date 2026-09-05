@@ -200,9 +200,9 @@ describe('ConversationList', () => {
     expect(stylesheet).not.toMatch(/100dvh/)
     expect(stylesheet).toMatch(/\.workspace, \.detailPane \{ min-height: 0; \}/)
     expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*:global\(\.messages-shell\[data-mobile-top-bar="hidden"\] \.mobile-top-bar\) \{ display: none; \}/)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*\.listPane \{[\s\S]*padding-bottom: calc\(50px \+ env\(safe-area-inset-bottom\)\)/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\) \{[\s\S]*\.listPane \{[^}]*padding-bottom: 0/)
     const shellStylesheet = readFileSync(process.cwd().endsWith('/apps/web') ? 'src/app/globals.css' : 'apps/web/src/app/globals.css', 'utf8')
-    expect(shellStylesheet).toMatch(/\.messages-shell \{ display: grid; grid-template-rows: minmax\(0, 1fr\); height: var\(--app-viewport-height\); min-height: 0; overflow: hidden; \}/)
+    expect(shellStylesheet).toMatch(/\.messages-shell \{ display: grid; grid-template-rows: minmax\(0, 1fr\) auto; height: var\(--app-viewport-height\); min-height: 0; overflow: hidden; padding-bottom: 0; \}/)
     expect(shellStylesheet).toMatch(/\.messages-shell \.content \{ display: grid; grid-template-rows: auto minmax\(0, 1fr\); min-height: 0; \}/)
   })
 

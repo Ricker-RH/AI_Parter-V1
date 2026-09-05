@@ -95,13 +95,13 @@
   .workspace { height: 100%; min-height: 0; }
   .workspace[data-selected="true"] .listPane, .emptyPane { display: none; }
   .workspace, .detailPane { min-height: 0; }
-  .listPane { min-height: 0; overflow-y: auto; padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .listPane { min-height: 0; overflow-y: auto; padding-bottom: 0; }
   .detailPane { height: 100%; }
-  .composer { padding-bottom: calc(12px + 50px + env(safe-area-inset-bottom)); }
-  .notificationsPage { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .composer { padding-bottom: calc(12px + var(--mobile-safe-area-bottom)); }
+  .notificationsPage { padding-bottom: 0; }
   .mobileDetailSectionHeader { display: block; }
   .workspace[data-selected="true"] .mobileDetailSectionHeader { display: none; }
-  .workspace[data-selected="true"] .composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .workspace[data-selected="true"] .composer { padding-bottom: calc(12px + var(--mobile-safe-area-bottom)); }
   :global(.messages-shell[data-active-chat="true"]) { padding-bottom: 0; }
   :global(.messages-shell[data-active-chat="true"] .mobile-nav),
   :global(.messages-shell[data-active-chat="true"] .floating-creator-action) { display: none; }

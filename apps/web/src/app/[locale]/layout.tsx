@@ -13,6 +13,8 @@ import {readWebAuthEnv} from '../../lib/auth/env'
 import {isCreatorModeEnabled} from '../../lib/creator-mode'
 import {analyticsRelease} from '../../lib/analytics/release'
 import {RootLocaleSync} from '../../components/RootLocaleSync'
+import {MobileViewport} from '../../components/MobileViewport'
+import {appleStartupImages} from '../../lib/apple-launch'
 import {CurrentAccountProvider} from '../../components/account/CurrentAccountProvider'
 import {AppQueryProvider} from '../../components/AppQueryProvider'
 
@@ -28,14 +30,14 @@ export async function generateMetadata(): Promise<Metadata> {
   const candidate = await rootLocale()
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
-  return {title: messages.metadataTitle, description: messages.metadataDescription, manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'AIFANS',statusBarStyle:'black-translucent'}}
+  return {title: messages.metadataTitle, description: messages.metadataDescription, manifest:'/manifest.webmanifest', icons:{apple:[{url:'/pwa/icon-180-v2.png',sizes:'180x180',type:'image/png'}]}, appleWebApp:{capable:true,title:'AIFANS',statusBarStyle:'black-translucent',startupImage:appleStartupImages}}
 }
 
 export default function LocaleLayout({children}: Readonly<{children: React.ReactNode}>) {
   const authConfigured = readWebAuthEnv(process.env).status === 'configured'
   const creatorModeEnabled = isCreatorModeEnabled()
   const release = analyticsRelease(process.env)
-  return <html data-route-shell="public" lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html: ROOT_LOCALE_SCRIPT}} /></head><body><Suspense fallback={null}><RootLocaleSync/></Suspense><LocalizedAppShellBody authConfigured={authConfigured} creatorModeEnabled={creatorModeEnabled} release={release}>{children}</LocalizedAppShellBody></body></html>
+  return <html data-route-shell="public" lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{__html: ROOT_LOCALE_SCRIPT}} /></head><body><MobileViewport/><Suspense fallback={null}><RootLocaleSync/></Suspense><LocalizedAppShellBody authConfigured={authConfigured} creatorModeEnabled={creatorModeEnabled} release={release}>{children}</LocalizedAppShellBody></body></html>
 }
 
 async function LocalizedAppShellBody({authConfigured, children, creatorModeEnabled, release}: Readonly<{authConfigured: boolean; children: React.ReactNode; creatorModeEnabled: boolean; release: string}>) {
