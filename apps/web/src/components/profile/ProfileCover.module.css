@@ -36,7 +36,10 @@
   background: linear-gradient(0deg, color-mix(in srgb, var(--shell-surface) 76%, transparent), color-mix(in srgb, var(--shell-surface) 48%, transparent)), linear-gradient(90deg, color-mix(in srgb, var(--shell-surface) 45%, transparent), transparent);
 }
 
-.host > header { color: var(--profile-foreground, var(--shell-text)); }
+.host > header {
+  color: var(--profile-foreground, var(--shell-text));
+  border-bottom-color: transparent;
+}
 .host [role='tab'] { color: var(--profile-foreground, var(--shell-muted)); }
 .host [role='tab'][aria-selected='true'] {
   color: var(--profile-foreground, var(--shell-text));
