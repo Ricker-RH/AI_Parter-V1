@@ -1,4 +1,6 @@
 'use client'
+import {ProfileCover} from '../profile/ProfileCover'
+import coverStyles from '../profile/ProfileCover.module.css'
 
 import type {PublicIpProfile} from '@aifans/contracts'
 import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
@@ -25,9 +27,9 @@ function PublicProfileContentView({result,locale,labels,moreHref,viewerScope}: P
   const {profile,followerCount,viewerFollows,posts}=result.data
   const referenceTime=Date.now()
   const returnTo=`/${locale}/profiles/${profile.id}`
-  return <div className={styles.profile}>
+  return <div className={`${styles.profile} ${coverStyles.host}`}>
     <ProfilePageHeader actions={<IpProfileShareAction locale={locale} profile={profile}/>} backHref={`/${locale}`} labels={labels} locale={locale} username={profile.username}/>
-    <div className={styles.profileSurface} data-profile-content-frame>
+    <div className={styles.profileSurface} data-profile-content-frame data-profile-cover-surface>
     <section className={styles.header} aria-labelledby="profile-display-name">
       <div className={styles.identityRow}>
         <div className={styles.identity}>
@@ -46,6 +48,7 @@ function PublicProfileContentView({result,locale,labels,moreHref,viewerScope}: P
     </section>
     <PublicProfileTabs canMutate={Boolean(viewerScope)} labels={labels} locale={locale} posts={posts} profileId={profile.id} referenceTime={referenceTime} returnTo={returnTo} {...(viewerScope ? {viewerScope} : {})}/>
     </div>
+    <ProfileCover/>
   </div>
 }
 

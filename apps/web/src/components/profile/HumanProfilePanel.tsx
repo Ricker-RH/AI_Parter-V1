@@ -1,4 +1,6 @@
 'use client'
+import {ProfileCover} from './ProfileCover'
+import coverStyles from './ProfileCover.module.css'
 import type {HumanProfile} from '@aifans/contracts'
 import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
@@ -25,17 +27,17 @@ function HumanProfilePanelContent({initialProfile,locale,socialLabels,viewerScop
  if(serverProfile!==initialProfile){setServerProfile(initialProfile);setProfile(initialProfile)}
  const background=profile.background
  const backgroundStyle=background.type==='image'?{'--profile-background-image':`url("${background.url}")`,'--profile-background-focal-x':`${background.focalX*100}%`,'--profile-background-focal-y':`${background.focalY*100}%`} as CSSProperties:{'--profile-background-color':PROFILE_BACKGROUND_COLORS[background.colorKey]} as CSSProperties
- return <div className={styles.page}><div className={styles.pageContent}>
+ return <div className={styles.page}><div className={`${styles.pageContent} ${coverStyles.host}`} style={background.type==='color'?{'--profile-foreground':background.colorKey==='graphite'?PROFILE_BACKGROUND_COLORS.paper:PROFILE_BACKGROUND_COLORS.graphite} as CSSProperties:undefined}>
   <ProfilePageHeader actions={!profile.isOwner ? <HumanProfileBlockMenu locale={locale} onProfileChange={setProfile} profile={profile}/> : undefined} backHref={`/${locale}`} labels={{}} locale={locale} username={profile.identity.username}/>
-  <div className={styles.surface}><div className={styles.profileBody}>
+  <div className={styles.surface} data-profile-cover-surface><div className={styles.profileBody}>
    <section aria-labelledby="human-profile-title" className={styles.profile} data-background-type={background.type} style={background.type==='color'?{'--profile-foreground':background.colorKey==='graphite'?PROFILE_BACKGROUND_COLORS.paper:PROFILE_BACKGROUND_COLORS.graphite} as CSSProperties:undefined}>
-    <div aria-hidden="true" className={styles.profileBackground} style={backgroundStyle}/>
     <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="human-profile-title">{profile.identity.displayName}</h2><p>@{profile.identity.username}</p></div><Avatar avatarUrl={profile.identity.avatarUrl} className={styles.avatar!} displayName={profile.identity.displayName} size="large"/></header>
     {profile.bio?<div className={styles.details}><p className={styles.bio}>{profile.bio}</p></div>:null}
     {profile.isOwner?<Link className={styles.editAction} href={`/${locale}/profile`}>{labels.edit}</Link>:<HumanProfileActions key={profile.identity.id} locale={locale} onProfileChange={setProfile} profile={profile} showBlock={false}/>}
    </section>
    <HumanProfileTabs profile={profile} locale={locale} socialLabels={socialLabels} {...(viewerScope?{viewerScope}:{})}/>
-  </div></div>
+   <ProfileCover backgroundStyle={backgroundStyle} type={background.type}/>
+ </div></div>
  </div></div>
 }
 

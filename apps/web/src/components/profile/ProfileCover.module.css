@@ -1,0 +1,43 @@
+.host {
+  position: relative;
+  isolation: isolate;
+}
+.host > header,
+.host > [data-profile-cover-surface] {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+/* Keep the existing sticky header rule, including its safe-area sizing. */
+@media (max-width: 699px) {
+  .host > header { position: sticky; }
+}
+.clip {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.image {
+  height: var(--cover-full-height, 100%);
+  background-color: var(--profile-background-color, var(--shell-surface));
+  background-image: var(--profile-background-image, none);
+  background-position: var(--profile-background-focal-x, 50%) var(--profile-background-focal-y, 50%);
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.image[data-background-type='image']::after {
+  content: '';
+  display: block;
+  height: 100%;
+  background: linear-gradient(0deg, color-mix(in srgb, var(--shell-surface) 76%, transparent), color-mix(in srgb, var(--shell-surface) 48%, transparent)), linear-gradient(90deg, color-mix(in srgb, var(--shell-surface) 45%, transparent), transparent);
+}
+
+.host > header { color: var(--profile-foreground, var(--shell-text)); }
+.host [role='tab'] { color: var(--profile-foreground, var(--shell-muted)); }
+.host [role='tab'][aria-selected='true'] {
+  color: var(--profile-foreground, var(--shell-text));
+  border-bottom-color: var(--profile-foreground, var(--shell-text));
+}

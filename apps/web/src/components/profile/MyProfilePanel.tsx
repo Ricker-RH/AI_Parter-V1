@@ -1,4 +1,6 @@
 'use client'
+import {ProfileCover} from './ProfileCover'
+import coverStyles from './ProfileCover.module.css'
 
 import Link from 'next/link'
 import type {CSSProperties} from 'react'
@@ -35,12 +37,11 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
       } as CSSProperties
     : {'--profile-background-color': PROFILE_BACKGROUND_COLORS[account.background.colorKey]} as CSSProperties
 
-  return <div className={styles.page}><div className={styles.pageContent}>
-    <ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/>
-    <div className={styles.surface} data-profile-content-frame>
+  return <div className={styles.page}><div className={`${styles.pageContent} ${coverStyles.host}`} style={account.background.type === 'color' ? {'--profile-foreground': account.background.colorKey === 'graphite' ? PROFILE_BACKGROUND_COLORS.paper : PROFILE_BACKGROUND_COLORS.graphite} as CSSProperties : undefined}>
+  <ProfilePageHeader backHref={`/${locale}`} labels={labels} locale={locale} username={account.username}/>
+    <div className={styles.surface} data-profile-content-frame data-profile-cover-surface>
       <div className={styles.profileBody}>
         <section className={styles.profile} aria-labelledby="my-profile-title" data-background-type={account.background.type} style={account.background.type === 'color' ? {'--profile-foreground': account.background.colorKey === 'graphite' ? PROFILE_BACKGROUND_COLORS.paper : PROFILE_BACKGROUND_COLORS.graphite} as CSSProperties : undefined}>
-  <div aria-hidden="true" className={styles.profileBackground} data-background-type={account.background.type} data-profile-background style={backgroundStyle}/>
           <header className={styles.identityRow}><div className={styles.identityCopy}><h2 id="my-profile-title">{account.displayName}</h2><p>@{account.username}</p></div><Avatar avatarUrl={account.avatarUrl ?? null} className={styles.avatar!} displayName={account.displayName} size="large"/></header>
           <div className={styles.details}><p className={styles.bio}>{account.bio || <span className={styles.empty}>{labels.emptyBio}</span>}</p></div>
           <Link className={styles.editAction} href={`/${locale}/profile/edit?returnTo=${encodeURIComponent(profilePath)}`}>{labels.edit}</Link>
@@ -48,5 +49,6 @@ export function MyProfilePanel({labels, locale, socialLabels, viewerScope}: {lab
         <MyProfileTabs labels={{tabs:labels.tabs,myIps:labels.myIps,liked:labels.liked,saved:labels.savedTab,following:labels.following,loadingSection:labels.loadingSection,authRequired:labels.authRequired,signIn:labels.signIn,unavailableSection:labels.unavailableSection,retrySection:labels.retrySection,myIpsEmpty:labels.myIpsEmpty,likedEmpty:labels.likedEmpty,savedEmpty:labels.savedEmpty,followingEmpty:labels.followingEmpty}} locale={locale} socialLabels={socialLabels??({} as SocialLabels)} {...(viewerScope ? {viewerScope} : {})}/>
       </div>
     </div>
+    <ProfileCover backgroundStyle={backgroundStyle} type={account.background.type}/>
   </div></div>
 }

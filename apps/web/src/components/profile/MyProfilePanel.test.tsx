@@ -23,6 +23,7 @@ const labels = {
 const account: Account = {id: '5b8ba43c-0a9e-43ec-87be-448a9e1ebf30', kind: 'human', username: 'rui', displayName: 'Rui', bio: null, avatarUrl: null, preferredLocale: 'en', creatorModeEnabled: false, profileVersion: 7, background: {type: 'color', colorKey: 'paper'}}
 const moduleUrl = import.meta.url
 const stylesheet = readFileSync(fileURLToPath(new URL('./MyProfilePanel.module.css', moduleUrl)), 'utf8')
+const coverStylesheet = readFileSync(fileURLToPath(new URL('./ProfileCover.module.css', moduleUrl)), 'utf8')
 const globalStylesheet = readFileSync(fileURLToPath(new URL('../../app/globals.css', moduleUrl)), 'utf8')
 
 function profile(initialAccount?: Account, locale: 'en' | 'zh-CN' = 'en') {
@@ -42,11 +43,12 @@ describe('MyProfilePanel', () => {
 
     expect(background).toHaveAttribute('data-background-type', 'color')
     expect(background).toHaveStyle({'--profile-background-color': PROFILE_BACKGROUND_COLORS.sage})
-    expect(background!.parentElement).toHaveAttribute('data-background-type', 'color')
-    expect(background!.parentElement).toHaveStyle({'--profile-foreground': PROFILE_BACKGROUND_COLORS.graphite})
-    expect(background!.parentElement).toContainElement(identity)
-    expect(background!.parentElement).toContainElement(screen.getByRole('link', {name: 'Edit profile'}))
-    expect(background!.parentElement).not.toContainElement(screen.getByRole('tablist'))
+    const host = background!.parentElement!.parentElement!
+    expect(host).toHaveStyle({'--profile-foreground': PROFILE_BACKGROUND_COLORS.graphite})
+    expect(host).toContainElement(identity)
+    expect(host).toContainElement(screen.getByRole('link', {name: 'Edit profile'}))
+    expect(host).toContainElement(screen.getByRole('tablist'))
+    expect(host).toContainElement(screen.getByRole('link', {name: 'Back'}))
   })
 
   it('renders a saved image background with cover and focal-point custom properties', () => {
@@ -59,7 +61,7 @@ describe('MyProfilePanel', () => {
       '--profile-background-focal-x': '23%',
       '--profile-background-focal-y': '76%',
     })
-    expect(stylesheet).toMatch(/\.profileBackground\s*\{[^}]*background-size:\s*cover/s)
+    expect(coverStylesheet).toMatch(/\.image\s*\{[^}]*background-size:\s*cover/s)
   })
 
   it('uses the shared Avatar for the saved image and fallback', () => {
@@ -130,17 +132,17 @@ describe('MyProfilePanel', () => {
   })
 
   it('reserves a responsive hero height and keeps the bounded scroll and fixed-nav buffer', () => {
-    expect(stylesheet).toMatch(/\.profileBackground\s*\{[^}]*position:\s*absolute/s)
-    expect(stylesheet).toMatch(/\.profileBackground\s*\{[^}]*inset:\s*0/s)
+    expect(coverStylesheet).toMatch(/\.clip\s*\{[^}]*position:\s*absolute/s)
+    expect(coverStylesheet).toMatch(/\.clip\s*\{[^}]*inset:\s*0/s)
     expect(stylesheet).toMatch(/\.pageContent\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/s)
     expect(stylesheet).toMatch(/\.surface\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s)
     expect(globalStylesheet).toMatch(/\[data-profile-content-frame\]::after\s*\{[^}]*height:\s*var\(--content-scroll-end-space\)/s)
-    expect(stylesheet).toMatch(/@media \(max-width: 699px\)[\s\S]*?\.page > div:first-child > header:first-child \{[\s\S]*?display:\s*flex[\s\S]*?background:\s*color-mix/)
+    expect(stylesheet).toMatch(/@media \(max-width: 699px\)[\s\S]*?\.page > div:first-child > header:first-child \{[\s\S]*?display:\s*flex[\s\S]*?background:\s*transparent/)
   })
 })
 
 it('keeps image profiles legible with a translucent rather than opaque backdrop', () => {
   const root = process.cwd().endsWith('/apps/web') ? 'src/components/profile' : 'apps/web/src/components/profile'
-  const stylesheet = readFileSync(`${root}/MyProfilePanel.module.css`, 'utf8')
-  expect(stylesheet).toContain('var(--shell-surface) 72%')
+  const stylesheet = readFileSync(`${root}/ProfileCover.module.css`, 'utf8')
+  expect(stylesheet).toContain('var(--shell-surface) 48%')
 })

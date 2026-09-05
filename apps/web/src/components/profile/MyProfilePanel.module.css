@@ -22,16 +22,6 @@
 }
 .surface::-webkit-scrollbar { display: none; }
 
-.profileBackground {
-  background-color: var(--profile-background-color, var(--shell-hover));
-  background-image: var(--profile-background-image, none);
-  background-position: var(--profile-background-focal-x, 50%) var(--profile-background-focal-y, 50%);
-  background-repeat: no-repeat;
-  background-size: cover;
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-}
 
 .profileBody {
   display: grid;
@@ -51,13 +41,6 @@
   width: 100%;
 }
 
-.profile[data-background-type='image']::before {
-  background: linear-gradient(0deg, color-mix(in srgb, var(--shell-surface) 76%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 72%, transparent) 40%, transparent 85%), linear-gradient(90deg, color-mix(in srgb, var(--shell-surface) 74%, transparent) 0%, color-mix(in srgb, var(--shell-surface) 72%, transparent) 55%, transparent 100%);
-  content: '';
-  inset: 0;
-  position: absolute;
-  z-index: -1;
-}
 
 .tabsSection { min-width: 0; }
 .tabList { border-bottom: 1px solid var(--shell-border); display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
@@ -199,7 +182,7 @@
 
 @media (max-width: 699px) {
   .surface { border: 0; border-radius: 0; }
-  .page > div:first-child > header:first-child { display: flex; background: color-mix(in srgb, var(--shell-surface) 54%, transparent); backdrop-filter: blur(12px); }
+  .page > div:first-child > header:first-child { display: flex; background: transparent; }
   .avatar { flex-basis: 72px; height: 72px; width: 72px; }
   .state { padding-left: 20px; padding-right: 20px; }
   .ipRow { padding-inline: 16px; }
