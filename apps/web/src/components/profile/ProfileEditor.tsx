@@ -19,7 +19,6 @@ import headerStyles from '../social/PublicProfileContent.module.css'
 import {useCurrentAccount} from '../account/CurrentAccountProvider'
 import styles from './ProfileEditor.module.css'
 import {ProfileEditorMenu} from './ProfileEditorMenu'
-import {HumanPreferencesEditor} from './HumanPreferencesEditor'
 
 export const PROFILE_EDITOR_FORM_ID = 'profile-editor-form'
 export const PROFILE_BACKGROUND_COLORS = {
@@ -370,7 +369,6 @@ export function ProfileEditor({labels, locale, returnTo}: {labels: ProfileEditor
         </section>)}
         {message ? <div className={styles.message} role="alert"><p>{message.text}</p>{message.kind === 'conflict' ? <button disabled={blocked} onClick={() => void reloadLatest()} type="button">{labels.refetch}</button> : null}</div> : null}
       </form>
-      <HumanPreferencesEditor key={account.id} locale={locale}/>
     </div>
     {assetMenu ? <ProfileEditorMenu anchor={assetMenu === 'avatar' ? avatarTrigger : backgroundTrigger} id={assetMenu === 'avatar' ? 'profile-avatar-menu' : 'profile-background-menu'} key={assetMenu} label={assetMenu === 'avatar' ? labels.avatar : labels.background} onClose={() => setAssetMenu(null)} selector={assetMenu === 'background'}>
       {assetMenu === 'background' ? <>

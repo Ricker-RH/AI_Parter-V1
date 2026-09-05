@@ -1,10 +1,11 @@
 import Link from 'next/link'
+import {creatorHref} from '../../lib/auth/return-to'
 import type {Locale} from '../../i18n/config'
 import styles from './ProfileEmptyState.module.css'
 
 type Collection = 'ips' | 'liked' | 'saved' | 'following' | 'posts' | 'media'
 const descriptions = {
-  ips: ['你创建的 IP 会展示在这里，先去发现一些灵感吧。', 'Your IP profiles will appear here. Explore and find some inspiration.'],
+  ips: ['从一个名字、一种性格开始，创建你的第一个 IP。', 'Start with a name and a personality. Create your first IP.'],
   liked: ['遇到喜欢的内容，点个赞就能在这里找到。', 'Give a post a like and find it here later.'],
   saved: ['收藏感兴趣的内容，留待下次慢慢看。', 'Save something interesting to come back to later.'],
   following: ['关注感兴趣的人或 IP，随时发现他们的新动态。', 'Follow people or IP profiles to keep up with their posts.'],
@@ -29,6 +30,6 @@ export function ProfileEmptyState({title, kind, locale, own = false}: {title: st
     </svg>
     <h2>{title}</h2>
     <p>{description}</p>
-    {own ? <Link className={styles.action} href={`/${locale}/${kind === 'ips' || kind === 'following' ? 'search' : ''}`}>{zh ? '去发现' : 'Explore'}<span aria-hidden="true">→</span></Link> : null}
+    {own ? <Link className={styles.action} href={kind === 'ips' ? creatorHref(locale, `/${locale}/profile`) : `/${locale}/${kind === 'following' ? 'search' : ''}`}>{kind === 'ips' ? (zh ? '去创作' : 'Create') : (zh ? '去发现' : 'Explore')}<span aria-hidden="true">→</span></Link> : null}
   </section>
 }

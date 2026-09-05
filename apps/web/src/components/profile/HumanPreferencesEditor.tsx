@@ -18,7 +18,7 @@ function PreferenceRow({checked,help,label,onToggle,placeholderId,value}: {check
 export function HumanPreferencesEditor({locale}:{locale:Locale}){
  const [preferences,setPreferences]=useState<HumanPreferences|null>(null),[pending,setPending]=useState(true),[error,setError]=useState(false)
  const request=useRef<AbortController|null>(null),busy=useRef(false),labels=humanProfileLabels(locale)
- const text=locale==='zh-CN'?{title:'隐私与在线状态',private:'私密主页',presence:'显示在线状态',on:'开启',off:'关闭',privateHelp:'开启后，其他人只能查看基本资料，无法查看四个内容栏目。',presenceHelp:'在真人聊天中，允许互相关注的联系人查看在线状态。'}:{title:'Privacy and presence',private:'Private profile',presence:'Show online status',on:'On',off:'Off',privateHelp:'Other people can see your basic profile, but all four content sections are hidden.',presenceHelp:'Allow mutual contacts to see your online status in human chats.'}
+ const text=locale==='zh-CN'?{title:'隐私与在线状态',private:'私密主页',presence:'显示在线状态',on:'开启',off:'关闭',privateHelp:'开启后，其他人只能查看基本资料，无法查看四个内容栏目。',presenceHelp:'双方互相关注并开启此项后，可在真人聊天顶部看到在线状态。'}:{title:'Privacy and presence',private:'Private profile',presence:'Show online status',on:'On',off:'Off',privateHelp:'Other people can see your basic profile, but all four content sections are hidden.',presenceHelp:'Shown in human chat headers when both people follow each other and enable this setting.'}
  const copy: PreferenceCopy = text
  async function update(input?:HumanPreferencesUpdateInput){
   if(busy.current)return
