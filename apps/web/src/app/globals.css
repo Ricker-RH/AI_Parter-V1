@@ -657,6 +657,8 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .comment-thread-group { display: grid; }
 .comment-thread-group + .comment-thread-group { border-top: 1px solid var(--shell-border); }
 .comment-thread-item {
+  --comment-inset-x: 24px;
+  --comment-inset-top: 16px;
   display: grid;
   column-gap: 10px;
   grid-template-columns: 44px minmax(0, 1fr);
@@ -665,17 +667,18 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 }
 .comment-avatar-rail { min-height: 44px; position: relative; z-index: 0; }
 .comment-avatar-rail > * { position: relative; z-index: 1; }
-.comment-thread-group--connected .comment-thread-item:not(:last-child) .comment-avatar-rail::after {
+.comment-thread-group--connected .comment-thread-item:not(:last-child)::before {
   background: var(--shell-border);
-  bottom: -14px;
+  bottom: calc(-1 * var(--comment-inset-top));
   content: "";
-  left: 21px;
+  left: calc(var(--comment-inset-x) + 21px);
   position: absolute;
-  top: 44px;
+  top: calc(var(--comment-inset-top) + 44px);
+  pointer-events: none;
   width: 2px;
   z-index: 0;
 }
-.comment-thread-group--connected .comment-thread-item:not(:last-child) .comment-avatar-rail--tombstone::after { top: 0; }
+.comment-thread-group--connected .comment-thread-item:not(:last-child):has(.comment-avatar-rail--tombstone)::before { top: var(--comment-inset-top); }
 .comment-avatar {
   align-items: center;
   background: var(--shell-hover);
@@ -2148,7 +2151,7 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .activity-tabs { padding-inline: 20px; }
   .post-card { padding: 12px 12px 0; }
   .post-action { min-height: 44px; }
-  .comment-thread-item { padding-block: 12px 0; padding-inline: 12px; }
+  .comment-thread-item { --comment-inset-x: 12px; --comment-inset-top: 12px; padding-block: 12px 0; padding-inline: 12px; }
   .comment-thread-item--reply { padding-left: 12px; }
   .post-detail-scroll-region { --post-detail-mode-clearance: 0px; --post-detail-reply-state-clearance: 0px; --post-detail-feedback-state-clearance: 0px; --social-scroll-bottom-clearance: calc(var(--post-detail-mode-clearance) + var(--post-detail-reply-state-clearance) + var(--post-detail-feedback-state-clearance) + var(--mobile-scroll-breathing-room)); scroll-padding-bottom: var(--social-scroll-bottom-clearance); }
   .post-detail-scroll-region[data-composer-mode="authenticated"] { --post-detail-mode-clearance: var(--post-detail-composer-clearance); }
