@@ -11,11 +11,12 @@ function emailFrom(session: {user: unknown} | null): string | null {
   return typeof user.email === 'string' ? user.email : null
 }
 
-export function AuthAccountControl({configured, locale, actions}: {configured: boolean; locale: Locale; actions?: AuthActions}) {
+export function AuthAccountControl({configured, locale, actions, settings = false}: {settings?: boolean; configured: boolean; locale: Locale; actions?: AuthActions}) {
   const [state, setState] = useState<'loading' | 'anonymous' | 'authenticated'>('loading')
   const [email, setEmail] = useState<string | null>(null)
   const [pending,setPending]=useState(false),[failed,setFailed]=useState(false)
   const busy=useRef(false)
+  const confirmation=useRef<HTMLDialogElement>(null)
   const labels = locale === 'zh-CN'
     ? {title: '账户', description: '登录状态由 Neon Auth 安全管理。', signIn: '登录', signUp: '创建账户', signOut: '退出登录', unavailable: '登录服务尚未配置'}
     : {title: 'Account', description: 'Your session is securely managed by Neon Auth.', signIn: 'Sign in', signUp: 'Create account', signOut: 'Sign out', unavailable: 'Authentication is not configured yet.'}
@@ -34,6 +35,7 @@ export function AuthAccountControl({configured, locale, actions}: {configured: b
 
   async function signOut() {
     if(busy.current)return
+
     busy.current=true;setPending(true);setFailed(false)
     try {
       const error = await (actions ?? await createBrowserAuthActions(locale)).signOut()
@@ -47,5 +49,5 @@ export function AuthAccountControl({configured, locale, actions}: {configured: b
     }
   }
 
-  return <section className="settings-section"><h2>{labels.title}</h2><p>{configured ? labels.description : labels.unavailable}</p>{configured && state === 'authenticated' ? <div className="account-row"><span>{email}</span><button aria-busy={pending} disabled={pending} className="choice" onClick={signOut} type="button">{labels.signOut}</button></div> : configured && state === 'anonymous' ? <div className="choice-row"><Link className="choice" href={`/${locale}/auth/sign-in`}>{labels.signIn}</Link><Link className="choice" href={`/${locale}/auth/sign-up`}>{labels.signUp}</Link></div> : null}{failed?<p role="alert">{locale==='zh-CN'?'退出登录未完成，账户仍保持登录状态，请重试。':'Sign out could not be completed. You are still signed in; please try again.'}</p>:null}</section>
+  return <section className="settings-section"><h2>{labels.title}</h2>{!settings?<p>{configured ? labels.description : labels.unavailable}</p>:null}{configured && state === 'authenticated' ? <div className="account-row"><span>{email}</span><button aria-busy={pending} disabled={pending} className="choice" onClick={()=>settings?confirmation.current?.showModal():void signOut()} type="button">{labels.signOut}</button></div> : configured && state === 'anonymous' ? <div className="choice-row"><Link className="choice" href={`/${locale}/auth/sign-in`}>{labels.signIn}</Link><Link className="choice" href={`/${locale}/auth/sign-up`}>{labels.signUp}</Link></div> : null}{failed?<p role="alert">{locale==='zh-CN'?'退出登录未完成，账户仍保持登录状态，请重试。':'Sign out could not be completed. You are still signed in; please try again.'}</p>:null}{settings?<dialog ref={confirmation} className="settings-signout-dialog" onClick={event=>{event.stopPropagation();if(event.target===event.currentTarget)confirmation.current?.close()}}><div><h2>{locale==='zh-CN'?'退出登录？':'Sign out?'}</h2><p>{locale==='zh-CN'?'退出后，需要重新登录才能查看消息和管理个人资料。':'You will need to sign in again to access messages and your profile.'}</p><div className="choice-row"><button className="choice" type="button" onClick={()=>confirmation.current?.close()}>{locale==='zh-CN'?'取消':'Cancel'}</button><button className="choice" type="button" onClick={()=>{confirmation.current?.close();void signOut()}}>{labels.signOut}</button></div></div></dialog>:null}</section>
 }

@@ -32,7 +32,7 @@ describe('settings page access', () => {
 
     expect(access).toHaveBeenCalledWith({locale: 'en', returnTo: '/en/settings'})
     expect(screen.getByTestId('account-control')).toBeVisible()
-    expect(screen.getByTestId('theme-controls')).toBeVisible()
+    expect(screen.getByText('Appearance and language')).toBeVisible()
   })
 
   it('does not mount the session-reading account control when access is unavailable', async () => {

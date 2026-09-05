@@ -2227,3 +2227,11 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 .theme-swatch[data-palette="sand"] { background: linear-gradient(135deg, #f6f0e5 50%, #886032 50%); }
 .theme-swatch[data-palette="midnight"] { background: linear-gradient(135deg, #162238 50%, #9cbdff 50%); }
 .global-more-theme-options { max-height: min(440px, 60dvh); overflow-y: auto; overscroll-behavior: contain; }
+
+/* Explicit device preference supplements the OS reduced-motion preference. */
+html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-motion="reduce"] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+  scroll-behavior: auto !important;
+}

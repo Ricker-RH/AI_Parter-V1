@@ -4,6 +4,10 @@ import {ThemeProvider as NextThemesProvider, useTheme} from 'next-themes'
 import {useEffect, useState, type ReactNode} from 'react'
 
 export function ThemeProvider({children}: {children: ReactNode}) {
+  useEffect(() => {
+    const sync = () => {try {document.documentElement.dataset.motion = localStorage.getItem('aifans-motion') === 'reduce' ? 'reduce' : 'system'} catch {}}
+    sync(); window.addEventListener('storage', sync); return () => window.removeEventListener('storage', sync)
+  }, [])
   return <NextThemesProvider attribute="data-theme" defaultTheme="system" enableSystem enableColorScheme={false} themes={['light', 'dark', 'sage', 'lavender', 'sand', 'midnight']}>{children}</NextThemesProvider>
 }
 
