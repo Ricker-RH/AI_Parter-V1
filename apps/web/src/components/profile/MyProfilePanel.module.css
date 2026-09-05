@@ -25,7 +25,7 @@
 
 .profileBody {
   display: grid;
-  gap: 16px;
+  gap: 0;
   margin-inline: auto;
   max-width: 640px;
   min-width: 0;
@@ -37,7 +37,7 @@
   isolation: isolate;
   position: relative;
   min-width: 0;
-  padding: 24px 20px;
+  padding: 24px 20px var(--profile-action-tabs-gap, 12px);
   width: 100%;
 }
 
@@ -169,8 +169,7 @@
     border-radius: 16px;
   }
 
-  .profileBody { gap: 24px; }
-  .profile { padding: 28px 24px; }
+  .profile { padding: 28px 24px var(--profile-action-tabs-gap, 12px); }
 
   .state {
     border: 1px solid var(--shell-border);

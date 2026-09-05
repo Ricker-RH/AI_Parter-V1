@@ -1,4 +1,5 @@
 .host {
+  --profile-action-tabs-gap: 12px;
   position: relative;
   isolation: isolate;
 }

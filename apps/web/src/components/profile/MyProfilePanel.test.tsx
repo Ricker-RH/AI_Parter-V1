@@ -124,8 +124,8 @@ describe('MyProfilePanel', () => {
   })
 
   it('uses one non-collapsing layout gap owner for exact mobile and desktop tab rhythm', () => {
-    expect(stylesheet).toMatch(/\.profileBody\s*\{[^}]*display:\s*grid[^}]*gap:\s*16px/s)
-    expect(stylesheet).toMatch(/@media \(min-width:\s*700px\)[\s\S]*\.profileBody\s*\{[^}]*gap:\s*24px/s)
+    expect(stylesheet).toMatch(/\.profileBody\s*\{[^}]*display:\s*grid[^}]*gap:\s*0/s)
+    expect(stylesheet).toContain('var(--profile-action-tabs-gap, 12px)')
     expect(stylesheet).toMatch(/\.profile\s*\{[^}]*isolation:\s*isolate/s)
     expect(stylesheet).not.toMatch(/\.tabsSection\s*\{[^}]*(?:margin-top|padding-top):/s)
     expect(stylesheet).not.toMatch(/\.editAction\s*\{[^}]*margin-bottom:/s)
