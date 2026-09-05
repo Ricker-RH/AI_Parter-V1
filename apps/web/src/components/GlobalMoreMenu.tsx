@@ -149,7 +149,7 @@ export function GlobalMoreMenu({authenticated, contactHref, labels, locale, onSi
       {view === 'appearance' ? <>
         <button aria-label={back} className="global-more-back" onClick={() => showView('primary')} role="menuitem" type="button"><span aria-hidden="true">←</span><span>{back}</span></button>
         <div className="global-more-menu-title">{appearance}</div>
-        <ThemeControls dark={labels.themeDark ?? 'Dark'} light={labels.themeLight ?? 'Light'} system={labels.themeSystem ?? 'System'} variant="menu"/>
+        <ThemeControls locale={locale} dark={labels.themeDark ?? 'Dark'} light={labels.themeLight ?? 'Light'} system={labels.themeSystem ?? 'System'} variant="menu"/>
       </> : <>
         <button aria-label={appearance} onClick={() => showView('appearance')} role="menuitem" type="button"><span>{appearance}</span><span aria-hidden="true">›</span></button>
         <Link href={`/${locale}/settings`} onClick={close} role="menuitem">{settings}</Link>

@@ -37,6 +37,68 @@
   --shell-focus: #f4f4f5;
 }
 
+[data-theme="sage"] {
+  color-scheme: light;
+  --shell-canvas: #eef3ee;
+  --shell-surface: #f8fbf7;
+  --shell-text: #203c30;
+  --shell-muted: #51685a;
+  --shell-border: #c7d5c9;
+  --shell-hover: #e1ebe1;
+  --shell-focus: #32664a;
+}
+
+[data-theme="lavender"] {
+  color-scheme: light;
+  --shell-canvas: #f1eef8;
+  --shell-surface: #faf8ff;
+  --shell-text: #38294f;
+  --shell-muted: #6d5d80;
+  --shell-border: #d9cee8;
+  --shell-hover: #e9e2f3;
+  --shell-focus: #70509a;
+}
+
+[data-theme="sand"] {
+  color-scheme: light;
+  --shell-canvas: #f6f0e5;
+  --shell-surface: #fffaf1;
+  --shell-text: #493728;
+  --shell-muted: #79644e;
+  --shell-border: #dfd1bd;
+  --shell-hover: #eee4d4;
+  --shell-focus: #886032;
+}
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --shell-canvas: #101a2b;
+  --shell-surface: #162238;
+  --shell-text: #e8eefb;
+  --shell-muted: #a7b8d3;
+  --shell-border: #354760;
+  --shell-hover: #22324c;
+  --shell-focus: #9cbdff;
+}
+
+/* Component-library tokens follow the same palette as the application shell. */
+:is([data-theme="sage"], [data-theme="lavender"], [data-theme="sand"], [data-theme="midnight"]) {
+  --aifans-canvas: var(--shell-canvas);
+  --aifans-surface: var(--shell-surface);
+  --aifans-text: var(--shell-text);
+  --aifans-text-muted: var(--shell-muted);
+  --aifans-border: var(--shell-border);
+  --aifans-focus: var(--shell-focus);
+  --aifans-brand-blue: var(--shell-focus);
+  --aifans-brand-violet: var(--shell-focus);
+}
+[data-theme="midnight"] {
+  --aifans-danger: #ff8d86;
+  --aifans-elevation-1: 0 1px 2px rgb(0 0 0 / 30%);
+  --aifans-elevation-2: 0 4px 8px rgb(0 0 0 / 35%);
+  --aifans-elevation-3: 0 12px 24px rgb(0 0 0 / 45%);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -2152,3 +2214,13 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
 @media (min-width: 1328px) {
   .shell[data-shell="public"] .right-rail { bottom: 0; display: block; left: max(936px, calc((100vw + 688px) / 2)); position: absolute; top: 0; width: 320px; }
 }
+
+.theme-option-label { align-items: center; display: inline-flex; gap: 10px; }
+.theme-swatch { background: linear-gradient(135deg, #fff 50%, #171717 50%); border: 1px solid var(--shell-border); border-radius: 50%; flex: 0 0 20px; height: 20px; width: 20px; }
+.theme-swatch[data-palette="light"] { background: #fff; }
+.theme-swatch[data-palette="dark"] { background: #171717; }
+.theme-swatch[data-palette="sage"] { background: linear-gradient(135deg, #eef3ee 50%, #32664a 50%); }
+.theme-swatch[data-palette="lavender"] { background: linear-gradient(135deg, #f1eef8 50%, #70509a 50%); }
+.theme-swatch[data-palette="sand"] { background: linear-gradient(135deg, #f6f0e5 50%, #886032 50%); }
+.theme-swatch[data-palette="midnight"] { background: linear-gradient(135deg, #162238 50%, #9cbdff 50%); }
+.global-more-theme-options { max-height: min(440px, 60dvh); overflow-y: auto; overscroll-behavior: contain; }

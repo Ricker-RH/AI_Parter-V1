@@ -25,3 +25,9 @@ describe('ThemeControls', () => {
     expect(setTheme).toHaveBeenCalledWith('dark')
   })
 })
+
+it.each([['鼠尾草绿', 'sage'], ['雾紫', 'lavender'], ['奶油米', 'sand'], ['午夜蓝', 'midnight']])('selects the %s palette from the localized menu', (label, key) => {
+  render(<ThemeControls dark="深色" light="浅色" system="跟随系统" locale="zh-CN" variant="menu" />)
+  fireEvent.click(screen.getByRole('menuitemradio', {name: label}))
+  expect(setTheme).toHaveBeenCalledWith(key)
+})
