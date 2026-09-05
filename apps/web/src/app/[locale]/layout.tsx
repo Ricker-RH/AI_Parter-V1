@@ -26,7 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const candidate = await rootLocale()
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
-  return {title: messages.metadataTitle, description: messages.metadataDescription}
+  return {title: messages.metadataTitle, description: messages.metadataDescription, manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'AIFANS',statusBarStyle:'default'}}
 }
 
 export default function LocaleLayout({children}: Readonly<{children: React.ReactNode}>) {

@@ -1,6 +1,6 @@
 'use client'
 
-import {CreatorIpPageSchema, FeedPageSchema, FollowedIpPageSchema, type CreatorIp, type FeedPage, type FollowedIp} from '@aifans/contracts'
+import {CreatorIpPageSchema, FeedPageSchema, FollowedIpPageSchema, HumanProfileTabPageSchema, type HumanProfileTabPage, type CreatorIp, type FeedPage, type FollowedIp} from '@aifans/contracts'
 import {ProfileEmptyState} from './ProfileEmptyState'
 import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
@@ -11,10 +11,12 @@ import {AppQueryContext, createAppQueryClient} from '../AppQueryProvider'
 import {PostCard} from '../social/PostCard'
 import type {SocialLabels} from '../social/types'
 import styles from './MyProfilePanel.module.css'
+import {Avatar} from '../account/Avatar'
 
 export type MyProfileTabsLabels={tabs:string;myIps:string;liked:string;saved:string;following:string;loadingSection:string;authRequired:string;signIn:string;unavailableSection:string;retrySection:string;myIpsEmpty:string;likedEmpty:string;savedEmpty:string;followingEmpty:string}
+type PublicHuman=Extract<HumanProfileTabPage,{state:'ready';tab:'following'}>['items'][number]
 type Tab='ips'|'liked'|'saved'|'following'
-type Item=CreatorIp|FollowedIp|FeedPage['items'][number]
+type Item=CreatorIp|FollowedIp|PublicHuman|FeedPage['items'][number]
 type ReadySection={status:'ready';items:Item[];nextCursor:string|null}
 type Section={status:'auth'}|{status:'unavailable'}|ReadySection
 const tabs:Tab[]=['ips','liked','saved','following']
@@ -24,18 +26,19 @@ function pageUrl(tab:Tab,cursor?:string):string {
   return cursor?`${base}${base.includes('?')?'&':'?'}${new URLSearchParams({cursor})}`:base
 }
 
-async function loadSection(tab:Tab,cursor?:string):Promise<Section>{
+async function loadSection(tab:Tab,cursor?:string,profileId?:string):Promise<Section>{
   try {
-    const response=await fetch(pageUrl(tab,cursor),{cache:'no-store',credentials:'same-origin'})
+    const response=await fetch(tab==='following'&&profileId?`/api/humans/${profileId}/tabs/following?${new URLSearchParams({limit:'25',...(cursor?{cursor}:{})})}`:pageUrl(tab,cursor),{cache:'no-store',credentials:'same-origin'})
     if(response.status===401)return {status:'auth'}
     if(!response.ok)return {status:'unavailable'}
     const body:unknown=await response.json()
+    if(tab==='following'&&profileId){const parsed=HumanProfileTabPageSchema.safeParse(body);return parsed.success&&parsed.data.state==='ready'&&parsed.data.tab==='following'?{status:'ready',items:parsed.data.items,nextCursor:parsed.data.nextCursor}:{status:'unavailable'}}
     const parsed=tab==='ips'?CreatorIpPageSchema.safeParse(body):tab==='following'?FollowedIpPageSchema.safeParse(body):FeedPageSchema.safeParse(body)
     return parsed.success?{status:'ready',items:parsed.data.items,nextCursor:parsed.data.nextCursor}:{status:'unavailable'}
   } catch { return {status:'unavailable'} }
 }
 
-function tabKey(scope:string,locale:Locale,tab:Tab,cursor?:string){return ['my-profile',scope,locale,tab,cursor??null] as const}
+function tabKey(scope:string,locale:Locale,tab:Tab,cursor?:string){return ['my-profile',scope,locale,tab,cursor??null,...(tab==='following'?['people-and-ips']:[])] as const}
 
 export function MyProfileTabs(props:{labels:MyProfileTabsLabels;locale:Locale;socialLabels:SocialLabels;viewerScope?:string}){
   const shared=useContext(AppQueryContext)
@@ -51,7 +54,8 @@ function ProfileTabs({labels,locale,socialLabels,viewerScope}: {labels:MyProfile
   const queryClient=useQueryClient()
   // Profile collections are private: this account-specific scope prevents relationship data leaking across account changes.
   const scope=viewerScope??'anonymous'
-  const query=useQuery({queryKey:tabKey(scope,locale,active),queryFn:()=>loadSection(active),staleTime:30_000})
+  const profileId=viewerScope?.startsWith('human:')?viewerScope.slice(6):undefined
+  const query=useQuery({queryKey:tabKey(scope,locale,active),queryFn:()=>loadSection(active,undefined,profileId),staleTime:30_000})
   const label:Record<Tab,string>={ips:labels.myIps,liked:labels.liked,saved:labels.saved,following:labels.following}
   const empty:Record<Tab,string>={ips:labels.myIpsEmpty,liked:labels.likedEmpty,saved:labels.savedEmpty,following:labels.followingEmpty}
 
@@ -61,7 +65,7 @@ function ProfileTabs({labels,locale,socialLabels,viewerScope}: {labels:MyProfile
     const current=queryClient.getQueryData<Section>(tabKey(scope,locale,active))
     if(!current||current.status!=='ready'||!current.nextCursor||loadingMore)return
     setLoadingMore(true);setMoreUnavailable(false)
-    const next=await queryClient.fetchQuery({queryKey:tabKey(scope,locale,active,current.nextCursor),queryFn:()=>loadSection(active,current.nextCursor!),staleTime:0})
+    const next=await queryClient.fetchQuery({queryKey:tabKey(scope,locale,active,current.nextCursor),queryFn:()=>loadSection(active,current.nextCursor!,profileId),staleTime:0})
     if(next.status==='ready')queryClient.setQueryData<Section>(tabKey(scope,locale,active),(previous)=>previous?.status==='ready'?{status:'ready',items:[...previous.items,...next.items],nextCursor:next.nextCursor}:previous)
     else setMoreUnavailable(true)
     setLoadingMore(false)
@@ -77,12 +81,13 @@ function SectionContent({empty,labels,locale,loadingMore,moreUnavailable,onLoadM
   if(!section)return <div className={styles.tabState} role="status">{labels.loadingSection}</div>
   if(section.status==='auth')return <div className={styles.tabState} role="alert"><p>{labels.authRequired}</p><Link href={authHref(locale,`/${locale}/profile`)}>{labels.signIn}</Link></div>
   if(section.status==='unavailable')return <div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p><button onClick={onRetry} type="button">{labels.retrySection}</button></div>
-  if(!section.items.length&&!section.nextCursor)return <ProfileEmptyState kind={tab} locale={locale} own title={empty}/>
+  if(!section.items.length&&!section.nextCursor)return <ProfileEmptyState kind={tab} locale={locale} own title={tab==='following'?(locale==='zh-CN'?'还没有关注':'Not following anyone yet'):empty}/>
   const more=section.nextCursor&&!moreUnavailable?<button className={styles.loadMore} disabled={loadingMore} onClick={onLoadMore} type="button">{loadingMore?labels.loadingSection:socialLabels.loadMore}</button>:null
   const retryMore=moreUnavailable?<div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p><button onClick={onLoadMore} type="button">{labels.retrySection}</button></div>:null
-  if(tab==='ips'||tab==='following')return <div><div className={styles.ipList}>{(section.items as Array<CreatorIp|FollowedIp>).map((ip)=>{
-    const description='shortDescription' in ip?ip.shortDescription:ip.bio
-    return <Link aria-label={ip.displayName} className={styles.ipRow} href={`/${locale}/profiles/${ip.id}`} key={ip.id}><span className={styles.ipAvatar} aria-hidden="true">{ip.displayName.slice(0,1)}</span><span><strong>{ip.displayName}</strong><small>@{ip.username}</small>{description?<p>{description}</p>:null}</span></Link>
+  if(tab==='ips'||tab==='following')return <div><div className={styles.ipList}>{(section.items as Array<CreatorIp|FollowedIp|PublicHuman>).map((ip)=>{
+    const description='shortDescription' in ip?ip.shortDescription:'bio' in ip?ip.bio:null
+    const human='kind' in ip&&ip.kind==='human'
+    return <Link aria-label={ip.displayName} className={styles.ipRow} href={`/${locale}/${human?'humans':'profiles'}/${ip.id}`} key={ip.id}><Avatar avatarUrl={'avatarUrl' in ip?ip.avatarUrl:null} decorative displayName={ip.displayName} identityId={ip.id} kind={human?'human':'ip'} size="medium"/><span><strong>{ip.displayName}</strong><small>@{ip.username}</small>{description?<p>{description}</p>:null}</span></Link>
   })}</div>{more}{retryMore}</div>
   return <div>{(section.items as FeedPage['items']).map((post)=><PostCard canMutate key={post.id} labels={socialLabels} locale={locale} post={post} referenceTime={Date.now()} returnTo={`/${locale}/profile`} {...(viewerScope?{viewerScope}:{})}/>) }{more}{retryMore}</div>
 }

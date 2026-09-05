@@ -7,7 +7,7 @@ const descriptions = {
   ips: ['你创建的 IP 会展示在这里，先去发现一些灵感吧。', 'Your IP profiles will appear here. Explore and find some inspiration.'],
   liked: ['遇到喜欢的内容，点个赞就能在这里找到。', 'Give a post a like and find it here later.'],
   saved: ['收藏感兴趣的内容，留待下次慢慢看。', 'Save something interesting to come back to later.'],
-  following: ['关注感兴趣的 IP，随时发现他们的新动态。', 'Follow interesting IP profiles to keep up with their posts.'],
+  following: ['关注感兴趣的人或 IP，随时发现他们的新动态。', 'Follow people or IP profiles to keep up with their posts.'],
   posts: ['新的动态会出现在这里，晚点再来看看吧。', 'New posts will appear here. Check back later.'],
   media: ['发布的图片会收集在这里。', 'Images shared in posts appear here.'],
 } as const

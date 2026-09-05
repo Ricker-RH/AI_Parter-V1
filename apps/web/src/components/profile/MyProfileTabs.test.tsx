@@ -149,3 +149,15 @@ describe('MyProfileTabs', () => {
   })
 
 })
+
+it('loads both people and IPs from the owner following collection', async()=>{
+ const owner='77777777-7777-4777-8777-777777777777'
+ const person={kind:'human',id:'88888888-8888-4888-8888-888888888888',username:'friend',displayName:'Human friend',avatarUrl:null}
+ const fetcher=vi.fn(async(url:string)=>Response.json(url.includes('/tabs/following')?{state:'ready',tab:'following',items:[person,author],nextCursor:null}:{items:[],nextCursor:null}))
+ vi.stubGlobal('fetch',fetcher)
+ render(<MyProfileTabs labels={labels} locale="en" socialLabels={socialLabels} viewerScope={`human:${owner}`}/> )
+ fireEvent.click(screen.getByRole('tab',{name:'Following'}))
+ expect(await screen.findByRole('link',{name:'Human friend'})).toHaveAttribute('href',`/en/humans/${person.id}`)
+ expect(screen.getByRole('link',{name:'Luma'})).toHaveAttribute('href',`/en/profiles/${author.id}`)
+ expect(fetcher).toHaveBeenCalledWith(`/api/humans/${owner}/tabs/following?limit=25`,expect.anything())
+})
