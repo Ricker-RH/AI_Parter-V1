@@ -26,14 +26,20 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
   const router = useRouter()
   const queryClient = useContext(QueryClientContext)
   const preferenceRevision = useRef(0)
-  const [preferences, setPreferences] = useState<Record<string, {pinnedAt: string | null; deletedAt: string | null}>>({})
+  type Preferences = Record<string, {pinnedAt: string | null; deletedAt: string | null}>
+  const preferenceKey = ['human-chat', selfProfileId, 'inbox-preferences'] as const
+  const [preferences, setPreferences] = useState<Preferences>(() => selfProfileId ? queryClient?.getQueryData<Preferences>(preferenceKey) ?? {} : {})
+  function storePreferences(value: Preferences) {
+    if (selfProfileId) queryClient?.setQueryData(preferenceKey, value)
+    setPreferences(value)
+  }
   useEffect(() => {
     const request = new AbortController()
     const revision = preferenceRevision.current
     void fetch('/api/inbox/preferences', {signal: request.signal}).then(async response => {
       if (!response.ok) return
       const value = await response.json()
-      if (!request.signal.aborted && revision === preferenceRevision.current && Array.isArray(value.items)) setPreferences(Object.fromEntries(value.items.filter((item: {kind?: string; conversationId?: string}) => item.kind && item.conversationId).map((item: {kind: string; conversationId: string; pinnedAt: string | null; deletedAt: string | null}) => [`${item.kind}:${item.conversationId}`, item])))
+      if (!request.signal.aborted && revision === preferenceRevision.current && Array.isArray(value.items)) storePreferences(Object.fromEntries(value.items.filter((item: {kind?: string; conversationId?: string}) => item.kind && item.conversationId).map((item: {kind: string; conversationId: string; pinnedAt: string | null; deletedAt: string | null}) => [`${item.kind}:${item.conversationId}`, item])))
     }).catch(() => {})
     return () => request.abort()
   }, [])
@@ -42,7 +48,8 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
     if (!response.ok) throw Error('unavailable')
     const changedAt = new Date().toISOString()
     preferenceRevision.current += 1
-    setPreferences(current => ({...current, [`${kind}:${id}`]: {pinnedAt: action === 'pin' ? changedAt : null, deletedAt: action === 'delete' ? changedAt : current[`${kind}:${id}`]?.deletedAt ?? null}}))
+    const current = (selfProfileId ? queryClient?.getQueryData<Preferences>(preferenceKey) : undefined) ?? preferences
+    storePreferences({...current, [`${kind}:${id}`]: {pinnedAt: action === 'pin' ? changedAt : null, deletedAt: action === 'delete' ? changedAt : current[`${kind}:${id}`]?.deletedAt ?? null}})
     if (action === 'delete') {
       window.dispatchEvent(new CustomEvent('aifans:conversation-deleted', {detail: {kind, conversationId: id, deletedAt: changedAt}}))
       await queryClient?.cancelQueries({predicate: query => query.queryKey.includes(id)})

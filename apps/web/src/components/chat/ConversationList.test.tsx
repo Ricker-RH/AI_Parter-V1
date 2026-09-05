@@ -1,3 +1,4 @@
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {readFileSync} from 'node:fs'
 import {afterEach, expect, describe, it, vi} from 'vitest'
@@ -242,3 +243,17 @@ it('deletes only after confirmation, then allows genuinely new messages to resto
   expect(await screen.findByRole('link',{name:/Open conversation/})).toBeVisible()
   window.removeEventListener('aifans:conversation-deleted',removed)
 })
+
+ it('retains pinned ordering on remount before preferences refetch completes', async()=>{
+  const client=new QueryClient()
+  const self='77777777-7777-4777-8777-777777777777'
+  const newer={...item,id:'33333333-3333-4333-8333-333333333333',ipProfile:{...item.ipProfile,displayName:'Newer'},lastMessage:{...item.lastMessage,createdAt:'2026-09-03T00:00:00.000Z'}}
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(Response.json({items:[{kind:'IP',conversationId:item.id,pinnedAt:'2026-09-02T00:00:00.000Z',deletedAt:null}]})).mockImplementation(()=>new Promise(()=>{})))
+  const ui=<QueryClientProvider client={client}><ConversationList items={[newer,item]} labels={labels} locale="en" selfProfileId={self}/></QueryClientProvider>
+  const first=render(ui)
+  await screen.findByLabelText('Pinned')
+  first.unmount()
+  render(ui)
+  expect(screen.getAllByRole('link',{name:/Open conversation/})[0]).toHaveAccessibleName('Open conversation: Luma')
+  expect(screen.getByLabelText('Pinned')).toBeInTheDocument()
+ })
