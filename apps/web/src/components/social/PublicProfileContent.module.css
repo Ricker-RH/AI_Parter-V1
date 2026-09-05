@@ -387,8 +387,8 @@
   .contextualTitle {
     background: color-mix(in srgb, var(--shell-surface) 96%, transparent);
     border-bottom: 1px solid var(--shell-border);
-    min-height: calc(56px + env(safe-area-inset-top));
-    padding-top: max(4px, env(safe-area-inset-top));
+    min-height: calc(56px + var(--header-safe-area-top, env(safe-area-inset-top)));
+    padding-top: max(4px, var(--header-safe-area-top, env(safe-area-inset-top)));
     position: sticky;
     top: 0;
     z-index: 25;

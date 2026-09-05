@@ -1,4 +1,4 @@
-import type {Metadata} from 'next'
+import type {Metadata, Viewport} from 'next'
 import {cacheLife} from 'next/cache'
 import {notFound} from 'next/navigation'
 import {locale as rootLocale} from 'next/root-params'
@@ -18,6 +18,8 @@ import {AppQueryProvider} from '../../components/AppQueryProvider'
 
 export const ROOT_LOCALE_SCRIPT = "(function(){var path=location.pathname,match=/^\\/(en|zh-CN)(?=\\/|$)(.*)$/.exec(path),locale=match?match[1]:'en',rest=match&&match[2]||'',shell=rest==='/admin'||rest.indexOf('/admin/')===0?'admin':rest==='/creator'||rest.indexOf('/creator/')===0?'creator':rest==='/messages'||rest.indexOf('/messages/')===0||rest==='/notifications'?'messages':rest==='/auth'||rest.indexOf('/auth/')===0?'auth':'public';document.documentElement.lang=locale;document.documentElement.setAttribute('data-route-shell',shell)})()"
 
+export const viewport: Viewport = {width: 'device-width', initialScale: 1, viewportFit: 'cover'}
+
 export function generateStaticParams() {
   return locales.map((locale) => ({locale}))
 }
@@ -26,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const candidate = await rootLocale()
   if (!isLocale(candidate)) notFound()
   const messages = await getMessages(candidate)
-  return {title: messages.metadataTitle, description: messages.metadataDescription, manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'AIFANS',statusBarStyle:'default'}}
+  return {title: messages.metadataTitle, description: messages.metadataDescription, manifest:'/manifest.webmanifest', appleWebApp:{capable:true,title:'AIFANS',statusBarStyle:'black-translucent'}}
 }
 
 export default function LocaleLayout({children}: Readonly<{children: React.ReactNode}>) {

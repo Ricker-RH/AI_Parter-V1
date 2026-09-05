@@ -2238,3 +2238,28 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
   transition-duration: .01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Installed mobile app: the shell owns the inset except on cover-backed profiles,
+   whose shared header keeps the background continuous through the status bar. */
+@media (max-width: 699px) and (display-mode: standalone) {
+  .shell {
+    --header-safe-area-top: 0px;
+    padding-top: env(safe-area-inset-top, 0px);
+    background-color: var(--shell-surface);
+  }
+  .shell:has([data-profile-background]) {
+    --header-safe-area-top: env(safe-area-inset-top, 0px);
+    padding-top: 0;
+  }
+  .shell::after {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto;
+    height: env(safe-area-inset-top, 0px);
+    background: linear-gradient(to bottom, rgb(0 0 0 / 48%), rgb(0 0 0 / 24%) 75%, transparent);
+    pointer-events: none;
+    z-index: 1000;
+  }
+  .mobile-top-bar { height: 56px; padding-top: 2px; }
+  .post-detail-header { min-height: 56px; padding-top: 6px; }
+}
