@@ -1976,17 +1976,17 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
     padding: 0;
     position: relative;
   }
-  .desktop-nav-compact:is(:hover, :focus-within) {
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) {
     background: var(--shell-surface);
     box-shadow: var(--aifans-elevation-2);
     width: 248px;
     z-index: 30;
   }
-  .desktop-nav-compact:is(:hover, :focus-within) .brand { margin-bottom: 16px; width: 128px; }
-  .desktop-nav-compact:is(:hover, :focus-within) .brand-logo-full { display: block; }
-  .desktop-nav-compact:is(:hover, :focus-within) .brand-logo-compact { display: none; }
-  .desktop-nav-compact:is(:hover, :focus-within) .nav-link { justify-content: flex-start; padding: 0 10px; }
-  .desktop-nav-compact:is(:hover, :focus-within) .nav-link-label {
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .brand { margin-bottom: 16px; width: 128px; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .brand-logo-full { display: block; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .brand-logo-compact { display: none; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .nav-link { justify-content: flex-start; padding: 0 10px; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .nav-link-label {
     clip: auto;
     height: auto;
     margin: 0;
@@ -2000,9 +2000,9 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .desktop-nav-compact .global-more .more-trigger { font-size: 0; justify-content: center; min-height: 44px; padding: 0; width: 44px; }
   .desktop-nav-compact .global-more .more-trigger::after { content: "•••"; font-size: 18px; letter-spacing: 1px; }
   .desktop-nav-compact .global-more .global-more-menu { bottom: 0; left: 54px; top: auto; }
-  .desktop-nav-compact:is(:hover, :focus-within) .global-more .more-trigger { font-size: 15px; justify-content: flex-start; padding: 0 10px; width: 100%; }
-  .desktop-nav-compact:is(:hover, :focus-within) .global-more .more-trigger::after { content: none; }
-  .desktop-nav-compact:is(:hover, :focus-within) .global-more .global-more-menu { bottom: 48px; left: 0; top: auto; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .global-more .more-trigger { font-size: 15px; justify-content: flex-start; padding: 0 10px; width: 100%; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .global-more .more-trigger::after { content: none; }
+  .desktop-nav-compact:is(:hover, :has(:focus-visible)) .global-more .global-more-menu { bottom: 48px; left: 0; top: auto; }
   .messages-shell .mobile-nav {
     display: none;
   }
@@ -2186,15 +2186,15 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   .shell[data-shell="public"] .desktop-nav .global-more .global-more-menu { bottom: 0; left: 54px; top: auto; }
   .shell[data-shell="public"] .desktop-nav .nav-link { justify-content: center; padding: 0; position: relative; }
   .shell[data-shell="public"] .desktop-nav .nav-link-label { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) { box-shadow: var(--aifans-elevation-2); width: 248px; z-index: 30; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .brand { margin-bottom: 16px; width: 128px; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .brand-logo-full { display: block; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .brand-logo-compact { display: none; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .nav-link { justify-content: flex-start; padding: 0 10px; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .nav-link-label { clip: auto; height: auto; margin: 0; overflow: visible; padding: 0; position: static; white-space: normal; width: auto; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .global-more .more-trigger { font-size: 15px; justify-content: flex-start; padding: 0 10px; width: 100%; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .global-more .more-trigger::after { content: none; }
-  .shell[data-shell="public"] .desktop-nav:is(:hover, :focus-within) .global-more .global-more-menu { bottom: 48px; left: 0; top: auto; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) { box-shadow: var(--aifans-elevation-2); width: 248px; z-index: 30; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .brand { margin-bottom: 16px; width: 128px; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .brand-logo-full { display: block; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .brand-logo-compact { display: none; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .nav-link { justify-content: flex-start; padding: 0 10px; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .nav-link-label { clip: auto; height: auto; margin: 0; overflow: visible; padding: 0; position: static; white-space: normal; width: auto; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .global-more .more-trigger { font-size: 15px; justify-content: flex-start; padding: 0 10px; width: 100%; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .global-more .more-trigger::after { content: none; }
+  .shell[data-shell="public"] .desktop-nav:is(:hover, :has(:focus-visible)) .global-more .global-more-menu { bottom: 48px; left: 0; top: auto; }
   .home-page, .collection-page, .post-detail-page { height: 100%; }
   .post-detail-title { justify-self: start; }
   .post-card { padding-inline: 24px; }
