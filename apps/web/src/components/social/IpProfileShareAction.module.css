@@ -28,3 +28,7 @@
 .status, .error { font-size: 13px; margin: 12px 0 0; text-align: center; }
 .error { color: #d92d3a; }
 @media (min-width: 700px) { .backdrop { align-items: center; } .sheet { border-radius: 20px; max-width: 430px; } }
+
+.sheet { animation: share-sheet-enter 220ms cubic-bezier(.2,.8,.2,1); }
+@keyframes share-sheet-enter { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }

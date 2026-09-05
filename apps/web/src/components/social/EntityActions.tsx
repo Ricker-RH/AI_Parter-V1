@@ -161,7 +161,7 @@ export function useEntityInteractionController({bookmarked, bookmarkCount, canon
     }
   }
 
-  async function share() {
+  async function share(completed = false) {
     if (state.pending.share) return
     const requestId = ++mutationId.current.share
     const controller = new AbortController()
@@ -169,7 +169,7 @@ export function useEntityInteractionController({bookmarked, bookmarkCount, canon
     const isCurrent = () => !controller.signal.aborted && mutationId.current.share === requestId
     setState((current) => ({...current, pending: {...current.pending, share: true}, errors: {...current.errors, share: false}}))
     try {
-      if (await completeBrowserShare(new URL(canonicalUrl, window.location.origin).toString()) === 'cancelled' || !isCurrent()) return
+      if ((!completed && await completeBrowserShare(new URL(canonicalUrl, window.location.origin).toString()) === 'cancelled') || !isCurrent()) return
       await recordCompletedShare(entityPath, crypto.randomUUID(), controller.signal)
       if (isCurrent()) setState((current) => ({...current, shareCount: current.shareCount + 1}))
     } catch {
@@ -190,7 +190,7 @@ export function useShareController({canonicalUrl, entityPath, shareCount}: {cano
   const mutationId = useRef(0)
   const controller = useRef<AbortController | undefined>(undefined)
   useEffect(() => () => controller.current?.abort(), [])
-  async function share() {
+  async function share(completed = false) {
     if (state.pending) return
     const requestId = ++mutationId.current
     const activeController = new AbortController()
@@ -198,7 +198,7 @@ export function useShareController({canonicalUrl, entityPath, shareCount}: {cano
     const isCurrent = () => !activeController.signal.aborted && mutationId.current === requestId
     setState((current) => ({...current, pending: true, error: false}))
     try {
-      if (await completeBrowserShare(new URL(canonicalUrl, window.location.origin).toString()) === 'cancelled' || !isCurrent()) return
+      if ((!completed && await completeBrowserShare(new URL(canonicalUrl, window.location.origin).toString()) === 'cancelled') || !isCurrent()) return
       await recordCompletedShare(entityPath, crypto.randomUUID(), activeController.signal)
       if (isCurrent()) setState((current) => ({...current, shareCount: current.shareCount + 1}))
     } catch {

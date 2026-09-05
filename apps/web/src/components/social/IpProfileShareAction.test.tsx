@@ -1,7 +1,7 @@
 import {HumanShareRecipientPageSchema} from '@aifans/contracts'
 import {fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
-import {IpProfileShareAction} from './IpProfileShareAction.js'
+import {IpProfileShareAction, IpProfileShareSheet} from './IpProfileShareAction.js'
 
 const mocks = vi.hoisted(() => ({account: null as {id: string; kind: 'human'} | null}))
 vi.mock('../account/CurrentAccountProvider.js', () => ({useOptionalCurrentAccount: () => mocks.account ? {account: mocks.account} : null}))
@@ -83,4 +83,18 @@ describe('IpProfileShareAction', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('当前无法发送给该好友，请确认仍互相关注后重试。')
     expect(screen.getByRole('textbox', {name: '捎一句话'})).toHaveValue('保留这句话')
   })
+})
+
+it('sends a post target through the same mutual-friend sheet', async () => {
+  mocks.account = {id: self, kind: 'human'}
+  const fetcher = recipientFetch()
+  vi.stubGlobal('fetch', fetcher)
+  const onShared = vi.fn()
+  render(<IpProfileShareSheet locale="en" onClose={() => undefined} onShared={onShared} profile={profile} targetKind="post"/>)
+  fireEvent.click(await screen.findByRole('button', {name: 'Mutual'}))
+  expect(screen.getByText('Post card')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', {name: 'Send'}))
+  await waitFor(() => expect(onShared).toHaveBeenCalledTimes(1))
+  const sends = fetcher.mock.calls.filter(([url]) => url === `/api/human-chat/peers/${mutual}/messages`)
+  expect(JSON.parse(String((sends[0]![1] as RequestInit).body)).content).toEqual({kind: 'share', target: {kind: 'post', id: profile.id}})
 })

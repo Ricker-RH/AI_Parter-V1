@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import type {ReactNode} from 'react'
+import {useState, type ReactNode} from 'react'
+import {IpProfileShareSheet} from './IpProfileShareAction'
 import type {Locale} from '../../i18n/config'
 import {authHref} from '../../lib/auth/return-to'
 import type {SocialLabels} from './types'
@@ -20,6 +21,7 @@ type PostActionsProps = {
   commentCount: number
   bookmarkCount: number
   shareCount: number
+  sharePreview?: {title: string; body: string} | undefined
   authorId?: string
   followsAuthor?: boolean
   canMutate?: boolean
@@ -68,12 +70,12 @@ function ActionFrame({afterComment, beforeComment, commentActive, commentsLabel,
   </EntityActionRow>
 }
 
-function AuthenticatedActions({bookmarked, bookmarkCount, commentCount, labels, liked, likeCount, locale, postId, shareCount, variant='feed', viewerScope}: PostActionsProps & {viewerScope: string}) {
+function AuthenticatedActions({bookmarked, bookmarkCount, commentCount, labels, liked, likeCount, locale, postId, shareCount, sharePreview, variant='feed', viewerScope}: PostActionsProps & {viewerScope: string}) {
   const scope = JSON.stringify([viewerScope, postId, liked, bookmarked, likeCount, bookmarkCount, shareCount, locale, variant])
-  return <ScopedAuthenticatedActions key={scope} bookmarked={bookmarked} bookmarkCount={bookmarkCount} commentCount={commentCount} labels={labels} liked={liked} likeCount={likeCount} locale={locale} postId={postId} shareCount={shareCount} variant={variant}/>
+  return <ScopedAuthenticatedActions key={scope} bookmarked={bookmarked} bookmarkCount={bookmarkCount} commentCount={commentCount} labels={labels} liked={liked} likeCount={likeCount} locale={locale} postId={postId} shareCount={shareCount} sharePreview={sharePreview} variant={variant}/>
 }
 
-function ScopedAuthenticatedActions({bookmarked, bookmarkCount, commentCount, labels, liked, likeCount, locale, postId, shareCount, variant}: Pick<PostActionsProps, 'bookmarked' | 'bookmarkCount' | 'commentCount' | 'labels' | 'liked' | 'likeCount' | 'locale' | 'postId' | 'shareCount' | 'variant'> & {variant: 'feed' | 'detail'}) {
+function ScopedAuthenticatedActions({bookmarked, bookmarkCount, commentCount, labels, liked, likeCount, locale, postId, shareCount, sharePreview, variant}: Pick<PostActionsProps, 'bookmarked' | 'bookmarkCount' | 'commentCount' | 'labels' | 'liked' | 'likeCount' | 'locale' | 'postId' | 'shareCount' | 'sharePreview' | 'variant'> & {variant: 'feed' | 'detail'}) {
   const {mutate, share, state} = useEntityInteractionController({bookmarked, bookmarkCount, canonicalUrl: `/${locale}/posts/${postId}`, entityPath: `posts/${postId}`, liked, likeCount, locale, shareCount})
 
   const commentsLabel = labels.comments ?? 'Comments'
@@ -81,7 +83,7 @@ function ScopedAuthenticatedActions({bookmarked, bookmarkCount, commentCount, la
   const bookmarkLabel = state.bookmark ? labels.removeBookmark : labels.bookmark
   const likeAction = <button aria-busy={state.pending.like} aria-label={actionLabel(likeLabel, state.likeCount, locale)} aria-pressed={state.like} className="post-action" disabled={state.pending.like} onClick={() => void mutate('like')} title={actionLabel(likeLabel, state.likeCount, locale)} type="button"><HeartIcon aria-hidden="true" fill={state.like ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.likeCount}</Count></button>
   const bookmarkAction = <button aria-busy={state.pending.bookmark} aria-label={actionLabel(bookmarkLabel, state.bookmarkCount, locale)} aria-pressed={state.bookmark} className="post-action" disabled={state.pending.bookmark} onClick={() => void mutate('bookmark')} title={actionLabel(bookmarkLabel, state.bookmarkCount, locale)} type="button"><BookmarkIcon aria-hidden="true" fill={state.bookmark ? 'currentColor' : 'none'}/><Count locale={locale} variant={variant}>{state.bookmarkCount}</Count></button>
-  const shareAction = <button aria-busy={state.pending.share} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} className="post-action" disabled={state.pending.share} onClick={() => void share()} title={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
+  const shareAction = <PostShareAction sharePreview={sharePreview} count={state.shareCount} label={labels.share ?? 'Share'} locale={locale} onShared={() => share(true)} pending={state.pending.share} postId={postId} variant={variant}/>
   const feedback = (['like', 'bookmark', 'share'] as const).map((action) => state.errors[action] ? <span className="interaction-error" data-action={action} key={action} role="status">{labels.interactionError}</span> : null)
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={commentsLabel} feedback={feedback} locale={locale} postId={postId} shareAction={shareAction} variant={variant}/>
 }
@@ -92,14 +94,14 @@ function GuestActions(props: PostActionsProps) {
   return <ScopedGuestActions key={scope} {...props} variant={variant}/>
 }
 
-function ScopedGuestActions({bookmarkCount, commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`, shareCount, variant}: PostActionsProps & {variant: 'feed' | 'detail'}) {
+function ScopedGuestActions({bookmarkCount, commentCount, labels, likeCount, locale, postId, returnTo=`/${locale}`, shareCount, sharePreview, variant}: PostActionsProps & {variant: 'feed' | 'detail'}) {
   const gatedHref = authHref(locale, returnTo)
   const {intentHandlers} = useIntentPrefetch()
   const {share, state} = useShareController({canonicalUrl: `/${locale}/posts/${postId}`, entityPath: `posts/${postId}`, shareCount})
 
   const likeAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.like, likeCount, locale)} className="post-action" href={gatedHref} prefetch={false} title={actionLabel(labels.like, likeCount, locale)}><HeartIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{likeCount}</Count></Link>
   const bookmarkAction = <Link {...intentHandlers(gatedHref)} aria-label={actionLabel(labels.bookmark, bookmarkCount, locale)} className="post-action" href={gatedHref} prefetch={false} title={actionLabel(labels.bookmark, bookmarkCount, locale)}><BookmarkIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{bookmarkCount}</Count></Link>
-  const shareAction = <button aria-busy={state.pending} aria-label={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} className="post-action" disabled={state.pending} onClick={() => void share()} title={actionLabel(labels.share ?? 'Share', state.shareCount, locale)} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{state.shareCount}</Count></button>
+  const shareAction = <PostShareAction sharePreview={sharePreview} count={state.shareCount} label={labels.share ?? 'Share'} locale={locale} onShared={() => share(true)} pending={state.pending} postId={postId} variant={variant}/>
   const feedback = state.error ? <span className="interaction-error" data-action="share" role="status">{labels.interactionError}</span> : null
   return <ActionFrame afterComment={bookmarkAction} beforeComment={likeAction} commentActive={variant === 'detail'} commentCount={commentCount} commentsLabel={labels.comments ?? 'Comments'} feedback={feedback} locale={locale} postId={postId} shareAction={shareAction} variant={variant}/>
 }
@@ -107,4 +109,12 @@ function ScopedGuestActions({bookmarkCount, commentCount, labels, likeCount, loc
 export function PostActions(props: PostActionsProps) {
   if (props.canMutate === undefined) return <AuthenticatedActions {...props} viewerScope={props.viewerScope ?? 'legacy-test-scope'}/>
   return props.canMutate && props.viewerScope ? <AuthenticatedActions {...props} viewerScope={props.viewerScope}/> : <GuestActions {...props}/>
+}
+
+function PostShareAction({count, label, locale, onShared, pending, postId, variant, sharePreview}: {sharePreview: PostActionsProps['sharePreview']; count: number; label: string; locale: Locale; onShared: () => Promise<void>; pending: boolean; postId: string; variant: 'feed' | 'detail'}) {
+  const [open, setOpen] = useState(false)
+  return <>
+    <button aria-busy={pending} aria-label={actionLabel(label, count, locale)} aria-haspopup="dialog" className="post-action" disabled={pending} onClick={() => setOpen(true)} title={actionLabel(label, count, locale)} type="button"><ShareIcon aria-hidden="true"/><Count locale={locale} variant={variant}>{count}</Count></button>
+    {open ? <IpProfileShareSheet locale={locale} onClose={() => setOpen(false)} onShared={onShared} profile={{id: postId, displayName: sharePreview?.title ?? (locale === 'zh-CN' ? 'AIFANS 内容' : 'AIFANS post'), bio: sharePreview?.body ?? '', username: postId}} targetKind="post"/> : null}
+  </>
 }

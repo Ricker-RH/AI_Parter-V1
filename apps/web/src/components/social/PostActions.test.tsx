@@ -247,6 +247,7 @@ describe('PostActions', () => {
     render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
     expect(nativeShare).toHaveBeenCalledWith({url: `${window.location.origin}/en/posts/${postId}`})
     expect(fetcher).not.toHaveBeenCalled()
     browserShare.resolve()
@@ -259,6 +260,7 @@ describe('PostActions', () => {
     await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
 
     fireEvent.click(screen.getByRole('button', {name: 'Share 5'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
     await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('status')).toBeNull()
@@ -273,6 +275,7 @@ describe('PostActions', () => {
     render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId={postId} variant="detail" />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/en/posts/${postId}`))
     await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
@@ -296,6 +299,7 @@ describe('PostActions', () => {
       render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
 
       fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
       await act(async () => {})
       expect(fetcher).toHaveBeenCalledTimes(1)
       expect(screen.getByRole('button', {name: 'Share 4'})).toBeDisabled()
@@ -311,6 +315,7 @@ describe('PostActions', () => {
       expect(retryKey).toBe(firstKey)
 
       fireEvent.click(screen.getByRole('button', {name: 'Share 5'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
       await act(async () => {})
       expect(screen.getByRole('button', {name: 'Share 6'})).toBeEnabled()
       expect(nativeShare).toHaveBeenCalledTimes(2)
@@ -331,6 +336,7 @@ describe('PostActions', () => {
     render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
 
     fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
 
     expect(await screen.findByRole('status')).toHaveTextContent(labels.interactionError)
     expect(screen.getByRole('button', {name: 'Share 4'})).toBeEnabled()
@@ -348,6 +354,7 @@ describe('PostActions', () => {
     }))
     const view = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
     fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
     await waitFor(() => expect(signal).toBeDefined())
 
     view.rerender(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="zh-CN" postId={postId} variant="detail" viewerScope="viewer-a" />)
@@ -369,6 +376,7 @@ describe('PostActions', () => {
     }))
     const view = render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate labels={labels} liked={false} locale="en" postId={postId} variant="detail" viewerScope="viewer-a" />)
     fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
     await waitFor(() => expect(screen.getByRole('button', {name: 'Share 5'})).toBeEnabled())
 
     view.unmount()
@@ -468,6 +476,7 @@ describe('PostActions', () => {
     flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked={false} bookmarkCount={2} labels={labels} liked={false} locale="en" postId={firstPostId} shareCount={4}/>))
     fireEvent.click(container.querySelector('button[aria-label="Bookmark 2"]')!)
     fireEvent.click(container.querySelector('button[aria-label="Share 4"]')!)
+    fireEvent.click(screen.getByRole('button', {name: 'System share'}))
     await waitFor(() => expect(signals).toHaveLength(2))
 
     flushSync(() => root.render(<PostActions {...authoritativeCounts} bookmarked bookmarkCount={8} labels={labels} liked locale="en" postId={nextPostId} shareCount={9}/>))
@@ -526,4 +535,20 @@ describe('PostActions', () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/en/auth/sign-in?next=%2Fen%2Fposts%2F22222222-2222-4222-8222-222222222222%3FcommentCursor%3Dnext'))
   })
+})
+
+it('opens the in-app sheet without invoking native share or incrementing the count', () => {
+  const nativeShare = vi.fn()
+  const fetcher = vi.fn()
+  vi.stubGlobal('navigator', {share: nativeShare})
+  vi.stubGlobal('fetch', fetcher)
+  render(<PostActions {...authoritativeCounts} bookmarked={false} canMutate={false} labels={labels} liked={false} locale="en" postId={postId}/>)
+  fireEvent.click(screen.getByRole('button', {name: 'Share 4'}))
+  expect(screen.getByRole('dialog')).toBeVisible()
+  expect(screen.getByRole('button', {name: 'Copy link'})).toBeVisible()
+  expect(nativeShare).not.toHaveBeenCalled()
+  expect(fetcher).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', {name: 'Close'}))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.getByRole('button', {name: 'Share 4'})).toBeEnabled()
 })
