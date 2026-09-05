@@ -82,3 +82,18 @@ it('applies a fresh server profile when privacy changes on the same route',async
  view.rerender(<HumanProfilePanel initialProfile={profile} locale="en"/>)
  expect(await screen.findByText(/This profile is private/)).toBeVisible()
 })
+
+it('renders a visitor cover through the header and tabs even when content is private', () => {
+ const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this: HTMLElement){
+  return new DOMRect(0,0,390,this.getAttribute('role')==='tablist'?300:56)
+ })
+ try {
+  const {container}=render(<HumanProfilePanel initialProfile={{...profile,background:{type:'image',url:'https://media.example/peer-cover.webp',focalX:.5,focalY:.5}}} locale="en"/>)
+  const background=container.querySelector<HTMLElement>('[data-profile-background]')!
+  expect(background).toHaveStyle({'--profile-background-image':'url("https://media.example/peer-cover.webp")'})
+  expect(background.parentElement).toHaveStyle({height:'300px'})
+  const host=background.parentElement!.parentElement!
+  expect(host.querySelector(':scope > header')).not.toBeNull()
+  expect(host.querySelector(':scope > [data-profile-cover-surface]')).not.toBeNull()
+ } finally {rect.mockRestore()}
+})

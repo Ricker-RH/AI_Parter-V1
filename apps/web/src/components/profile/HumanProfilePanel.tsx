@@ -36,8 +36,8 @@ function HumanProfilePanelContent({initialProfile,locale,socialLabels,viewerScop
     {profile.isOwner?<Link className={styles.editAction} href={`/${locale}/profile`}>{labels.edit}</Link>:<HumanProfileActions key={profile.identity.id} locale={locale} onProfileChange={setProfile} profile={profile} showBlock={false}/>}
    </section>
    <HumanProfileTabs profile={profile} locale={locale} socialLabels={socialLabels} {...(viewerScope?{viewerScope}:{})}/>
-   <ProfileCover backgroundStyle={backgroundStyle} type={background.type}/>
  </div></div>
+  <ProfileCover backgroundStyle={backgroundStyle} type={background.type}/>
  </div></div>
 }
 
