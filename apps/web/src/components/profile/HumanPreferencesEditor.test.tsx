@@ -24,6 +24,7 @@ it('keeps privacy rows in place while preferences load, then enables their store
  await waitFor(()=>expect(visibility).toHaveAttribute('aria-checked','false'))
  expect(fetcher).toHaveBeenNthCalledWith(2,'/api/human-preferences',expect.objectContaining({method:'PATCH',body:'{"visibility":"public"}'}))
  expect(screen.getByRole('switch',{name:'Show online status'})).toHaveAttribute('aria-checked','true')
+ expect(screen.queryByText('Saved.')).toBeNull()
 })
 it('requires explicit presence opt-in and reports failed saves without changing stored state',async()=>{
  const fetcher=vi.fn().mockResolvedValueOnce(Response.json({visibility:'private',showPresence:false})).mockResolvedValueOnce(Response.json({code:'UNAVAILABLE'},{status:503}));vi.stubGlobal('fetch',fetcher)
