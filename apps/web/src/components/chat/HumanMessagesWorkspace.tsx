@@ -19,6 +19,7 @@ import { HumanConversationDetail } from "./HumanConversationDetail";
 import { InboxWorkspaceFrame } from "./InboxWorkspaceFrame";
 import { MessagesSectionHeader } from "./MessagesSectionHeader";
 import { mergeHumanInboxEvent } from "./human-chat-cache";
+import { humanInboxQueryOptions } from "./human-inbox-query";
 import type { MessagesWorkspaceProps } from "./MessagesWorkspace";
 import styles from "./MessagesWorkspace.module.css";
 
@@ -40,17 +41,26 @@ export function HumanMessagesWorkspace({
     () => ["human-chat", selfProfileId, "inbox"] as const,
     [selfProfileId],
   );
+  const warmInboxOptions = useMemo(
+    () => humanInboxQueryOptions(selfProfileId),
+    [selfProfileId],
+  );
   const cachedInbox = queryClient.getQueryData<{
     items: HumanInboxPage["items"];
     cursor: string | null;
   }>(inboxKey);
+  const warmInbox = queryClient.getQueryData<{
+    items: HumanInboxPage["items"];
+    cursor: string | null;
+  }>(warmInboxOptions.queryKey);
+  const initialInbox = cachedInbox ?? warmInbox;
   const [inbox, setInbox] = useState<HumanInboxPage["items"]>(
-    () => cachedInbox?.items ?? [],
+    () => initialInbox?.items ?? [],
   );
   const [humanCursor, setHumanCursor] = useState<string | null>(
-    () => cachedInbox?.cursor ?? null,
+    () => initialInbox?.cursor ?? null,
   );
-  const [loading, setLoading] = useState(() => !cachedInbox?.items.length);
+  const [loading, setLoading] = useState(() => !initialInbox);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [aiRevision, setAiRevision] = useState(0);
@@ -99,8 +109,10 @@ export function HumanMessagesWorkspace({
     selfProfileId,
   );
   useEffect(() => {
+    if (!cachedInbox && !warmInbox && inbox.length === 0 && humanCursor === null)
+      return;
     queryClient.setQueryData(inboxKey, { items: inbox, cursor: humanCursor });
-  }, [humanCursor, inbox, inboxKey, queryClient]);
+  }, [cachedInbox, humanCursor, inbox, inboxKey, queryClient, warmInbox]);
   const syncSubscriptions = useCallback(() => {
     const selectedAi = currentAiSelected.current;
     if (aiSubscription.current && aiSubscription.current !== selectedAi) {
@@ -145,6 +157,50 @@ export function HumanMessagesWorkspace({
     async (cursor?: string) => {
       const lifecycle = owner.current;
       if (!lifecycle || lifecycle.signal.aborted) return;
+      // When navigation warmup is already reading page one, join that shared
+      // QueryClient request instead of issuing a competing direct fetch.
+      if (
+        !cursor &&
+        currentInbox.current.length === 0 &&
+        queryClient.getQueryState(warmInboxOptions.queryKey)?.fetchStatus === "fetching"
+      ) {
+        setLoading(true);
+        try {
+          const page = await queryClient.fetchQuery(
+            warmInboxOptions,
+          );
+          if (lifecycle.signal.aborted) return;
+          if (
+            page.items.some(
+              (item) =>
+                !item.conversation.participants.some(
+                  (person) => person.id === selfProfileId,
+                ),
+            )
+          )
+            throw Error();
+          currentInbox.current = page.items;
+          setInbox(page.items);
+          setHumanCursor(page.cursor);
+          queryClient.setQueryData(inboxKey, { items: page.items, cursor: page.cursor });
+          setError(false);
+          syncSubscriptions();
+        } catch (cause) {
+          if (!lifecycle.signal.aborted) {
+            if ((cause as Error).message === "auth-required")
+              globalThis.location.assign(
+                authHref(
+                  locale,
+                  `/${locale}/messages${currentSelected.current ? `?humanConversation=${currentSelected.current}` : ""}`,
+                ),
+              );
+            else setError(true);
+          }
+        } finally {
+          if (!lifecycle.signal.aborted) setLoading(false);
+        }
+        return;
+      }
       activeRequest.current?.abort();
       const request = new AbortController();
       activeRequest.current = request;
@@ -213,6 +269,10 @@ export function HumanMessagesWorkspace({
         currentInbox.current = merged;
         setInbox(merged);
         setHumanCursor(page.nextCursor);
+        queryClient.setQueryData(inboxKey, {
+          items: merged,
+          cursor: page.nextCursor,
+        });
         setError(false);
         syncSubscriptions();
       } catch (cause) {
@@ -232,7 +292,7 @@ export function HumanMessagesWorkspace({
           setLoading(false);
       }
     },
-    [locale, selfProfileId, syncSubscriptions],
+    [locale, queryClient, selfProfileId, syncSubscriptions, warmInboxOptions],
   );
   const changed = useCallback(() => {
     void refresh();
@@ -249,7 +309,12 @@ export function HumanMessagesWorkspace({
   useEffect(() => {
     const lifecycle = new AbortController();
     owner.current = lifecycle;
-    void refresh();
+    const rootState = queryClient.getQueryState(inboxKey);
+    const warmState = queryClient.getQueryState(warmInboxOptions.queryKey);
+    const hasFreshInbox = [rootState, warmState].some(
+      (state) => state?.dataUpdatedAt && Date.now() - state.dataUpdatedAt < 30_000,
+    );
+    if (!hasFreshInbox) void refresh();
     if (endpoint) {
       const realtime = createRealtimeTransport({
         endpoint,
@@ -400,7 +465,7 @@ export function HumanMessagesWorkspace({
       document.removeEventListener("visibilitychange", visible);
       window.removeEventListener("focus", visible);
     };
-  }, [endpoint, refresh, changed, selfProfileId, syncSubscriptions]);
+  }, [endpoint, refresh, changed, inboxKey, queryClient, selfProfileId, syncSubscriptions, warmInboxOptions.queryKey]);
   useEffect(() => {
     const timer = setInterval(
       () =>

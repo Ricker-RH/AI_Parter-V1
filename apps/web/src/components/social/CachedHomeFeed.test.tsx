@@ -13,6 +13,15 @@ const initial={status:'ok' as const,data:{items:[],nextCursor:null}}
 function shared(client:QueryClient, children:ReactNode){return <QueryClientProvider client={client}><AppQueryContext.Provider value>{children}</AppQueryContext.Provider></QueryClientProvider>}
 
 describe('CachedHomeFeed',()=>{
+  it('retains the visible feed when refresh fails',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const refresh=vi.fn();vi.stubGlobal('fetch',vi.fn(async()=>new Response(null,{status:503})))
+    render(shared(client,<CachedHomeFeed canMutate={false} initialResult={initial} kind="for_you" labels={labels} locale="en" onRefreshReady={refresh} returnTo="/en"/>))
+    await waitFor(()=>expect(refresh).toHaveBeenCalled());await refresh.mock.calls.at(-1)?.[0]()
+    expect(client.getQueryData(['home-feed','public','en','for_you',null])).toEqual(initial)
+    expect(screen.getByText('Nothing here yet')).toBeVisible();vi.unstubAllGlobals()
+  })
+
   it('keeps a cached feed visible when the home route remounts',async()=>{
     const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
     const fetcher=vi.fn()

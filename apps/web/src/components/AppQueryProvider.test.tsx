@@ -28,4 +28,13 @@ describe('AppQueryProvider',()=>{
     expect(client.getQueryData(['notifications',`${first.kind}:${first.id}`,'en','list',null])).toBeUndefined()
     expect(client.getQueryData(['home-feed','public','en','for_you',null])).toEqual({public:true})
   })
+  it('cancels an in-flight private query before an account change removes its cache',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    let aborted=false
+    void client.fetchQuery({queryKey:['my-profile',`${first.kind}:${first.id}`,'en','ips',null],queryFn:({signal})=>new Promise((_,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(signal.reason)},{once:true}))}).catch(()=>undefined)
+    render(<CurrentAccountProvider initialAccount={first}><AppQueryProvider client={client}><SwitchAccount/></AppQueryProvider></CurrentAccountProvider>)
+    await waitFor(()=>expect(client.isFetching()).toBe(1))
+    fireEvent.click(screen.getByRole('button',{name:'Switch account'}))
+    await waitFor(()=>expect(aborted).toBe(true))
+  })
 })

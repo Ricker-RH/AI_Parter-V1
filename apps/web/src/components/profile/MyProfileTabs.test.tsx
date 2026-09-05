@@ -1,5 +1,5 @@
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query'
-import {fireEvent, render, screen} from '@testing-library/react'
+import {act, fireEvent, render, screen} from '@testing-library/react'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import type {SocialLabels} from '../social/types.js'
 import {AppQueryContext} from '../AppQueryProvider.js'
@@ -28,6 +28,17 @@ const remoteTabs = [
 afterEach(() => vi.unstubAllGlobals())
 
 describe('MyProfileTabs', () => {
+  it('keeps loaded profile items visible after a background refetch fails',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const key=['my-profile','viewer-a','en','ips',null]
+    client.setQueryData(key,{status:'ready',items:[ip],nextCursor:null})
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(null,{status:503})))
+    render(<QueryClientProvider client={client}><AppQueryContext.Provider value><MyProfileTabs labels={labels} locale="en" socialLabels={socialLabels} viewerScope="viewer-a"/></AppQueryContext.Provider></QueryClientProvider>)
+    await act(async()=>{await client.invalidateQueries({queryKey:key})})
+    expect(client.getQueryData(key)).toMatchObject({status:'ready',items:[ip]})
+    expect(screen.getByRole('link',{name:'Luma'})).toBeVisible()
+  })
+
   it('loads real creator IP assets and provides roving four-tab navigation', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items:[ip],nextCursor:null})))
     render(<MyProfileTabs labels={labels} locale="en" socialLabels={socialLabels}/>)
