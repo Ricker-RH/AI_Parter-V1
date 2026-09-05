@@ -168,12 +168,12 @@ describe('ConversationList', () => {
     expect(screen.queryByText(labels.loadMoreError)).toBeNull()
   })
 
-  it('renders an exclusive unavailable state without an active search or empty-inbox copy', () => {
+  it('keeps the search visible and read-only when the list is unavailable', () => {
     render(<ConversationList items={[]} labels={labels} locale="en" unavailable/>)
     expect(screen.getByRole('alert')).toHaveTextContent('Messages are unavailable right now.')
     expect(screen.getByText('We could not load your conversations.')).toBeVisible()
     expect(screen.getByRole('button', {name: 'Try again'})).toBeEnabled()
-    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(screen.getByRole('searchbox')).toHaveAttribute('readonly')
     expect(screen.queryByText('No conversations yet')).toBeNull()
     expect(screen.queryByText('No matching conversations')).toBeNull()
   })
