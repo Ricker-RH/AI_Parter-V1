@@ -16,7 +16,8 @@
 .detailHeader h2 { font-size: 19px; letter-spacing: -0.015em; margin: 0; }
 .conversationList { display: grid; }
 .conversationRow { align-items: center; display: grid; gap: 12px; grid-template-columns: 48px minmax(0, 1fr); min-height: 72px; padding: 12px 16px; }
-.conversationRow:hover, .conversationRow[data-selected="true"] { background: var(--shell-hover); }
+.conversationRow[data-pinned="true"] { background: var(--shell-hover); }
+.conversationRow:hover, .conversationRow[data-selected="true"] { background: color-mix(in srgb, var(--shell-hover), var(--shell-text) 5%); }
 .conversationAvatar { align-items: center; display: flex; justify-content: center; align-self: center; border-radius: 50%; height: 48px; width: 48px; }
 .avatar { align-items: center; background: var(--shell-hover); border: 1px solid var(--shell-border); border-radius: 50%; display: inline-flex; flex: 0 0 auto; font-size: 16px; font-weight: 700; height: 48px; justify-content: center; width: 48px; }
 .conversationAvatar .listAvatar { height: 48px; width: 48px; }
