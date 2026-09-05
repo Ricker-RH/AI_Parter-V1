@@ -1,3 +1,4 @@
+import {registerInboxPreferencesRoutes, type InboxPreferencesPort} from './routes/inbox-preferences.js'
 import { Hono } from "hono";
 import {bodyLimit} from 'hono/body-limit'
 import { apiError } from "./errors.js";
@@ -57,6 +58,7 @@ import type {ChannelPort,PlatformChannelPort} from './ports/channels.js'
 export type UnhandledErrorDiagnostic = {name: string; code?: string; requestId?: string; conversationId?: string}
 
 export type AppDependencies = {
+  inboxPreferences?: InboxPreferencesPort;
   auth?: AuthVerifier;
   authority?: AuthorityPort;
   platformSocial?: PlatformSocialPort;
@@ -128,6 +130,7 @@ export const createApp = (dependencies: AppDependencies = {}) => {
   registerChatRoutes(app, dependencies);
   app.use('*', realtimeDeliveryMiddleware(dependencies));
   registerHumanChatRoutes(app, dependencies);
+  registerInboxPreferencesRoutes(app, dependencies);
   registerHumanChatMediaRoutes(app,dependencies);
   registerHumanChatRichContentRoutes(app,dependencies);
   registerRealtimeRevocationRoutes(app,dependencies);

@@ -164,7 +164,7 @@ it("does not poll the human inbox while realtime is ready", async () => {
   vi.useFakeTimers();
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   const fetcher = vi.fn().mockResolvedValue(Response.json({items: [], nextCursor: null}));
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" />);
   await act(async () => { await Promise.resolve(); });
   expect(fetcher).toHaveBeenCalled();
@@ -189,7 +189,8 @@ it("keeps a loaded inbox visible during disconnected fallback reconciliation", a
   let calls = 0;
   vi.stubGlobal(
     "fetch",
-    vi.fn(() => {
+    vi.fn((url: string) => {
+      if (url === "/api/inbox/preferences") return Promise.resolve(Response.json({items: []}));
       calls++;
       if (calls > 1)
         return new Promise<Response>((resolve) => {
@@ -227,7 +228,7 @@ it("does not reload open history when a visible page reconciles its inbox", asyn
       ),
     ),
   );
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
   await screen.findByText("No messages yet");
   const historyCalls = fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length;
@@ -260,7 +261,7 @@ it("subscribes selected AI separately and refreshes authoritative history on its
         ),
       ),
     );
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(
     <MessagesWorkspace
       items={[]}
@@ -374,7 +375,7 @@ it("loads human inbox on the normal Messages route and resubscribes/refetches on
       }),
     ),
   );
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" />);
   expect(await screen.findByRole("link", { name: /Alice/ })).toHaveAttribute(
     "href",
@@ -398,7 +399,7 @@ it("applies a realtime message without refetching the inbox", async () => {
       nextCursor: null,
     }),
   );
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" />);
   await screen.findByRole("link", { name: /Alice/ });
   const calls = fetcher.mock.calls.length;
@@ -438,7 +439,7 @@ it("adds a realtime message to the open conversation without a history reload", 
       ),
     ),
   );
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
   await screen.findByText("No messages yet");
   const calls = fetcher.mock.calls.length;
@@ -467,7 +468,7 @@ it("adds a realtime message to the open conversation without a history reload", 
 it("disposes the previous account connection and requests immediately on identity change", async () => {
   vi.stubEnv("NEXT_PUBLIC_REALTIME_URL", "wss://realtime.test");
   const fetcher = vi.fn().mockReturnValue(new Promise(() => {}));
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   const view = render(
     <MessagesWorkspace items={[]} labels={labels} locale="en" />,
   );

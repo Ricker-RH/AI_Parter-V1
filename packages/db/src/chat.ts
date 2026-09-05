@@ -82,7 +82,8 @@ SELECT conversation.id, conversation.ip_profile_id, ip.username, ip.display_name
   last_message.body AS last_body, last_message.role AS last_role, last_message.created_at AS last_created_at,
   (SELECT count(*)::text FROM public.chat_messages unread
     WHERE unread.conversation_id=conversation.id AND unread.role='assistant' AND unread.delivery_state='sent'
-      AND unread.created_at>conversation.last_read_at) AS unread_count
+      AND unread.created_at>conversation.last_read_at
+      AND unread.created_at>coalesce((SELECT deleted_at FROM public.inbox_preferences WHERE kind='IP' AND conversation_id=conversation.id AND profile_id=public.current_profile_id()),'-infinity'::timestamptz)) AS unread_count
 FROM public.chat_conversations conversation
 JOIN public.profiles ip ON ip.id = conversation.ip_profile_id
 ${sentOnly ? 'JOIN' : 'LEFT JOIN'} LATERAL (
@@ -90,6 +91,7 @@ ${sentOnly ? 'JOIN' : 'LEFT JOIN'} LATERAL (
   FROM public.chat_messages
   WHERE conversation_id = conversation.id
   ${sentOnly ? "AND delivery_state = 'sent'" : ''}
+    AND created_at>coalesce((SELECT deleted_at FROM public.inbox_preferences WHERE kind='IP' AND conversation_id=conversation.id AND profile_id=public.current_profile_id()),'-infinity'::timestamptz)
   ORDER BY created_at DESC, id DESC
   LIMIT 1
 ) last_message ON TRUE` }
@@ -184,6 +186,7 @@ WHERE conversation.human_profile_id = $1::uuid AND conversation.ip_profile_id = 
           `SELECT id, role, body, delivery_state, client_request_id,in_reply_to_client_request_id,generation_state, generation_answer, ${utcTimestamp('created_at')} AS created_at
            FROM public.chat_messages
            WHERE conversation_id = $1::uuid
+             AND created_at>coalesce((SELECT deleted_at FROM public.inbox_preferences WHERE kind='IP' AND conversation_id=$1::uuid AND profile_id=public.current_profile_id()),'-infinity'::timestamptz)
              AND ($2::timestamptz IS NULL OR (created_at, id) < ($2::timestamptz, $3::uuid))
            ORDER BY created_at DESC, id DESC
            LIMIT $4`,

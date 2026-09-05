@@ -5,7 +5,8 @@ import {encodeChatConversationCursor} from '@aifans/contracts'
 import {StrictMode} from 'react'
 import {ConversationList} from './ConversationList.js'
 
-vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn()})}))
+vi.mock('next/navigation', () => ({useRouter: () => ({refresh: vi.fn(), replace: vi.fn()})}))
+function stubFetch(mock: (...args: any[]) => any) {vi.stubGlobal('fetch', vi.fn((...args: unknown[]) => args[0] === '/api/inbox/preferences' ? Promise.resolve(Response.json({items: []})) : mock(...args)))}
 
 const labels = {title: 'Messages', chatTab: 'Chats', notificationsTab: 'Notifications', noConversations: 'No conversations yet', emptyDescription: 'Conversations with AI/IP profiles appear here.', emptyAction: 'Explore home', searchLabel: 'Search conversations', searchPlaceholder: 'Search', noSearchResults: 'No matching conversations', partialSearchResults: 'No matches in loaded conversations. Load more to keep searching.', loadMore: 'Load more', loadingMore: 'Loading…', loadMoreError: 'Could not load more conversations.', unavailable: 'Messages are unavailable right now.', unavailableDescription: 'We could not load your conversations.', unavailableAction: 'Try again', unavailablePending: 'Trying again…'}
 const item = {id: '11111111-1111-4111-8111-111111111111', ipProfile: {id: '22222222-2222-4222-8222-222222222222', displayName: 'Luma', username: 'luma'}, lastMessage: {body: 'Last real message', role: 'assistant' as const, createdAt: '2026-09-01T00:00:00.000Z'}, updatedAt: '2026-09-01T00:00:00.000Z', sendEnabled: true}
@@ -55,7 +56,7 @@ describe('ConversationList', () => {
 
   it('filters empty conversations returned by later pages', async () => {
     const emptyConversation = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Empty'}, lastMessage: null}
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [emptyConversation], nextCursor: null})))
+    stubFetch(vi.fn().mockResolvedValue(Response.json({items: [emptyConversation], nextCursor: null})))
     render(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
 
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
@@ -67,7 +68,7 @@ describe('ConversationList', () => {
 
   it('keeps search active while it accumulates and de-duplicates the next cursor page', async () => {
     const second = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Orion', username: 'night_sky'}, lastMessage: {...item.lastMessage, body: 'A quiet constellation'}}
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [item, second], nextCursor: null})))
+    stubFetch(vi.fn().mockResolvedValue(Response.json({items: [item, second], nextCursor: null})))
     render(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
     const search = screen.getByRole('searchbox', {name: 'Search conversations'})
     fireEvent.change(search, {target: {value: 'NIGHT'}})
@@ -86,7 +87,7 @@ describe('ConversationList', () => {
 
   it('keeps pagination mounted through Strict Effects setup-cleanup-setup', async () => {
     const second = {...item, id: '33333333-3333-4333-8333-333333333333', ipProfile: {...item.ipProfile, displayName: 'Orion'}}
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items: [second], nextCursor: null})))
+    stubFetch(vi.fn().mockResolvedValue(Response.json({items: [second], nextCursor: null})))
     render(<StrictMode><ConversationList items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/></StrictMode>)
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
     expect(await screen.findByRole('link', {name: /Orion/})).toBeVisible()
@@ -96,10 +97,10 @@ describe('ConversationList', () => {
     let resolve!: (response: Response) => void
     const stale = {...item, id: '44444444-4444-4444-8444-444444444444', ipProfile: {...item.ipProfile, displayName: 'Stale'}}
     const current = {...item, id: '55555555-5555-4555-8555-555555555555', ipProfile: {...item.ipProfile, displayName: 'Current'}}
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
+    stubFetch(vi.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done })))
     const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
-    const signal = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![1].signal as AbortSignal
+    const signal = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(call => String(call[0]).startsWith('/api/conversations'))![1].signal as AbortSignal
     rerender(<ConversationList items={[current]} labels={labels} locale="en" nextCursor={null}/>)
     expect(signal.aborted).toBe(true)
     resolve(Response.json({items: [stale], nextCursor: null}))
@@ -109,7 +110,7 @@ describe('ConversationList', () => {
 
   it('does not let a stale request unlock a newer pagination request', async () => {
     const resolvers: Array<(response: Response) => void> = []
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolvers.push(resolve) })))
+    stubFetch(vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolvers.push(resolve) })))
     const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
     rerender(<ConversationList items={[item]} labels={labels} locale="en" nextCursor={originCursor}/>)
@@ -120,14 +121,14 @@ describe('ConversationList', () => {
     const active = screen.getByRole('button', {name: 'Loading…'})
     expect(active).toBeDisabled()
     fireEvent.click(active)
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.filter(call => String(call[0]).startsWith('/api/conversations'))).toHaveLength(2)
     resolvers[1]!(Response.json({items: [], nextCursor: null}))
   })
 
   it('returns a selected desktop detail to sign-in with its conversation-list cursor on 401', async () => {
     const assign = vi.fn()
     vi.stubGlobal('location', {assign})
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {status: 401})))
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, {status: 401})))
     render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor} selectedId={item.id}/>)
 
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
@@ -140,7 +141,7 @@ describe('ConversationList', () => {
     const stale = {...item, id: '44444444-4444-4444-8444-444444444444', ipProfile: {...item.ipProfile, displayName: 'Stale after JSON'}}
     const current = {...item, id: '55555555-5555-4555-8555-555555555555', ipProfile: {...item.ipProfile, displayName: 'Current after reset'}}
     const json = vi.fn().mockReturnValue(new Promise<unknown>((resolve) => { resolveJson = resolve }))
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({status: 200, ok: true, body: null, json} as unknown as Response))
+    stubFetch(vi.fn().mockResolvedValue({status: 200, ok: true, body: null, json} as unknown as Response))
     const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
     await waitFor(() => expect(json).toHaveBeenCalledOnce())
@@ -156,7 +157,7 @@ describe('ConversationList', () => {
     let rejectJson!: (reason: Error) => void
     const current = {...item, id: '55555555-5555-4555-8555-555555555555', ipProfile: {...item.ipProfile, displayName: 'Current after rejected JSON'}}
     const json = vi.fn().mockReturnValue(new Promise<unknown>((_resolve, reject) => { rejectJson = reject }))
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({status: 200, ok: true, body: null, json} as unknown as Response))
+    stubFetch(vi.fn().mockResolvedValue({status: 200, ok: true, body: null, json} as unknown as Response))
     const {rerender} = render(<ConversationList initialCursor={originCursor} items={[item]} labels={labels} locale="en" nextCursor={nextCursor}/>)
     fireEvent.click(screen.getByRole('button', {name: 'Load more'}))
     await waitFor(() => expect(json).toHaveBeenCalledOnce())
@@ -214,4 +215,30 @@ describe('ConversationList', () => {
     expect(chat).toHaveAttribute('aria-current', 'page')
     expect(notifications).not.toHaveAttribute('aria-current')
   })
+})
+
+it('sorts persisted pins first and hides deleted history until a newer message arrives', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({items:[{kind:'IP',conversationId:item.id,pinnedAt:'2026-09-02T00:00:00.000Z',deletedAt:null}]})))
+  const newer = {...item,id:'33333333-3333-4333-8333-333333333333',ipProfile:{...item.ipProfile,displayName:'Newer'},lastMessage:{...item.lastMessage,createdAt:'2026-09-03T00:00:00.000Z'}}
+  render(<ConversationList items={[newer,item]} labels={labels} locale="en"/>)
+  await screen.findByLabelText('Pinned')
+  expect(screen.getAllByRole('link',{name:/Open conversation/})[0]).toHaveAccessibleName('Open conversation: Luma')
+})
+
+it('deletes only after confirmation, then allows genuinely new messages to restore the row', async () => {
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => options?.method === 'POST' ? Response.json({ok:true}) : Response.json({items:[]}))
+  vi.stubGlobal('fetch',fetcher)
+  const removed = vi.fn()
+  window.addEventListener('aifans:conversation-deleted',removed)
+  const {rerender} = render(<ConversationList items={[item]} labels={labels} locale="en"/>)
+  fireEvent.contextMenu(screen.getByRole('link',{name:/Open conversation/}))
+  fireEvent.click(screen.getByRole('button',{name:'Delete'}))
+  expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(0)
+  fireEvent.click(screen.getByRole('button',{name:'Delete conversation'}))
+  await waitFor(()=>expect(screen.queryByRole('link',{name:/Open conversation/})).toBeNull())
+  expect(removed).toHaveBeenCalledOnce()
+  expect(fetcher).toHaveBeenCalledWith('/api/inbox/preferences',expect.objectContaining({body:JSON.stringify({kind:'IP',conversationId:item.id,action:'delete'})}))
+  rerender(<ConversationList items={[{...item,lastMessage:{...item.lastMessage,createdAt:new Date(Date.now()+60_000).toISOString()}}]} labels={labels} locale="en"/>)
+  expect(await screen.findByRole('link',{name:/Open conversation/})).toBeVisible()
+  window.removeEventListener('aifans:conversation-deleted',removed)
 })

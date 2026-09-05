@@ -24,9 +24,10 @@ const InboxProjection = ConversationProjection.replace('FROM public.human_dm_con
   (SELECT jsonb_build_object('id',m.id,'conversation_id',m.conversation_id,'sender_profile_id',m.sender_profile_id,
     'client_request_id',m.client_request_id,'sequence',m.sequence::text,'content',m.content,
     'created_at',to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
-    FROM public.human_dm_messages m WHERE m.conversation_id=c.id ORDER BY m.sequence DESC LIMIT 1) AS latest_message,
+    FROM public.human_dm_messages m WHERE m.conversation_id=c.id AND m.sequence > coalesce((SELECT deleted_sequence FROM public.inbox_preferences WHERE kind='HUMAN' AND conversation_id=c.id AND profile_id=public.current_profile_id()),0) ORDER BY m.sequence DESC LIMIT 1) AS latest_message,
   (SELECT count(*)::text FROM public.human_dm_messages unread WHERE unread.conversation_id=c.id
     AND unread.sequence > coalesce((SELECT read_sequence FROM public.human_dm_members WHERE conversation_id=c.id AND profile_id=public.current_profile_id()),0)
+    AND unread.sequence > coalesce((SELECT deleted_sequence FROM public.inbox_preferences WHERE kind='HUMAN' AND conversation_id=c.id AND profile_id=public.current_profile_id()),0)
     AND unread.sender_profile_id <> public.current_profile_id()) AS unread_count,
   coalesce((SELECT read_sequence::text FROM public.human_dm_members WHERE conversation_id=c.id AND profile_id=public.current_profile_id()),'0') AS read_sequence
   FROM public.human_dm_conversations c`)
@@ -75,7 +76,8 @@ export function createHumanChatRepository({withActor, publicMediaBaseUrl}: {with
       const cursor = value.cursor ? decodeHumanInboxCursor(value.cursor) : null
       return withActor(actor, async client => {
         const result = await client.query(`${InboxProjection}
-          WHERE ($1::timestamptz IS NULL OR (c.updated_at,c.id) < ($1::timestamptz,$2::uuid))
+          WHERE NOT EXISTS (SELECT 1 FROM public.inbox_preferences pref WHERE pref.kind='HUMAN' AND pref.conversation_id=c.id AND pref.profile_id=public.current_profile_id() AND pref.deleted_at IS NOT NULL AND c.last_sequence <= pref.deleted_sequence)
+          AND ($1::timestamptz IS NULL OR (c.updated_at,c.id) < ($1::timestamptz,$2::uuid))
           ORDER BY c.updated_at DESC, c.id DESC LIMIT $3`, [cursor?.updatedAt ?? null, cursor?.id ?? null, value.limit + 1])
         const rows = result.rows.slice(0, value.limit)
         const items = rows.map(row => ({conversation: conversation(row), latestMessage: row.latest_message === null ? null : message(z.record(z.string(), z.unknown()).parse(row.latest_message)), unreadCount: safeSequence.parse(row.unread_count), lastReadSequence: safeSequence.parse(row.read_sequence)}))
@@ -96,7 +98,7 @@ export function createHumanChatRepository({withActor, publicMediaBaseUrl}: {with
       return withActor(actor, async (client) => {
         // FORCE RLS resolves membership independently of this parameterized query.
         const result = await client.query(`SELECT id,conversation_id,sender_profile_id,client_request_id,sequence,content,created_at
-          FROM public.human_dm_messages WHERE conversation_id = $1 AND sequence > $2 ORDER BY sequence ASC LIMIT $3`,
+          FROM public.human_dm_messages WHERE conversation_id = $1 AND sequence > $2 AND sequence > coalesce((SELECT deleted_sequence FROM public.inbox_preferences WHERE kind='HUMAN' AND conversation_id=$1 AND profile_id=public.current_profile_id()),0) ORDER BY sequence ASC LIMIT $3`,
         [value.conversationId, value.afterSequence, value.limit])
         return result.rows.map(message)
       })

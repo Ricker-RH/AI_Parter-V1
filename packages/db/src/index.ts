@@ -113,3 +113,5 @@ export {createPostgresRealtimeEphemeralRepository} from './realtime-ephemeral.js
 export {createHumanChatRichContentRepository,type HumanChatRichContentRepository} from './human-chat-rich-content.js'
 export {createRealtimeRevocationRepository} from './realtime-revocation.js'
 export {createPostgresAiRealtimeOutboxRepository,type AiRealtimeOutboxRepository} from './ai-realtime-outbox.js'
+
+export {createInboxPreferencesRepository,type InboxPreferencesRepository} from './inbox-preferences.js'

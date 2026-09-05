@@ -11,3 +11,5 @@ export * from './human-chat-media.js'
 export * from './human-relationships.js'
 export * from './human-chat-rich-content.js'
 export * from './ai-realtime.js'
+
+export {InboxPreferenceInputSchema, InboxPreferencesSchema} from './inbox-preferences.js'

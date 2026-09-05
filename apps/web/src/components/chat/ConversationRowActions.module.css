@@ -1,0 +1,19 @@
+.row {position:relative;overflow:hidden;}
+.content {position:relative;background:var(--shell-canvas);transition:transform 160ms ease;touch-action:pan-y;}
+.swipeActions {position:absolute;inset:0 0 0 auto;display:flex;width:152px;}
+.swipeActions button {width:76px;border:0;background:var(--shell-hover);color:var(--shell-text);font:inherit;}
+.backdrop {position:fixed;inset:0;z-index:10000;}
+.backdrop:has(.dialog) {display:grid;place-items:center;background:rgb(0 0 0 / 35%);padding:20px;}
+.menu,.dialog {background:var(--shell-canvas);color:var(--shell-text);border:1px solid var(--shell-border);box-shadow:0 8px 32px rgb(0 0 0 / 16%);border-radius:16px;padding:8px;}
+.menu {position:absolute;width:180px;display:grid;}
+.menu button,.dialog button {background:transparent;color:inherit;border:0;border-radius:10px;padding:12px 16px;font:inherit;text-align:left;cursor:pointer;}
+.menu button:hover,.dialog button:hover {background:var(--shell-hover);}
+.dialog {width:min(100%,380px);padding:24px;}
+.dialog h2 {font-size:20px;margin:0 0 12px;}
+.dialog p {color:var(--shell-muted);line-height:1.5;}
+.confirmActions {display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+button.danger {color:#c73545;}
+.row button:disabled,.backdrop button:disabled {opacity:.5;cursor:wait;}
+.time {color:var(--shell-muted);font-size:11px;white-space:nowrap;flex-shrink:0;}
+.metadata {display:flex;align-items:center;gap:6px;flex-shrink:0;}
+@media(prefers-reduced-motion:reduce){.content{transition:none;}}

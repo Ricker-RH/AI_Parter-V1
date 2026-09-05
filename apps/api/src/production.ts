@@ -107,6 +107,7 @@ export function createProductionDependencies(
     social: database.social,
     chatTargets: database.chatTargets,
     conversations: database.chat,
+    ...(database.inboxPreferences ? {inboxPreferences: database.inboxPreferences} : {}),
     ...(env.humanSocialEnabled && database.humanChat ? {humanChat: database.humanChat} : {}),
     ...(env.humanSocialEnabled && env.privateChatMedia && database.humanChatMedia ? {humanChatMedia:createHumanChatMediaPort({repository:database.humanChatMedia,storage:createR2HumanChatMediaStorage(env.privateChatMedia)})}:{}),
     ...(env.humanSocialEnabled && database.humanSocial ? {humanSocial: database.humanSocial} : {}),

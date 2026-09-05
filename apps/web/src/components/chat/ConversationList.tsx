@@ -2,7 +2,11 @@
 
 import {ChatConversationPageSchema, type ChatConversationSummary, type HumanInboxPage} from '@aifans/contracts'
 import Link from 'next/link'
-import {useDeferredValue, useEffect, useRef, useState, type ReactNode} from 'react'
+import {useRouter} from 'next/navigation'
+import {QueryClientContext} from '@tanstack/react-query'
+import {ConversationRowActions, conversationTime} from './ConversationRowActions'
+import actionStyles from './ConversationRowActions.module.css'
+import {useContext, useDeferredValue, useEffect, useRef, useState, type ReactNode} from 'react'
 import {Avatar} from '../account/Avatar'
 import {HumanAvatar} from '../account/HumanAvatar'
 import type {Locale} from '../../i18n/config'
@@ -19,6 +23,35 @@ function initialEntries(items: ChatConversationSummary[], initialCursor?: string
 function appendUnique(current: ConversationEntry[], incoming: ConversationEntry[]) { const seen = new Set(current.map(({conversation}) => conversation.id)); return [...current, ...incoming.filter(({conversation}) => { if (seen.has(conversation.id)) return false; seen.add(conversation.id); return true })] }
 
 export function ConversationList({items, labels, locale, selectedId, initialCursor, nextCursor: initialNextCursor, unavailable = false, humanItems = [], selfProfileId, selectedHumanId, humanFooter, humanLoading = false}: {items: ChatConversationSummary[]; labels: ConversationListLabels; locale: Locale; selectedId?: string | undefined; initialCursor?: string | undefined; nextCursor?: string | null | undefined; unavailable?: boolean | undefined; humanItems?: HumanInboxPage['items']; selfProfileId?: string; selectedHumanId?: string | undefined; humanFooter?: ReactNode; humanLoading?: boolean}) {
+  const router = useRouter()
+  const queryClient = useContext(QueryClientContext)
+  const preferenceRevision = useRef(0)
+  const [preferences, setPreferences] = useState<Record<string, {pinnedAt: string | null; deletedAt: string | null}>>({})
+  useEffect(() => {
+    const request = new AbortController()
+    const revision = preferenceRevision.current
+    void fetch('/api/inbox/preferences', {signal: request.signal}).then(async response => {
+      if (!response.ok) return
+      const value = await response.json()
+      if (!request.signal.aborted && revision === preferenceRevision.current && Array.isArray(value.items)) setPreferences(Object.fromEntries(value.items.filter((item: {kind?: string; conversationId?: string}) => item.kind && item.conversationId).map((item: {kind: string; conversationId: string; pinnedAt: string | null; deletedAt: string | null}) => [`${item.kind}:${item.conversationId}`, item])))
+    }).catch(() => {})
+    return () => request.abort()
+  }, [])
+  async function updatePreference(kind: 'IP' | 'HUMAN', id: string, selected: boolean, action: 'pin' | 'unpin' | 'delete') {
+    const response = await fetch('/api/inbox/preferences', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind, conversationId: id, action})})
+    if (!response.ok) throw Error('unavailable')
+    const changedAt = new Date().toISOString()
+    preferenceRevision.current += 1
+    setPreferences(current => ({...current, [`${kind}:${id}`]: {pinnedAt: action === 'pin' ? changedAt : null, deletedAt: action === 'delete' ? changedAt : current[`${kind}:${id}`]?.deletedAt ?? null}}))
+    if (action === 'delete') {
+      window.dispatchEvent(new CustomEvent('aifans:conversation-deleted', {detail: {kind, conversationId: id, deletedAt: changedAt}}))
+      await queryClient?.cancelQueries({predicate: query => query.queryKey.includes(id)})
+      queryClient?.removeQueries({predicate: query => query.queryKey.includes(id)})
+      void queryClient?.invalidateQueries()
+      if (selected) router.replace(`/${locale}/messages`)
+      router.refresh()
+    }
+  }
   const [query, setQuery] = useState('')
   const [entries, setEntries] = useState<ConversationEntry[]>(() => initialEntries(items, initialCursor))
   const [nextCursor, setNextCursor] = useState(initialNextCursor ?? null)
@@ -29,13 +62,13 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
   const controller = useRef<AbortController | null>(null)
   const normalizedQuery = useDeferredValue(query).trim().toLocaleLowerCase(locale)
   const rows = [
-    ...entries.map(({conversation, listCursor}) => ({kind: 'IP' as const, id: conversation.id, person: conversation.ipProfile, body: conversation.lastMessage?.body ?? '', updatedAt: conversation.updatedAt, unread: conversation.unreadCount ?? 0, selected: conversation.id === selectedId, href: `/${locale}/messages/${conversation.id}${listCursor ? `?${new URLSearchParams({listCursor})}` : ''}`})),
+    ...entries.map(({conversation, listCursor}) => ({kind: 'IP' as const, id: conversation.id, person: conversation.ipProfile, body: conversation.lastMessage?.body ?? '', updatedAt: conversation.lastMessage?.createdAt ?? conversation.updatedAt, unread: conversation.unreadCount ?? 0, selected: conversation.id === selectedId, href: `/${locale}/messages/${conversation.id}${listCursor ? `?${new URLSearchParams({listCursor})}` : ''}`})),
     ...humanItems.flatMap(({conversation, latestMessage, unreadCount}) => {
       if (!conversation.participants.some(person => person.id === selfProfileId)) return []
       const person = conversation.participants.find(person => person.id !== selfProfileId)!
-      return [{kind: 'HUMAN' as const, id: conversation.id, person, body: latestMessage?.content.kind === 'text' ? latestMessage.content.text : latestMessage?.content.kind==='image'?(locale==='zh-CN'?'图片':'Image'):latestMessage?.content.kind==='voice'?(locale==='zh-CN'?'语音':'Voice message'):latestMessage?.content.kind==='sticker'?(locale==='zh-CN'?'贴纸':'Sticker'):latestMessage?.content.kind==='share'?(locale==='zh-CN'?'分享内容':'Shared content'):'', updatedAt: conversation.updatedAt, unread: unreadCount, selected: conversation.id === selectedHumanId, href: `/${locale}/messages?humanConversation=${conversation.id}`}]
+      return [{kind: 'HUMAN' as const, id: conversation.id, person, body: latestMessage?.content.kind === 'text' ? latestMessage.content.text : latestMessage?.content.kind==='image'?(locale==='zh-CN'?'图片':'Image'):latestMessage?.content.kind==='voice'?(locale==='zh-CN'?'语音':'Voice message'):latestMessage?.content.kind==='sticker'?(locale==='zh-CN'?'贴纸':'Sticker'):latestMessage?.content.kind==='share'?(locale==='zh-CN'?'分享内容':'Shared content'):'', updatedAt: latestMessage?.createdAt ?? conversation.updatedAt, unread: unreadCount, selected: conversation.id === selectedHumanId, href: `/${locale}/messages?humanConversation=${conversation.id}`}]
     }),
-  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))
+  ].filter(row => {const deleted = preferences[`${row.kind}:${row.id}`]?.deletedAt; return !deleted || row.updatedAt > deleted}).sort((a, b) => {const ap = preferences[`${a.kind}:${a.id}`]?.pinnedAt; const bp = preferences[`${b.kind}:${b.id}`]?.pinnedAt; return Number(Boolean(bp)) - Number(Boolean(ap)) || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)})
   const visibleRows = normalizedQuery ? rows.filter(row => [row.person.displayName, row.person.username, row.body].some(value => value.toLocaleLowerCase(locale).includes(normalizedQuery))) : rows
   useEffect(() => {
     controller.current?.abort(); controller.current = null; loadingRef.current = false; setLoadingMore(false)
@@ -86,12 +119,12 @@ export function ConversationList({items, labels, locale, selectedId, initialCurs
       const profileHref = `/${locale}/${row.kind === 'HUMAN' ? 'humans' : 'profiles'}/${row.person.id}`
       const profileLabel = locale === 'zh-CN' ? '查看主页' : 'View profile'
       const conversationLabel = locale === 'zh-CN' ? `打开与 ${row.person.displayName} 的对话` : `Open conversation: ${row.person.displayName}`
-      return <div className={styles.conversationRow} data-selected={row.selected || undefined} key={`${row.kind}:${row.id}`}>
+      return <ConversationRowActions key={`${row.kind}:${row.id}`} locale={locale} pinned={Boolean(preferences[`${row.kind}:${row.id}`]?.pinnedAt)} onAction={action => updatePreference(row.kind, row.id, row.selected, action)}><div className={styles.conversationRow} data-selected={row.selected || undefined} key={`${row.kind}:${row.id}`}>
         <Link aria-label={profileLabel} className={styles.conversationAvatar} href={profileHref}>
           {row.kind === 'HUMAN' ? <HumanAvatar className={styles.listAvatar!} decorative human={row.person} size="medium"/> : <Avatar avatarUrl={null} className={styles.listAvatar!} decorative displayName={row.person.displayName} identityId={row.person.id} kind="ip" size="medium"/>}
         </Link>
-        <Link aria-current={row.selected ? 'page' : undefined} aria-label={conversationLabel} className={styles.conversationCopy} href={row.href}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong>{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadBadge}>{row.unread > 99 ? '99+' : row.unread}</span> : null}</span><span className={styles.preview}>{row.body}</span></Link>
-      </div>
+        <Link aria-current={row.selected ? 'page' : undefined} aria-label={conversationLabel} className={styles.conversationCopy} href={row.href}><span className={styles.conversationTitle}><strong>{row.person.displayName}</strong><span className={actionStyles.metadata}>{preferences[`${row.kind}:${row.id}`]?.pinnedAt ? <span aria-label={locale === 'zh-CN' ? '已置顶' : 'Pinned'}>⌃</span> : null}<time className={actionStyles.time} dateTime={row.updatedAt} title={new Date(row.updatedAt).toLocaleString(locale)}>{conversationTime(row.updatedAt, locale)}</time>{row.unread > 0 ? <span aria-label={locale==='zh-CN' ? `${row.unread} 条未读消息` : `${row.unread} unread messages`} className={styles.unreadBadge}>{row.unread > 99 ? '99+' : row.unread}</span> : null}</span></span><span className={styles.preview}>{row.body}</span></Link>
+      </div></ConversationRowActions>
     })}</nav>
     {loadMoreError ? <p className={styles.paginationError} role="alert">{labels.loadMoreError}</p> : null}
     {nextCursor ? <button className={styles.more} disabled={loadingMore} onClick={() => void loadMore()} type="button">{loadingMore ? labels.loadingMore : labels.loadMore}</button> : null}</>}

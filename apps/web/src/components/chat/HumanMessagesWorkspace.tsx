@@ -73,6 +73,21 @@ export function HumanMessagesWorkspace({
     null,
   );
   const currentInbox = useRef(inbox);
+  const deletedCutoffs = useRef(new Map<string, number>());
+  useEffect(() => {
+    function onDeleted(event: Event) {
+      const detail = (event as CustomEvent<{kind:string;conversationId:string;deletedAt?:string}>).detail;
+      if (detail?.kind !== 'HUMAN') return;
+      deletedCutoffs.current.set(detail.conversationId, Date.parse(detail.deletedAt ?? new Date().toISOString()));
+      activeRequest.current?.abort();
+      currentInbox.current = currentInbox.current.filter(item => item.conversation.id !== detail.conversationId);
+      setInbox(currentInbox.current);
+      setRealtimeMessage(null);
+      setRevision(value => value + 1);
+    }
+    window.addEventListener('aifans:conversation-deleted', onDeleted);
+    return () => window.removeEventListener('aifans:conversation-deleted', onDeleted);
+  }, [selfProfileId]);
   const currentSelected = useRef(selectedHumanId);
   const currentAiSelected = useRef(selectedId),
     aiSubscription = useRef<string | null>(null);
@@ -351,6 +366,7 @@ export function HumanMessagesWorkspace({
               ),
             }));
           if (event.type === "message") {
+            if (Date.parse(event.message.createdAt) <= (deletedCutoffs.current.get(event.message.conversationId) ?? 0)) return;
             currentInbox.current = mergeHumanInboxEvent(
               currentInbox.current,
               event.message,

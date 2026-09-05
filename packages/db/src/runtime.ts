@@ -1,3 +1,4 @@
+import {createInboxPreferencesRepository, type InboxPreferencesRepository} from './inbox-preferences.js'
 import { Pool } from "@neondatabase/serverless";
 import {
   createAuthorityRepository,
@@ -53,6 +54,7 @@ export type DatabaseRuntimeRepositories = {
   chatTargets: ChatTargetRepository;
   chat: ChatRepository;
   humanChat?: HumanChatRepository;
+  inboxPreferences?: InboxPreferencesRepository;
   humanSocial?: HumanSocialRepository;
   realtimeSessions?: RealtimeSessionRepository;
   humanRealtimeOutbox?: HumanRealtimeOutboxRepository;
@@ -128,6 +130,7 @@ export function createDatabaseRuntimeRepositories(
     }),
     chatTargets: createChatTargetRepository(withActor),
     chat: createChatRepository(withActor),
+    inboxPreferences: createInboxPreferencesRepository({withActor}),
     humanChat: createHumanChatRepository({withActor,...(urls.publicMediaBaseUrl?{publicMediaBaseUrl:urls.publicMediaBaseUrl}:{})}),
     realtimeSessions: createPostgresRealtimeSessionRepository({withPlatformActor}),
     humanRealtimeOutbox: createPostgresHumanRealtimeOutboxRepository({withPlatformActor}),
