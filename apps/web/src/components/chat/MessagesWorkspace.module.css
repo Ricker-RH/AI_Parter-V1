@@ -1,4 +1,4 @@
-.workspace { display: grid; min-height: 0; min-width: 0; overflow-x: hidden; }
+.workspace { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; min-width: 0; overflow-x: hidden; }
 .listPane, .detailPane, .emptyPane { min-width: 0; }
 .listPane { display: flex; flex-direction: column; }
 .sectionHeader { display: grid; gap: 14px; padding: 20px 16px 14px; }
@@ -104,7 +104,7 @@
   :global(.messages-shell[data-active-chat="true"] .mobile-nav),
   :global(.messages-shell[data-active-chat="true"] .floating-creator-action) { display: none; }
 }
-@media (min-width: 700px) { .workspace { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) { grid-template-columns: minmax(0, 720px); justify-content: center; }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) .listPane { border-right: 0; }.listPane { border-right: 1px solid var(--shell-border); min-height: 0; overflow-y: auto; }.detailPane, .emptyPane { min-height: 100vh; }.back { display: none; }.notificationsPage { margin: 0 auto; max-width: 720px; width: 100%; } }
+@media (min-width: 700px) { .workspace { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) { grid-template-columns: minmax(0, 720px); justify-content: center; }.workspace[data-list-unavailable="true"]:not([data-selected="true"]) .listPane { border-right: 0; }.listPane { border-right: 1px solid var(--shell-border); min-height: 0; overflow-y: auto; }.detailPane, .emptyPane { min-height: 0; }.back { display: none; }.notificationsPage { margin: 0 auto; max-width: 720px; width: 100%; } }
 .mediaTools { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .mediaTools button, .emojiTools button, .mediaAction { min-height: 44px; padding: 8px 14px; border-radius: 22px; border: 1px solid var(--border, #dedede); background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .mediaAction { position: relative; display: inline-flex; align-items: center; overflow: hidden; }

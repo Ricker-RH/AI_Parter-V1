@@ -1880,11 +1880,16 @@ html[data-route-shell="creator"] .route-shell-fallback-loading { display: conten
   }
   .desktop-nav .global-more { margin-top: auto; }
   .messages-shell {
+    height: var(--app-viewport-height);
+    min-height: 0;
+    overflow: hidden;
+    grid-template-rows: minmax(0, 1fr);
     column-gap: 24px;
     grid-template-columns: 76px minmax(0, 1fr);
     max-width: none;
     width: 100%;
   }
+  .messages-shell .content { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
   .messages-shell .desktop-nav-compact {
     background: var(--shell-surface);
     display: block;
