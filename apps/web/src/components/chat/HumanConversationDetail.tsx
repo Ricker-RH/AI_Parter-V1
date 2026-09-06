@@ -161,6 +161,8 @@ function HumanDetail({
           sent: "已发送",
           readFailed: "已读状态更新失败，请重试。",
           more: "加载更多消息",
+          emptyDescription: "还没有消息，向对方打个招呼吧。",
+          viewProfile: "查看主页",
         }
       : {
           blocked: "Messaging is unavailable because access has changed.",
@@ -169,6 +171,8 @@ function HumanDetail({
           sent: "Sent",
           readFailed: "Could not update read status. Please retry.",
           more: "Load more messages",
+          emptyDescription: "No messages yet. Say hello and start the conversation.",
+          viewProfile: "View profile",
         };
   function revokeAccess() {
     lifecycle.current?.abort();
@@ -468,7 +472,12 @@ function HumanDetail({
           </p>
         ) : null}
         {!loading && items.length === 0 && !denied ? (
-          <p className={styles.detailNotice}>{labels.emptyHistory}</p>
+          <div className={styles.emptyConversation}>
+            <HumanAvatar decorative human={peer} size="large" />
+            <h3>{peer.displayName}</h3>
+            <p>{text.emptyDescription}</p>
+            <Link href={`/${locale}/humans/${peer.id}`}>{text.viewProfile}</Link>
+          </div>
         ) : null}
         <ol className={styles.messageList}>
           {items.map((message) => {

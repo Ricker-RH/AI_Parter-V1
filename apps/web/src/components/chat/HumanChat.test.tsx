@@ -117,7 +117,7 @@ it("keeps the HUMAN name stable and shows typing as its status", async () => {
   expect(screen.getByText("正在输入…")).toBeInTheDocument();
   view.rerender(<HumanConversationDetail {...props} peerTyping={false} />);
   expect(screen.getByRole("heading", { name: "Alice" })).toBeInTheDocument();
-  await screen.findByText("No messages yet");
+  await screen.findByText("还没有消息，向对方打个招呼吧。");
 });
 it("shows a single server-sent check and doubles it only at the authoritative peer read cursor", async () => {
   vi.stubGlobal(
@@ -167,7 +167,12 @@ it("keeps HUMAN actions collapsed and switches mutually exclusive panels", async
       onChanged={() => {}}
     />,
   );
-  await screen.findByText("No messages yet");
+  await screen.findByText("No messages yet. Say hello and start the conversation.");
+  expect(screen.getAllByRole("heading", { name: "Alice" })).toHaveLength(2);
+  expect(screen.getByRole("link", { name: "View profile" })).toHaveAttribute(
+    "href",
+    `/en/humans/${peer}`,
+  );
   expect(screen.queryByLabelText("Choose image")).not.toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "More actions" }));
   expect(screen.getByLabelText("Choose image")).toBeVisible();
@@ -504,7 +509,7 @@ it("reuses the failed request key when Send is pressed again on the unchanged dr
       onChanged={() => {}}
     />,
   );
-  await screen.findByText("No messages yet");
+  await screen.findByText("No messages yet. Say hello and start the conversation.");
   fireEvent.change(screen.getByRole("textbox"), {
     target: { value: "A message" },
   });

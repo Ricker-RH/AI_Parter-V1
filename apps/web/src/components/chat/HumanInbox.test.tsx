@@ -230,7 +230,7 @@ it("reconciles open history as well as the inbox when returning to a visible pag
   );
   vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
-  await screen.findByText("No messages yet");
+  await screen.findByText("No messages yet. Say hello and start the conversation.");
   const historyCalls = fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length;
   fireEvent.focus(window);
   await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/messages?")).length).toBe(historyCalls + 1));
@@ -247,7 +247,7 @@ it("receives a missed message in the open conversation through disconnected poll
   }));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-  expect(screen.getByText("No messages yet")).toBeVisible();
+  expect(screen.getByText("No messages yet. Say hello and start the conversation.")).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
   expect(screen.getByText("Arrived while disconnected")).toBeVisible();
 });
@@ -456,7 +456,7 @@ it("adds a realtime message to the open conversation without a history reload", 
   );
   vi.stubGlobal("fetch", (url: string, ...args: unknown[]) => url === "/api/inbox/preferences" ? Promise.resolve(Response.json({items: []})) : fetcher(url, ...args));
   render(<MessagesWorkspace items={[]} labels={labels} locale="en" selectedHumanId={id} />);
-  await screen.findByText("No messages yet");
+  await screen.findByText("No messages yet. Say hello and start the conversation.");
   const calls = fetcher.mock.calls.length;
   act(() =>
     mocks.options?.onEvent({
