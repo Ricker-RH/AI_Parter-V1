@@ -287,7 +287,7 @@ it("subscribes selected AI separately and refreshes authoritative history on its
       snapshotViewerId={self}
     />,
   );
-  await screen.findByRole("heading", { name: "AI Alice" });
+  await screen.findByRole("heading", { name: "AI Alice", level: 2 });
   await act(async () => mocks.options?.onAuthenticated({ reconnected: true }));
   expect(mocks.send).toHaveBeenCalledWith({
     v: 1,

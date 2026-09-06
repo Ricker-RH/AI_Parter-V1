@@ -13,6 +13,7 @@ import {
 } from "@aifans/contracts";
 import { ConversationDetail, ConversationDetailSurface } from "./ConversationDetail.js";
 import { MessagesSectionHeader } from "./MessagesSectionHeader.js";
+import styles from "./MessagesWorkspace.module.css";
 
 const composerRenders = vi.hoisted(
   () => [] as { conversationId: string; bodies: string[] }[],
@@ -126,6 +127,30 @@ describe("ConversationDetail", () => {
     expect(sendBeacon).toHaveBeenCalledWith(
       `/api/conversations/${first.conversation.id}/read`,
       expect.any(Blob),
+    );
+  });
+  it("uses a single message column when IP messages have no avatar", () => {
+    render(<ConversationDetail history={first} labels={labels} locale="en" />);
+
+    expect(screen.getByText("First history").closest("li")).toHaveClass(
+      styles.aiMessage!,
+    );
+  });
+  it("turns an empty IP conversation into a profile-first start state", () => {
+    render(
+      <ConversationDetail
+        history={{ ...first, items: [], nextCursor: null }}
+        labels={labels}
+        locale="en"
+      />,
+    );
+
+    expect(
+      screen.getByText("No messages yet. Say hello and start the conversation."),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "View profile" })).toHaveAttribute(
+      "href",
+      `/en/profiles/${first.conversation.ipProfile.id}`,
     );
   });
   it("uses visible fallback polling only without realtime and updates saved generation state", async () => {

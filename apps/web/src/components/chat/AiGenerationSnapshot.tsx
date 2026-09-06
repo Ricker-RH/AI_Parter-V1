@@ -29,7 +29,7 @@ export function AiGenerationSnapshot({
           ? "已记录生成请求，正在核对状态。"
           : "Generation request saved; checking status.";
   return (
-    <li className={styles.assistantMessage}>
+    <li className={`${styles.assistantMessage} ${styles.aiMessage}`}>
       {generation.answer ? <p>{generation.answer}</p> : null}
       <span className={styles.generationStatus} role="status">
         {status}

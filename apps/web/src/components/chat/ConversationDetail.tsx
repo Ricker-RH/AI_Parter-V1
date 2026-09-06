@@ -19,6 +19,7 @@ import { mergeAiHistory } from "../../lib/ai-history";
 import type { Locale } from "../../i18n/config";
 import { authHref } from "../../lib/auth/return-to";
 import { ChatComposer, type ChatComposerLabels } from "./ChatComposer";
+import { Avatar } from "../account/Avatar";
 import styles from "./MessagesWorkspace.module.css";
 
 export type ConversationDetailLabels = ChatComposerLabels & {
@@ -315,6 +316,9 @@ function ConversationDetailContent({
         </p>
       </section>
     );
+  const emptyText = locale === "zh-CN"
+    ? { description: "还没有消息，向对方打个招呼吧。", profile: "查看主页" }
+    : { description: "No messages yet. Say hello and start the conversation.", profile: "View profile" };
   return (
     <ConversationDetailSurface
       name={history.conversation.ipProfile.displayName}
@@ -340,7 +344,21 @@ function ConversationDetailContent({
           </p>
         ) : null}
         {items.length === 0 ? (
-          <p className={styles.detailNotice}>{labels.emptyHistory}</p>
+          <div className={styles.emptyConversation}>
+            <Avatar
+              avatarUrl={null}
+              decorative
+              displayName={history.conversation.ipProfile.displayName}
+              identityId={history.conversation.ipProfile.id}
+              kind="ip"
+              size="large"
+            />
+            <h3>{history.conversation.ipProfile.displayName}</h3>
+            <p>{emptyText.description}</p>
+            <Link href={`/${locale}/profiles/${history.conversation.ipProfile.id}`}>
+              {emptyText.profile}
+            </Link>
+          </div>
         ) : (
           <ol className={styles.messageList}>
             {items.map((message) => (
@@ -351,11 +369,7 @@ function ConversationDetailContent({
                       ? labels.messageFailed
                       : undefined
                   }
-                  className={
-                    message.role === "human"
-                      ? styles.humanMessage
-                      : styles.assistantMessage
-                  }
+                  className={`${message.role === "human" ? styles.humanMessage : styles.assistantMessage} ${styles.aiMessage}`}
                 >
                   <p>{message.body}</p>
                   {message.deliveryState === "failed" && !message.generation ? (
