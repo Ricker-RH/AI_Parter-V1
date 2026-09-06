@@ -12,6 +12,8 @@ import {HumanMessagesWorkspace} from './HumanMessagesWorkspace'
 import {HumanChatQueryProvider} from './HumanChatQueryProvider'
 import {UnavailableRetry} from '../social/UnavailableRetry'
 import styles from './MessagesWorkspace.module.css'
+import {BrandLoader} from '../shell/BrandLoader'
+import {FeedbackState} from '../shell/FeedbackState'
 
 export type MessagesLabels = ConversationListLabels & ConversationDetailLabels & {selectConversation: string}
 
@@ -28,7 +30,7 @@ export function MessagesWorkspace(props: MessagesWorkspaceProps) {
     const key=`${props.snapshotViewerId ?? 'unknown'}:${current.account?.id ?? 'anonymous'}:${current.status}`
     if (refreshed.current!==key) {refreshed.current=key;router.refresh()}
   },[current?.account?.id,current?.status,matches,props.snapshotViewerId,router,viewerUnavailable])
-  if (!matches) return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={props.labels} locale={props.locale}/><div className={styles.unavailableState}><p role={current?.status==='loading' ? 'status' : 'alert'}>{current?.status==='loading' ? props.labels.loadingMore : props.labels.unavailable}</p><UnavailableRetry beforeRetry={current?.refetch} disabled={current?.status==='loading'} label={props.labels.unavailableAction} pendingLabel={props.labels.unavailablePending}/></div></aside>}/>
+  if (!matches) return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={props.labels} locale={props.locale}/>{current?.status==='loading' ? <BrandLoader label={props.labels.loadingMore}/> : <FeedbackState title={props.labels.unavailable}><UnavailableRetry beforeRetry={current?.refetch} label={props.labels.unavailableAction} pendingLabel={props.labels.unavailablePending}/></FeedbackState>}</aside>}/>
   if (current?.status==='authenticated' && current.account?.kind==='human') return <HumanChatQueryProvider profileId={current.account.id}><HumanMessagesWorkspace key={current.account.id} {...props} selfProfileId={current.account.id}/></HumanChatQueryProvider>
   return <AiMessagesWorkspace {...props}/>
 }

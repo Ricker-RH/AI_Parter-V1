@@ -2,6 +2,8 @@
 
 import type {CreatorIp, FeedPage, FollowedIp} from '@aifans/contracts'
 import {ProfileEmptyState} from './ProfileEmptyState'
+import {BrandLoader} from '../shell/BrandLoader'
+import {FeedbackState} from '../shell/FeedbackState'
 import {QueryClientProvider, useQuery, useQueryClient} from '@tanstack/react-query'
 import Link from 'next/link'
 import {useContext, useRef, useState, type KeyboardEvent} from 'react'
@@ -57,9 +59,9 @@ function ProfileTabs({labels,locale,socialLabels,viewerScope}: {labels:MyProfile
 }
 
 function SectionContent({empty,labels,locale,loadingMore,moreUnavailable,onLoadMore,onRetry,section,socialLabels,tab,viewerScope}:{empty:string;labels:MyProfileTabsLabels;locale:Locale;loadingMore:boolean;moreUnavailable:boolean;onLoadMore:()=>void;onRetry:()=>void;section:Section|undefined;socialLabels:SocialLabels;tab:Tab;viewerScope?:string}){
-  if(!section)return <div className={styles.tabState} role="status">{labels.loadingSection}</div>
+  if(!section)return <div className={styles.tabState}><BrandLoader label={labels.loadingSection}/></div>
   if(section.status==='auth')return <div className={styles.tabState} role="alert"><p>{labels.authRequired}</p><Link href={authHref(locale,`/${locale}/profile`)}>{labels.signIn}</Link></div>
-  if(section.status==='unavailable')return <div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p><button onClick={onRetry} type="button">{labels.retrySection}</button></div>
+  if(section.status==='unavailable')return <FeedbackState title={labels.unavailableSection}><button onClick={onRetry} type="button">{labels.retrySection}</button></FeedbackState>
   if(!section.items.length&&!section.nextCursor)return <ProfileEmptyState kind={tab} locale={locale} own title={tab==='following'?(locale==='zh-CN'?'还没有关注':'Not following anyone yet'):empty}/>
   const more=section.nextCursor&&!moreUnavailable?<button className={styles.loadMore} disabled={loadingMore} onClick={onLoadMore} type="button">{loadingMore?labels.loadingSection:socialLabels.loadMore}</button>:null
   const retryMore=moreUnavailable?<div className={styles.tabState} role="alert"><p>{labels.unavailableSection}</p><button onClick={onLoadMore} type="button">{labels.retrySection}</button></div>:null

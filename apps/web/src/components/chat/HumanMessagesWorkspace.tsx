@@ -22,6 +22,8 @@ import { mergeHumanInboxEvent } from "./human-chat-cache";
 import { humanInboxQueryOptions } from "./human-inbox-query";
 import type { MessagesWorkspaceProps } from "./MessagesWorkspace";
 import styles from "./MessagesWorkspace.module.css";
+import {BrandLoader} from '../shell/BrandLoader';
+import {FeedbackState} from '../shell/FeedbackState';
 
 export function HumanMessagesWorkspace({
   selfProfileId,
@@ -499,16 +501,13 @@ export function HumanMessagesWorkspace({
     </div>
   );
   const humanFooter = loading ? (
-    <p className={styles.detailNotice} role="status">
-      {labels.loadingMore}
-    </p>
+    <BrandLoader label={labels.loadingMore}/>
   ) : error ? (
-    <p className={styles.detailNotice} role="alert">
-      {labels.unavailable}
+    <FeedbackState title={labels.unavailable}>
       <button className={styles.older} onClick={() => void refresh()}>
         {labels.retry}
       </button>
-    </p>
+    </FeedbackState>
   ) : humanCursor ? (
     <button className={styles.more} onClick={() => void refresh(humanCursor)}>
       {labels.loadMore}
@@ -545,9 +544,7 @@ export function HumanMessagesWorkspace({
     ) : (
       <section className={styles.detailPane}>
         {mobileHeader}
-        <p className={styles.detailNotice} role="status">
-          {loading ? labels.loadingMore : labels.unavailable}
-        </p>
+        {loading ? <BrandLoader label={labels.loadingMore}/> : <FeedbackState title={labels.unavailable}><button type="button" onClick={()=>void refresh()}>{labels.retry}</button></FeedbackState>}
         {humanCursor ? (
           <button
             className={styles.more}

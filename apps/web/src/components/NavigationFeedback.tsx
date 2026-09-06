@@ -7,6 +7,7 @@ import type {Locale} from '../i18n/config'
 import {routeNameForPath, useAnalytics} from '../lib/analytics/provider'
 import {deviceType, performanceBudget, trackPerformanceMeasured} from '../lib/analytics/performance'
 import type {AnalyticsPerformanceMetric, AnalyticsPerformanceRating} from '../lib/analytics/contracts'
+import {BrandLoader} from './shell/BrandLoader'
 
 type PendingNavigation = {generation: number; readyGeneration: number; readyObservedBeforeStart: boolean; reportedMetrics: Set<string>; startedAt: number; targetPathname: string; targetRoute: string}
 type RouteReady = {generation: number; route: string}
@@ -142,5 +143,5 @@ export function NavigationFeedback({locale, release}: {locale: Locale; release: 
     setPending(active)
   }, [currentRoute, pending])
 
-  return pending ? <div aria-atomic="true" aria-live="polite" className="navigation-feedback" data-navigation-pending="true" role="status"><span className="navigation-feedback__indicator" aria-hidden="true"/><span className="sr-only">{pendingLabel(locale)}</span></div> : null
+  return pending ? <div aria-atomic="true" aria-live="polite" className="navigation-feedback" data-navigation-pending="true" role="status"><BrandLoader decorative compact label={pendingLabel(locale)}/></div> : null
 }

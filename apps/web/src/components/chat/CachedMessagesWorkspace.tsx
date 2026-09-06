@@ -13,13 +13,15 @@ import {MessagesWorkspace, type MessagesLabels} from './MessagesWorkspace'
 import styles from './MessagesWorkspace.module.css'
 import {aiInboxQueryOptions, type AiInboxResult} from './ai-inbox-query'
 import {QueryLoadError} from '../../lib/query-load-error'
+import {BrandLoader} from '../shell/BrandLoader'
+import {FeedbackState} from '../shell/FeedbackState'
 
 function messageReturnTo(locale:Locale, selectedHumanId?:string, cursor?:string){
   return `/${locale}/messages${selectedHumanId?`?${new URLSearchParams({humanConversation:selectedHumanId})}`:cursor?`?${new URLSearchParams({cursor})}`:''}`
 }
 
 export function CachedMessagesWorkspace({labels,locale,initialCursor,selectedHumanId}:{labels:MessagesLabels;locale:Locale;initialCursor?:string;selectedHumanId?:string}){
-  const {account,status}=useCurrentAccount()
+  const {account,status,refetch}=useCurrentAccount()
   const router=useRouter()
   const queryClient=useQueryClient()
   const redirected=useRef(false)
@@ -61,10 +63,10 @@ export function CachedMessagesWorkspace({labels,locale,initialCursor,selectedHum
     router.replace(authHref(locale,returnTo))
   },[authRequired,locale,returnTo,router,status])
 
-  if(status==='loading')return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><p className={styles.detailNotice} role="status">{labels.loadingMore}</p></aside>}/>
-  if(status==='unavailable'||status==='anonymous'||!account)return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><p className={styles.detailNotice} role="alert">{labels.unavailable}</p></aside>}/>
+  if(status==='loading'||status==='anonymous')return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><BrandLoader label={labels.loadingMore}/></aside>}/>
+  if(status==='unavailable'||!account)return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><FeedbackState title={labels.unavailable}><button type="button" onClick={()=>void refetch()}>{labels.unavailableAction}</button></FeedbackState></aside>}/>
 
   const result=inbox.data
-  if(account.kind!=='human'&&inbox.isPending&&!result)return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><p className={styles.detailNotice} role="status">{labels.loadingMore}</p></aside>}/>
+  if(account.kind!=='human'&&inbox.isPending&&!result)return <InboxWorkspaceFrame list={<aside className={styles.listPane}><MessagesSectionHeader active="chat" labels={labels} locale={locale}/><BrandLoader label={labels.loadingMore}/></aside>}/>
   return <MessagesWorkspace initialCursor={initialCursor} items={result?.status==='ok'?result.data.items:[]} labels={labels} listUnavailable={!result&&inbox.isError&&!authRequired} locale={locale} nextCursor={result?.status==='ok'?result.data.nextCursor:null} onIpConversationRead={onIpConversationRead} selectedHumanId={selectedHumanId} snapshotViewerId={account.id} snapshotViewerStatus="authenticated"/>
 }

@@ -1,3 +1,5 @@
+import {BrandLoader} from './BrandLoader'
+
 export type RouteSkeletonVariant =
   | 'feed'
   | 'list'
@@ -93,5 +95,5 @@ function Shape({variant}: {variant: RouteSkeletonVariant}) {
 }
 
 export function RouteSkeleton({label, variant}: {label: string; variant: RouteSkeletonVariant}) {
-  return <main aria-busy="true" aria-label={label} className={`route-skeleton route-skeleton--${variant}`} data-navigation-mode="non-instant" role="status"><div aria-hidden="true" data-skeleton-shape={variant}><Shape variant={variant}/></div></main>
+  return <main aria-busy="true" aria-label={label} className={`route-skeleton route-skeleton--${variant}`} data-navigation-mode="non-instant" role="status"><div className="route-loading-indicator"><BrandLoader decorative label={label}/></div><div aria-hidden="true" data-skeleton-shape={variant}><Shape variant={variant}/></div></main>
 }

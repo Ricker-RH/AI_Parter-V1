@@ -9,7 +9,7 @@ describe("LoadingScreen", () => {
     expect(screen.getByRole("status", { name: "Loading AIFANS" })).toHaveClass(
       "loading-screen",
     );
-    expect(screen.getByRole("img", {name: "AIFANS"})).toHaveClass("loading-screen-mark");
+    expect(document.querySelector('.brand-loader__art svg')).not.toBeNull();
     expect(screen.getByRole("status").childElementCount).toBe(1);
   });
 });

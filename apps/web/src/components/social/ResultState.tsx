@@ -3,6 +3,7 @@ import Link from 'next/link'
 import type {SocialApiResult} from '../../lib/social-api'
 import type {SocialLabels} from './types'
 import {UnavailableRetry} from './UnavailableRetry'
+import {FeedbackState} from '../shell/FeedbackState'
 
 export function ResultState({result, labels, empty, profile=false, actionHref}: {result: Exclude<SocialApiResult<unknown>, {status: 'ok'}>; labels: SocialLabels; empty?: 'bookmarks' | 'liked' | 'notifications' | 'home';profile?:boolean; actionHref?: string}) {
   const content = empty === 'bookmarks'
@@ -19,5 +20,6 @@ export function ResultState({result, labels, empty, profile=false, actionHref}: 
       ? profile?{title:labels.profileNotFoundTitle,description:labels.profileNotFoundDescription}:{title: labels.postNotFoundTitle, description: labels.postNotFoundDescription}
       : {title: labels.unavailableTitle, description: labels.unavailableDescription}
   const unavailable = result.status === 'unavailable'
+  if(unavailable)return <FeedbackState title={content.title} description={content.description}><UnavailableRetry label={labels.unavailableRetry} pendingLabel={labels.unavailableRetrying}/></FeedbackState>
   return <div className="empty" role={unavailable ? 'alert' : undefined}><EmptyState description={content.description} title={content.title} />{actionHref ? <Link className="empty-action" href={actionHref}>{labels.home ?? 'Home'}</Link> : null}{unavailable ? <UnavailableRetry label={labels.unavailableRetry} pendingLabel={labels.unavailableRetrying} /> : null}</div>
 }

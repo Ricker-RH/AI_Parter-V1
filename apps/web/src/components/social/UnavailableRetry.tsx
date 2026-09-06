@@ -2,6 +2,7 @@
 
 import {useRouter} from 'next/navigation'
 import {useTransition} from 'react'
+import {BrandLoader} from '../shell/BrandLoader'
 
 export function UnavailableRetry({label, pendingLabel, beforeRetry, disabled = false}: {label: string; pendingLabel: string; beforeRetry?: (() => Promise<unknown>) | undefined; disabled?: boolean}) {
   const router = useRouter()
@@ -11,5 +12,5 @@ export function UnavailableRetry({label, pendingLabel, beforeRetry, disabled = f
       await beforeRetry()
       startTransition(() => router.refresh())
     } else router.refresh()
-  })} type="button">{retrying ? pendingLabel : label}</button>
+  })} type="button"><span style={{visibility:retrying?'hidden':undefined}}>{label}</span>{retrying ? <span className="button-loading"><BrandLoader compact label={pendingLabel}/></span> : null}</button>
 }

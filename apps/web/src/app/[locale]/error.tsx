@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {FeedbackState} from '../../components/shell/FeedbackState';
 
 type ErrorPageProps = {
   error: Error & { digest?: string };
@@ -29,15 +30,13 @@ export default function ErrorPage({ error: _error, reset }: ErrorPageProps) {
   const labels = localizedLabels[locale];
 
   return (
-    <main className="route-error" role="alert">
-      <h1>{labels.title}</h1>
-      <p>{labels.description}</p>
-      <div className="route-error-actions">
+    <main className="route-error">
+      <FeedbackState title={labels.title} description={labels.description}>
         <button onClick={reset} type="button">
           {labels.retry}
         </button>
         <Link href={`/${locale}`}>{labels.home}</Link>
-      </div>
+      </FeedbackState>
     </main>
   );
 }

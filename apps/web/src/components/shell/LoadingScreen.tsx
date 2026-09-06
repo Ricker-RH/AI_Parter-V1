@@ -1,4 +1,4 @@
-import {Logo} from '@aifans/ui'
+import {BrandLoader} from './BrandLoader'
 
 export function LoadingScreen() {
   return (
@@ -9,7 +9,7 @@ export function LoadingScreen() {
       className="loading-screen"
       role="status"
     >
-      <Logo className="loading-screen-mark" showWordmark={false} />
+      <BrandLoader decorative />
     </div>
   );
 }
