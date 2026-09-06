@@ -83,7 +83,7 @@ export function ConversationDetailSurface({
       {sectionHeader}
       <header className={styles.detailHeader}>
         <Link aria-label={backLabel} className={styles.back} href={backHref}>
-          ← {backLabel}
+          <span aria-hidden="true">←</span>
         </Link>
         <div className={styles.detailIdentity}>
           {avatar ?? (
@@ -93,7 +93,7 @@ export function ConversationDetailSurface({
           )}
           <div>
             <h2>{name}</h2>
-            <p>{status ?? `@${username}`}</p>
+            {status ? <p>{status}</p> : null}
           </div>
         </div>
       </header>

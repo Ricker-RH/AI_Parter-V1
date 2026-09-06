@@ -172,18 +172,6 @@ export function HumanRichComposer(props: Props) {
             {props.panel !== undefined ? <ChatIcon name="sticker" /> : null}
             {zh ? "贴纸" : "Stickers"}
           </button>
-          <button
-            hidden={props.panel !== undefined && props.panel !== "more"}
-            ref={shareAnchor}
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={mode === "share"}
-            disabled={props.disabled}
-            onClick={() => setMode(mode === "share" ? null : "share")}
-          >
-            {props.panel !== undefined ? <ChatIcon name="share" /> : null}
-            {zh ? "分享" : "Share"}
-          </button>
         </>
       ) : (
         <div className={styles.richPreview}>

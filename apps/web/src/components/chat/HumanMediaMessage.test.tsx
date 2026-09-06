@@ -68,6 +68,27 @@ it("loads private images only through the authenticated download endpoint", asyn
   );
   view.unmount();
 });
+it("renders voice as a compact chat bubble instead of native browser controls", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      Response.json({
+        url: "https://assets.test/voice",
+        expiresAt: "2099-01-01T00:00:00Z",
+        attachment: {
+          attachmentId: id,
+          kind: "voice",
+          contentType: "audio/webm",
+          sizeBytes: 10,
+        },
+      }),
+    ),
+  );
+  const view = renderMedia({ attachmentId: id, kind: "voice", zh: false, onError() {} });
+
+  expect(await screen.findByRole("button", { name: "Play voice" })).toBeVisible();
+  expect(view.container.querySelector("audio")?.hasAttribute("controls")).toBe(false);
+});
 it("shares an in-memory private attachment descriptor across message remounts", async () => {
   const fetcher = vi.fn().mockResolvedValue(
     Response.json({

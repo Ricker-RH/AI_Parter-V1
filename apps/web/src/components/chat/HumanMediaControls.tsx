@@ -36,6 +36,7 @@ export function HumanMediaControls(props: Props) {
     [pending, setPending] = useState(false),
     [busy, setBusy] = useState(false),
     [seconds, setSeconds] = useState(0),
+    [cancelling, setCancelling] = useState(false),
     [error, setError] = useState(false);
   const state = useRef<Preview | null>(null),
     owner = useRef<AbortController | null>(null),
@@ -73,6 +74,7 @@ export function HumanMediaControls(props: Props) {
     setRecording(false);
     setPending(false);
     setBusy(false);
+    setCancelling(false);
     setError(false);
     callbacks.current.onBusy(false);
   }
@@ -147,7 +149,14 @@ export function HumanMediaControls(props: Props) {
         stopTracks();
         setRecording(false);
         try {
-          prepare(new Blob(chunks, { type: instance.mimeType }), "voice");
+          const recorded = {
+            blob: new Blob(chunks, { type: instance.mimeType }),
+            kind: "voice" as const,
+            url: "",
+            requestId: crypto.randomUUID(),
+          };
+          mediaContentType(recorded.blob, "voice");
+          void send(recorded);
         } catch {
           setError(true);
           callbacks.current.onBusy(false);
@@ -172,8 +181,7 @@ export function HumanMediaControls(props: Props) {
       }
     }
   }
-  async function send() {
-    const item = state.current;
+  async function send(item = state.current) {
     if (!item || locked.current || props.disabled) return;
     locked.current = true;
     setBusy(true);
@@ -212,12 +220,19 @@ export function HumanMediaControls(props: Props) {
         message.content.attachmentId !== item.attachmentId
       )
         throw Error("HUMAN_MEDIA_INVALID");
-      cancel();
+      if (state.current === item) cancel();
+      else {
+        locked.current = false;
+        owner.current = null;
+        setBusy(false);
+        callbacks.current.onBusy(false);
+      }
       callbacks.current.onSent(message);
     } catch (cause) {
       if (!request.signal.aborted) {
         setError(true);
         callbacks.current.onError(cause);
+        if (state.current !== item) callbacks.current.onBusy(false);
       }
     } finally {
       if (!request.signal.aborted) {
@@ -241,8 +256,13 @@ export function HumanMediaControls(props: Props) {
                 event.preventDefault();
                 event.currentTarget.setPointerCapture?.(event.pointerId);
                 pressY.current = event.clientY;
+                setCancelling(false);
                 void record();
                 held.current = true;
+              }}
+              onPointerMove={(event) => {
+                if (held.current)
+                  setCancelling(pressY.current - event.clientY > 60);
               }}
               onPointerUp={(event) => {
                 if (!held.current) return;
@@ -285,8 +305,12 @@ export function HumanMediaControls(props: Props) {
             >
               {recording
                 ? zh
-                  ? "松开预览 · 上滑取消"
-                  : "Release to preview · slide up to cancel"
+                  ? cancelling
+                    ? "松开取消"
+                    : "松开发送 · 上滑取消"
+                  : cancelling
+                    ? "Release to cancel"
+                    : "Release to send · slide up to cancel"
                 : pending
                   ? zh
                     ? "等待麦克风…"

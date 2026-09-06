@@ -11,7 +11,7 @@ import {
   encodeChatConversationCursor,
   encodeChatMessageCursor,
 } from "@aifans/contracts";
-import { ConversationDetail } from "./ConversationDetail.js";
+import { ConversationDetail, ConversationDetailSurface } from "./ConversationDetail.js";
 import { MessagesSectionHeader } from "./MessagesSectionHeader.js";
 
 const composerRenders = vi.hoisted(
@@ -98,6 +98,25 @@ afterEach(() => {
 });
 
 describe("ConversationDetail", () => {
+  it("keeps the human conversation identity compact and does not expose an account handle", () => {
+    render(
+      <ConversationDetailSurface
+        name="Luna"
+        username="user_a5128dcc704548069b4c526eb"
+        status="Online"
+        backHref="/en/messages"
+        backLabel="Back"
+      >
+        <div>History</div>
+      </ConversationDetailSurface>,
+    );
+
+    expect(screen.getByRole("link", { name: "Back" })).toHaveTextContent("←");
+    expect(screen.getByRole("link", { name: "Back" })).not.toHaveTextContent("Back");
+    expect(screen.getByRole("heading", { name: "Luna" })).toBeVisible();
+    expect(screen.getByText("Online")).toBeVisible();
+    expect(screen.queryByText(/user_a5128dcc/)).toBeNull();
+  });
   it("marks a visible IP conversation read without reloading the page", () => {
     const sendBeacon = vi.fn(() => true);
     Object.defineProperty(navigator, "sendBeacon", {configurable: true, value: sendBeacon});

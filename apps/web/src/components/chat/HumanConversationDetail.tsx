@@ -81,6 +81,9 @@ function HumanDetail({
   const peer = conversation.participants.find(
     (person) => person.id !== selfProfileId,
   )!;
+  const self = conversation.participants.find(
+    (person) => person.id === selfProfileId,
+  );
   const queryClient = useContext(QueryClientContext);
   const historyKey = ["human-chat", selfProfileId, "history", conversation.id] as const;
   const [cached] = useState(() => queryClient?.getQueryData<{
@@ -421,16 +424,26 @@ function HumanDetail({
     setItems(messages.current);
     onMessageSent?.(message);
   }
+  function messageTime(createdAt: string) {
+    return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(createdAt));
+  }
   return (
     <ConversationDetailSurface
-      name={
+      name={peer.displayName}
+      status={
         peerTyping
           ? locale === "zh-CN"
-            ? "对方正在输入中…"
+            ? "正在输入…"
             : "Typing…"
-          : peer.displayName
+          : peerOnline
+            ? locale === "zh-CN"
+              ? "在线"
+              : "Online"
+            : undefined
       }
-      status={peerOnline ? (locale === "zh-CN" ? "在线" : "Online") : undefined}
       username={peer.username}
       backLabel={labels.back}
       backHref={`/${locale}/messages`}
@@ -458,59 +471,51 @@ function HumanDetail({
           <p className={styles.detailNotice}>{labels.emptyHistory}</p>
         ) : null}
         <ol className={styles.messageList}>
-          {items.map((message) => (
-            <li
-              className={
-                message.senderProfileId === selfProfileId
-                  ? styles.humanMessage
-                  : styles.assistantMessage
-              }
-              key={message.id}
-            >
-              {message.content.kind === "text" ? (
-                <p>{message.content.text}</p>
-              ) : message.content.kind === "image" ||
-                message.content.kind === "voice" ? (
-                <HumanMediaMessage
-                  selfProfileId={selfProfileId}
-                  attachmentId={message.content.attachmentId}
-                  kind={message.content.kind}
-                  zh={locale === "zh-CN"}
-                  onError={handleError}
-                />
-              ) : message.content.kind === "share" ? (
-                <HumanShareMessage
-                  target={message.content.target}
-                  locale={locale}
-                  onError={handleError}
-                />
-              ) : message.content.kind === "sticker" ? (
-                <HumanSticker
-                  stickerId={message.content.stickerId}
-                  locale={locale}
-                />
-              ) : (
-                <p>{labels.invalidResponse}</p>
-              )}
-              {message.senderProfileId === selfProfileId ? (
-                <span
-                  className={styles.preview}
-                  role="img"
-                  aria-label={
-                    peerReadSequence !== undefined &&
-                    peerReadSequence >= message.sequence
-                      ? text.read
-                      : text.sent
-                  }
-                >
-                  {peerReadSequence !== undefined &&
-                  peerReadSequence >= message.sequence
-                    ? "✓✓"
-                    : "✓"}
-                </span>
-              ) : null}
-            </li>
-          ))}
+          {items.map((message) => {
+            const outgoing = message.senderProfileId === selfProfileId;
+            const sender = outgoing ? self : peer;
+            return (
+              <li
+                className={outgoing ? styles.humanMessage : styles.assistantMessage}
+                key={message.id}
+              >
+                <div className={styles.messageAvatar} aria-hidden="true">
+                  {sender ? <HumanAvatar decorative human={sender} size="small" /> : null}
+                </div>
+                <div className={styles.messageContent}>
+                  {message.content.kind === "text" ? (
+                    <p>{message.content.text}</p>
+                  ) : message.content.kind === "image" ||
+                    message.content.kind === "voice" ? (
+                    <HumanMediaMessage
+                      selfProfileId={selfProfileId}
+                      attachmentId={message.content.attachmentId}
+                      kind={message.content.kind}
+                      zh={locale === "zh-CN"}
+                      onError={handleError}
+                    />
+                  ) : message.content.kind === "share" ? (
+                    <HumanShareMessage target={message.content.target} locale={locale} onError={handleError} />
+                  ) : message.content.kind === "sticker" ? (
+                    <HumanSticker stickerId={message.content.stickerId} locale={locale} />
+                  ) : (
+                    <p>{labels.invalidResponse}</p>
+                  )}
+                  <div className={styles.messageMeta}>
+                    <time dateTime={message.createdAt}>{messageTime(message.createdAt)}</time>
+                    {outgoing ? (
+                      <span
+                        role="img"
+                        aria-label={peerReadSequence !== undefined && peerReadSequence >= message.sequence ? text.read : text.sent}
+                      >
+                        {peerReadSequence !== undefined && peerReadSequence >= message.sequence ? "✓✓" : "✓"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ol>
         {more ? (
           <button

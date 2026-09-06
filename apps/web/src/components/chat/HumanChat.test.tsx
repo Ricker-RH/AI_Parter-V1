@@ -99,7 +99,7 @@ it("treats an authoritative blocked read response as revoked access, not a retry
 });
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-it("temporarily replaces the HUMAN title while typing and restores it", async () => {
+it("keeps the HUMAN name stable and shows typing as its status", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => Response.json({ items: [] })),
@@ -113,10 +113,8 @@ it("temporarily replaces the HUMAN title while typing and restores it", async ()
     onChanged() {},
   };
   const view = render(<HumanConversationDetail {...props} peerTyping />);
-  expect(
-    screen.getByRole("heading", { name: "对方正在输入中…" }),
-  ).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Alice" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Alice" })).toBeInTheDocument();
+  expect(screen.getByText("正在输入…")).toBeInTheDocument();
   view.rerender(<HumanConversationDetail {...props} peerTyping={false} />);
   expect(screen.getByRole("heading", { name: "Alice" })).toBeInTheDocument();
   await screen.findByText("No messages yet");

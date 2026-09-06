@@ -59,8 +59,10 @@ it("cancels a held recording when released before permission arrives", async () 
   view.unmount();
   slot.remove();
 });
-it("releases an active held recording into a preview and pointercancel discards without sending", async () => {
+it("sends an active held recording on release and discards a cancelled recording", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
   const stop = vi.fn();
+  const onSent = vi.fn();
   vi.stubGlobal("PointerEvent", MouseEvent);
   vi.stubGlobal(
     "URL",
@@ -92,10 +94,33 @@ it("releases an active held recording into a preview and pointercancel discards 
     }
   }
   vi.stubGlobal("MediaRecorder", Recorder);
+  upload.mockResolvedValue({
+    attachmentId: id,
+    kind: "voice",
+    contentType: "audio/webm",
+    sizeBytes: 5,
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url, init) =>
+      Response.json({
+        message: {
+          v: 1,
+          id,
+          conversationId: id,
+          senderProfileId: id,
+          clientRequestId: JSON.parse(init.body).clientRequestId,
+          sequence: 1,
+          createdAt: "2026-09-01T00:00:00Z",
+          content: { kind: "voice", attachmentId: id },
+        },
+      }),
+    ),
+  );
   const slot = document.createElement("div");
   document.body.append(slot);
   const view = render(
-    <HumanMediaControls {...props} compact voiceSlot={slot} />,
+    <HumanMediaControls {...props} onSent={onSent} compact voiceSlot={slot} />,
   );
   const button = screen.getByRole("button", { name: "Hold to talk" });
   await act(async () =>
@@ -104,17 +129,17 @@ it("releases an active held recording into a preview and pointercancel discards 
   expect(button).not.toBeDisabled();
   expect(screen.getByText("Recording 0/60s")).toBeVisible();
   fireEvent.pointerUp(button, { clientY: 100 });
-  expect(screen.getByRole("button", { name: "Send attachment" })).toBeVisible();
+  await waitFor(() => expect(onSent).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("button", { name: "Send attachment" })).toBeNull();
   expect(stop).toHaveBeenCalledOnce();
-  expect(upload).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(upload).toHaveBeenCalledOnce();
   await act(async () =>
     fireEvent.pointerDown(button, { button: 0, clientY: 100 }),
   );
   fireEvent.pointerCancel(button);
   expect(screen.queryByRole("button", { name: "Send attachment" })).toBeNull();
   expect(stop).toHaveBeenCalledTimes(2);
-  expect(upload).not.toHaveBeenCalled();
+  expect(upload).toHaveBeenCalledOnce();
   view.unmount();
   slot.remove();
 });
@@ -139,7 +164,7 @@ it("stops a microphone granted after permission was cancelled", async () => {
   expect(stop).toHaveBeenCalledOnce();
   expect(screen.queryByText("Stop recording")).toBeNull();
 });
-it("caps native recording and releases tracks and preview on unmount", async () => {
+it("caps native recording and releases tracks without creating a voice preview", async () => {
   vi.useFakeTimers();
   const stop = vi.fn(),
     revoke = vi.fn();
@@ -177,12 +202,12 @@ it("caps native recording and releases tracks and preview on unmount", async () 
   await act(async () =>
     fireEvent.click(screen.getByRole("button", { name: "Voice" })),
   );
-  act(() => vi.advanceTimersByTime(59000));
+  await act(async () => vi.advanceTimersByTimeAsync(59000));
   expect(stop).toHaveBeenCalledOnce();
-  expect(screen.getByRole("button", { name: "Send attachment" })).toBeTruthy();
-  expect(upload).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Send attachment" })).toBeNull();
+  expect(upload).toHaveBeenCalledOnce();
   view.unmount();
-  expect(revoke).toHaveBeenCalledWith("blob:voice");
+  expect(revoke).not.toHaveBeenCalled();
 });
 it("previews before sending and preserves finalized attachment and request ID when retrying", async () => {
   const id = "11111111-1111-4111-8111-111111111111";

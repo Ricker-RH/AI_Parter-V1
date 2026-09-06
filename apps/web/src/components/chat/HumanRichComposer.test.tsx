@@ -57,43 +57,8 @@ it("requires preview confirmation and preserves sticker request ID on retry", as
     stickerId: "wave",
   });
 });
-it("searches authoritative internal targets and sends only the selected identifier", async () => {
-  const card = {
-    target: { kind: "post", id },
-    title: "Published post",
-    subtitle: "A real author",
-  };
-  const fetcher = vi
-    .fn()
-    .mockImplementation((url: string, init: RequestInit) =>
-      Promise.resolve(
-        init.method === "POST"
-          ? Response.json({ code: "TEMPORARY" }, { status: 503 })
-          : Response.json({ items: [card] }),
-      ),
-    );
-  vi.stubGlobal("fetch", fetcher);
-  render(<HumanRichComposer {...props} />);
-  fireEvent.click(screen.getByRole("button", { name: "Share" }));
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "Published" },
-  });
-  const result = await screen.findByRole("button", { name: /Published post/ });
-  screen.getByRole("searchbox").focus();
-  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Tab" });
-  expect(screen.getByRole("dialog")).toBeTruthy();
-  expect(result).toHaveFocus();
-  fireEvent.click(result);
-  expect(screen.getByText("Published post")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Send share" }));
-  await waitFor(() =>
-    expect(fetcher.mock.calls.some((call) => call[1]?.method === "POST")).toBe(
-      true,
-    ),
-  );
-  const send = fetcher.mock.calls.find((call) => call[1]?.method === "POST");
-  expect(JSON.parse(send?.[1].body).content).toEqual({
-    kind: "share",
-    target: card.target,
-  });
+it("does not expose sharing in the mobile attachment panel", () => {
+  render(<HumanRichComposer {...props} panel="more" />);
+
+  expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
 });
