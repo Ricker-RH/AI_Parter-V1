@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
   fireEvent,
@@ -14,21 +15,25 @@ import {
 import { ConversationDetail, ConversationDetailSurface } from "./ConversationDetail.js";
 import { MessagesSectionHeader } from "./MessagesSectionHeader.js";
 import styles from "./MessagesWorkspace.module.css";
+vi.mock('../account/CurrentAccountProvider.js', () => ({useOptionalCurrentAccount: () => ({account: {id: 'viewer', kind: 'human', displayName: 'You', avatarUrl: null}})}));
 
 const composerRenders = vi.hoisted(
-  () => [] as { conversationId: string; bodies: string[] }[],
+  () => [] as { conversationId: string; bodies: string[]; onMessages: (messages: {id: string; role: "human" | "assistant"; body: string; createdAt: string}[]) => void }[],
 );
 vi.mock("./ChatComposer.js", () => ({
   ChatComposer: ({
     conversationId,
     messages,
+    onMessages,
   }: {
     conversationId: string;
-    messages: { body: string }[];
+    messages: { id: string; role: "human" | "assistant"; body: string; createdAt: string }[];
+    onMessages: (messages: {id: string; role: "human" | "assistant"; body: string; createdAt: string}[]) => void;
   }) => {
     composerRenders.push({
       conversationId,
       bodies: messages.map((message) => message.body),
+      onMessages,
     });
     return null;
   },
@@ -129,12 +134,55 @@ describe("ConversationDetail", () => {
       expect.any(Blob),
     );
   });
-  it("uses a single message column when IP messages have no avatar", () => {
+  it("marks IP messages for the shared avatar layout", () => {
     render(<ConversationDetail history={first} labels={labels} locale="en" />);
 
     expect(screen.getByText("First history").closest("li")).toHaveClass(
-      styles.aiMessage!,
+      styles.ipMessage!,
     );
+  });
+  it("renders IP chat rows with both avatars, timestamps, and immediate reads", () => {
+    const outgoing = {
+      ...first.items[0]!,
+      id: "77777777-7777-4777-8777-777777777777",
+      role: "human" as const,
+      body: "Hello Luma",
+      createdAt: "2026-09-01T00:02:00.000Z",
+    };
+    render(
+      <ConversationDetail
+        history={{ ...first, items: [first.items[0]!, outgoing] }}
+        labels={labels}
+        locale="en"
+      />,
+    );
+
+    const incomingRow = screen.getByText("First history").closest("li")!;
+    const outgoingRow = screen.getByText("Hello Luma").closest("li")!;
+    expect(incomingRow.querySelector('[data-avatar-kind="ip"]')).not.toBeNull();
+    expect(outgoingRow.querySelector('[data-avatar-kind="human"]')).not.toBeNull();
+    expect(incomingRow.querySelector("time")).not.toBeNull();
+    expect(outgoingRow.querySelector("time")).not.toBeNull();
+    expect(screen.getByRole("img", { name: "Read" })).toHaveTextContent("✓✓");
+  });
+  it("publishes IP conversation activity when a message is added", () => {
+    const activity = vi.fn();
+    window.addEventListener("aifans:ip-conversation-activity", activity);
+    const client = new QueryClient();
+    const key = ['ai-chat', 'human:viewer', 'en', 'inbox', null];
+    client.setQueryData(key, {status: 'ok', data: {items: [], nextCursor: null}});
+    render(<QueryClientProvider client={client}><ConversationDetail history={first} labels={labels} locale="en" /></QueryClientProvider>);
+
+    act(() => composerRenders.at(-1)!.onMessages([
+      ...first.items,
+      {id: "88888888-8888-4888-8888-888888888888", role: "human", body: "New message", createdAt: "2026-09-01T00:03:00.000Z"},
+    ]));
+
+    expect(client.getQueryData(key)).toMatchObject({data: {items: [{id: first.conversation.id, lastMessage: {body: 'New message'}}]}});
+
+    expect(activity).toHaveBeenCalledOnce();
+    expect((activity.mock.calls[0]![0] as CustomEvent).detail.lastMessage).toMatchObject({body: "New message", role: "human"});
+    window.removeEventListener("aifans:ip-conversation-activity", activity);
   });
   it("turns an empty IP conversation into a profile-first start state", () => {
     render(
@@ -314,10 +362,10 @@ describe("ConversationDetail", () => {
       conversationId: second.conversation.id,
       bodies: ["First history"],
     });
-    expect(composerRenders).toContainEqual({
+    expect(composerRenders).toContainEqual(expect.objectContaining({
       conversationId: second.conversation.id,
       bodies: ["Second history"],
-    });
+    }));
   });
 
   it("shows a localized visible failed marker for a failed human message", () => {
@@ -376,7 +424,7 @@ describe("ConversationDetail", () => {
     );
     expect(await screen.findByText("Older")).toBeVisible();
     expect(
-      screen.getAllByRole("listitem").map((item) => item.textContent),
+      screen.getAllByRole("listitem").map((item) => item.querySelector("p")?.textContent),
     ).toEqual(["Older", "Newer"]);
     expect(fetch).toHaveBeenCalledWith(
       `/api/conversations/${first.conversation.id}/messages?cursor=older-page`,

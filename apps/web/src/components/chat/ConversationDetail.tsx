@@ -6,9 +6,12 @@ import {
   type ChatMessage,
 } from "@aifans/contracts";
 import Link from "next/link";
+import { QueryClientContext } from "@tanstack/react-query";
+import type { AiInboxResult } from "./ai-inbox-query";
 import {
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -20,6 +23,7 @@ import type { Locale } from "../../i18n/config";
 import { authHref } from "../../lib/auth/return-to";
 import { ChatComposer, type ChatComposerLabels } from "./ChatComposer";
 import { Avatar } from "../account/Avatar";
+import { useOptionalCurrentAccount } from "../account/CurrentAccountProvider";
 import styles from "./MessagesWorkspace.module.css";
 
 export type ConversationDetailLabels = ChatComposerLabels & {
@@ -37,6 +41,13 @@ function orderedUnique(messages: ChatMessage[]) {
       left.createdAt.localeCompare(right.createdAt) ||
       left.id.localeCompare(right.id),
   );
+}
+
+function messageTime(createdAt: string, locale: Locale) {
+  return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(createdAt));
 }
 
 type ConversationDetailProps = {
@@ -114,6 +125,8 @@ function ConversationDetailContent({
   realtimeReady = false,
   onConversationRead,
 }: ConversationDetailProps) {
+  const account = useOptionalCurrentAccount()?.account;
+  const queryClient = useContext(QueryClientContext);
   const [items, setItems] = useState<ChatMessage[]>(history?.items ?? []);
   const [nextCursor, setNextCursor] = useState(history?.nextCursor ?? null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -326,6 +339,7 @@ function ConversationDetailContent({
       backLabel={labels.back}
       backHref={`/${locale}/messages${listCursor ? `?${new URLSearchParams({ cursor: listCursor })}` : ""}`}
       sectionHeader={sectionHeader}
+      avatar={<Link aria-label={`Profile: ${history.conversation.ipProfile.displayName}`} href={`/${locale}/profiles/${history.conversation.ipProfile.id}`}><Avatar avatarUrl={null} decorative displayName={history.conversation.ipProfile.displayName} identityId={history.conversation.ipProfile.id} kind="ip" size="small" /></Link>}
     >
       <div className={styles.messageArea}>
         {nextCursor ? (
@@ -369,14 +383,21 @@ function ConversationDetailContent({
                       ? labels.messageFailed
                       : undefined
                   }
-                  className={`${message.role === "human" ? styles.humanMessage : styles.assistantMessage} ${styles.aiMessage}`}
+                  className={`${message.role === "human" ? styles.humanMessage : styles.assistantMessage} ${styles.ipMessage}`}
                 >
-                  <p>{message.body}</p>
-                  {message.deliveryState === "failed" && !message.generation ? (
-                    <span className={styles.failedMarker}>
-                      {labels.messageFailed}
-                    </span>
-                  ) : null}
+                  <div className={styles.messageAvatar} aria-hidden="true">
+                    {message.role === "human" ? <Avatar avatarUrl={account?.avatarUrl ?? null} decorative displayName={account?.displayName ?? (locale === "zh-CN" ? "我" : "You")} kind="human" size="small" /> : <Avatar avatarUrl={null} decorative displayName={history.conversation.ipProfile.displayName} identityId={history.conversation.ipProfile.id} kind="ip" size="small" />}
+                  </div>
+                  <div className={styles.messageContent}>
+                    <p>{message.body}</p>
+                    {message.deliveryState === "failed" && !message.generation ? (
+                      <span className={styles.failedMarker}>{labels.messageFailed}</span>
+                    ) : null}
+                    <div className={styles.messageMeta}>
+                      <time dateTime={message.createdAt}>{messageTime(message.createdAt, locale)}</time>
+                      {message.role === "human" && message.deliveryState !== "pending" && message.deliveryState !== "failed" ? <span aria-label={locale === "zh-CN" ? "已读" : "Read"} role="img">✓✓</span> : null}
+                    </div>
+                  </div>
                 </li>
                 <AiGenerationSnapshot message={message} locale={locale} />
               </Fragment>
@@ -398,7 +419,38 @@ function ConversationDetailContent({
         labels={labels}
         locale={locale}
         messages={items}
-        onMessages={setItems}
+        onMessages={(nextItems) => {
+          setItems(nextItems);
+          const latestMessage = nextItems.filter(message => message.deliveryState !== "pending" && message.deliveryState !== "failed").at(-1);
+          if (!latestMessage) return;
+          if (queryClient && account) {
+            const conversation = {
+              ...history.conversation,
+              lastMessage: { role: latestMessage.role, body: latestMessage.body, createdAt: latestMessage.createdAt },
+              updatedAt: latestMessage.createdAt,
+            };
+            queryClient.setQueriesData<AiInboxResult>(
+              {queryKey: ['ai-chat', `${account.kind}:${account.id}`, locale, 'inbox']},
+              cached => cached?.status === 'ok' ? {
+                ...cached,
+                data: {...cached.data, items: [conversation, ...cached.data.items.filter(item => item.id !== conversation.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))},
+              } : cached,
+            );
+          }
+          window.dispatchEvent(
+            new CustomEvent('aifans:ip-conversation-activity', {
+              detail: {
+                ...history.conversation,
+                lastMessage: {
+                  role: latestMessage.role,
+                  body: latestMessage.body,
+                  createdAt: latestMessage.createdAt,
+                },
+                updatedAt: latestMessage.createdAt,
+              },
+            }),
+          );
+        }}
         sendEnabled={history.conversation.sendEnabled}
         onActivityChange={(value) => {
           streaming.current = value;

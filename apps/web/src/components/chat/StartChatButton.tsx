@@ -57,6 +57,7 @@ export function StartChatButton({authenticated, ipProfileId, labels, locale}: {a
       const parsed = ChatConversationSummarySchema.safeParse(await response.json())
       if (!current()) return
       if (!parsed.success) throw new Error('invalid conversation')
+      window.dispatchEvent(new CustomEvent('aifans:ip-conversation-created', {detail: parsed.data}))
       router.push(`/${locale}/messages/${parsed.data.id}`)
     } catch {
       if (current()) setError(true)

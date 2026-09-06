@@ -23,13 +23,18 @@ describe('StartChatButton', () => {
   })
 
   it('creates a conversation with only the public profile id and opens its localized route', async () => {
+    const created = vi.fn()
+    window.addEventListener('aifans:ip-conversation-created', created)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({id: conversationId, ipProfile: {id: ipProfileId, username: 'luma', displayName: 'Luma'}, lastMessage: null, updatedAt: '2026-09-02T00:00:00.000Z', sendEnabled: true})))
     render(<StartChatButton authenticated ipProfileId={ipProfileId} labels={labels} locale="en"/>)
 
     fireEvent.click(screen.getByRole('button', {name: 'Chat'}))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/conversations', expect.objectContaining({method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({ipProfileId})})))
+    await waitFor(() => expect(created).toHaveBeenCalledOnce())
+    expect((created.mock.calls[0]![0] as CustomEvent).detail).toEqual(expect.objectContaining({id: conversationId}))
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/en/messages/${conversationId}`))
+    window.removeEventListener('aifans:ip-conversation-created', created)
   })
 
   it('disables duplicate submissions while opening and reports an invalid response locally', async () => {

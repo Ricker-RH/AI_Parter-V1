@@ -57,4 +57,24 @@ describe('CachedMessagesWorkspace',()=>{
     expect(screen.getByText('Luma')).toBeVisible()
     expect(request).not.toHaveBeenCalled()
   })
+
+  it('caches a newly created empty IP conversation without showing it in the inbox',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const key=['ai-chat',`${account.kind}:${account.id}`,'en','inbox',null]
+    client.setQueryData(key,{status:'ok',data:{items:[],nextCursor:null}})
+    vi.stubGlobal('fetch',vi.fn())
+    render(<QueryClientProvider client={client}><AppQueryContext.Provider value><CachedMessagesWorkspace labels={labels} locale="en"/></AppQueryContext.Provider></QueryClientProvider>)
+    window.dispatchEvent(new CustomEvent('aifans:ip-conversation-created',{detail:conversation.items[0]!}))
+    await waitFor(()=>expect((client.getQueryData(key) as {status:'ok';data:{items:{id:string}[]}}).data.items[0]?.id).toBe(conversation.items[0]!.id))
+  })
+
+  it('shows an IP conversation in the inbox as soon as its first message is sent',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+    const key=['ai-chat',`${account.kind}:${account.id}`,'en','inbox',null]
+    client.setQueryData(key,{status:'ok',data:{items:[],nextCursor:null}})
+    vi.stubGlobal('fetch',vi.fn())
+    render(<QueryClientProvider client={client}><AppQueryContext.Provider value><CachedMessagesWorkspace labels={labels} locale="en"/></AppQueryContext.Provider></QueryClientProvider>)
+    window.dispatchEvent(new CustomEvent('aifans:ip-conversation-activity',{detail:{...conversation.items[0]!,lastMessage:{role:'human',body:'Hello Luma',createdAt:'2026-09-01T00:01:00.000Z'},updatedAt:'2026-09-01T00:01:00.000Z'}}))
+    expect(await screen.findByText('Luma')).toBeVisible()
+  })
 })

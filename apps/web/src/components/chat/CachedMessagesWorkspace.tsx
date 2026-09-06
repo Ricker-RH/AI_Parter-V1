@@ -36,6 +36,23 @@ export function CachedMessagesWorkspace({labels,locale,initialCursor,selectedHum
     ...aiInboxQueryOptions(scope,locale,initialCursor),
     enabled:status==='authenticated'&&Boolean(account),
   })
+  useEffect(()=>{
+    const syncConversation=(event:Event)=>{
+      const conversation=(event as CustomEvent<ChatConversationSummary>).detail
+      if(!conversation?.id)return
+      queryClient.setQueriesData<AiInboxResult>({queryKey:['ai-chat',scope,locale,'inbox']},cached=>
+        cached?.status==='ok'
+          ? {...cached,data:{...cached.data,items:[conversation,...cached.data.items.filter(item=>item.id!==conversation.id)]}}
+          : cached,
+      )
+    }
+    window.addEventListener('aifans:ip-conversation-created',syncConversation)
+    window.addEventListener('aifans:ip-conversation-activity',syncConversation)
+    return()=>{
+      window.removeEventListener('aifans:ip-conversation-created',syncConversation)
+      window.removeEventListener('aifans:ip-conversation-activity',syncConversation)
+    }
+  },[locale,queryClient,scope])
   const authRequired=inbox.error instanceof QueryLoadError&&inbox.error.status==='auth-required'
 
   useEffect(()=>{
